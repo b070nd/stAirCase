@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
-# tests/integration.bats — staircase 1.0.0 integration tests
+# tests/integration.bats — staircase 1.1.0 integration tests
 #
 # Run:    bats tests/integration.bats
 # Quiet:  bats --tap tests/integration.bats
-# Filter: bats tests/integration.bats --filter "symlink"
+# Filter: bats tests/integration.bats --filter "link"
 
 STAIRCASE="${BATS_TEST_DIRNAME}/../staircase"
 
@@ -17,15 +17,17 @@ teardown() {
   rm -rf "$WORK_DIR"
 }
 
-# ── Helper: shorthand for running staircase with stderr merged ────────────────
-sc() { bash -c "'$STAIRCASE' $* 2>&1"; }
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-# ── Helper: init + register + task in one shot ────────────────────────────────
+# Run staircase with all args; merge stderr into stdout so bats captures it.
+sc() { "$STAIRCASE" "$@" 2>&1; }
+
+# Init workspace + add a project + open a case (all output suppressed).
 scaffold() {
-  local app="${1:-myapp}" task="${2:-T-001}"
+  local vp="${1:-acme/webshop}" cs="${2:-SPRINT-1}"
   sc init > /dev/null
-  sc "register $app" > /dev/null
-  sc "task new $app $task" > /dev/null
+  sc project add "$vp" > /dev/null
+  sc case new "$vp" "$cs" > /dev/null
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -37,36 +39,36 @@ scaffold() {
   [ "$status" -eq 0 ]
 }
 
-@test "init: creates product/, agent/, .staircase/tmp/, manifest.json" {
+@test "init: creates .staircase/config.json, manifest.json, tmp/" {
   sc init > /dev/null
-  [ -d "product" ]
-  [ -d "agent" ]
-  [ -d ".staircase/tmp" ]
+  [ -f ".staircase/config.json" ]
   [ -f ".staircase/manifest.json" ]
+  [ -d ".staircase/tmp" ]
 }
 
 @test "init: manifest has correct initial schema" {
   sc init > /dev/null
   run jq -r '.version' ".staircase/manifest.json"
   [ "$output" = "1.0" ]
-  run jq '.projects' ".staircase/manifest.json"
+  run jq -r '.vendors' ".staircase/manifest.json"
   [ "$output" = "{}" ]
+}
+
+@test "init: config.json sets runner and hooks_dir" {
+  sc init > /dev/null
+  run jq -r '.runner' ".staircase/config.json"
+  [ "$output" = "ralph-tui" ]
+  run jq -r '.hooks_dir' ".staircase/config.json"
+  [ "$output" = "hooks.d" ]
 }
 
 @test "init: idempotent — second run exits 0 and preserves manifest" {
   sc init > /dev/null
-  echo '{"version":"1.0","projects":{"keep":"me"}}' > ".staircase/manifest.json"
+  sc project add acme/web > /dev/null
   run sc init
   [ "$status" -eq 0 ]
-  [[ "$output" == *"already initialized"* ]]
-  run jq -r '.projects.keep' ".staircase/manifest.json"
-  [ "$output" = "me" ]
-}
-
-@test "init: first run outputs 'initialized'" {
-  run sc init
-  [[ "$output" == *"initialized"* ]]
-  [[ "$output" != *"already"* ]]
+  run jq -r '.vendors.acme' ".staircase/manifest.json"
+  [ "$output" != "null" ]
 }
 
 @test "init: output goes to stderr, stdout is clean" {
@@ -75,400 +77,513 @@ scaffold() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  REGISTER
+#  CONFIG
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "register: exits 0 for new app" {
+@test "config --list: prints KEY VALUE SOURCE table" {
   sc init > /dev/null
-  run sc "register backend"
+  run sc config --list
   [ "$status" -eq 0 ]
-  [[ "$output" == *"registered"* ]]
+  [[ "$output" == *"KEY"* ]]
+  [[ "$output" == *"runner"* ]]
+  [[ "$output" == *"hooks_dir"* ]]
 }
 
-@test "register: creates product/ and agent/ subtrees" {
+@test "config: set and get roundtrip" {
   sc init > /dev/null
-  sc "register backend" > /dev/null
-  [ -d "product/backend" ]
-  [ -d "agent/backend/active" ]
-  [ -d "agent/backend/tasks" ]
-  [ -d "agent/backend/structure" ]
+  sc config runner claude-code > /dev/null
+  run sc config runner
+  [ "$output" = "claude-code" ]
 }
 
-@test "register: adds entry to manifest with registered_at" {
-  sc init > /dev/null
-  sc "register backend" > /dev/null
-  run jq -r '.projects.backend.registered_at' ".staircase/manifest.json"
-  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]
-}
-
-@test "register: duplicate exits 1 with error" {
-  sc init > /dev/null
-  sc "register backend" > /dev/null
-  run sc "register backend"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"already registered"* ]]
-}
-
-@test "register: missing app name exits 1" {
-  sc init > /dev/null
-  run sc register
-  [ "$status" -eq 1 ]
-}
-
-@test "register: outside workspace exits 1" {
-  run sc "register backend"
+@test "config: outside workspace exits 1" {
+  run sc config --list
   [ "$status" -eq 1 ]
   [[ "$output" == *"no workspace"* ]]
 }
 
-@test "register --symlink: creates symlink and sets manifest flag" {
+# ═══════════════════════════════════════════════════════════════════════════════
+#  VENDOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@test "vendor add: creates vendor dir and manifest entry with registered_at" {
   sc init > /dev/null
-  sc "register backend --symlink" > /dev/null
-  [ -L "product/backend/tasks" ]
-  run readlink "product/backend/tasks"
-  [ "$output" = "../../agent/backend/active" ]
-  run jq -r '.projects.backend.symlinkEnabled' ".staircase/manifest.json"
-  [ "$output" = "true" ]
+  run sc vendor add acme
+  [ "$status" -eq 0 ]
+  [ -d "acme" ]
+  run jq -r '.vendors.acme.registered_at' ".staircase/manifest.json"
+  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]
 }
 
-@test "register: without --symlink does not create symlink" {
+@test "vendor add: duplicate exits 1" {
   sc init > /dev/null
-  sc "register backend" > /dev/null
-  [ ! -L "product/backend/tasks" ]
-  run jq -r '.projects.backend.symlinkEnabled // "null"' ".staircase/manifest.json"
+  sc vendor add acme > /dev/null
+  run sc vendor add acme
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already exists"* ]]
+}
+
+@test "vendor add: missing name exits 1" {
+  sc init > /dev/null
+  run sc vendor add
+  [ "$status" -eq 1 ]
+}
+
+@test "vendor remove: removes empty vendor" {
+  sc init > /dev/null
+  sc vendor add acme > /dev/null
+  run sc vendor remove acme
+  [ "$status" -eq 0 ]
+  run jq -r '.vendors.acme // "null"' ".staircase/manifest.json"
   [ "$output" = "null" ]
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  TASK NEW
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@test "task new: exits 0 on registered app" {
+@test "vendor remove: refuses vendor with projects" {
   sc init > /dev/null
-  sc "register myapp" > /dev/null
-  run sc "task new myapp T-001"
+  sc project add acme/web > /dev/null
+  run sc vendor remove acme
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"projects"* ]]
+}
+
+@test "vendor list: shows vendors with project counts" {
+  sc init > /dev/null
+  sc project add acme/web > /dev/null
+  sc project add acme/api > /dev/null
+  run sc vendor list
   [ "$status" -eq 0 ]
+  [[ "$output" == *"acme"* ]]
+  [[ "$output" == *"2"* ]]
 }
 
-@test "task new: creates task directory and active context" {
-  scaffold
-  [ -d "agent/myapp/tasks/T-001" ]
-  [ -f "agent/myapp/active/context.json" ]
-}
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PROJECT
+# ═══════════════════════════════════════════════════════════════════════════════
 
-@test "task new: context.json has correct schema" {
-  scaffold
-  run jq -r '.taskId' "agent/myapp/active/context.json"
-  [ "$output" = "T-001" ]
-  run jq -r '.app' "agent/myapp/active/context.json"
-  [ "$output" = "myapp" ]
-  run jq '.stories' "agent/myapp/active/context.json"
-  [ "$output" = "[]" ]
-  run jq '.files' "agent/myapp/active/context.json"
-  [ "$output" = "[]" ]
-  run jq -r '.gitDiff' "agent/myapp/active/context.json"
-  [ "$output" = "" ]
-  run jq -r '.created' "agent/myapp/active/context.json"
-  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
-}
-
-@test "task new: sets manifest activeTask" {
-  scaffold
-  run jq -r '.projects.myapp.activeTask' ".staircase/manifest.json"
-  [ "$output" = "T-001" ]
-}
-
-@test "task new: second task overwrites activeTask" {
-  scaffold
-  sc "task new myapp T-002" > /dev/null
-  run jq -r '.projects.myapp.activeTask' ".staircase/manifest.json"
-  [ "$output" = "T-002" ]
-}
-
-@test "task new: unregistered app exits 1" {
+@test "project add: creates vendor/project/.staircase/ structure" {
   sc init > /dev/null
-  run sc "task new ghost T-001"
+  run sc project add acme/webshop
+  [ "$status" -eq 0 ]
+  [ -d "acme/webshop/.staircase/active" ]
+  [ -d "acme/webshop/.staircase/tasks" ]
+  [ -f "acme/webshop/.staircase/config.json" ]
+}
+
+@test "project add: auto-creates vendor when absent" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run jq -r '.vendors.acme.registered_at' ".staircase/manifest.json"
+  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]
+}
+
+@test "project add: registers in manifest with empty components and null activeCase" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
+  [ "$output" = "null" ]
+  run jq '.vendors.acme.projects.webshop.components' ".staircase/manifest.json"
+  [ "$output" = "[]" ]
+}
+
+@test "project add: duplicate exits 1" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run sc project add acme/webshop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already exists"* ]]
+}
+
+@test "project add: missing v/p arg exits 1" {
+  sc init > /dev/null
+  run sc project add
+  [ "$status" -eq 1 ]
+}
+
+@test "project add: non-slash name exits 1" {
+  sc init > /dev/null
+  run sc project add webshop
+  [ "$status" -eq 1 ]
+}
+
+@test "project remove: removes from manifest, leaves directory" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run sc project remove acme/webshop
+  [ "$status" -eq 0 ]
+  run jq -r '.vendors.acme.projects.webshop // "null"' ".staircase/manifest.json"
+  [ "$output" = "null" ]
+  [ -d "acme/webshop" ]
+}
+
+@test "project list: shows all projects across vendors" {
+  sc init > /dev/null
+  sc project add acme/web > /dev/null
+  sc project add acme/api > /dev/null
+  sc project add clientx/app > /dev/null
+  run sc project list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"acme/web"* ]]
+  [[ "$output" == *"acme/api"* ]]
+  [[ "$output" == *"clientx/app"* ]]
+}
+
+@test "project list: filter by vendor" {
+  sc init > /dev/null
+  sc project add acme/web > /dev/null
+  sc project add clientx/app > /dev/null
+  run sc project list acme
+  [[ "$output" == *"acme/web"* ]]
+  [[ "$output" != *"clientx"* ]]
+}
+
+@test "project info: shows active case, runner, source, and components" {
+  scaffold acme/webshop SPRINT-1
+  run sc project info acme/webshop
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SPRINT-1"* ]]
+  [[ "$output" == *"ralph-tui"* ]]
+  [[ "$output" == *"(not linked)"* ]]
+}
+
+@test "project info: unknown project exits 1" {
+  sc init > /dev/null
+  run sc project info acme/ghost
   [ "$status" -eq 1 ]
   [[ "$output" == *"not registered"* ]]
 }
 
-@test "task new: missing args exits 1" {
+@test "project info: missing v/p exits 1" {
   sc init > /dev/null
-  sc "register myapp" > /dev/null
-  run sc "task new myapp"
+  run sc project info
   [ "$status" -eq 1 ]
 }
 
-@test "task new: special characters in task ID produce valid JSON" {
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PROJECT LINK / UNLINK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@test "project link: stores canonical path in manifest" {
+  scaffold acme/webshop
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.source' ".staircase/manifest.json"
+  [ "$output" = "$src" ]
+  rm -rf "$src"
+}
+
+@test "project link: stores canonical path in project config.json" {
+  scaffold acme/webshop
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  run jq -r '.source' "acme/webshop/.staircase/config.json"
+  [ "$output" = "$src" ]
+  rm -rf "$src"
+}
+
+@test "project link: resolves relative path to absolute" {
+  scaffold acme/webshop
+  mkdir -p "my-source"
+  sc project link acme/webshop my-source > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.source' ".staircase/manifest.json"
+  [[ "$output" = /* ]]
+}
+
+@test "project link: exits 1 for non-existent path" {
+  scaffold acme/webshop
+  run sc project link acme/webshop /nonexistent/path/xyz999
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"does not exist"* ]]
+}
+
+@test "project link: exits 1 for unknown project" {
   sc init > /dev/null
-  sc "register myapp" > /dev/null
-  sc 'task new myapp feat/hello\"world' > /dev/null
-  run jq -r '.taskId' "agent/myapp/active/context.json"
+  run sc project link acme/ghost /tmp
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not registered"* ]]
+}
+
+@test "project link: missing path arg exits 1" {
+  scaffold acme/webshop
+  run sc project link acme/webshop
+  [ "$status" -eq 1 ]
+}
+
+@test "project link --dry-run: does not modify manifest" {
+  scaffold acme/webshop
+  local src; src="$(mktemp -d)"
+  local before; before="$(cat .staircase/manifest.json)"
+  run sc --dry-run project link acme/webshop "$src"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[DRY RUN]"* ]]
+  [ "$(cat .staircase/manifest.json)" = "$before" ]
+  rm -rf "$src"
+}
+
+@test "project unlink: removes source from manifest and project config.json" {
+  scaffold acme/webshop
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  sc project unlink acme/webshop > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.source // "null"' ".staircase/manifest.json"
+  [ "$output" = "null" ]
+  run jq -r '.source // "null"' "acme/webshop/.staircase/config.json"
+  [ "$output" = "null" ]
+  rm -rf "$src"
+}
+
+@test "project unlink: idempotent when no source is set" {
+  scaffold acme/webshop
+  run sc project unlink acme/webshop
+  [ "$status" -eq 0 ]
+}
+
+@test "project link: project info shows source path when linked" {
+  scaffold acme/webshop
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  run sc project info acme/webshop
+  [[ "$output" == *"$src"* ]]
+  [[ "$output" != *"(not linked)"* ]]
+  rm -rf "$src"
+}
+
+@test "project unlink: project info shows (not linked) after unlinking" {
+  scaffold acme/webshop
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  sc project unlink acme/webshop > /dev/null
+  run sc project info acme/webshop
+  [[ "$output" == *"(not linked)"* ]]
+  rm -rf "$src"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  COMPONENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@test "component add: creates directory and updates manifest" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run sc component add acme/webshop storefront
+  [ "$status" -eq 0 ]
+  [ -d "acme/webshop/storefront" ]
+  run jq -r '.vendors.acme.projects.webshop.components[0]' ".staircase/manifest.json"
+  [ "$output" = "storefront" ]
+}
+
+@test "component add: multi-component in one call" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront api admin > /dev/null
+  run jq '.vendors.acme.projects.webshop.components | length' ".staircase/manifest.json"
+  [ "$output" = "3" ]
+  [ -d "acme/webshop/storefront" ]
+  [ -d "acme/webshop/api" ]
+  [ -d "acme/webshop/admin" ]
+}
+
+@test "component add: idempotent — duplicate not added twice" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront > /dev/null
+  sc component add acme/webshop storefront > /dev/null
+  run jq '.vendors.acme.projects.webshop.components | length' ".staircase/manifest.json"
+  [ "$output" = "1" ]
+}
+
+@test "component add: also updates project config.json" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront > /dev/null
+  run jq -r '.components[0]' "acme/webshop/.staircase/config.json"
+  [ "$output" = "storefront" ]
+}
+
+@test "component remove: removes from manifest and config.json" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront api > /dev/null
+  sc component remove acme/webshop storefront > /dev/null
+  run jq '.vendors.acme.projects.webshop.components | length' ".staircase/manifest.json"
+  [ "$output" = "1" ]
+  run jq -r '.vendors.acme.projects.webshop.components[0]' ".staircase/manifest.json"
+  [ "$output" = "api" ]
+}
+
+@test "component list: marks missing directories with !" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront > /dev/null
+  rm -rf "acme/webshop/storefront"
+  run sc component list acme/webshop
+  [[ "$output" == *"!"* ]]
+  [[ "$output" == *"storefront"* ]]
+}
+
+@test "component add: missing v/p exits 1" {
+  sc init > /dev/null
+  run sc component add
+  [ "$status" -eq 1 ]
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CASE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@test "case new: creates task dir and active/context.json" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run sc case new acme/webshop SPRINT-1
+  [ "$status" -eq 0 ]
+  [ -d "acme/webshop/.staircase/tasks/SPRINT-1" ]
+  [ -f "acme/webshop/.staircase/active/context.json" ]
+}
+
+@test "case new: context.json has correct schema" {
+  scaffold
+  run jq -r '.caseId' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "SPRINT-1" ]
+  run jq -r '.vendor' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "acme" ]
+  run jq -r '.project' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "webshop" ]
+  run jq '.stories' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "[]" ]
+  run jq '.files' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "[]" ]
+  run jq -r '.gitDiff' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "" ]
+  run jq -r '.created' "acme/webshop/.staircase/active/context.json"
+  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+@test "case new: context.json includes component list" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront api > /dev/null
+  sc case new acme/webshop SPRINT-1 > /dev/null
+  run jq '.components | length' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "2" ]
+}
+
+@test "case new: sets activeCase in manifest" {
+  scaffold
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
+  [ "$output" = "SPRINT-1" ]
+}
+
+@test "case new: second case sets new activeCase" {
+  scaffold
+  sc case new acme/webshop BUG-042 > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
+  [ "$output" = "BUG-042" ]
+}
+
+@test "case new: special characters in case ID produce valid JSON" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc case new acme/webshop 'feat/hello"world' > /dev/null
+  run jq -r '.caseId' "acme/webshop/.staircase/active/context.json"
   [ "$output" = 'feat/hello"world' ]
 }
 
-@test "task new: refreshes symlink when enabled" {
+@test "case new: missing case-id exits 1" {
   sc init > /dev/null
-  sc "register myapp --symlink" > /dev/null
-  sc "task new myapp T-001" > /dev/null
-  [ -L "product/myapp/tasks" ]
-  run jq -r '.taskId' "product/myapp/tasks/context.json"
-  [ "$output" = "T-001" ]
+  sc project add acme/webshop > /dev/null
+  run sc case new acme/webshop
+  [ "$status" -eq 1 ]
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  TASK SWITCH
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@test "task switch: exits 0 between two tasks" {
+@test "case switch: exits 0 between two cases" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  run sc "task switch myapp T-001"
+  sc case new acme/webshop BUG-042 > /dev/null
+  run sc case switch acme/webshop SPRINT-1
   [ "$status" -eq 0 ]
   [[ "$output" == *"switched"* ]]
 }
 
-@test "task switch: updates manifest activeTask" {
+@test "case switch: updates activeCase in manifest" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  sc "task switch myapp T-001" > /dev/null
-  run jq -r '.projects.myapp.activeTask' ".staircase/manifest.json"
-  [ "$output" = "T-001" ]
+  sc case new acme/webshop BUG-042 > /dev/null
+  sc case switch acme/webshop SPRINT-1 > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
+  [ "$output" = "SPRINT-1" ]
 }
 
-@test "task switch: saves current context to previous task dir" {
+@test "case switch: saves current context to previous case directory" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  sc "task switch myapp T-001" > /dev/null
-  [ -f "agent/myapp/tasks/T-002/context.json" ]
-  run jq -r '.taskId' "agent/myapp/tasks/T-002/context.json"
-  [ "$output" = "T-002" ]
+  sc case new acme/webshop BUG-042 > /dev/null
+  sc case switch acme/webshop SPRINT-1 > /dev/null
+  [ -f "acme/webshop/.staircase/tasks/BUG-042/context.json" ]
+  run jq -r '.caseId' "acme/webshop/.staircase/tasks/BUG-042/context.json"
+  [ "$output" = "BUG-042" ]
 }
 
-@test "task switch: restores target context with custom data" {
+@test "case switch: restores saved context with custom data" {
   scaffold
-  # Inject custom data into T-001's saved context
-  printf '{"taskId":"T-001","app":"myapp","created":"2026-01-01T00:00:00Z","stories":["custom"],"files":["a.js"],"gitDiff":"diff"}\n' \
-    > "agent/myapp/tasks/T-001/context.json"
-  sc "task new myapp T-002" > /dev/null
-  sc "task switch myapp T-001" > /dev/null
-  run jq -r '.stories[0]' "agent/myapp/active/context.json"
-  [ "$output" = "custom" ]
-  run jq -r '.files[0]' "agent/myapp/active/context.json"
-  [ "$output" = "a.js" ]
-  run jq -r '.gitDiff' "agent/myapp/active/context.json"
-  [ "$output" = "diff" ]
+  # Pre-populate SPRINT-1's saved context with custom fields
+  printf '{"caseId":"SPRINT-1","vendor":"acme","project":"webshop","components":[],"created":"2026-01-01T00:00:00Z","stories":["story-A"],"files":["src/main.ts"],"gitDiff":"diff --git a"}\n' \
+    > "acme/webshop/.staircase/tasks/SPRINT-1/context.json"
+  sc case new acme/webshop BUG-042 > /dev/null
+  sc case switch acme/webshop SPRINT-1 > /dev/null
+  run jq -r '.stories[0]' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "story-A" ]
+  run jq -r '.files[0]' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "src/main.ts" ]
 }
 
-@test "task switch: non-existent task exits 1 with suggestion" {
+@test "case switch: to unknown case exits 1 with hint" {
   scaffold
-  run sc "task switch myapp T-999"
+  run sc case switch acme/webshop GHOST-999
   [ "$status" -eq 1 ]
   [[ "$output" == *"not found"* ]]
-  [[ "$output" == *"task new"* ]]
+  [[ "$output" == *"case new"* ]]
 }
 
-@test "task switch: unregistered app exits 1" {
-  sc init > /dev/null
-  run sc "task switch ghost T-001"
-  [ "$status" -eq 1 ]
-}
-
-@test "task switch --symlink: enables symlinks one-shot" {
+@test "case list: shows all cases with active marker" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  sc "task switch myapp T-001 --symlink" > /dev/null
-  [ -L "product/myapp/tasks" ]
-  run jq -r '.projects.myapp.symlinkEnabled' ".staircase/manifest.json"
-  [ "$output" = "true" ]
-  run jq -r '.taskId' "product/myapp/tasks/context.json"
-  [ "$output" = "T-001" ]
-}
-
-@test "task switch: refreshes existing symlink" {
-  sc init > /dev/null
-  sc "register myapp --symlink" > /dev/null
-  sc "task new myapp T-001" > /dev/null
-  sc "task new myapp T-002" > /dev/null
-  sc "task switch myapp T-001" > /dev/null
-  [ -L "product/myapp/tasks" ]
-  run jq -r '.taskId' "product/myapp/tasks/context.json"
-  [ "$output" = "T-001" ]
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  TASK LIST
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@test "task list: shows all tasks with active marker" {
-  scaffold
-  sc "task new myapp T-002" > /dev/null
-  sc "task new myapp T-003" > /dev/null
-  run sc "task list myapp"
+  sc case new acme/webshop BUG-042 > /dev/null
+  sc case new acme/webshop FEAT-007 > /dev/null
+  run sc case list acme/webshop
   [ "$status" -eq 0 ]
-  [[ "$output" == *"T-001"* ]]
-  [[ "$output" == *"T-002"* ]]
-  [[ "$output" == *"T-003"* ]]
+  [[ "$output" == *"SPRINT-1"* ]]
+  [[ "$output" == *"BUG-042"* ]]
+  [[ "$output" == *"FEAT-007"* ]]
   [[ "$output" == *"*"* ]]
 }
 
-@test "task list: active task has asterisk, others do not" {
+@test "case list: active case has asterisk, others do not" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  run sc "task list myapp"
-  local t002_line t001_line
-  t002_line="$(echo "$output" | grep 'T-002')"
-  [[ "$t002_line" == *"*"* ]]
-  t001_line="$(echo "$output" | grep 'T-001')"
-  [[ "$t001_line" != *"*"* ]]
+  sc case new acme/webshop BUG-042 > /dev/null
+  run sc case list acme/webshop
+  local active_line inactive_line
+  active_line="$(echo "$output" | grep 'BUG-042')"
+  [[ "$active_line" == *"*"* ]]
+  inactive_line="$(echo "$output" | grep 'SPRINT-1')"
+  [[ "$inactive_line" != *"*"* ]]
 }
 
-@test "task list: unregistered app exits 1" {
-  sc init > /dev/null
-  run sc "task list ghost"
-  [ "$status" -eq 1 ]
-}
-
-@test "task list: missing app name exits 1" {
-  sc init > /dev/null
-  run sc "task list"
-  [ "$status" -eq 1 ]
-}
-
-@test "task list: empty tasks dir exits 0 with no output" {
-  sc init > /dev/null
-  sc "register myapp" > /dev/null
-  run sc "task list myapp"
+@test "case info: outputs active context as JSON to stdout" {
+  scaffold
+  run bash -c "'$STAIRCASE' case info acme/webshop 2>/dev/null | jq -r '.caseId'"
   [ "$status" -eq 0 ]
+  [ "$output" = "SPRINT-1" ]
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  SYMLINK
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@test "symlink enable: creates correct relative symlink" {
+@test "case info: specific case by name" {
   scaffold
-  run sc "symlink enable myapp"
-  [ "$status" -eq 0 ]
-  [ -L "product/myapp/tasks" ]
-  run readlink "product/myapp/tasks"
-  [ "$output" = "../../agent/myapp/active" ]
-}
-
-@test "symlink enable: sets symlinkEnabled in manifest" {
-  scaffold
-  sc "symlink enable myapp" > /dev/null
-  run jq -r '.projects.myapp.symlinkEnabled' ".staircase/manifest.json"
-  [ "$output" = "true" ]
-}
-
-@test "symlink enable: idempotent — second run exits 0" {
-  scaffold
-  sc "symlink enable myapp" > /dev/null
-  run sc "symlink enable myapp"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"already enabled"* ]]
-}
-
-@test "symlink enable: context readable through symlink" {
-  scaffold
-  sc "symlink enable myapp" > /dev/null
-  run jq -r '.taskId' "product/myapp/tasks/context.json"
-  [ "$output" = "T-001" ]
-}
-
-@test "symlink enable: fails if tasks/ is a real directory" {
-  scaffold
-  mkdir -p "product/myapp/tasks"
-  run sc "symlink enable myapp"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"not a symlink"* ]]
-}
-
-@test "symlink disable: removes symlink and clears manifest" {
-  scaffold
-  sc "symlink enable myapp" > /dev/null
-  run sc "symlink disable myapp"
-  [ "$status" -eq 0 ]
-  [ ! -L "product/myapp/tasks" ]
-  run jq -r '.projects.myapp.symlinkEnabled' ".staircase/manifest.json"
-  [ "$output" = "false" ]
-}
-
-@test "symlink disable: idempotent — already disabled exits 0" {
-  scaffold
-  run sc "symlink disable myapp"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"already disabled"* ]]
-}
-
-@test "symlink status: shows table with correct state" {
-  sc init > /dev/null
-  sc "register linked --symlink" > /dev/null
-  sc "task new linked T-001" > /dev/null
-  sc "register plain" > /dev/null
-  run sc "symlink status"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"APP"* ]]
-  [[ "$output" == *"linked"* ]]
-  [[ "$output" == *"plain"* ]]
-}
-
-@test "symlink: survives task switch cycle" {
-  sc init > /dev/null
-  sc "register myapp --symlink" > /dev/null
-  sc "task new myapp A" > /dev/null
-  sc "task new myapp B" > /dev/null
-  sc "task switch myapp A" > /dev/null
-  sc "task switch myapp B" > /dev/null
-  sc "task switch myapp A" > /dev/null
-  [ -L "product/myapp/tasks" ]
-  [ -d "product/myapp/tasks" ]
-  run jq -r '.taskId' "product/myapp/tasks/context.json"
-  [ "$output" = "A" ]
-}
-
-@test "symlink enable: unregistered app exits 1" {
-  sc init > /dev/null
-  run sc "symlink enable ghost"
-  [ "$status" -eq 1 ]
-}
-
-@test "symlink disable: unregistered app exits 1" {
-  sc init > /dev/null
-  run sc "symlink disable ghost"
-  [ "$status" -eq 1 ]
-}
-
-@test "symlink: unknown subcommand exits 1" {
-  sc init > /dev/null
-  run sc "symlink gibberish"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Available"* ]]
+  sc case new acme/webshop BUG-042 > /dev/null
+  run bash -c "'$STAIRCASE' case info acme/webshop SPRINT-1 2>/dev/null | jq -r '.caseId'"
+  [ "$output" = "SPRINT-1" ]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  RUN
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "run: missing product dir exits 1 with error" {
-  sc init > /dev/null
-  run sc "run ghost"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"does not exist"* ]]
-}
-
-@test "run: missing context.json exits 1 with hint" {
-  sc init > /dev/null
-  sc "register myapp" > /dev/null
-  run sc "run myapp"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"task new"* ]]
-}
-
-@test "run --dry-run: prints command without executing" {
+@test "run --dry-run: prints cd target and runner command" {
   scaffold
-  run sc "run --dry-run myapp"
+  run sc --dry-run run acme/webshop
   [ "$status" -eq 0 ]
   [[ "$output" == *"[DRY RUN]"* ]]
   [[ "$output" == *"ralph-tui"* ]]
@@ -476,27 +591,43 @@ scaffold() {
 
 @test "run --dry-run: does not modify context.json" {
   scaffold
-  local before
-  before="$(cat "agent/myapp/active/context.json")"
-  sc "run --dry-run myapp" > /dev/null
-  run cat "agent/myapp/active/context.json"
-  [ "$output" = "$before" ]
+  local before; before="$(cat acme/webshop/.staircase/active/context.json)"
+  sc --dry-run run acme/webshop > /dev/null
+  [ "$(cat acme/webshop/.staircase/active/context.json)" = "$before" ]
 }
 
-@test "run --dry-run --agent-config: prints merge info without writing" {
+@test "run: missing active context exits 1 with hint" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run sc run acme/webshop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"case new"* ]]
+}
+
+@test "run: unknown project exits 1" {
+  sc init > /dev/null
+  run sc run acme/ghost
+  [ "$status" -eq 1 ]
+}
+
+@test "run --dry-run: with linked source shows source path" {
   scaffold
-  local before
-  before="$(cat "agent/myapp/active/context.json")"
-  run sc 'run --dry-run myapp --agent-config '"'"'{"model":"test"}'"'"''
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  run sc --dry-run run acme/webshop
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[DRY RUN]"* ]]
-  [[ "$output" == *"agentConfig"* ]]
-  local after
-  after="$(cat "agent/myapp/active/context.json")"
-  [ "$before" = "$after" ]
+  [[ "$output" == *"$src"* ]]
+  rm -rf "$src"
 }
 
-@test "run: missing app name exits 1" {
+@test "run --dry-run: STAIRCASE_RUNNER env overrides default" {
+  scaffold
+  run bash -c "STAIRCASE_RUNNER=my-runner '$STAIRCASE' --dry-run run acme/webshop 2>&1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"my-runner"* ]]
+}
+
+@test "run: missing v/p exits 1" {
   sc init > /dev/null
   run sc run
   [ "$status" -eq 1 ]
@@ -506,112 +637,119 @@ scaffold() {
 #  LS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "ls: no workspace prints info, exits 0" {
+@test "ls: no workspace prints info and exits 0" {
   run sc ls
   [ "$status" -eq 0 ]
   [[ "$output" == *"no workspace"* ]]
 }
 
-@test "ls: empty workspace prints root path" {
+@test "ls: empty workspace exits 0" {
   sc init > /dev/null
   run sc ls
   [ "$status" -eq 0 ]
-  [[ "$output" == *"$WORK_DIR"* ]]
 }
 
-@test "ls: shows registered apps with tree characters" {
+@test "ls: shows vendors and projects with tree characters" {
   sc init > /dev/null
-  sc "register alpha" > /dev/null
-  sc "register bravo" > /dev/null
+  sc project add acme/webshop > /dev/null
+  sc project add acme/api > /dev/null
   run sc ls
   [ "$status" -eq 0 ]
-  [[ "$output" == *"alpha"* ]]
-  [[ "$output" == *"bravo"* ]]
+  [[ "$output" == *"acme"* ]]
+  [[ "$output" == *"webshop"* ]]
+  [[ "$output" == *"api"* ]]
   [[ "$output" == *"├──"* ]]
-  [[ "$output" == *"└──"* ]]
 }
 
-@test "ls: shows active task" {
+@test "ls: shows active case" {
   scaffold
   run sc ls
-  [[ "$output" == *"T-001"* ]]
+  [[ "$output" == *"SPRINT-1"* ]]
 }
 
-@test "ls: shows (none) when no active task" {
+@test "ls: shows (none) for project without active case" {
   sc init > /dev/null
-  sc "register myapp" > /dev/null
+  sc project add acme/webshop > /dev/null
   run sc ls
   [[ "$output" == *"(none)"* ]]
 }
 
-@test "ls: shows task count" {
+@test "ls: shows component count" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  sc "task new myapp T-003" > /dev/null
+  sc component add acme/webshop storefront api > /dev/null
   run sc ls
-  [[ "$output" == *"tasks:   3"* ]]
+  [[ "$output" == *"2"* ]]
 }
 
-@test "ls: shows symlink state" {
-  sc init > /dev/null
-  sc "register linked --symlink" > /dev/null
-  sc "task new linked T-001" > /dev/null
-  sc "register plain" > /dev/null
+@test "ls: shows linked indicator for linked projects" {
+  scaffold
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
   run sc ls
-  [[ "$output" == *"symlink: on"* ]]
-  [[ "$output" == *"symlink: off"* ]]
+  [[ "$output" == *"linked"* ]]
+  rm -rf "$src"
 }
 
-@test "ls: survives missing product dir without crash" {
-  sc init > /dev/null
-  sc "register myapp" > /dev/null
-  rm -rf "product/myapp"
+@test "ls: does not show linked indicator for unlinked projects" {
+  scaffold
   run sc ls
-  [ "$status" -eq 0 ]
+  [[ "$output" != *"linked"* ]]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  STATUS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "status: empty workspace shows header, exits 0" {
+@test "status: shows header with VENDOR PROJECT ACTIVE CASE COMPS SRC MODIFIED" {
   sc init > /dev/null
-  run bash -c "'$STAIRCASE' status"
+  run sc status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"APP"* ]]
+  [[ "$output" == *"VENDOR"* ]]
+  [[ "$output" == *"PROJECT"* ]]
+  [[ "$output" == *"ACTIVE CASE"* ]]
+  [[ "$output" == *"SRC"* ]]
 }
 
-@test "status: shows registered apps and active tasks" {
+@test "status: shows vendor, project, and active case" {
   scaffold
-  run bash -c "'$STAIRCASE' status"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"myapp"* ]]
-  [[ "$output" == *"T-001"* ]]
+  run sc status
+  [[ "$output" == *"acme"* ]]
+  [[ "$output" == *"webshop"* ]]
+  [[ "$output" == *"SPRINT-1"* ]]
 }
 
-@test "status: shows (none) for app without active task" {
+@test "status: shows (none) for project without active case" {
   sc init > /dev/null
-  sc "register myapp" > /dev/null
-  run bash -c "'$STAIRCASE' status"
+  sc project add acme/webshop > /dev/null
+  run sc status
   [[ "$output" == *"(none)"* ]]
 }
 
-@test "status --json: output is valid JSON" {
-  sc init > /dev/null
-  run bash -c "'$STAIRCASE' status --json | jq empty"
-  [ "$status" -eq 0 ]
-}
-
-@test "status --json: contains registered project" {
+@test "status: SRC column shows ✓ for linked project" {
   scaffold
-  run bash -c "'$STAIRCASE' status --json | jq -r '.projects.myapp.activeTask'"
-  [ "$output" = "T-001" ]
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  run sc status
+  [[ "$output" == *"✓"* ]]
+  rm -rf "$src"
 }
 
-@test "status: no workspace with --json outputs empty manifest" {
-  run bash -c "'$STAIRCASE' status --json | jq -r '.version'"
+@test "status: SRC column shows - for unlinked project" {
+  scaffold
+  run sc status
+  [[ "$output" != *"✓"* ]]
+}
+
+@test "status --json: outputs valid JSON manifest" {
+  sc init > /dev/null
+  run bash -c "'$STAIRCASE' status --json 2>/dev/null | jq empty"
   [ "$status" -eq 0 ]
-  [ "$output" = "1.0" ]
+}
+
+@test "status --json: contains vendor and project data" {
+  scaffold
+  run bash -c "'$STAIRCASE' status --json 2>/dev/null | jq -r '.vendors.acme.projects.webshop.activeCase'"
+  [ "$output" = "SPRINT-1" ]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -642,14 +780,14 @@ scaffold() {
 @test "doctor --fix: repairs missing tmp/" {
   sc init > /dev/null
   rm -rf ".staircase/tmp"
-  run sc "doctor --fix"
+  run sc doctor --fix
   [ "$status" -eq 0 ]
   [ -d ".staircase/tmp" ]
 }
 
-@test "doctor: invalid manifest exits 1" {
+@test "doctor: invalid manifest JSON exits 1" {
   sc init > /dev/null
-  echo "broken" > ".staircase/manifest.json"
+  printf 'not-json' > ".staircase/manifest.json"
   run sc doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"invalid JSON"* ]]
@@ -657,368 +795,297 @@ scaffold() {
 
 @test "doctor --fix: repairs invalid manifest" {
   sc init > /dev/null
-  echo "broken" > ".staircase/manifest.json"
-  run sc "doctor --fix"
+  printf 'not-json' > ".staircase/manifest.json"
+  run sc doctor --fix
   [ "$status" -eq 0 ]
   run jq empty ".staircase/manifest.json"
   [ "$status" -eq 0 ]
 }
 
-@test "doctor: missing product dir exits 1" {
+@test "doctor: missing project .staircase/ dir exits 1" {
   scaffold
-  rm -rf "product/myapp"
+  rm -rf "acme/webshop/.staircase"
   run sc doctor
   [ "$status" -eq 1 ]
 }
 
-@test "doctor --fix: deregisters app with missing product path" {
+@test "doctor --fix: repairs missing project .staircase/ dir" {
   scaffold
-  rm -rf "product/myapp"
-  sc "doctor --fix" > /dev/null || true
-  # App is removed from manifest
-  run jq -r '.projects.myapp // "null"' ".staircase/manifest.json"
-  [ "$output" = "null" ]
-  # Note: agent/myapp/ remains as an orphan (reported as a separate issue).
-  # A second --fix pass does not auto-remove orphaned agent dirs — that's by design.
+  rm -rf "acme/webshop/.staircase"
+  run sc doctor --fix
+  [ "$status" -eq 0 ]
+  [ -d "acme/webshop/.staircase/active" ]
 }
 
-@test "doctor: missing context.json with activeTask exits 1" {
+@test "doctor: activeCase without context.json exits 1" {
   scaffold
-  rm -f "agent/myapp/active/context.json"
+  rm -f "acme/webshop/.staircase/active/context.json"
   run sc doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"context.json"* ]]
 }
 
-@test "doctor --fix: creates empty context.json for app with activeTask" {
+@test "doctor --fix: repairs missing active context.json" {
   scaffold
-  rm -f "agent/myapp/active/context.json"
-  run sc "doctor --fix"
+  rm -f "acme/webshop/.staircase/active/context.json"
+  run sc doctor --fix
   [ "$status" -eq 0 ]
-  [ -f "agent/myapp/active/context.json" ]
+  [ -f "acme/webshop/.staircase/active/context.json" ]
 }
 
-@test "doctor: detects orphaned agent directory" {
-  sc init > /dev/null
-  mkdir -p "agent/orphan/active"
+@test "doctor: missing component directory exits 1" {
+  scaffold
+  sc component add acme/webshop storefront > /dev/null
+  rm -rf "acme/webshop/storefront"
   run sc doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"orphan"* ]]
-  [[ "$output" == *"not registered"* ]]
+  [[ "$output" == *"storefront"* ]]
 }
 
-@test "doctor: detects missing symlink when enabled" {
+@test "doctor: stale source path exits 1" {
   scaffold
-  sc "symlink enable myapp" > /dev/null
-  rm "product/myapp/tasks"
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  rm -rf "$src"
   run sc doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"symlink"* ]]
+  [[ "$output" == *"source path missing"* ]]
 }
 
-@test "doctor --fix: recreates missing symlink" {
+@test "doctor --fix: does NOT auto-fix stale source path (path may be unmounted)" {
   scaffold
-  sc "symlink enable myapp" > /dev/null
-  rm "product/myapp/tasks"
-  run sc "doctor --fix"
-  [ "$status" -eq 0 ]
-  [ -L "product/myapp/tasks" ]
-  run readlink "product/myapp/tasks"
-  [ "$output" = "../../agent/myapp/active" ]
-}
-
-@test "doctor: detects broken symlink (dangling target)" {
-  scaffold
-  sc "symlink enable myapp" > /dev/null
-  rm "product/myapp/tasks"
-  ln -s "../../agent/myapp/nonexistent" "product/myapp/tasks"
-  run sc doctor
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"broken"* ]]
-}
-
-@test "doctor --fix: repairs broken symlink" {
-  scaffold
-  sc "symlink enable myapp" > /dev/null
-  rm "product/myapp/tasks"
-  ln -s "../../agent/myapp/nonexistent" "product/myapp/tasks"
-  run sc "doctor --fix"
-  [ "$status" -eq 0 ]
-  [ -L "product/myapp/tasks" ]
-  [ -d "product/myapp/tasks" ]
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  rm -rf "$src"
+  sc doctor --fix > /dev/null || true
+  # Link must still be in manifest after --fix
+  run jq -r '.vendors.acme.projects.webshop.source' ".staircase/manifest.json"
+  [ "$output" = "$src" ]
 }
 
 @test "doctor --fix: repairs multiple issues in one pass" {
   sc init > /dev/null
-  sc "register app-a" > /dev/null
-  sc "register app-b --symlink" > /dev/null
-  sc "task new app-b T-001" > /dev/null
+  sc project add acme/alpha > /dev/null
+  sc project add acme/beta > /dev/null
+  sc case new acme/beta BUG-001 > /dev/null
   rm -rf ".staircase/tmp"
-  rm "product/app-b/tasks"
-  run sc "doctor --fix"
+  rm -f "acme/beta/.staircase/active/context.json"
+  run sc doctor --fix
   [ "$status" -eq 0 ]
   [[ "$output" == *"repaired"* ]]
   [ -d ".staircase/tmp" ]
-  [ -L "product/app-b/tasks" ]
+  [ -f "acme/beta/.staircase/active/context.json" ]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  EXPORT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "export: json produces valid JSON with correct app" {
+@test "export: json produces valid JSON" {
   scaffold
-  run bash -c "'$STAIRCASE' export myapp | jq -r '.app'"
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq empty"
   [ "$status" -eq 0 ]
-  [ "$output" = "myapp" ]
+}
+
+@test "export: json has vendor and project fields" {
+  scaffold
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq -r '.vendor'"
+  [ "$output" = "acme" ]
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq -r '.project'"
+  [ "$output" = "webshop" ]
+}
+
+@test "export: json has exported_at ISO timestamp" {
+  scaffold
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq -r '.exported_at'"
+  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]
 }
 
 @test "export: json includes active context" {
   scaffold
-  run bash -c "'$STAIRCASE' export myapp | jq -r '.agent.active.taskId'"
-  [ "$output" = "T-001" ]
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq -r '.agent.active.caseId'"
+  [ "$output" = "SPRINT-1" ]
 }
 
-@test "export: json includes saved tasks" {
+@test "export: json includes saved case contexts" {
   scaffold
-  sc "task new myapp T-002" > /dev/null
-  sc "task switch myapp T-001" > /dev/null
-  run bash -c "'$STAIRCASE' export myapp | jq -r '.agent.tasks | keys[]'"
+  sc case new acme/webshop BUG-042 > /dev/null
+  sc case switch acme/webshop SPRINT-1 > /dev/null
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq -r '.agent.tasks | keys[]'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"T-001"* ]]
-  [[ "$output" == *"T-002"* ]]
+  [[ "$output" == *"SPRINT-1"* ]]
+  [[ "$output" == *"BUG-042"* ]]
 }
 
-@test "export: json includes exported_at timestamp" {
+@test "export --format tar: creates named tarball" {
   scaffold
-  run bash -c "'$STAIRCASE' export myapp | jq -r '.exported_at'"
-  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]
+  sc export acme/webshop --format tar > /dev/null 2>&1
+  local ds; ds="$(date -u +%Y-%m-%d)"
+  [ -f "staircase-export-acme-webshop-${ds}.tar.gz" ]
 }
 
-@test "export --format tar: creates tarball" {
+@test "export --format tar: tarball contains .staircase directory" {
   scaffold
-  sc "export myapp --format tar" > /dev/null 2>&1
-  local date_str
-  date_str="$(date -u +%Y-%m-%d)"
-  [ -f "staircase-export-myapp-${date_str}.tar.gz" ]
+  sc export acme/webshop --format tar > /dev/null 2>&1
+  local ds; ds="$(date -u +%Y-%m-%d)"
+  run tar tzf "staircase-export-acme-webshop-${ds}.tar.gz"
+  [[ "$output" == *"acme/webshop/.staircase/"* ]]
 }
 
-@test "export --format tar: tarball contains agent dir" {
-  scaffold
-  sc "export myapp --format tar" > /dev/null 2>&1
-  local date_str tarfile
-  date_str="$(date -u +%Y-%m-%d)"
-  tarfile="staircase-export-myapp-${date_str}.tar.gz"
-  run tar tzf "$tarfile"
-  [[ "$output" == *"agent/myapp/"* ]]
-}
-
-@test "export: unknown app exits 1" {
+@test "export: unknown project exits 1" {
   sc init > /dev/null
-  run sc "export ghost"
+  run sc export acme/ghost
   [ "$status" -eq 1 ]
   [[ "$output" == *"not registered"* ]]
 }
 
 @test "export: unknown format exits 1" {
   scaffold
-  run sc "export myapp --format xml"
+  run sc export acme/webshop --format xml
   [ "$status" -eq 1 ]
 }
 
-@test "export --dry-run: does not create files" {
+@test "export --dry-run: does not create tarball" {
   scaffold
-  run sc "export --dry-run myapp --format tar"
+  run sc --dry-run export acme/webshop --format tar
   [ "$status" -eq 0 ]
   [[ "$output" == *"[DRY RUN]"* ]]
-  local date_str
-  date_str="$(date -u +%Y-%m-%d)"
-  [ ! -f "staircase-export-myapp-${date_str}.tar.gz" ]
+  local ds; ds="$(date -u +%Y-%m-%d)"
+  [ ! -f "staircase-export-acme-webshop-${ds}.tar.gz" ]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  HOOKS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "hooks install: creates hooks.d/ and git hooks" {
+@test "hooks install: creates hooks.d stubs and installs git hooks" {
   scaffold
-  git -C "product/myapp" init -q
-  run sc "hooks install myapp"
+  git -C "acme/webshop" init -q
+  run sc hooks install acme/webshop
   [ "$status" -eq 0 ]
   [ -d "hooks.d" ]
   [ -f "hooks.d/01-format.sh" ]
-  [ -f "hooks.d/99-ralph-tui.sh" ]
-  [ -f "product/myapp/.git/hooks/pre-commit" ]
-  [ -f "product/myapp/.git/hooks/post-merge" ]
+  [ -f "hooks.d/99-post-run.sh" ]
+  [ -f "acme/webshop/.git/hooks/pre-commit" ]
+  [ -f "acme/webshop/.git/hooks/post-merge" ]
 }
 
-@test "hooks install: stubs and git hooks are executable" {
+@test "hooks install: stubs and hooks are executable" {
   scaffold
-  git -C "product/myapp" init -q
-  sc "hooks install myapp" > /dev/null
+  git -C "acme/webshop" init -q
+  sc hooks install acme/webshop > /dev/null
   [ -x "hooks.d/01-format.sh" ]
-  [ -x "hooks.d/99-ralph-tui.sh" ]
-  [ -x "product/myapp/.git/hooks/pre-commit" ]
-  [ -x "product/myapp/.git/hooks/post-merge" ]
+  [ -x "hooks.d/99-post-run.sh" ]
+  [ -x "acme/webshop/.git/hooks/pre-commit" ]
+  [ -x "acme/webshop/.git/hooks/post-merge" ]
 }
 
 @test "hooks install: idempotent — guard block appears exactly once" {
   scaffold
-  git -C "product/myapp" init -q
-  sc "hooks install myapp" > /dev/null
-  sc "hooks install myapp" > /dev/null
-  sc "hooks install myapp" > /dev/null
-  run grep -c '>>> stAirCase hooks <<<' "product/myapp/.git/hooks/pre-commit"
+  git -C "acme/webshop" init -q
+  sc hooks install acme/webshop > /dev/null
+  sc hooks install acme/webshop > /dev/null
+  sc hooks install acme/webshop > /dev/null
+  run grep -c '>>> stAirCase hooks <<<' "acme/webshop/.git/hooks/pre-commit"
   [ "$output" -eq 1 ]
-  run grep -c '>>> stAirCase hooks <<<' "product/myapp/.git/hooks/post-merge"
+  run grep -c '>>> stAirCase hooks <<<' "acme/webshop/.git/hooks/post-merge"
   [ "$output" -eq 1 ]
 }
 
 @test "hooks install: preserves existing hook content" {
   scaffold
-  git -C "product/myapp" init -q
-  mkdir -p "product/myapp/.git/hooks"
-  printf '#!/usr/bin/env bash\necho "my custom hook"\n' > "product/myapp/.git/hooks/pre-commit"
-  chmod +x "product/myapp/.git/hooks/pre-commit"
-  sc "hooks install myapp" > /dev/null
-  run grep "my custom hook" "product/myapp/.git/hooks/pre-commit"
+  git -C "acme/webshop" init -q
+  mkdir -p "acme/webshop/.git/hooks"
+  printf '#!/usr/bin/env bash\necho "my-custom-hook"\n' > "acme/webshop/.git/hooks/pre-commit"
+  chmod +x "acme/webshop/.git/hooks/pre-commit"
+  sc hooks install acme/webshop > /dev/null
+  run grep "my-custom-hook" "acme/webshop/.git/hooks/pre-commit"
   [ "$status" -eq 0 ]
 }
 
-@test "hooks install: without git repo exits 1" {
+@test "hooks install: silently skips project with no .git" {
   scaffold
-  run sc "hooks install myapp"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *".git"* ]]
-}
-
-@test "hooks install: unregistered app exits 1" {
-  sc init > /dev/null
-  run sc "hooks install ghost"
-  [ "$status" -eq 1 ]
-}
-
-@test "hooks install: missing app name exits 1" {
-  sc init > /dev/null
-  run sc "hooks install"
-  [ "$status" -eq 1 ]
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  EXPLAIN
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@test "explain init: exits 0 and shows filesystem changes" {
-  run sc "explain init"
+  run sc hooks install acme/webshop
   [ "$status" -eq 0 ]
-  [[ "$output" == *"product/"* ]]
-  [[ "$output" == *"agent/"* ]]
-  [[ "$output" == *"manifest.json"* ]]
+  [ ! -d "hooks.d" ] || [ ! -f "acme/webshop/.git/hooks/pre-commit" ]
 }
 
-@test "explain register: shows directory list and manifest diff" {
+@test "hooks install: installs into component repos" {
   sc init > /dev/null
-  run sc "explain register myapp"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"product/myapp"* ]]
-  [[ "$output" == *"agent/myapp"* ]]
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront > /dev/null
+  sc case new acme/webshop SPRINT-1 > /dev/null
+  git -C "acme/webshop/storefront" init -q
+  sc hooks install acme/webshop > /dev/null
+  [ -f "acme/webshop/storefront/.git/hooks/pre-commit" ]
 }
 
-@test "explain task new: shows context.json preview" {
-  scaffold
-  run sc "explain task new myapp US-999"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"US-999"* ]]
-  [[ "$output" == *"context.json"* ]]
-}
-
-@test "explain task switch: shows save/load actions" {
-  scaffold
-  sc "task new myapp T-002" > /dev/null
-  run sc "explain task switch myapp T-001"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Save"* ]]
-  [[ "$output" == *"Copy"* ]]
-}
-
-@test "explain: does not modify workspace" {
-  scaffold
-  local manifest_before
-  manifest_before="$(cat .staircase/manifest.json)"
-  sc "explain task new myapp US-999" > /dev/null
-  local manifest_after
-  manifest_after="$(cat .staircase/manifest.json)"
-  [ "$manifest_before" = "$manifest_after" ]
-  [ ! -d "agent/myapp/tasks/US-999" ]
-}
-
-@test "explain: missing args exits 1" {
-  run sc explain
-  [ "$status" -eq 1 ]
-}
-
-@test "explain: unsupported command exits 1" {
+@test "hooks install: missing v/p exits 1" {
   sc init > /dev/null
-  run sc "explain export"
+  run sc hooks install
   [ "$status" -eq 1 ]
-  [[ "$output" == *"not implemented"* ]]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  DRY-RUN (global flag)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "dry-run: init does not create any files" {
-  run sc "init --dry-run"
+@test "dry-run: init does not create files" {
+  run sc --dry-run init
   [ "$status" -eq 0 ]
   [[ "$output" == *"[DRY RUN]"* ]]
   [ ! -d ".staircase" ]
-  [ ! -d "product" ]
 }
 
-@test "dry-run: register does not create directories" {
+@test "dry-run: project add does not create directories" {
   sc init > /dev/null
-  run sc "register --dry-run newapp"
+  run sc --dry-run project add acme/webshop
   [ "$status" -eq 0 ]
-  [ ! -d "product/newapp" ]
-  [ ! -d "agent/newapp" ]
+  [ ! -d "acme/webshop" ]
 }
 
-@test "dry-run: task new does not create files" {
-  scaffold
-  run sc "task new --dry-run myapp T-999"
+@test "dry-run: case new does not create task directory" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  run sc --dry-run case new acme/webshop SPRINT-99
   [ "$status" -eq 0 ]
-  [ ! -d "agent/myapp/tasks/T-999" ]
+  [ ! -d "acme/webshop/.staircase/tasks/SPRINT-99" ]
 }
 
-@test "dry-run: symlink enable does not create link" {
-  scaffold
-  run sc "symlink enable --dry-run myapp"
+@test "dry-run: component add does not create dir or modify manifest" {
+  sc init > /dev/null
+  sc project add acme/webshop > /dev/null
+  local before; before="$(cat .staircase/manifest.json)"
+  run sc --dry-run component add acme/webshop storefront
+  [ "$status" -eq 0 ]
+  [ ! -d "acme/webshop/storefront" ]
+  [ "$(cat .staircase/manifest.json)" = "$before" ]
+}
+
+@test "dry-run: DRY_RUN env var works same as --dry-run flag" {
+  run bash -c "DRY_RUN=1 '$STAIRCASE' init 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[DRY RUN]"* ]]
-  [ ! -L "product/myapp/tasks" ]
-}
-
-@test "dry-run: hooks install does not create files" {
-  scaffold
-  git -C "product/myapp" init -q
-  run sc "hooks install --dry-run myapp"
-  [ "$status" -eq 0 ]
-  [ ! -d "hooks.d" ]
-}
-
-@test "dry-run: export tar does not create archive" {
-  scaffold
-  run sc "export --dry-run myapp --format tar"
-  [ "$status" -eq 0 ]
-  local date_str
-  date_str="$(date -u +%Y-%m-%d)"
-  [ ! -f "staircase-export-myapp-${date_str}.tar.gz" ]
+  [ ! -d ".staircase" ]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ENVIRONMENT & FLAGS
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@test "--version: prints 1.1.0" {
+  run "$STAIRCASE" --version
+  [ "$status" -eq 0 ]
+  [ "$output" = "staircase 1.1.0" ]
+}
+
+@test "--help: prints usage with project link and unlink" {
+  run sc --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+  [[ "$output" == *"project link"* ]]
+  [[ "$output" == *"project unlink"* ]]
+}
 
 @test "NO_COLOR: suppresses ANSI escape codes" {
   run bash -c "NO_COLOR=1 '$STAIRCASE' init 2>&1"
@@ -1026,93 +1093,90 @@ scaffold() {
   [[ "$output" != *$'\033['* ]]
 }
 
-@test "--version: prints version string" {
-  run "$STAIRCASE" --version
-  [ "$status" -eq 0 ]
-  [[ "$output" == "staircase 1.0.0" ]]
+@test "STAIRCASE_RUNNER env: overrides runner in dry-run" {
+  scaffold
+  run bash -c "STAIRCASE_RUNNER=my-runner '$STAIRCASE' --dry-run run acme/webshop 2>&1"
+  [[ "$output" == *"my-runner"* ]]
 }
 
-@test "--help: prints usage" {
-  run bash -c "'$STAIRCASE' --help 2>&1"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage:"* ]]
-  [[ "$output" == *"Commands:"* ]]
-}
-
-@test "unknown command: exits 1 with error and usage" {
-  run sc "gibberish"
+@test "unknown top-level command: exits 1" {
+  run sc gibberish
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown command"* ]]
 }
 
-@test "unknown task subcommand: exits 1 with available list" {
+@test "project unknown subcommand: exits 1" {
   sc init > /dev/null
-  run sc "task gibberish"
+  run sc project gibberish
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Available"* ]]
+}
+
+@test "case unknown subcommand: exits 1" {
+  sc init > /dev/null
+  run sc case gibberish
+  [ "$status" -eq 1 ]
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  EDGE CASES & INTEGRATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@test "atomicity: rapid task creates leave manifest valid" {
+@test "atomicity: rapid case creates leave manifest valid JSON" {
   scaffold
   for i in $(seq 1 10); do
-    sc "task new myapp RAPID-$i" > /dev/null
+    sc case new acme/webshop "RAPID-$i" > /dev/null
   done
   run jq empty ".staircase/manifest.json"
   [ "$status" -eq 0 ]
-  run jq -r '.projects.myapp.activeTask' ".staircase/manifest.json"
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
   [ "$output" = "RAPID-10" ]
 }
 
-@test "multi-app: independent active tasks" {
+@test "multi-vendor: cases are independent across vendors" {
   sc init > /dev/null
-  sc "register alpha" > /dev/null
-  sc "register bravo" > /dev/null
-  sc "task new alpha A-001" > /dev/null
-  sc "task new bravo B-001" > /dev/null
-  sc "task new alpha A-002" > /dev/null
-  run jq -r '.projects.alpha.activeTask' ".staircase/manifest.json"
-  [ "$output" = "A-002" ]
-  run jq -r '.projects.bravo.activeTask' ".staircase/manifest.json"
-  [ "$output" = "B-001" ]
-  # Switching one doesn't affect the other
-  sc "task switch alpha A-001" > /dev/null
-  run jq -r '.projects.bravo.activeTask' ".staircase/manifest.json"
-  [ "$output" = "B-001" ]
+  sc project add acme/webshop > /dev/null
+  sc project add clientx/app > /dev/null
+  sc case new acme/webshop SPRINT-1 > /dev/null
+  sc case new clientx/app PHASE-1 > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
+  [ "$output" = "SPRINT-1" ]
+  run jq -r '.vendors.clientx.projects.app.activeCase' ".staircase/manifest.json"
+  [ "$output" = "PHASE-1" ]
+  # Switching one does not affect the other
+  sc case new acme/webshop BUG-001 > /dev/null
+  run jq -r '.vendors.clientx.projects.app.activeCase' ".staircase/manifest.json"
+  [ "$output" = "PHASE-1" ]
 }
 
-@test "multi-app: symlinks are independent per app" {
+@test "full lifecycle: init → project → components → cases → link → export → doctor" {
   sc init > /dev/null
-  sc "register alpha --symlink" > /dev/null
-  sc "register bravo" > /dev/null
-  sc "task new alpha A-001" > /dev/null
-  sc "task new bravo B-001" > /dev/null
-  [ -L "product/alpha/tasks" ]
-  [ ! -L "product/bravo/tasks" ]
-  run jq -r '.taskId' "product/alpha/tasks/context.json"
-  [ "$output" = "A-001" ]
-}
+  sc project add acme/webshop > /dev/null
+  sc component add acme/webshop storefront api > /dev/null
+  sc case new acme/webshop SPRINT-1 > /dev/null
+  sc case new acme/webshop BUG-042 > /dev/null
+  sc case switch acme/webshop SPRINT-1 > /dev/null
 
-@test "full lifecycle: init → register → tasks → switch → export → doctor" {
-  sc init > /dev/null
-  sc "register webapp --symlink" > /dev/null
-  sc "task new webapp SPRINT-1" > /dev/null
-  sc "task new webapp SPRINT-2" > /dev/null
-  sc "task switch webapp SPRINT-1" > /dev/null
-
-  # Context is correct via symlink
-  run jq -r '.taskId' "product/webapp/tasks/context.json"
+  # Active case is correct
+  run jq -r '.vendors.acme.projects.webshop.activeCase' ".staircase/manifest.json"
   [ "$output" = "SPRINT-1" ]
 
-  # Export works
-  run bash -c "'$STAIRCASE' export webapp | jq -r '.agent.active.taskId'"
-  [ "$output" = "SPRINT-1" ]
+  # Context carries component list
+  run jq '.components | length' "acme/webshop/.staircase/active/context.json"
+  [ "$output" = "2" ]
+
+  # Link a source directory
+  local src; src="$(mktemp -d)"
+  sc project link acme/webshop "$src" > /dev/null
+  run jq -r '.vendors.acme.projects.webshop.source' ".staircase/manifest.json"
+  [ "$output" = "$src" ]
+
+  # Export is valid JSON with correct project
+  run bash -c "'$STAIRCASE' export acme/webshop 2>/dev/null | jq -r '.project'"
+  [ "$output" = "webshop" ]
 
   # Doctor is happy
   run sc doctor
   [ "$status" -eq 0 ]
   [[ "$output" == *"healthy"* ]]
+
+  rm -rf "$src"
 }

@@ -8,7 +8,7 @@ stAirCase gives your AI coding agents a workspace where projects are organized u
 my-workspace/
 ├── .staircase/                ← workspace config + manifest
 ├── acme/                      ← vendor
-│   ├── webshop/               ← project
+│   ├── webshop/               ← project (or symlink to external source)
 │   │   ├── .staircase/        ← agent context (cases, active state)
 │   │   ├── storefront/        ← component
 │   │   ├── checkout-api/      ← component
@@ -46,7 +46,12 @@ staircase case new acme/webshop SPRINT-1                # open a case
 staircase run acme/webshop                              # launch your agent
 ```
 
-That's it. Your agent gets a context file listing the project, its components, and the active case.
+If your source code lives elsewhere, link it:
+
+```bash
+staircase project link acme/webshop ~/src/webshop       # point to existing codebase
+staircase run acme/webshop                              # runner executes inside ~/src/webshop
+```
 
 ## Concepts
 
@@ -58,6 +63,8 @@ That's it. Your agent gets a context file listing the project, its components, a
 
 **Case** — a unit of work scoped to a project. Each case gets its own context snapshot. Switch between cases atomically — the previous context is saved, the new one is loaded.
 
+**Source link** — an optional external path associated with a project. When set, `run` executes the agent inside the linked directory rather than the workspace stub, keeping your source repos and staircase metadata separate.
+
 ## Commands
 
 ### Workspace
@@ -68,7 +75,7 @@ staircase config runner claude-code     # Set default agent runner
 staircase config --list                 # Show resolved config with sources
 ```
 
-`init` creates `.staircase/config.json`, `.staircase/manifest.json`, `.staircase/tmp/`, and `hooks.d/`.
+`init` creates `.staircase/config.json`, `.staircase/manifest.json`, and `.staircase/tmp/`.
 
 ### Structure
 
@@ -89,6 +96,30 @@ staircase component remove acme/webshop admin               # remove one
 ```
 
 `project add` auto-creates the vendor if it doesn't exist yet.
+
+### Source Linking
+
+Associate an external source directory with a project so your agent runs inside the real codebase while staircase metadata stays in the workspace:
+
+```bash
+staircase project link acme/webshop ~/src/webshop           # link source directory
+staircase project link acme/api ~/src/api                   # each project links independently
+staircase project unlink acme/webshop                       # remove link (idempotent)
+```
+
+The path is resolved to its canonical absolute form at link time. When a source is linked:
+
+- `staircase run` `cd`s into the source directory instead of the workspace stub
+- The runner receives the absolute context path: `--prd /workspace/acme/webshop/.staircase/active/context.json`
+- Your source repos stay clean — no `.staircase/` metadata bleeds in
+- `staircase project info` shows the linked path
+- `staircase ls` appends `[→ linked]` to the project
+- `staircase status` shows `✓` in the `SRC` column
+- `staircase doctor` warns if the linked path goes missing
+
+```bash
+staircase --dry-run project link acme/webshop ~/src/webshop  # preview without writing
+```
 
 ### Cases
 
@@ -111,13 +142,10 @@ staircase run acme/webshop --runner claude-code          # override runner
 staircase run acme/webshop --config '{"model":"gpt4"}'  # inject agent config
 ```
 
-`run` resolves the runner through the config cascade, changes into the project directory, and launches:
+`run` resolves the runner through the config cascade, then:
 
-```
-<runner> --prd .staircase/active/context.json
-```
-
-The context file includes the full component list, so the agent knows its scope.
+- **Unlinked project**: `cd`s into `workspace/acme/webshop/` and launches `<runner> --prd .staircase/active/context.json`
+- **Linked project**: `cd`s into the source directory and launches `<runner> --prd /abs/path/to/.staircase/active/context.json`
 
 **Runner resolution order** (highest wins): `--runner` flag → `STAIRCASE_RUNNER` env → project config → workspace config → `ralph-tui`
 
@@ -138,7 +166,7 @@ my-workspace  (/home/user/my-workspace)
 │   │   └── components: 2
 │   └── webshop
 │       ├── case:       SPRINT-1
-│       └── components: 3
+│       └── components: 3 [→ linked]
 └── clientx
     └── landing
         ├── case:       (none)
@@ -147,11 +175,11 @@ my-workspace  (/home/user/my-workspace)
 
 **`status` output:**
 ```
-VENDOR        PROJECT               ACTIVE CASE       COMPS   MODIFIED
-------------  --------------------  ----------------  ------  -------------------
-acme          cms                   BUG-042           2       2025-07-01 10:05:12
-acme          webshop               SPRINT-1          3       2025-07-01 10:01:23
-clientx       landing               (none)            1       -
+VENDOR        PROJECT               ACTIVE CASE       COMPS   SRC  MODIFIED
+------------  --------------------  ----------------  ------  ---  -------------------
+acme          cms                   BUG-042           2       -    2025-07-01 10:05:12
+acme          webshop               SPRINT-1          3       ✓    2025-07-01 10:01:23
+clientx       landing               (none)            1       -    -
 ```
 
 ### Health Checks
@@ -161,7 +189,7 @@ staircase doctor          # check workspace health
 staircase doctor --fix    # auto-repair issues
 ```
 
-Doctor checks for: missing/invalid config and manifest, missing vendor/project/component directories, missing context files for active cases, and unwritable tmp directory. `--fix` repairs everything it can.
+Doctor checks for: missing/invalid config and manifest, missing vendor/project/component directories, missing context files for active cases, stale source paths (linked but directory gone), and unwritable tmp directory. `--fix` repairs everything it can (source path staleness is not auto-fixed — the directory may be temporarily unmounted).
 
 ### Export
 
@@ -191,6 +219,7 @@ Every command supports `--dry-run`:
 
 ```bash
 staircase --dry-run project add acme/new-service
+staircase --dry-run project link acme/webshop ~/src/webshop
 staircase --dry-run case new acme/webshop SPRINT-99
 staircase --dry-run component add acme/webshop payments
 ```
@@ -234,11 +263,12 @@ The agent reads this as its PRD source. The schema is intentionally minimal — 
   "vendor": "acme",
   "project": "webshop",
   "components": ["storefront", "checkout-api", "admin-panel"],
-  "runner": null
+  "runner": null,
+  "source": "/home/user/src/webshop"
 }
 ```
 
-Setting `runner` in a project config overrides the workspace default for that project. `null` means inherit.
+Setting `runner` in a project config overrides the workspace default for that project. `null` means inherit. `source` is set by `project link` and absent when not linked.
 
 **`config --list`** shows resolved values with sources:
 
@@ -281,8 +311,11 @@ Real work is multi-tenant and multi-layered. A webshop has a storefront, an API,
 **Why "cases"?**
 A case is a unit of work — a sprint, a bug, a feature. Switching cases atomically saves the current context and loads the new one. No stale state, no manual file juggling. And it makes the tool name work: stair*case* manages *cases*.
 
+**Why source linking instead of symlinks?**
+Symlinks would place `.staircase/` metadata inside your source repos, polluting git history and requiring `.gitignore` changes. Source linking keeps metadata in the workspace and metadata only — the runner is directed to the real codebase via an absolute path, the source repo stays untouched.
+
 **Why agent context inside the project?**
-The `.staircase/` directory lives inside each project (`acme/webshop/.staircase/`), not in a separate tree. This means the context travels with the project and the agent can reference it with a simple relative path.
+The `.staircase/` directory lives inside each project (`acme/webshop/.staircase/`), not in a separate tree. This means the context travels with the project and the agent can reference it with a simple relative path (or absolute path when the project is linked).
 
 **Why atomic writes?**
 Every JSON mutation goes through `mktemp` + `mv`. If your machine crashes mid-write, you get either the old file or the new file — never a corrupted half-write.
