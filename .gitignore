@@ -1,0 +1,17 @@
+bin/
+var/
+*.exe
+*.test
+*.prof
+.DS_Store
+.github/
+.idea/
+.tasks/
+tasks/
+.vscode/
+.setup/
+vendor/
+staircase
+IMPLEMENTATION_CHECKLIST.md
+TECHNICAL_REVIEW.md
+staircase-*
