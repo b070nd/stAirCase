@@ -45,6 +45,18 @@ const (
 	maxConnections = 2
 )
 
+// knownMessageKinds is the set of message type strings the server recognises.
+// Any incoming message whose "type" field is not in this set is dropped
+// immediately after base unmarshal — before kind-specific unmarshaling —
+// satisfying the CHECK 3.5.5 requirement that kind validation runs before
+// full payload processing.
+var knownMessageKinds = map[string]bool{
+	"state_emit":     true,
+	"yield_request":  true,
+	"secret_request": true,
+	"heartbeat":      true,
+}
+
 // Per-connection per-kind rate limits (messages per second).
 // These protect against a buggy or compromised Python process flooding the
 // server; legitimate agents will never approach these limits.
@@ -179,7 +191,7 @@ func (s *Server) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("ipc listen: %w", err)
 		}
-		if err := os.Chmod(s.socketPath, 0600); err != nil {
+		if err := os.Chmod(s.socketPath, 0o600); err != nil {
 			_ = ln.Close()
 			return fmt.Errorf("ipc socket chmod: %w", err)
 		}
@@ -281,6 +293,12 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(line, &base); err != nil {
+			continue
+		}
+
+		// CHECK 3.5.5: validate kind before any further processing.
+		if !knownMessageKinds[base.Type] {
+			log.Printf("ipc: unknown message kind %q — dropping", base.Type)
 			continue
 		}
 

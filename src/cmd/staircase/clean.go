@@ -150,7 +150,8 @@ func collectSourcePaths(store *persistence.Store) ([]string, error) {
 // pruneRepoBranches deletes staircase/run-* branches in repoPath that are
 // older than cutoff and not in the preserve set.
 func pruneRepoBranches(repoPath string, cutoff time.Time, preserve map[int64]bool) error {
-	out, err := exec.Command("git", "-C", repoPath,
+	out, err := exec.Command(
+		"git", "-C", repoPath,
 		"for-each-ref", "--format=%(refname:short) %(creatordate:iso)", "refs/heads/staircase/run-*",
 	).Output()
 	if err != nil {

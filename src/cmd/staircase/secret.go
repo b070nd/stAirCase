@@ -17,9 +17,7 @@ var secretCmd = &cobra.Command{
 	Short: "Manage encrypted secrets (never stored in env vars)",
 }
 
-var (
-	secretProjectID int64
-)
+var secretProjectID int64
 
 var secretSetCmd = &cobra.Command{
 	Use:   "set <key-name>",

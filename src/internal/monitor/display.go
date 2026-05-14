@@ -153,7 +153,8 @@ func (d *Display) Render() {
 			modelStr = modelStr[:23] + "..."
 		}
 
-		row := fmt.Sprintf("%s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
+		row := fmt.Sprintf(
+			"%s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
 			dot,
 			a.Name,
 			modelStr,
@@ -190,7 +191,8 @@ func (d *Display) Render() {
 		}
 	}
 
-	totalRow := fmt.Sprintf("  %s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
+	totalRow := fmt.Sprintf(
+		"  %s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
 		" ",
 		"TOTAL",
 		"",

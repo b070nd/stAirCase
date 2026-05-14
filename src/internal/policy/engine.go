@@ -36,6 +36,23 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/domain"
 )
 
+// Limits caps automatic behaviour within a run (CHECK 7.2.1).
+// Zero values mean "unlimited".
+type Limits struct {
+	// MaxAutoApproved is the maximum number of yields that may be automatically
+	// approved (by policy rules) before the engine falls back to operator review.
+	MaxAutoApproved int `json:"max_auto_approved"`
+
+	// MaxTotalYields is the maximum total number of yields (auto + manual) in a
+	// single run.  Once reached, every further yield must be reviewed by the
+	// operator regardless of matching rules.
+	MaxTotalYields int `json:"max_total_yields"`
+
+	// MaxRunDurationSecs is the maximum wall-clock duration of a run in seconds.
+	// Enforced externally by the orchestrator; stored here for audit purposes.
+	MaxRunDurationSecs int `json:"max_run_duration"`
+}
+
 // Effect is the outcome a rule produces when it matches.
 type Effect string
 
@@ -64,14 +81,37 @@ type Rule struct {
 	Effect Effect `json:"effect"`
 }
 
-// Engine holds an ordered list of auto-approval rules.
+// Engine holds an ordered list of auto-approval rules and optional session limits.
+//
+// Policy file format (CHECK 7.1.2):
+//
+//	{
+//	  "version": 1,
+//	  "rules": [...],
+//	  "limits": {"max_auto_approved": 10, "max_total_yields": 50, "max_run_duration": 3600},
+//	  "allow_blanket_deny": false
+//	}
 type Engine struct {
+	// Version is a format version for forward compatibility (CHECK 7.1.2).
+	Version int `json:"version"`
+
+	// Rules is the ordered list of auto-approval rules.
 	Rules []Rule `json:"rules"`
+
+	// Limits caps automatic behaviour within a run (CHECK 7.2.1).
+	Limits Limits `json:"limits"`
+
+	// AllowBlanketDeny must be explicitly true when any rule has EffectReject
+	// with no conditions (would silently reject every yield).  LoadEngine returns
+	// an error if a blanket-deny rule is found and this flag is false (CHECK 7.1.5).
+	AllowBlanketDeny bool `json:"allow_blanket_deny"`
 }
 
 // LoadEngine reads $wsDir/policy.json and returns an Engine.
 // If the file does not exist an empty (approve-nothing) Engine is returned.
-// A parse error is returned as-is so the caller can surface it to the operator.
+// Returns an error when:
+//   - the JSON cannot be parsed (caller can surface it to the operator), or
+//   - a blanket-deny rule is present but AllowBlanketDeny is false (CHECK 7.1.5).
 func LoadEngine(wsDir string) (*Engine, error) {
 	path := filepath.Join(wsDir, "policy.json")
 	data, err := os.ReadFile(path)
@@ -85,7 +125,43 @@ func LoadEngine(wsDir string) (*Engine, error) {
 	if err := json.Unmarshal(data, &e); err != nil {
 		return nil, fmt.Errorf("parse policy file %s: %w", path, err)
 	}
+	// Blanket-deny guard: a rule that matches everything and rejects is dangerous
+	// because it silently blocks all automation.  Require an explicit opt-in.
+	if !e.AllowBlanketDeny {
+		for i, r := range e.Rules {
+			if r.Effect == EffectReject &&
+				len(r.ActionTypes) == 0 &&
+				r.MinConfidence == 0 &&
+				len(r.AllowedExtensions) == 0 {
+				return nil, fmt.Errorf(
+					"policy rule #%d is a blanket-deny (rejects everything) — "+
+						"set allow_blanket_deny: true to permit this", i,
+				)
+			}
+		}
+	}
 	return &e, nil
+}
+
+// CheckLimits returns (true, reason) when the supplied counters have reached or
+// exceeded one of the Engine's session limits (CHECK 7.2.1).
+// Returns (false, "") when no limit is breached.
+// Callers must route to human operator review when the result is true — the
+// limit exhaustion must never be silently allowed or silently denied (CHECK 7.2.2).
+func (e *Engine) CheckLimits(autoApproved, totalYields int) (exhausted bool, reason string) {
+	if e.Limits.MaxAutoApproved > 0 && autoApproved >= e.Limits.MaxAutoApproved {
+		return true, fmt.Sprintf(
+			"auto-approval limit reached (%d/%d) — operator review required",
+			autoApproved, e.Limits.MaxAutoApproved,
+		)
+	}
+	if e.Limits.MaxTotalYields > 0 && totalYields >= e.Limits.MaxTotalYields {
+		return true, fmt.Sprintf(
+			"total yield limit reached (%d/%d) — operator review required",
+			totalYields, e.Limits.MaxTotalYields,
+		)
+	}
+	return false, ""
 }
 
 // PolicyDecision is the result of evaluating a yield request against all rules.

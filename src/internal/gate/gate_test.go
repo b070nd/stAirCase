@@ -338,7 +338,7 @@ func TestSecretKeyFileGate_missing(t *testing.T) {
 func TestSecretKeyFileGate_wrong_size(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), []byte("short"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), []byte("short"), 0o600))
 	r := gate.SecretKeyFileGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "32")
@@ -348,7 +348,7 @@ func TestSecretKeyFileGate_bad_permissions(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	key := make([]byte, 32)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0o644))
 	r := gate.SecretKeyFileGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status, "bad permissions should warn, not block")
 }
@@ -357,7 +357,7 @@ func TestSecretKeyFileGate_valid(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	key := make([]byte, 32)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0o600))
 	r := gate.SecretKeyFileGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
@@ -393,9 +393,9 @@ func TestRuntimeScriptCompiledGate_present(t *testing.T) {
 	ctx.WsDir = wsDir
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
+	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", ctx.CaseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
+	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
 	r := gate.RuntimeScriptCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
@@ -408,11 +408,11 @@ func TestRuntimeScriptCompiledGate_current_topology_passes(t *testing.T) {
 	ctx.CaseID = caseID
 	topo, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
 	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
+	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
 	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topo.Version)), 0644))
+	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
+	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topo.Version)), 0o644))
 	r := gate.RuntimeScriptCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
@@ -426,11 +426,11 @@ func TestRuntimeScriptCompiledGate_stale_topology_warns(t *testing.T) {
 	topoV1, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph") // v1
 	ctx.Store.CreateSwarmTopology(pID, "sup2", "memory", "langgraph")             // v2
 	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
+	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
 	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoV1.Version)), 0644))
+	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
+	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoV1.Version)), 0o644))
 	r := gate.RuntimeScriptCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status)
 	assert.Contains(t, r.Message, "--force")
@@ -446,8 +446,8 @@ func TestRuntimeVenvReadyGate_no_venv(t *testing.T) {
 func TestRuntimeVenvReadyGate_venv_no_hash_warns(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0o755))
 	r := gate.RuntimeVenvReadyGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status)
 }
@@ -455,9 +455,9 @@ func TestRuntimeVenvReadyGate_venv_no_hash_warns(t *testing.T) {
 func TestRuntimeVenvReadyGate_fully_ready(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc"), 0o644))
 	r := gate.RuntimeVenvReadyGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
@@ -656,9 +656,9 @@ func TestRuntimeVenvBrokenGate_no_sentinel_passes(t *testing.T) {
 func TestRuntimeVenvBrokenGate_sentinel_present_fails(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv"), 0o755))
 	sentinel := filepath.Join(wsDir, "venv", ".requirements_hash.broken")
-	require.NoError(t, os.WriteFile(sentinel, []byte("broken"), 0644))
+	require.NoError(t, os.WriteFile(sentinel, []byte("broken"), 0o644))
 	r := gate.RuntimeVenvBrokenGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "broken")
@@ -676,11 +676,11 @@ func TestRuntimeScriptCompiledGate_corrupt_sidecar_passes(t *testing.T) {
 	ctx.CaseID = caseID
 	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
 	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
+	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
 	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	require.NoError(t, os.WriteFile(sidecar, []byte("not-a-number"), 0644))
+	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
+	require.NoError(t, os.WriteFile(sidecar, []byte("not-a-number"), 0o644))
 	r := gate.RuntimeScriptCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status, "corrupt sidecar must fall through to pass")
 }

@@ -15,7 +15,7 @@ import (
 func InitDB(workspaceDir string) (*sql.DB, error) {
 	dbPath := filepath.Join(workspaceDir, "workspace.db")
 
-	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create workspace dir: %w", err)
 	}
 

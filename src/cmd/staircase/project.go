@@ -13,9 +13,7 @@ var projectCmd = &cobra.Command{
 	Short: "Manage projects within a vendor namespace",
 }
 
-var (
-	projectSourcePath string
-)
+var projectSourcePath string
 
 var projectAddCmd = &cobra.Command{
 	Use:   "add <vendor-name> <project-name>",

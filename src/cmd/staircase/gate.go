@@ -114,7 +114,8 @@ func printGateReport(w io.Writer, r gate.Report) {
 			prevCat = res.Category
 		}
 		statusIcon := statusIcon(res.Status)
-		fmt.Fprintf(w, "%-*s  %-*s  %-*s  %s%-*s  %s\n",
+		fmt.Fprintf(
+			w, "%-*s  %-*s  %-*s  %s%-*s  %s\n",
 			wCat, res.Category,
 			wName, res.Name,
 			wSev, string(res.Severity),

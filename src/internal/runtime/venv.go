@@ -44,11 +44,11 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 		fmt.Println("📦 Requirements changed — updating packages...")
 		if err := runPipInstall(pythonExec, workspaceDir, offlineWheelsDir); err != nil {
 			// pip failed — mark the venv as broken so the next init recreates it.
-			_ = os.WriteFile(hashFile+".broken", []byte(err.Error()), 0644)
+			_ = os.WriteFile(hashFile+".broken", []byte(err.Error()), 0o644)
 			_ = os.Remove(hashFile)
 			return err
 		}
-		_ = os.WriteFile(hashFile, []byte(reqHash), 0644)
+		_ = os.WriteFile(hashFile, []byte(reqHash), 0o644)
 		fmt.Println("✅ Packages updated.")
 		return nil
 	}
@@ -82,12 +82,12 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 	if err := runPipInstall(pythonExec, workspaceDir, offlineWheelsDir); err != nil {
 		// Mark the venv as broken. The next `staircase init` will detect this
 		// sentinel and remove the entire venv before attempting recreation.
-		_ = os.WriteFile(brokenSentinel, []byte(err.Error()), 0644)
+		_ = os.WriteFile(brokenSentinel, []byte(err.Error()), 0o644)
 		return err
 	}
 
 	_ = os.Remove(brokenSentinel) // clear any previous broken sentinel
-	_ = os.WriteFile(hashFile, []byte(reqHash), 0644)
+	_ = os.WriteFile(hashFile, []byte(reqHash), 0o644)
 	fmt.Println("✅ Environment isolated successfully.")
 	return nil
 }
@@ -95,8 +95,8 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 // runPipInstall writes the embedded requirements.txt to tmp/ and runs pip install.
 func runPipInstall(pythonExec, workspaceDir, offlineWheelsDir string) error {
 	reqPath := filepath.Join(workspaceDir, "tmp", "requirements.txt")
-	_ = os.MkdirAll(filepath.Dir(reqPath), 0755)
-	if err := os.WriteFile(reqPath, embeddedRequirements, 0644); err != nil {
+	_ = os.MkdirAll(filepath.Dir(reqPath), 0o755)
+	if err := os.WriteFile(reqPath, embeddedRequirements, 0o644); err != nil {
 		return err
 	}
 

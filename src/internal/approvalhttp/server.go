@@ -31,6 +31,7 @@ package approvalhttp
 import (
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -56,6 +57,27 @@ type PendingYield struct {
 // feedbackBody is the optional JSON body accepted by approve/reject endpoints.
 type feedbackBody struct {
 	Feedback string `json:"feedback"`
+}
+
+// MozillaTLSConfig returns a *tls.Config that matches the Mozilla TLS
+// "intermediate" compatibility profile: TLS 1.2 minimum, AEAD-only cipher
+// suites, X25519+P-256 key exchange.  Pass the result to [Server.StartTLS] to
+// enable HTTPS on the approval endpoint (CHECK 8.5).
+//
+// Reference: https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_(recommended)
+func MozillaTLSConfig() *tls.Config {
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		},
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+	}
 }
 
 // Server is the inbound approval HTTP server.
@@ -128,8 +150,43 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
+// StartTLS starts the server with TLS using the provided certificate and key
+// files and the supplied tls.Config.  Pass [MozillaTLSConfig]() as cfg to get
+// Mozilla intermediate compatibility settings (CHECK 8.5).  If cfg is nil,
+// the Go default TLS config is used.
+func (s *Server) StartTLS(ctx context.Context, certFile, keyFile string, cfg *tls.Config) error {
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return fmt.Errorf("approvalhttp: listen %s: %w", s.addr, err)
+	}
+	s.addr = ln.Addr().String()
+
+	if cfg == nil {
+		cfg = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("approvalhttp: load TLS keypair: %w", err)
+	}
+	cfg.Certificates = []tls.Certificate{cert}
+	tlsLn := tls.NewListener(ln, cfg)
+
+	go func() {
+		_ = s.httpSrv.Serve(tlsLn)
+	}()
+	go func() {
+		<-ctx.Done()
+		s.rejectAll("server shutting down")
+		shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = s.httpSrv.Shutdown(shutCtx)
+	}()
+	return nil
+}
+
 // ListenAddr returns the actual TCP address the server is listening on.
-// Only valid after [Start] has been called.
+// Only valid after [Start] or [StartTLS] has been called.
 func (s *Server) ListenAddr() string {
 	return s.addr
 }

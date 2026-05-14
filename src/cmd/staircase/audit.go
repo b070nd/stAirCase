@@ -127,7 +127,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 
 	// ── 5. Write checkpoint ───────────────────────────────────────────────────
 	auditDir := filepath.Join(wsDir, "audit")
-	if err := os.MkdirAll(auditDir, 0700); err != nil {
+	if err := os.MkdirAll(auditDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir audit: %w", err)
 	}
 
@@ -143,7 +143,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 	}
 
 	cpPath := filepath.Join(auditDir, fmt.Sprintf("run-%d.checkpoint.json", runID))
-	if err := os.WriteFile(cpPath, out, 0600); err != nil {
+	if err := os.WriteFile(cpPath, out, 0o600); err != nil {
 		return fmt.Errorf("write checkpoint: %w", err)
 	}
 

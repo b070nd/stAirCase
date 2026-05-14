@@ -28,7 +28,8 @@ func TestMain(m *testing.M) {
 	// database/sql.(*DB).connectionOpener is a background goroutine managed by
 	// the SQL driver; it exits asynchronously after db.Close(). Filter it to
 	// avoid a false-positive leak report on legitimate test teardown.
-	goleak.VerifyTestMain(m,
+	goleak.VerifyTestMain(
+		m,
 		goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"),
 	)
 }
@@ -128,7 +129,7 @@ func TestServer_uds_socket_has_0600_permission(t *testing.T) {
 	info, err := os.Stat(addr)
 	require.NoError(t, err, "socket file must exist after Start()")
 	perm := info.Mode().Perm()
-	assert.Equal(t, os.FileMode(0600), perm,
+	assert.Equal(t, os.FileMode(0o600), perm,
 		"UDS socket %s must have mode 0600, got %04o", addr, perm)
 }
 
