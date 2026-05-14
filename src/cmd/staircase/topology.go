@@ -56,9 +56,7 @@ var agentCmd = &cobra.Command{
 	Short: "Manage agent nodes in a topology",
 }
 
-var (
-	agentModel string
-)
+var agentModel string
 
 var agentAddCmd = &cobra.Command{
 	Use:   "add <topology-id> <name> <role>",
@@ -109,9 +107,7 @@ var edgeCmd = &cobra.Command{
 	Short: "Manage edges (routing) in a topology",
 }
 
-var (
-	edgeCondition string
-)
+var edgeCondition string
 
 var edgeAddCmd = &cobra.Command{
 	Use:   "add <topology-id> <from-node> <to-node>",
@@ -149,9 +145,7 @@ var toolCmd = &cobra.Command{
 	Short: "Register extra tools for an agent node",
 }
 
-var (
-	toolConfig string
-)
+var toolConfig string
 
 var toolAddCmd = &cobra.Command{
 	Use:   "add <agent-id> <tool-name>",

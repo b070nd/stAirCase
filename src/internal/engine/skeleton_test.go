@@ -65,7 +65,7 @@ func TestPackXML_multiple_files(t *testing.T) {
 
 func TestRepoMap_includes_files(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -74,9 +74,9 @@ func TestRepoMap_includes_files(t *testing.T) {
 
 func TestRepoMap_respects_gitignore_extension_pattern(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.log"), []byte("log"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.log"), []byte("log"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -88,8 +88,8 @@ func TestRepoMap_skips_default_ignored_dirs(t *testing.T) {
 	for _, ignoredDir := range []string{"node_modules", ".git", "__pycache__", "venv"} {
 		t.Run(ignoredDir, func(t *testing.T) {
 			dir := t.TempDir()
-			require.NoError(t, os.MkdirAll(filepath.Join(dir, ignoredDir), 0755))
-			require.NoError(t, os.WriteFile(filepath.Join(dir, ignoredDir, "file.js"), []byte("x"), 0644))
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, ignoredDir), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ignoredDir, "file.js"), []byte("x"), 0o644))
 
 			result, err := engine.RepoMap(dir)
 			require.NoError(t, err)
@@ -100,8 +100,8 @@ func TestRepoMap_skips_default_ignored_dirs(t *testing.T) {
 
 func TestRepoMap_skips_binary_extensions(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "logo.png"), []byte("PNG"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.sum"), []byte("sum"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "logo.png"), []byte("PNG"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.sum"), []byte("sum"), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestRepoMap_skips_binary_extensions(t *testing.T) {
 func TestRepoMap_extracts_go_functions(t *testing.T) {
 	dir := t.TempDir()
 	src := "package main\n\nfunc Foo(x int) error {\n\treturn nil\n}\n\nfunc bar() {}\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.go"), []byte(src), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.go"), []byte(src), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestRepoMap_extracts_go_functions(t *testing.T) {
 func TestRepoMap_extracts_python_defs_and_classes(t *testing.T) {
 	dir := t.TempDir()
 	src := "class MyClass:\n    pass\n\ndef sync_fn(x):\n    pass\n\nasync def async_fn():\n    pass\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "mod.py"), []byte(src), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "mod.py"), []byte(src), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestRepoMap_extracts_python_defs_and_classes(t *testing.T) {
 func TestRepoMap_extracts_typescript_functions(t *testing.T) {
 	dir := t.TempDir()
 	src := "export function greet(name: string): string {\n  return name;\n}\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "util.ts"), []byte(src), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "util.ts"), []byte(src), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestRepoMap_truncates_long_signatures(t *testing.T) {
 	// Signature longer than 120 chars
 	longSig := "func " + strings.Repeat("a", 120) + "(x int) error {"
 	src := "package main\n\n" + longSig + "\n\treturn nil\n}\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "long.go"), []byte(src), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "long.go"), []byte(src), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -159,9 +159,9 @@ func TestRepoMap_truncates_long_signatures(t *testing.T) {
 
 func TestRepoMap_staircaseignore(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".staircaseignore"), []byte("secret.go\n"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.go"), []byte("package main\n"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "public.go"), []byte("package main\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".staircaseignore"), []byte("secret.go\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.go"), []byte("package main\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "public.go"), []byte("package main\n"), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -172,10 +172,10 @@ func TestRepoMap_staircaseignore(t *testing.T) {
 func TestRepoMap_double_star_gitignore(t *testing.T) {
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "src", "internal")
-	require.NoError(t, os.MkdirAll(sub, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(sub, "foo_test.go"), []byte("package x\n"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(sub, "foo.go"), []byte("package x\n"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("**/*_test.go\n"), 0644))
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "foo_test.go"), []byte("package x\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "foo.go"), []byte("package x\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("**/*_test.go\n"), 0o644))
 
 	result, err := engine.RepoMap(dir)
 	require.NoError(t, err)
@@ -224,9 +224,9 @@ func TestRepoMap_unreadable_gitignore_warns_but_continues(t *testing.T) {
 	dir := t.TempDir()
 	// Create a .gitignore that is not readable.
 	gitignorePath := filepath.Join(dir, ".gitignore")
-	require.NoError(t, os.WriteFile(gitignorePath, []byte("*.log\n"), 0000))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.go"), []byte("package main\n"), 0644))
-	t.Cleanup(func() { os.Chmod(gitignorePath, 0644) }) // restore for cleanup
+	require.NoError(t, os.WriteFile(gitignorePath, []byte("*.log\n"), 0o000))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.go"), []byte("package main\n"), 0o644))
+	t.Cleanup(func() { os.Chmod(gitignorePath, 0o644) }) // restore for cleanup
 
 	// RepoMap should not hard-fail; it writes a warning to stderr and continues.
 	result, err := engine.RepoMap(dir)

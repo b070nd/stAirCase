@@ -45,7 +45,7 @@ func GenerateKey(wsDir string) error {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write temp key: %w", err)
 	}
-	if err := tmp.Chmod(0600); err != nil {
+	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("chmod temp key: %w", err)

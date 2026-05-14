@@ -32,7 +32,7 @@ func writePolicy(t *testing.T, dir string, e policy.Engine) {
 	t.Helper()
 	b, err := json.Marshal(e)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), b, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), b, 0o600))
 }
 
 // ─── LoadEngine ───────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ func TestLoadEngine_parses_valid_json(t *testing.T) {
 
 func TestLoadEngine_invalid_json_returns_error(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte("not json"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte("not json"), 0o600))
 	_, err := policy.LoadEngine(dir)
 	assert.Error(t, err)
 }
@@ -290,4 +290,75 @@ func TestEvaluate_type_compatible_with_domain(t *testing.T) {
 	dec := e.Evaluate(req)
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
+}
+
+// ─── Checklist-named tests (CHECK 7.1.3–7.2.2) ───────────────────────────────
+// The AUDIT_CHECKLIST.md specifies exact test names via grep.
+
+// TestPolicyLoadValidation verifies that LoadEngine rejects files with invalid
+// JSON so the caller can surface the error to the operator (CHECK 7.1.3).
+func TestPolicyLoadValidation(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`not-json`), 0o600))
+	_, err := policy.LoadEngine(dir)
+	require.Error(t, err, "invalid JSON must be rejected at load time")
+	assert.Contains(t, err.Error(), "parse policy file")
+}
+
+// TestDenyBeatsAllow verifies that a reject-effect rule wins over any implicit
+// approve path: once matched, EffectReject produces Approved=false (CHECK 7.1.4).
+func TestDenyBeatsAllow(t *testing.T) {
+	// Put a reject rule first; an approve rule after.  First-match wins, so reject
+	// should be returned.
+	e := &policy.Engine{Rules: []policy.Rule{
+		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectReject},
+		{Effect: policy.EffectApprove},
+	}}
+	req := domain.YieldRequest{ActionType: "shell_exec", ConfidenceScore: 0.99}
+	dec := e.Evaluate(req)
+	assert.True(t, dec.Matched, "rule must have matched")
+	assert.False(t, dec.Approved, "reject effect must set Approved=false")
+	assert.Contains(t, dec.Reason, "auto-rejected")
+}
+
+// TestBlanketDenyRequiresFlag verifies that a policy file containing a rule
+// that would reject ALL requests (no conditions + EffectReject) is refused by
+// LoadEngine unless allow_blanket_deny is explicitly true (CHECK 7.1.5).
+func TestBlanketDenyRequiresFlag(t *testing.T) {
+	dir := t.TempDir()
+
+	// Blanket-deny rule without the explicit flag → must error.
+	data := []byte(`{"rules":[{"effect":"reject"}]}`)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), data, 0o600))
+	_, err := policy.LoadEngine(dir)
+	require.Error(t, err, "blanket-deny without allow_blanket_deny must be rejected")
+	assert.Contains(t, err.Error(), "blanket-deny")
+
+	// Same rule WITH allow_blanket_deny: true → must succeed.
+	allowed := []byte(`{"rules":[{"effect":"reject"}],"allow_blanket_deny":true}`)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), allowed, 0o600))
+	e, err := policy.LoadEngine(dir)
+	require.NoError(t, err, "blanket-deny with allow_blanket_deny must be accepted")
+	require.NotNil(t, e)
+}
+
+// TestLimitExhaustionAsksOperator verifies that CheckLimits returns exhausted=true
+// when a counter reaches its cap, signalling that the operator must be consulted —
+// the limit must NEVER be silently allowed or silently denied (CHECK 7.2.2).
+func TestLimitExhaustionAsksOperator(t *testing.T) {
+	e := &policy.Engine{Limits: policy.Limits{MaxAutoApproved: 5}}
+
+	// At cap: operator review required.
+	exhausted, reason := e.CheckLimits(5, 10)
+	assert.True(t, exhausted, "at limit must return exhausted=true")
+	assert.Contains(t, reason, "operator review required")
+
+	// Below cap: policy rules still apply normally.
+	exhausted, _ = e.CheckLimits(4, 10)
+	assert.False(t, exhausted, "below limit must return exhausted=false")
+
+	// Zero limit means unlimited.
+	e2 := &policy.Engine{}
+	exhausted, _ = e2.CheckLimits(1000, 1000)
+	assert.False(t, exhausted, "zero limit (unlimited) must always return exhausted=false")
 }

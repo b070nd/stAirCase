@@ -164,7 +164,7 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 
 	// ── 8. Write canonical graph_exec script ──────────────────────────────────
 	tmpDir := filepath.Join(wsDir, "tmp")
-	if err := os.MkdirAll(tmpDir, 0700); err != nil {
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
 
@@ -183,7 +183,7 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	// Write a topology-version sidecar so runtime.script_compiled can detect
 	// stale scripts (compiled against an older topology version).
 	topoPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	if err := os.WriteFile(topoPath, []byte(fmt.Sprintf("%d", topology.Version)), 0644); err != nil {
+	if err := os.WriteFile(topoPath, []byte(fmt.Sprintf("%d", topology.Version)), 0o644); err != nil {
 		return fmt.Errorf("write topo sidecar: %w", err)
 	}
 

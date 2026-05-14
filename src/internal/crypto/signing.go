@@ -44,11 +44,11 @@ func GenerateSigningKey(wsDir string) error {
 	}
 
 	// Write private key (64 bytes: seed || public).
-	if err := writeFileAtomic(wsDir, keyPath, priv, 0600); err != nil {
+	if err := writeFileAtomic(wsDir, keyPath, priv, 0o600); err != nil {
 		return fmt.Errorf("write signing key: %w", err)
 	}
 	// Write public key (32 bytes).
-	if err := writeFileAtomic(wsDir, pubPath, pub, 0644); err != nil {
+	if err := writeFileAtomic(wsDir, pubPath, pub, 0o644); err != nil {
 		// Best-effort cleanup of the private key so the pair is always consistent.
 		_ = os.Remove(keyPath)
 		return fmt.Errorf("write signing public key: %w", err)

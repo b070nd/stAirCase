@@ -249,7 +249,8 @@ func TestOrphanReconciliation_prune_deletes_orphan_branch(t *testing.T) {
 	assert.Empty(t, result.OrphanBranches, "successfully pruned branches must not appear in result")
 
 	// Verify the branch is gone from git.
-	out, _ := exec.Command("git", "-C", repoPath,
+	out, _ := exec.Command(
+		"git", "-C", repoPath,
 		"for-each-ref", "--format=%(refname:short)", "refs/heads/staircase/run-*",
 	).Output()
 	assert.Empty(t, string(out), "branch must be deleted from git after prune")
@@ -293,7 +294,7 @@ func TestHandleDirtyTree_clean_tree_returns_false(t *testing.T) {
 func TestHandleDirtyTree_dirty_no_autostash_returns_error(t *testing.T) {
 	repoPath := initGitRepo(t)
 	// Create an untracked file to make the tree dirty.
-	require.NoError(t, os.WriteFile(fmt.Sprintf("%s/dirty.txt", repoPath), []byte("x"), 0600))
+	require.NoError(t, os.WriteFile(fmt.Sprintf("%s/dirty.txt", repoPath), []byte("x"), 0o600))
 
 	stashed, err := orchestrator.ExportedHandleDirtyTree(repoPath, false)
 	require.Error(t, err, "dirty tree without --auto-stash must return an error")
@@ -304,7 +305,7 @@ func TestHandleDirtyTree_dirty_with_autostash_stashes_tree(t *testing.T) {
 	repoPath := initGitRepo(t)
 	// Stage a file change so `git stash` has something to stash.
 	filePath := fmt.Sprintf("%s/staged.txt", repoPath)
-	require.NoError(t, os.WriteFile(filePath, []byte("hello"), 0600))
+	require.NoError(t, os.WriteFile(filePath, []byte("hello"), 0o600))
 	out, err := exec.Command("git", "-C", repoPath, "add", "staged.txt").CombinedOutput()
 	require.NoError(t, err, "git add: %s", out)
 

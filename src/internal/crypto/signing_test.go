@@ -55,7 +55,7 @@ func TestGenerateSigningKey_private_key_has_0600_permissions(t *testing.T) {
 
 	info, err := os.Stat(filepath.Join(dir, crypto.SigningKeyFile))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 // ─── LoadSigningKey ───────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ func TestLoadSigningKey_missing_returns_error(t *testing.T) {
 
 func TestLoadSigningKey_wrong_size_returns_error(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, crypto.SigningKeyFile), []byte("short"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, crypto.SigningKeyFile), []byte("short"), 0o600))
 	_, err := crypto.LoadSigningKey(dir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "corrupt")
@@ -89,7 +89,7 @@ func TestLoadSigningKey_bad_permissions_returns_error(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, crypto.GenerateSigningKey(dir))
 	// Widen permissions to trigger the security check.
-	require.NoError(t, os.Chmod(filepath.Join(dir, crypto.SigningKeyFile), 0644))
+	require.NoError(t, os.Chmod(filepath.Join(dir, crypto.SigningKeyFile), 0o644))
 	_, err := crypto.LoadSigningKey(dir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "insecure permissions")
@@ -113,7 +113,7 @@ func TestLoadSigningPublicKey_missing_returns_error(t *testing.T) {
 
 func TestLoadSigningPublicKey_wrong_size_returns_error(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, crypto.SigningPubFile), []byte("x"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, crypto.SigningPubFile), []byte("x"), 0o644))
 	_, err := crypto.LoadSigningPublicKey(dir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "corrupt")

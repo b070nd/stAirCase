@@ -686,7 +686,8 @@ func (s *Store) CreateRun(caseID int64, topologyVersion int, gitBranch string) (
 	// SQLite cannot express this as a FK because topology_version is a semantic
 	// version number, not a row ID, so we validate it here instead.
 	var topoCount int
-	err := s.db.QueryRow(`
+	err := s.db.QueryRow(
+		`
 		SELECT COUNT(*)
 		FROM swarm_topologies st
 		JOIN cases c ON c.project_id = st.project_id
@@ -910,7 +911,8 @@ func (s *Store) KillStaleRuns(caseID int64, maxAge time.Duration) (int64, error)
 // the current topology, not an outdated one.
 func (s *Store) HasSuccessfulRunAtTopologyVersion(projectID int64, topoVersion int) (bool, error) {
 	var count int
-	err := s.db.QueryRow(`
+	err := s.db.QueryRow(
+		`
 		SELECT COUNT(*)
 		FROM runs
 		JOIN cases ON runs.case_id = cases.id

@@ -15,9 +15,11 @@ type IpcStateEmit struct {
 // IpcYieldRequest and IpcYieldResponse are type aliases for the canonical types
 // in the domain package.  Callers may use either name interchangeably; the ipc
 // package re-exports them so existing code does not need to change its imports.
-type IpcYieldRequest = domain.YieldRequest
-type IpcYieldResponse = domain.YieldResponse
-type ProposedEdit = domain.ProposedEdit
+type (
+	IpcYieldRequest  = domain.YieldRequest
+	IpcYieldResponse = domain.YieldResponse
+	ProposedEdit     = domain.ProposedEdit
+)
 
 // IpcSecretRequest is sent by Python to fetch an encrypted secret over the UDS.
 // Secrets are never passed through environment variables (/proc leak prevention).

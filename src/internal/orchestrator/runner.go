@@ -218,7 +218,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	}
 
 	tmpDir := filepath.Join(r.wsDir, "tmp")
-	if err := os.MkdirAll(tmpDir, 0700); err != nil {
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
 	socketPath := filepath.Join(tmpDir, fmt.Sprintf("run-%d.sock", run.ID))
@@ -256,9 +256,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 
 	if opts.Debug {
 		logDir := filepath.Join(r.wsDir, "log")
-		if err := os.MkdirAll(logDir, 0700); err == nil {
+		if err := os.MkdirAll(logDir, 0o700); err == nil {
 			logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", run.ID))
-			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 				ipcSrv.SetDebugWriter(f)
 				defer func() { _ = f.Close() }()
 				fmt.Printf("   🔍 Debug log: %s\n", logPath)
@@ -287,7 +287,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if err != nil {
 		return fmt.Errorf("read canonical script: %w", err)
 	}
-	if err := os.WriteFile(scriptPath, srcBytes, 0600); err != nil {
+	if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil {
 		return fmt.Errorf("copy script to run path: %w", err)
 	}
 
@@ -356,6 +356,24 @@ runLoop:
 				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
 			}
 			ipcSrv.ResponseCh <- resp
+
+			// Audit: record who decided and what the decision was (CHECK 7.3.1).
+			// source is "policy" for auto-decisions, "operator" for human review.
+			source := "operator"
+			if policyEngine.Evaluate(yieldReq).Matched {
+				source = "policy"
+			}
+			if payload, err := json.Marshal(map[string]any{
+				"type":        "yield_decided",
+				"source":      source,
+				"agent":       yieldReq.AgentName,
+				"action_type": yieldReq.ActionType,
+				"approved":    resp.Approved,
+				"feedback":    resp.Feedback,
+			}); err == nil {
+				prevHash, _ := r.store.GetLastEventHash(run.ID)
+				_, _ = r.store.AppendEventLog(run.ID, "yield_decided", string(payload), prevHash, "")
+			}
 
 		case procErr := <-proc.Done:
 			if procErr != nil {

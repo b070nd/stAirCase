@@ -76,16 +76,16 @@ func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 	require.NoError(t, crypto.GenerateKey(wsDir))
 
 	venvBin := filepath.Join(wsDir, "venv", "bin")
-	require.NoError(t, os.MkdirAll(venvBin, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(venvBin, "python"), []byte("#!/bin/sh\n"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc123"), 0644))
+	require.NoError(t, os.MkdirAll(venvBin, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(venvBin, "python"), []byte("#!/bin/sh\n"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc123"), 0o644))
 
 	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
+	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
 	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# placeholder"), 0644))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoVersion)), 0644))
+	require.NoError(t, os.WriteFile(script, []byte("# placeholder"), 0o644))
+	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoVersion)), 0o644))
 }
 
 // ─── Scenario 1: Workspace bootstrap ─────────────────────────────────────────
@@ -536,7 +536,7 @@ func TestAudit_Verify_tampered_signature_fails(t *testing.T) {
 	cp.Signature = strings.Repeat("a", 128) // valid hex length, wrong value
 	corrupted, err := json.MarshalIndent(cp, "", "  ")
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(cpPath, corrupted, 0600))
+	require.NoError(t, os.WriteFile(cpPath, corrupted, 0o600))
 
 	err = auditVerifyHandler(nil, []string{cpPath})
 	assert.Error(t, err)
@@ -562,7 +562,7 @@ func TestAudit_Verify_tampered_entry_fails(t *testing.T) {
 	cp.Entries[1].Payload = `{"step":"INJECTED"}`
 	corrupted, err := json.MarshalIndent(cp, "", "  ")
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(cpPath, corrupted, 0600))
+	require.NoError(t, os.WriteFile(cpPath, corrupted, 0o600))
 
 	err = auditVerifyHandler(nil, []string{cpPath})
 	assert.Error(t, err, "tampered payload must fail verification")
@@ -597,4 +597,30 @@ func TestAudit_Export_empty_run_produces_valid_checkpoint(t *testing.T) {
 	cpPath := filepath.Join(wsDir, "audit", fmt.Sprintf("run-%d.checkpoint.json", runID))
 	err := auditVerifyHandler(nil, []string{cpPath})
 	assert.NoError(t, err)
+}
+
+// TestCheckpointSignatureTamper is the checklist-named tamper test (CHECK 9.2.4).
+// It verifies that altering the Ed25519 signature field in a checkpoint file
+// causes auditVerifyHandler to return a non-nil error.
+func TestCheckpointSignatureTamper(t *testing.T) {
+	wsDir, s := e2eWorkspace(t)
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+
+	runID := seedRunWithLogs(t, s, 2)
+	require.NoError(t, auditExportHandler(nil, []string{strconv.FormatInt(runID, 10)}))
+
+	cpPath := filepath.Join(wsDir, "audit", fmt.Sprintf("run-%d.checkpoint.json", runID))
+
+	// Read the checkpoint, replace the signature with 128 hex 'f' chars (wrong sig).
+	raw, err := os.ReadFile(cpPath)
+	require.NoError(t, err)
+	var cp AuditCheckpoint
+	require.NoError(t, json.Unmarshal(raw, &cp))
+	cp.Signature = strings.Repeat("f", 128) // valid hex length, wrong signature
+	tampered, err := json.MarshalIndent(cp, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(cpPath, tampered, 0o600))
+
+	err = auditVerifyHandler(nil, []string{cpPath})
+	assert.Error(t, err, "tampered Ed25519 signature must fail verification")
 }
