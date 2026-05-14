@@ -1,5 +1,6 @@
-
 package ipc
+
+import "github.com/b070nd/staircase-core/src/internal/domain"
 
 // IpcStateEmit is sent by Python to Go on node completion.
 type IpcStateEmit struct {
@@ -11,29 +12,12 @@ type IpcStateEmit struct {
 	Model        string                 `json:"model,omitempty"`
 }
 
-// IpcYieldRequest is sent by Python to request HITL approval.
-type IpcYieldRequest struct {
-	Type            string          `json:"type"` // "yield_request"
-	AgentName       string          `json:"agent_name"`
-	ActionType      string          `json:"action_type"` // "file_edit", "shell_exec"
-	ProposedEdits   []ProposedEdit  `json:"proposed_edits,omitempty"`
-	ReasoningTrace  string          `json:"reasoning_trace"`
-	ConfidenceScore float64         `json:"confidence_score"`
-	BatchID         string          `json:"batch_id,omitempty"`
-}
-
-type ProposedEdit struct {
-	File         string `json:"file"`
-	SearchBlock  string `json:"search_block"`
-	ReplaceBlock string `json:"replace_block"`
-}
-
-// IpcYieldResponse is sent by Go to Python via stdin.
-type IpcYieldResponse struct {
-	Type     string `json:"type"` // "yield_response"
-	Approved bool   `json:"approved"`
-	Feedback string `json:"feedback,omitempty"`
-}
+// IpcYieldRequest and IpcYieldResponse are type aliases for the canonical types
+// in the domain package.  Callers may use either name interchangeably; the ipc
+// package re-exports them so existing code does not need to change its imports.
+type IpcYieldRequest = domain.YieldRequest
+type IpcYieldResponse = domain.YieldResponse
+type ProposedEdit = domain.ProposedEdit
 
 // IpcSecretRequest is sent by Python to fetch an encrypted secret over the UDS.
 // Secrets are never passed through environment variables (/proc leak prevention).
@@ -43,9 +27,12 @@ type IpcSecretRequest struct {
 	ProjectID *int64 `json:"project_id,omitempty"`
 }
 
-// IpcSecretResponse carries the encrypted secret value back to Python.
+// IpcSecretResponse carries the decrypted secret plaintext back to Python.
+// The field is named PlaintextValue to make it unambiguous that the Go server
+// decrypts the secret before delivery — Python receives ready-to-use plaintext,
+// never the AES ciphertext.
 type IpcSecretResponse struct {
-	Type           string `json:"type"` // "secret_response"
-	EncryptedValue string `json:"encrypted_value,omitempty"`
+	Type           string `json:"type"`                      // "secret_response"
+	PlaintextValue string `json:"plaintext_value,omitempty"` // decrypted; was "encrypted_value" before I-3 fix
 	Error          string `json:"error,omitempty"`
 }

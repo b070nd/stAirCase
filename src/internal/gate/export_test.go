@@ -7,7 +7,7 @@ import "testing"
 
 // Individual gate singletons — one per registered gate implementation.
 var (
-	CaseProjectExistsGate           Gate = &caseProjectExistsGate{}
+	CaseProjectExistsGate            Gate = &caseProjectExistsGate{}
 	CaseHasStoriesGate               Gate = &caseHasStoriesGate{}
 	CaseHasPRDGate                   Gate = &caseHasPRDGate{}
 	TopologyExistsGate               Gate = &topologyExistsGate{}

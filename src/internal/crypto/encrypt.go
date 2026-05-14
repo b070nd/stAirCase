@@ -41,21 +41,21 @@ func GenerateKey(wsDir string) error {
 	}
 	tmpPath := tmp.Name()
 	if _, err := tmp.Write(key); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write temp key: %w", err)
 	}
 	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("chmod temp key: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp key: %w", err)
 	}
 	if err := os.Rename(tmpPath, keyPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("install key: %w", err)
 	}
 	return nil

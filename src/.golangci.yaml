@@ -1,0 +1,27 @@
+version: "2"
+
+# Default enabled linters: errcheck, govet, ineffassign, staticcheck, unused.
+# No extras — additional linters to be enabled per-phase as code matures.
+
+linters:
+  exclusions:
+    rules:
+      # Test files: t.Cleanup(func(){x.Close()}), defer Body.Close(), seed helpers —
+      # all idiomatic Go; errors are always nil in unit-test contexts.
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+
+      # sql.DB.Close / sql.Rows.Close: errors here are always nil in practice
+      # (they flush or close a pooled connection); no meaningful recovery exists.
+      - linters: [errcheck]
+        text: "Error return value of `(db|rows)\\.Close` is not checked"
+
+      # fmt.Fprintln / fmt.Fprintf to os.Stdout in CLI commands: writing to a
+      # local terminal cannot fail in a meaningful way; suppressing is idiomatic.
+      - linters: [errcheck]
+        text: "Error return value of `fmt\\.Fprint"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

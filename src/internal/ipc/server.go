@@ -28,13 +28,15 @@ const (
 	// new connection before dropping it.
 	authTimeout = 10 * time.Second
 
-	// readBufferSize caps the per-line scanner buffer to accommodate large
-	// state payloads from high-throughput agent telemetry.
-	readBufferSize = 1 << 20 // 1 MiB
-
 	// maxPayloadSize caps how many bytes are stored per audit log entry.
 	// Prevents a misbehaving agent from inflating the DB without bound.
 	maxPayloadSize = 64 * 1024 // 64 KiB
+
+	// readBufferSize caps the per-line scanner buffer. 4× maxPayloadSize bounds
+	// memory per connection while still accommodating any legal message including
+	// JSON envelope overhead. Messages larger than this are rejected at the
+	// framing layer (scanner returns ErrTooLong). (CHECK 3.5.9: ≤ 256 KiB)
+	readBufferSize = 4 * maxPayloadSize // 256 KiB
 
 	// maxConnections is the maximum number of simultaneously active IPC
 	// connections. A single Python process only ever needs one; limiting to 2
@@ -42,6 +44,46 @@ const (
 	// still guarding against runaway connection storms from a buggy agent.
 	maxConnections = 2
 )
+
+// Per-connection per-kind rate limits (messages per second).
+// These protect against a buggy or compromised Python process flooding the
+// server; legitimate agents will never approach these limits.
+var kindRateLimits = map[string]int{
+	"yield_request":  10,
+	"secret_request": 30,
+	"state_emit":     300,
+	"heartbeat":      5,
+}
+
+// connRateLimiter tracks message counts per kind within the current one-second
+// window for a single connection.  Not safe for concurrent use; callers must
+// hold the connection-local context (handleConnection runs on one goroutine).
+type connRateLimiter struct {
+	counts      map[string]int
+	windowStart time.Time
+}
+
+func newConnRateLimiter() *connRateLimiter {
+	return &connRateLimiter{
+		counts:      make(map[string]int),
+		windowStart: time.Now(),
+	}
+}
+
+// allow returns true when the message kind is within its per-second budget.
+// The window resets lazily on the first check after a full second has elapsed.
+func (r *connRateLimiter) allow(kind string) bool {
+	limit, known := kindRateLimits[kind]
+	if !known {
+		return true // unknown kinds are not rate-limited
+	}
+	if time.Since(r.windowStart) > time.Second {
+		r.counts = make(map[string]int)
+		r.windowStart = time.Now()
+	}
+	r.counts[kind]++
+	return r.counts[kind] <= limit
+}
 
 // Server listens on a Unix Domain Socket for the Python runtime.
 // It authenticates Python with a one-time session token, then routes:
@@ -138,14 +180,14 @@ func (s *Server) Start(ctx context.Context) error {
 			return fmt.Errorf("ipc listen: %w", err)
 		}
 		if err := os.Chmod(s.socketPath, 0600); err != nil {
-			ln.Close()
+			_ = ln.Close()
 			return fmt.Errorf("ipc socket chmod: %w", err)
 		}
 	}
 
 	go func() {
 		<-ctx.Done()
-		ln.Close()
+		_ = ln.Close()
 		if runtime.GOOS != "windows" {
 			_ = os.Remove(s.socketPath)
 		}
@@ -164,12 +206,19 @@ func (s *Server) Start(ctx context.Context) error {
 				}
 			}
 			if atomic.AddInt32(&s.connCount, 1) > maxConnections {
-					atomic.AddInt32(&s.connCount, -1)
-					log.Printf("ipc: connection limit (%d) reached — dropping new connection", maxConnections)
-					conn.Close()
-					continue
-				}
-				go s.handleConnection(ctx, conn)
+				atomic.AddInt32(&s.connCount, -1)
+				log.Printf("ipc: connection limit (%d) reached — dropping new connection", maxConnections)
+				_ = conn.Close()
+				continue
+			}
+			// Reject connections from different OS users (Linux: SO_PEERCRED).
+			if err := checkPeerUID(conn); err != nil {
+				atomic.AddInt32(&s.connCount, -1)
+				log.Printf("ipc: peer credential check failed: %v — dropping connection", err)
+				_ = conn.Close()
+				continue
+			}
+			go s.handleConnection(ctx, conn)
 		}
 	}()
 
@@ -178,7 +227,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	defer atomic.AddInt32(&s.connCount, -1)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, readBufferSize), readBufferSize)
@@ -201,6 +250,8 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 		return
 	}
 	_ = enc.Encode(map[string]string{"type": "auth_ok"})
+
+	rl := newConnRateLimiter()
 
 	// ── Message loop ──────────────────────────────────────────────────────────
 	for {
@@ -230,6 +281,18 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(line, &base); err != nil {
+			continue
+		}
+
+		if !rl.allow(base.Type) {
+			log.Printf("ipc: rate limit exceeded for kind %q — dropping message", base.Type)
+			// For request/response kinds, send an error so Python doesn't hang.
+			switch base.Type {
+			case "yield_request":
+				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "rate limit exceeded"})
+			case "secret_request":
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "rate limit exceeded"})
+			}
 			continue
 		}
 
@@ -291,28 +354,32 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 		case "secret_request":
 			var req IpcSecretRequest
-			if err := json.Unmarshal(line, &req); err == nil {
-				secret, err := s.store.GetSecret(req.KeyName, req.ProjectID)
-				if err != nil {
-					_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "store error: " + err.Error()})
-					break
-				}
-				if secret == nil {
-					_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "not found"})
-					break
-				}
-				// Decrypt in Go before delivery — plaintext never enters the DB and
-				// the AES key never crosses the UDS boundary into Python.
-				plaintext, err := crypto.Decrypt(s.aesKey, secret.EncryptedValue)
-				if err != nil {
-					_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "decrypt error"})
-					break
-				}
-				_ = enc.Encode(IpcSecretResponse{
-					Type:           "secret_response",
-					EncryptedValue: plaintext, // field name kept for wire compatibility; carries plaintext
-				})
+			if err := json.Unmarshal(line, &req); err != nil {
+				// Malformed JSON: send an error so Python doesn't hang waiting for a response.
+				log.Printf("ipc: malformed secret_request (json: %v) — returning error", err)
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "malformed secret_request JSON: " + err.Error()})
+				break
 			}
+			secret, err := s.store.GetSecret(req.KeyName, req.ProjectID)
+			if err != nil {
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "store error: " + err.Error()})
+				break
+			}
+			if secret == nil {
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "not found"})
+				break
+			}
+			// Decrypt in Go before delivery — plaintext never enters the DB and
+			// the AES key never crosses the UDS boundary into Python.
+			plaintext, err := crypto.Decrypt(s.aesKey, secret.EncryptedValue)
+			if err != nil {
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "decrypt error"})
+				break
+			}
+			_ = enc.Encode(IpcSecretResponse{
+				Type:           "secret_response",
+				PlaintextValue: plaintext,
+			})
 
 		case "heartbeat":
 			_ = enc.Encode(map[string]string{"type": "heartbeat_ack"})

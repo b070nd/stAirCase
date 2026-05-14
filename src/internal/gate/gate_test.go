@@ -424,7 +424,7 @@ func TestRuntimeScriptCompiledGate_stale_topology_warns(t *testing.T) {
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
 	topoV1, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph") // v1
-	ctx.Store.CreateSwarmTopology(pID, "sup2", "memory", "langgraph")              // v2
+	ctx.Store.CreateSwarmTopology(pID, "sup2", "memory", "langgraph")             // v2
 	tmpDir := filepath.Join(wsDir, "tmp")
 	require.NoError(t, os.MkdirAll(tmpDir, 0755))
 	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
@@ -611,6 +611,28 @@ func TestTopologyRuntimeValidGate_invalid_runtime(t *testing.T) {
 	assert.Contains(t, r.Message, "tensorflow")
 }
 
+// crewai and autogen are recognised future runtimes — gate must WARN (not pass,
+// not block) so the operator is aware before wasting a run.
+func TestTopologyRuntimeValidGate_crewai_warns(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "crewai")
+	r := gate.TopologyRuntimeValidGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "not yet executable")
+}
+
+func TestTopologyRuntimeValidGate_autogen_warns(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "autogen")
+	r := gate.TopologyRuntimeValidGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "not yet executable")
+}
+
 // ─── Soft-deleted case gate ───────────────────────────────────────────────────
 
 func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
@@ -670,7 +692,7 @@ func TestDepDepsCompletedGate_upstream_no_topology_warns(t *testing.T) {
 	// topology registered — the gate should warn, not panic.
 	ctx, _ := newGateEnv(t)
 	v, _ := ctx.Store.CreateVendor(t.Name())
-	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "")   // no topology
+	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "") // no topology
 	downstream, _ := ctx.Store.CreateProject(v.ID, "Down", "")
 	ctx.Store.CreateProjectDependency(downstream.ID, upstream.ID)
 	c, _ := ctx.Store.CreateCase(downstream.ID)

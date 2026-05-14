@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	// modernc.org/sqlite is a pure-Go SQLite driver, required for CGO_ENABLED=0 builds
 	_ "modernc.org/sqlite"
@@ -33,6 +34,11 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
+	freshSchema, err := isFreshSchema(db)
+	if err != nil {
+		return nil, fmt.Errorf("inspect schema: %w", err)
+	}
+
 	// Apply the full schema DDL
 	if _, err := db.Exec(Schema); err != nil {
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
@@ -48,7 +54,7 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&recorded); err != nil {
 		return nil, fmt.Errorf("count schema_migrations: %w", err)
 	}
-	if recorded == 0 && len(Migrations) > 0 {
+	if freshSchema && recorded == 0 && len(Migrations) > 0 {
 		// Fresh database: Schema already contains all columns — mark all as applied.
 		for i := range Migrations {
 			if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations(idx) VALUES (?)`, i); err != nil {
@@ -65,7 +71,7 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 			if count > 0 {
 				continue // already applied
 			}
-			if _, err := db.Exec(m); err != nil {
+			if _, err := db.Exec(m); err != nil && !isAlreadyAppliedMigrationError(err) {
 				return nil, fmt.Errorf("apply migration %d: %w", i, err)
 			}
 			if _, err := db.Exec(`INSERT INTO schema_migrations(idx) VALUES (?)`, i); err != nil {
@@ -75,4 +81,22 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func isFreshSchema(db *sql.DB) (bool, error) {
+	var count int
+	err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+		  AND name NOT LIKE 'sqlite_%'
+	`).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+func isAlreadyAppliedMigrationError(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "duplicate column name")
 }
