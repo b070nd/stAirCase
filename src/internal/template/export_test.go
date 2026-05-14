@@ -11,3 +11,6 @@ var PyIdent = pyIdent
 
 // BuildConditionalGroups wraps buildConditionalGroups for black-box tests.
 var BuildConditionalGroups = buildConditionalGroups
+
+// BuildWorkerPathMaps wraps buildWorkerPathMaps for black-box tests.
+var BuildWorkerPathMaps = buildWorkerPathMaps

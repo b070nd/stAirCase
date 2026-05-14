@@ -95,7 +95,7 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 // runPipInstall writes the embedded requirements.txt to tmp/ and runs pip install.
 func runPipInstall(pythonExec, workspaceDir, offlineWheelsDir string) error {
 	reqPath := filepath.Join(workspaceDir, "tmp", "requirements.txt")
-	os.MkdirAll(filepath.Dir(reqPath), 0755)
+	_ = os.MkdirAll(filepath.Dir(reqPath), 0755)
 	if err := os.WriteFile(reqPath, embeddedRequirements, 0644); err != nil {
 		return err
 	}

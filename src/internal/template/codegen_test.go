@@ -321,6 +321,220 @@ func TestGenerateGraphExec_read_file_tool_present(t *testing.T) {
 	assert.Contains(t, content, "def read_file", "generated script must include the read_file tool")
 }
 
+// ─── Phase 6: ToolNode loop ───────────────────────────────────────────────────
+
+func TestGenerateGraphExec_tool_node_per_worker(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	assert.Contains(t, content, "_tool_node_worker",
+		"worker must get a ToolNode instance")
+	assert.Contains(t, content, `_g.add_node("tools_worker"`,
+		"tools_worker must be added to the graph")
+	assert.Contains(t, content, `_g.add_edge("tools_worker", "worker"`,
+		"tools_worker must loop back to worker")
+}
+
+func TestGenerateGraphExec_should_continue_per_worker(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	assert.Contains(t, content, "def _should_continue_worker",
+		"each worker must have a should_continue function")
+	assert.Contains(t, content, "tool_calls",
+		"should_continue must check for tool_calls")
+}
+
+func TestGenerateGraphExec_supervisor_has_no_tool_node(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	assert.NotContains(t, content, "_tool_node_supervisor",
+		"supervisor must NOT get a ToolNode")
+	assert.NotContains(t, content, `"tools_supervisor"`,
+		"supervisor must NOT have a tools node in the graph")
+}
+
+func TestGenerateGraphExec_worker_conditional_edge_includes_tools_route(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	// The conditional edge map for worker must include the tools_worker entry.
+	assert.Contains(t, content, `"tools_worker": "tools_worker"`,
+		"worker's conditional edge map must include the tools_worker route")
+}
+
+func TestGenerateGraphExec_worker_unconditional_edges_not_emitted_as_add_edge(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	// Worker → supervisor unconditional edge must NOT appear as _g.add_edge
+	// (it is subsumed into the conditional edge path-map via should_continue).
+	assert.NotContains(t, content, `_g.add_edge("worker", "supervisor"`,
+		"worker → supervisor must be in the conditional edge map, not add_edge")
+}
+
+func TestGenerateGraphExec_memory_checkpoint_emits_memorysaver(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	params := minimalParams()
+	params.CheckpointType = "memory"
+	require.NoError(t, tmpl.GenerateGraphExec(out, params))
+
+	content := mustReadFile(t, out)
+	assert.Contains(t, content, "MemorySaver",
+		"memory checkpoint_type must import and use MemorySaver")
+	assert.Contains(t, content, "checkpointer=MemorySaver()",
+		"compile must receive the MemorySaver checkpointer")
+}
+
+func TestGenerateGraphExec_no_checkpoint_no_memorysaver(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	params := minimalParams()
+	params.CheckpointType = "none"
+	require.NoError(t, tmpl.GenerateGraphExec(out, params))
+
+	content := mustReadFile(t, out)
+	assert.NotContains(t, content, "MemorySaver",
+		"non-memory checkpoint_type must not import MemorySaver")
+}
+
+func TestGenerateGraphExec_create_file_tool_present(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	assert.Contains(t, content, "def create_file", "create_file tool must be present")
+}
+
+func TestGenerateGraphExec_run_shell_tool_present(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	assert.Contains(t, content, "def run_shell", "run_shell tool must be present")
+	assert.Contains(t, content, "shell_exec",
+		"run_shell must send action_type=shell_exec to the HITL channel")
+}
+
+func TestGenerateGraphExec_request_edit_uses_agent_ctx(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	assert.Contains(t, content, "_agent_ctx.name",
+		"request_edit must use thread-local agent name")
+}
+
+func TestGenerateGraphExec_agent_node_sets_agent_ctx(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "exec.py")
+	require.NoError(t, tmpl.GenerateGraphExec(out, minimalParams()))
+
+	content := mustReadFile(t, out)
+	// Each node function must set the thread-local before calling the LLM.
+	workerBlock := extractNodeBlock(content, "_node_worker")
+	assert.Contains(t, workerBlock, "_agent_ctx.name",
+		"worker node must set _agent_ctx.name")
+}
+
+// ─── Phase 6: BuildWorkerPathMaps ─────────────────────────────────────────────
+
+func TestBuildWorkerPathMaps_always_includes_supervisor_and_tools(t *testing.T) {
+	agents := []tmpl.AgentParams{
+		{Name: "supervisor"},
+		{Name: "worker"},
+	}
+	edges := []tmpl.EdgeParams{
+		{From: "worker", To: "supervisor"}, // unconditional
+	}
+	maps := tmpl.BuildWorkerPathMaps(agents, edges, "supervisor")
+	require.Len(t, maps, 1)
+	wm := maps[0]
+	assert.Equal(t, "worker", wm.AgentName)
+	assert.Equal(t, "worker", wm.AgentIdent)
+
+	labels := make(map[string]string)
+	for _, r := range wm.Routes {
+		labels[r.Label] = r.Target
+	}
+	assert.Equal(t, "tools_worker", labels["tools_worker"],
+		"tools_worker route must always be in path map")
+	assert.Equal(t, "supervisor", labels["supervisor"],
+		"supervisor route must always be in path map")
+}
+
+func TestBuildWorkerPathMaps_conditional_routes_included(t *testing.T) {
+	agents := []tmpl.AgentParams{
+		{Name: "supervisor"},
+		{Name: "coder"},
+	}
+	edges := []tmpl.EdgeParams{
+		{From: "coder", To: "reviewer", Condition: "needs_review"},
+		{From: "coder", To: "END", Condition: "done"},
+	}
+	maps := tmpl.BuildWorkerPathMaps(agents, edges, "supervisor")
+	require.Len(t, maps, 1)
+
+	labels := make(map[string]string)
+	isEND := make(map[string]bool)
+	for _, r := range maps[0].Routes {
+		labels[r.Label] = r.Target
+		isEND[r.Label] = r.IsEND
+	}
+	assert.Equal(t, "reviewer", labels["needs_review"])
+	assert.True(t, isEND["done"], "END target must be flagged IsEND=true")
+}
+
+func TestBuildWorkerPathMaps_supervisor_excluded(t *testing.T) {
+	agents := []tmpl.AgentParams{
+		{Name: "supervisor"},
+		{Name: "w1"},
+		{Name: "w2"},
+	}
+	maps := tmpl.BuildWorkerPathMaps(agents, nil, "supervisor")
+	require.Len(t, maps, 2, "exactly the two workers must appear")
+	for _, m := range maps {
+		assert.NotEqual(t, "supervisor", m.AgentName)
+	}
+}
+
+func TestBuildWorkerPathMaps_no_duplicate_labels(t *testing.T) {
+	agents := []tmpl.AgentParams{
+		{Name: "supervisor"},
+		{Name: "worker"},
+	}
+	// Two conditional edges and one unconditional — supervisor appears in
+	// multiple places but must appear exactly once in the path map.
+	edges := []tmpl.EdgeParams{
+		{From: "worker", To: "supervisor"},                          // unconditional
+		{From: "worker", To: "supervisor", Condition: "also_super"}, // conditional to same target
+	}
+	maps := tmpl.BuildWorkerPathMaps(agents, edges, "supervisor")
+	require.Len(t, maps, 1)
+	seen := map[string]int{}
+	for _, r := range maps[0].Routes {
+		seen[r.Label]++
+	}
+	for label, count := range seen {
+		assert.Equal(t, 1, count, "label %q must appear exactly once", label)
+	}
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 func mustReadFile(t *testing.T, path string) string {

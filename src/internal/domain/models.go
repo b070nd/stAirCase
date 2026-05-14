@@ -38,30 +38,30 @@ type Vendor struct {
 }
 
 type Project struct {
-	ID          int64  `json:"id"`
-	VendorID    int64  `json:"vendor_id"`
-	Name        string `json:"name"`
-	SourcePath  string `json:"source_path,omitempty"`
-	WebhookURL  string `json:"webhook_url,omitempty"`
+	ID         int64  `json:"id"`
+	VendorID   int64  `json:"vendor_id"`
+	Name       string `json:"name"`
+	SourcePath string `json:"source_path,omitempty"`
+	WebhookURL string `json:"webhook_url,omitempty"`
 }
 
 type ProjectDependency struct {
-	ID            int64 `json:"id"`
+	ID              int64 `json:"id"`
 	SourceProjectID int64 `json:"source_project_id"`
 	TargetProjectID int64 `json:"target_project_id"`
 }
 
 type Secret struct {
-	ID             int64  `json:"id"`
-	KeyName        string `json:"key_name"`
-	EncryptedValue string `json:"encrypted_value"`
+	ID                int64  `json:"id"`
+	KeyName           string `json:"key_name"`
+	EncryptedValue    string `json:"encrypted_value"`
 	ScopedToProjectID *int64 `json:"scoped_to_project_id,omitempty"`
 }
 
 type Component struct {
-	ID       int64  `json:"id"`
-	ProjectID int64 `json:"project_id"`
-	Name     string `json:"name"`
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
 }
 
 type Case struct {
@@ -133,4 +133,40 @@ type RunEventLog struct {
 	Timestamp     time.Time `json:"timestamp"`
 	EventHash     string    `json:"event_hash"`
 	GitCommitHash string    `json:"git_commit_hash,omitempty"`
+}
+
+// ─── HITL yield types ─────────────────────────────────────────────────────────
+// Defined here so that packages that handle yield decisions (approvalhttp,
+// policy, tui) do not have to import the ipc package, which also owns the
+// low-level UDS server.  ipc re-exports these as type aliases.
+
+// ProposedEdit describes one search-and-replace change the agent wants to make.
+type ProposedEdit struct {
+	File         string `json:"file"`
+	SearchBlock  string `json:"search_block"`
+	ReplaceBlock string `json:"replace_block"`
+}
+
+// YieldRequest is sent by Python over the IPC socket to request HITL approval.
+type YieldRequest struct {
+	Type            string         `json:"type"` // "yield_request"
+	AgentName       string         `json:"agent_name"`
+	ActionType      string         `json:"action_type"` // "file_edit", "shell_exec", "custom"
+	ProposedEdits   []ProposedEdit `json:"proposed_edits,omitempty"`
+	ReasoningTrace  string         `json:"reasoning_trace"`
+	ConfidenceScore float64        `json:"confidence_score"`
+
+	// BatchID groups related yield requests to prevent TUI fatigue when an
+	// agent proposes several edits in a single logical operation.
+	// Phase 7 implementation: the server will buffer yields sharing the same
+	// BatchID and present them as a single approval screen. For now the field
+	// is accepted on the wire and displayed by the TUI but not yet batched.
+	BatchID string `json:"batch_id,omitempty"`
+}
+
+// YieldResponse is sent by Go back to Python with the operator's decision.
+type YieldResponse struct {
+	Type     string `json:"type"` // "yield_response"
+	Approved bool   `json:"approved"`
+	Feedback string `json:"feedback,omitempty"`
 }

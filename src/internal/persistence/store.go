@@ -57,7 +57,7 @@ func (s *Store) ListVendors() ([]domain.Vendor, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var vs []domain.Vendor
 	for rows.Next() {
 		var v domain.Vendor
@@ -113,7 +113,7 @@ func (s *Store) ListProjectsByVendor(vendorID int64) ([]domain.Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ps []domain.Project
 	for rows.Next() {
 		var p domain.Project
@@ -132,7 +132,7 @@ func (s *Store) ListAllProjects() ([]domain.Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ps []domain.Project
 	for rows.Next() {
 		var p domain.Project
@@ -193,7 +193,7 @@ func (s *Store) ListProjectDependencies(projectID int64) ([]domain.ProjectDepend
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var deps []domain.ProjectDependency
 	for rows.Next() {
 		var d domain.ProjectDependency
@@ -212,7 +212,7 @@ func (s *Store) ListAllProjectDependencies() ([]domain.ProjectDependency, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var deps []domain.ProjectDependency
 	for rows.Next() {
 		var d domain.ProjectDependency
@@ -266,7 +266,7 @@ func (s *Store) ListComponentsByProject(projectID int64) ([]domain.Component, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cs []domain.Component
 	for rows.Next() {
 		var c domain.Component
@@ -324,7 +324,7 @@ func (s *Store) ListSecretsByProject(projectID int64) ([]domain.Secret, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ss []domain.Secret
 	for rows.Next() {
 		var sec domain.Secret
@@ -395,7 +395,7 @@ func (s *Store) ListCasesByProject(projectID int64) ([]domain.Case, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cs []domain.Case
 	for rows.Next() {
 		var c domain.Case
@@ -474,7 +474,7 @@ func (s *Store) ListUserStoriesByCase(caseID int64) ([]domain.UserStory, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var stories []domain.UserStory
 	for rows.Next() {
 		var us domain.UserStory
@@ -548,7 +548,7 @@ func (s *Store) ListTopologiesByProject(projectID int64) ([]domain.SwarmTopology
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ts []domain.SwarmTopology
 	for rows.Next() {
 		var t domain.SwarmTopology
@@ -596,7 +596,7 @@ func (s *Store) ListAgentNodes(topologyID int64) ([]domain.AgentNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var nodes []domain.AgentNode
 	for rows.Next() {
 		var n domain.AgentNode
@@ -629,7 +629,7 @@ func (s *Store) ListAgentTools(agentID int64) ([]domain.AgentTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tools []domain.AgentTool
 	for rows.Next() {
 		var t domain.AgentTool
@@ -662,7 +662,7 @@ func (s *Store) ListEdges(topologyID int64) ([]domain.Edge, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var edges []domain.Edge
 	for rows.Next() {
 		var e domain.Edge
@@ -747,7 +747,7 @@ func (s *Store) ListRunsByCase(caseID int64) ([]domain.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanRuns(rows)
 }
 
@@ -759,7 +759,7 @@ func (s *Store) ListRunsByStatus(status string) ([]domain.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanRuns(rows)
 }
 
@@ -800,6 +800,16 @@ func (s *Store) GetLastEventHash(runID int64) (string, error) {
 // guard protects callers that bypass the IPC layer (e.g. tests, future CLIs).
 const maxEventLogPayload = 64 * 1024 // 64 KiB
 
+// ComputeEventHash is the single source of truth for the SOC2 chain-hash
+// algorithm: SHA-256(payload ‖ prevHash ‖ gitCommitHash).
+//
+// Both AppendEventLog and external verifiers (audit export/verify) must call
+// this function so that any future change to the algorithm stays in one place.
+func ComputeEventHash(payload, prevHash, gitCommitHash string) string {
+	h := sha256.Sum256([]byte(payload + prevHash + gitCommitHash))
+	return fmt.Sprintf("%x", h)
+}
+
 // AppendEventLog writes a tamper-proof entry: hash = SHA-256(payload + prevHash + gitCommitHash).
 // gitCommitHash is stored per-entry so that inspect log can verify each entry
 // with the exact value that was current when the entry was written — the hash
@@ -809,8 +819,7 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 	if len(payload) > maxEventLogPayload {
 		payload = payload[:maxEventLogPayload]
 	}
-	h := sha256.Sum256([]byte(payload + prevHash + gitCommitHash))
-	eventHash := fmt.Sprintf("%x", h)
+	eventHash := ComputeEventHash(payload, prevHash, gitCommitHash)
 	now := time.Now()
 	res, err := s.db.Exec(
 		`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash)
@@ -840,7 +849,7 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var logs []domain.RunEventLog
 	for rows.Next() {
 		var l domain.RunEventLog

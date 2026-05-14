@@ -126,6 +126,9 @@ func (m yieldModel) View() string {
 	if m.req.ConfidenceScore > 0 {
 		sb.WriteString(styleMeta.Render(fmt.Sprintf("   Confidence: %.0f%%", m.req.ConfidenceScore*100)))
 	}
+	if m.req.BatchID != "" {
+		sb.WriteString(styleMeta.Render(fmt.Sprintf("   Batch: %s", m.req.BatchID)))
+	}
 	sb.WriteString("\n\n")
 
 	sb.WriteString(styleLabel.Render("Reasoning"))

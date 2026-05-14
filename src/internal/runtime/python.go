@@ -1,3 +1,5 @@
+//go:build !windows
+
 package runtime
 
 import (
@@ -8,6 +10,8 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"syscall"
+	"time"
 )
 
 // BootstrapToken generates a cryptographically secure 32-byte random token
@@ -45,9 +49,26 @@ func (p *PythonProcess) PID() int {
 	return p.cmd.Process.Pid
 }
 
-// Kill cancels the process context, which causes exec.CommandContext to send
-// SIGKILL to the Python process and all of its children.
+// Kill terminates the Python process gracefully: SIGTERM is sent first to
+// give the process a chance to flush state, then after a 5-second grace period
+// the entire process group receives SIGKILL (CHECK 5.4.5).
+//
+// Sending signals to -pid (negative) targets the process group created by
+// Setpgid:true in LaunchPython (CHECK 5.4.3), so orphaned Python children are
+// also cleaned up.
 func (p *PythonProcess) Kill() {
+	if p.cmd.Process != nil {
+		// SIGTERM to the whole process group (negative PID = group).
+		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+		select {
+		case <-p.Done:
+			p.cancel() // release context resources
+			return
+		case <-time.After(5 * time.Second):
+			// Grace period expired — hard-kill the process group.
+			_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+		}
+	}
 	p.cancel()
 }
 
@@ -67,6 +88,11 @@ func LaunchPython(ctx context.Context, wsDir, scriptPath, socketPath, token stri
 
 	procCtx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(procCtx, pythonBin, scriptPath)
+
+	// Place the Python process in its own process group so that signals sent
+	// via Kill() (negative PID = group) reach all Python children, not just the
+	// direct subprocess (CHECK 5.4.3).
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Inherit stderr so Python tracebacks surface in the terminal.
 	cmd.Stderr = nil // nil → inherited from parent process
@@ -93,7 +119,7 @@ func LaunchPython(ctx context.Context, wsDir, scriptPath, socketPath, token stri
 		_ = cmd.Process.Kill()
 		return nil, fmt.Errorf("write bootstrap: %w", err)
 	}
-	stdin.Close()
+	_ = stdin.Close()
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()

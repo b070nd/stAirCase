@@ -55,7 +55,7 @@ func TestEstimateCost_unknown_model_returns_zero(t *testing.T) {
 func TestDisplay_BudgetExceeded_no_cap(t *testing.T) {
 	tr := monitor.NewTracker(1, 1, "proj", "main")
 	tr.Record("agent", "claude-opus-4-6", 1_000_000, 1_000_000) // very expensive
-	d := monitor.NewDisplay(tr, 0)                               // no cap
+	d := monitor.NewDisplay(tr, 0)                              // no cap
 	assert.False(t, d.BudgetExceeded())
 }
 

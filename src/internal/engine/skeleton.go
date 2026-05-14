@@ -129,7 +129,7 @@ func loadIgnorePatterns(repoPath string) ([]string, error) {
 				patterns = append(patterns, line)
 			}
 		}
-		f.Close()
+		_ = f.Close()
 		if err := sc.Err(); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: read error: %v", name, err))
 		}
@@ -246,7 +246,7 @@ func extractSignatures(path string) []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var sigs []string
 	sc := bufio.NewScanner(f)
