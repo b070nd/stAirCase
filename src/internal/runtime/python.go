@@ -3,11 +3,13 @@
 package runtime
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"syscall"
@@ -94,8 +96,20 @@ func LaunchPython(ctx context.Context, wsDir, scriptPath, socketPath, token stri
 	// direct subprocess (CHECK 5.4.3).
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Inherit stderr so Python tracebacks surface in the terminal.
-	cmd.Stderr = nil // nil → inherited from parent process
+	// Pipe Python's stderr through a goroutine that prefixes each line with
+	// "[python]" so tracebacks are distinguishable in the orchestrator log
+	// (CHECK 5.4.4 — stderr must be captured and routed, not silently inherited).
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+	go func() {
+		sc := bufio.NewScanner(stderrPipe)
+		for sc.Scan() {
+			log.Printf("[python] %s", sc.Text())
+		}
+	}()
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
