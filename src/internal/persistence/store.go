@@ -19,6 +19,10 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// DB returns the underlying *sql.DB for use in tests and migration tooling.
+// Production code should prefer the typed Store methods.
+func (s *Store) DB() *sql.DB { return s.db }
+
 // ─── Vendor ───────────────────────────────────────────────────────────────────
 
 func (s *Store) CreateVendor(name string) (*domain.Vendor, error) {
@@ -859,6 +863,28 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
+}
+
+// VerifyChain recomputes every event hash for the run and returns the first
+// position (1-based) where the stored hash does not match the recomputed value.
+// Returns nil when the chain is intact.
+//
+// This is CHECK 9.1.2 — used by "staircase audit verify" and the tamper test.
+func (s *Store) VerifyChain(runID int64) error {
+	logs, err := s.ListEventLogs(runID)
+	if err != nil {
+		return fmt.Errorf("verify chain: list events: %w", err)
+	}
+	prevHash := ""
+	for i, entry := range logs {
+		want := ComputeEventHash(entry.Payload, prevHash, entry.GitCommitHash)
+		if entry.EventHash != want {
+			return fmt.Errorf("verify chain: hash mismatch at entry %d (id=%d): stored=%s computed=%s",
+				i+1, entry.ID, entry.EventHash, want)
+		}
+		prevHash = entry.EventHash
+	}
+	return nil
 }
 
 // KillStaleRuns marks any RUNNING run for caseID that started more than maxAge

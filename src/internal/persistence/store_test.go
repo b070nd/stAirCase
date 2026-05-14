@@ -495,6 +495,47 @@ func TestAppendEventLog_payload_capped_at_store_level(t *testing.T) {
 	assert.LessOrEqual(t, len(entry.Payload), 64*1024, "store must cap payload at 64 KiB")
 }
 
+// ─── VerifyChain / CHECK 9.1.2-9.1.3 ─────────────────────────────────────────
+
+func TestVerifyChain_intact_chain_returns_nil(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
+	run, _ := s.CreateRun(caseID, topo.Version, "main")
+
+	e1, _ := s.AppendEventLog(run.ID, "state_emit", "payload1", "", "")
+	_, _ = s.AppendEventLog(run.ID, "state_emit", "payload2", e1.EventHash, "git123")
+
+	assert.NoError(t, s.VerifyChain(run.ID), "intact chain must verify without error")
+}
+
+func TestVerifyChain_tampered_payload_detected(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
+	run, _ := s.CreateRun(caseID, topo.Version, "main")
+
+	e1, _ := s.AppendEventLog(run.ID, "state_emit", "original", "", "")
+	_, _ = s.AppendEventLog(run.ID, "state_emit", "second", e1.EventHash, "")
+
+	// Tamper: directly update the first entry's payload via raw SQL.
+	_, err := s.DB().Exec(`UPDATE run_event_logs SET payload = 'tampered' WHERE id = ?`, e1.ID)
+	require.NoError(t, err)
+
+	verr := s.VerifyChain(run.ID)
+	require.Error(t, verr, "tampered chain must fail verification")
+	assert.Contains(t, verr.Error(), "entry 1", "error must identify the first broken link")
+}
+
+func TestVerifyChain_empty_run_returns_nil(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
+	run, _ := s.CreateRun(caseID, topo.Version, "main")
+
+	assert.NoError(t, s.VerifyChain(run.ID), "empty run has no chain to verify")
+}
+
 // ─── DeleteComponent consistency ─────────────────────────────────────────────
 
 func TestDeleteComponent_not_found_returns_error(t *testing.T) {

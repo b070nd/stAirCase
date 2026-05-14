@@ -18,7 +18,20 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+// TestMain enables goroutine-leak detection for the entire IPC test suite
+// (CHECK 12.4.4). Any goroutine started during a test that has not exited by
+// the time the test finishes will be reported as a leak.
+func TestMain(m *testing.M) {
+	// database/sql.(*DB).connectionOpener is a background goroutine managed by
+	// the SQL driver; it exits asynchronously after db.Close(). Filter it to
+	// avoid a false-positive leak report on legitimate test teardown.
+	goleak.VerifyTestMain(m,
+		goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"),
+	)
+}
 
 // ─── test helpers ─────────────────────────────────────────────────────────────
 
