@@ -333,6 +333,10 @@ func TestServer_auth_list_requires_token(t *testing.T) {
 
 // ─── concurrent decision race ──────────────────────────────────────────────────
 
+// TestDecisionRace is the checklist-named alias for
+// TestServer_decision_race_first_wins (CHECK 8.6).
+func TestDecisionRace(t *testing.T) { TestServer_decision_race_first_wins(t) }
+
 // TestServer_decision_race_first_wins verifies that when two goroutines race to
 // approve the same yield, exactly one gets HTTP 200 and the other gets 404 (the
 // yield is already gone).  The channel receives exactly one response.

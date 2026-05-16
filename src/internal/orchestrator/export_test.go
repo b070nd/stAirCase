@@ -18,3 +18,12 @@ func ExportedTimePtr(t time.Time) *time.Time { return timePtr(t) }
 func ExportedSendWebhookYield(url string, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
 	return sendWebhookYield(url, req)
 }
+
+// ExportedScrubSecrets exposes scrubSecrets for whitebox tests (CHECK 4.4.3).
+func ExportedScrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.IpcYieldRequest {
+	return scrubSecrets(req, activeValues)
+}
+
+// ExportedRunGates exposes runGates for whitebox testing of the quality-gate
+// pre-flight path without requiring a full Run() invocation.
+func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID) }

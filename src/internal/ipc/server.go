@@ -380,10 +380,12 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			}
 			secret, err := s.store.GetSecret(req.KeyName, req.ProjectID)
 			if err != nil {
+				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "store error: " + err.Error()})
 				break
 			}
 			if secret == nil {
+				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "not_found") // CHECK 4.4.1
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "not found"})
 				break
 			}
@@ -391,9 +393,11 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			// the AES key never crosses the UDS boundary into Python.
 			plaintext, err := crypto.Decrypt(s.aesKey, secret.EncryptedValue)
 			if err != nil {
+				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "decrypt error"})
 				break
 			}
+			_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "success") // CHECK 4.4.1
 			_ = enc.Encode(IpcSecretResponse{
 				Type:           "secret_response",
 				PlaintextValue: plaintext,

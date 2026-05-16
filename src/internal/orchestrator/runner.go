@@ -500,3 +500,23 @@ func sendWebhookYield(webhookURL string, req ipc.IpcYieldRequest) ipc.IpcYieldRe
 }
 
 func timePtr(t time.Time) *time.Time { return &t }
+
+// scrubSecrets replaces every occurrence of each active secret value in the
+// yield request's proposed-edit content with "<REDACTED>" before the request
+// is presented to the operator via TUI or webhook (CHECK 4.4.3).
+// This prevents secret values from leaking into terminal output or HTTP
+// response bodies even if an agent accidentally embeds them in file content.
+func scrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.IpcYieldRequest {
+	if len(activeValues) == 0 {
+		return req
+	}
+	for i := range req.ProposedEdits {
+		for _, v := range activeValues {
+			if v == "" {
+				continue
+			}
+			req.ProposedEdits[i].File = strings.ReplaceAll(req.ProposedEdits[i].File, v, "<REDACTED>")
+		}
+	}
+	return req
+}

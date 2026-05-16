@@ -662,3 +662,79 @@ func TestCreateSecret_global_and_project_scoped_same_key_allowed(t *testing.T) {
 	_, err = s.CreateSecret("SHARED_KEY", "project_val", &p.ID)
 	require.NoError(t, err, "one global + one project-scoped entry for the same key must be allowed")
 }
+
+// ─── Secret at-use audit (CHECK 4.4.2) ────────────────────────────────────────
+
+// TestAtUseAuditCounts verifies that N secret accesses produce exactly N rows
+// in secret_access_log for the given run (CHECK 4.4.2).
+func TestAtUseAuditCounts(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	projectID := mustGetProjectID(t, s, caseID)
+	topo, _ := s.CreateSwarmTopology(projectID, "sup", "memory", "langgraph")
+	run, err := s.CreateRun(caseID, topo.Version, "main")
+	require.NoError(t, err)
+
+	const N = 3
+	for i := range N {
+		key := fmt.Sprintf("KEY_%d", i)
+		require.NoError(t, s.LogSecretAccess(&run.ID, key, "success"))
+	}
+	// One additional error outcome to confirm mixed outcomes are counted.
+	require.NoError(t, s.LogSecretAccess(&run.ID, "MISSING_KEY", "not_found"))
+
+	count, err := s.CountSecretAccesses(run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, N+1, count, "secret_access_log must have one row per LogSecretAccess call")
+}
+
+// TestAtUseAuditCounts_nil_run_id verifies that LogSecretAccess accepts a nil
+// run_id for calls made outside of a run context (CHECK 4.4.1).
+func TestAtUseAuditCounts_nil_run_id(t *testing.T) {
+	s := newTestStore(t)
+	err := s.LogSecretAccess(nil, "SOME_KEY", "success")
+	assert.NoError(t, err, "LogSecretAccess with nil runID must not error")
+}
+
+// TestRotateSecrets_re_encrypts_all verifies that RotateSecrets re-encrypts
+// every secret and bumps its version (CHECK 4.3.1 / 4.3.2).
+func TestRotateSecrets_re_encrypts_all(t *testing.T) {
+	s := newTestStore(t)
+
+	// Minimal key and codec stubs — just ensure the round-trip works.
+	oldKey := make([]byte, 32)
+	newKey := make([]byte, 32)
+	newKey[0] = 1 // different from oldKey
+
+	encryptFn := func(key []byte, pt string) (string, error) {
+		// XOR with first key byte — deterministic stub, not real crypto.
+		out := make([]byte, len(pt))
+		for i, b := range []byte(pt) {
+			out[i] = b ^ key[0]
+		}
+		return string(out), nil
+	}
+	decryptFn := func(key []byte, ct string) (string, error) {
+		return encryptFn(key, ct) // XOR is self-inverse
+	}
+
+	enc, _ := encryptFn(oldKey, "secret1")
+	_, err := s.CreateSecret("K1", enc, nil)
+	require.NoError(t, err)
+
+	enc2, _ := encryptFn(oldKey, "secret2")
+	_, err = s.CreateSecret("K2", enc2, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, s.RotateSecrets(oldKey, newKey, decryptFn, encryptFn))
+
+	// After rotation, the stored ciphertext should decrypt with newKey but not oldKey.
+	sec, err := s.GetSecret("K1", nil)
+	require.NoError(t, err)
+	pt, err := decryptFn(newKey, sec.EncryptedValue)
+	require.NoError(t, err)
+	assert.Equal(t, "secret1", pt, "rotated secret must decrypt with new key")
+
+	ptWrong, _ := decryptFn(oldKey, sec.EncryptedValue)
+	assert.NotEqual(t, "secret1", ptWrong, "rotated secret must not decrypt with old key")
+}

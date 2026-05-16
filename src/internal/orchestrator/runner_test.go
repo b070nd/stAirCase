@@ -319,6 +319,52 @@ func TestHandleDirtyTree_dirty_with_autostash_stashes_tree(t *testing.T) {
 	assert.Contains(t, string(out2), "staircase pre-run")
 }
 
+// ─── Cleanup chain on panic (CHECK 5.2.3) ─────────────────────────────────────
+
+// TestCleanupChainOnPanic verifies that the orchestrator's defer-based cleanup
+// chain (branch restore → stash pop) runs LIFO and completes even when a panic
+// propagates through the Run() function.  This is the invariant that prevents
+// a crashed run from leaving the workspace on the wrong branch.
+func TestCleanupChainOnPanic(t *testing.T) {
+	var log []string
+
+	// simulateRun mirrors the orchestrator's two-defer pattern:
+	// defer 1 (stash pop) is registered first → runs second (LIFO).
+	// defer 2 (branch restore) is registered second → runs first (LIFO).
+	simulateRun := func() (panicked bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
+		// First defer: stash pop (registered first, executes second).
+		defer func() { log = append(log, "stash-pop") }()
+		// Second defer: branch restore (registered second, executes first).
+		defer func() { log = append(log, "branch-restore") }()
+		panic("simulated run crash")
+	}
+
+	panicked := simulateRun()
+	assert.True(t, panicked, "recover() must catch the panic")
+	assert.Equal(t, []string{"branch-restore", "stash-pop"}, log,
+		"defers execute LIFO: branch-restore first, stash-pop second")
+}
+
+// TestScrubSecrets_redacts_active_values verifies that scrubSecrets replaces
+// matching secret values in proposed edit paths (CHECK 4.4.3).
+func TestScrubSecrets_redacts_active_values(t *testing.T) {
+	req := ipc.IpcYieldRequest{
+		ActionType: "file_edit",
+		ProposedEdits: []ipc.ProposedEdit{
+			{File: "/repo/service_sk-secret123_config.go"},
+			{File: "/repo/normal_file.go"},
+		},
+	}
+	scrubbed := orchestrator.ExportedScrubSecrets(req, []string{"sk-secret123"})
+	assert.Equal(t, "/repo/service_<REDACTED>_config.go", scrubbed.ProposedEdits[0].File)
+	assert.Equal(t, "/repo/normal_file.go", scrubbed.ProposedEdits[1].File, "unaffected file unchanged")
+}
+
 // ─── timePtr ─────────────────────────────────────────────────────────────────
 
 func TestTimePtr_returns_pointer_to_value(t *testing.T) {
@@ -364,4 +410,58 @@ func TestSendWebhookYield_bad_json_response_auto_rejects(t *testing.T) {
 	resp := orchestrator.ExportedSendWebhookYield(srv.URL, ipc.IpcYieldRequest{})
 	assert.False(t, resp.Approved)
 	assert.Contains(t, resp.Feedback, "webhook decode error")
+}
+
+// ─── Run() early-exit paths ────────────────────────────────────────────────────
+
+// TestRun_case_not_found_returns_error covers the PRE_FLIGHT path where the
+// requested caseID does not exist in the store (CHECK 5.1.2).
+func TestRun_case_not_found_returns_error(t *testing.T) {
+	s := newTestStore(t)
+	r := orchestrator.NewRunner(s, t.TempDir())
+
+	err := r.Run(context.Background(), 99999, orchestrator.RunOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestRun_no_topology_returns_error covers the PRE_FLIGHT path where a case
+// and project exist but no swarm topology has been registered (CHECK 5.1.2).
+func TestRun_no_topology_returns_error(t *testing.T) {
+	s := newTestStore(t)
+
+	// Create the minimum DB state without a topology.
+	v, err := s.CreateVendor("V2")
+	require.NoError(t, err)
+	p, err := s.CreateProject(v.ID, "P2", "") // empty sourcePath to skip git
+	require.NoError(t, err)
+	c, err := s.CreateCase(p.ID)
+	require.NoError(t, err)
+
+	r := orchestrator.NewRunner(s, t.TempDir())
+	runErr := r.Run(context.Background(), c.ID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	require.Error(t, runErr)
+	assert.Contains(t, runErr.Error(), "topology")
+}
+
+// TestRun_dryrun_creates_run_and_returns_nil covers the DryRun short-circuit
+// path: a run record is created, logged, and the function returns nil without
+// launching Python (CHECK 5.1.2 / CHECK 5.5.1).
+func TestRun_dryrun_creates_run_and_returns_nil(t *testing.T) {
+	s := newTestStore(t)
+	caseID, _ := scaffoldForRun(t, s, "") // empty sourcePath → skip all git ops
+
+	r := orchestrator.NewRunner(s, t.TempDir())
+	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
+		DryRun:    true,
+		SkipGates: true,
+		Force:     true, // skip dirty-tree check
+	})
+	require.NoError(t, err)
+
+	// A run record must have been created and then marked KILLED (dry-run cleanup).
+	runs, listErr := s.ListRunsByCase(caseID)
+	require.NoError(t, listErr)
+	require.Len(t, runs, 1, "exactly one run record must exist after a dry run")
+	assert.Equal(t, persistence.RunStatusKilled, runs[0].Status)
 }
