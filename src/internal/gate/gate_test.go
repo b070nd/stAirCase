@@ -1,6 +1,7 @@
 package gate_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -720,4 +721,135 @@ func TestRuntimeGitAvailableGate_with_source_path_and_git_present(t *testing.T) 
 	r := gate.RuntimeGitAvailableGate.Run(ctx)
 	// git is available in the test environment; expect pass.
 	assert.Equal(t, gate.StatusPass, r.Status)
+}
+
+// ─── Plugin gate tests ────────────────────────────────────────────────────────
+
+// writePluginScript writes a shell script to wsDir and registers it in gates.json.
+// The script body is the content between #!/bin/sh and EOF.
+// Returns the gate.Context with WsDir pointing to wsDir.
+func writePluginScript(t *testing.T, wsDir, scriptBody string, severity gate.Severity) gate.Context {
+	t.Helper()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	store := persistence.NewStore(db)
+
+	scriptPath := filepath.Join(wsDir, "plugin.sh")
+	script := "#!/bin/sh\n" + scriptBody
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+
+	type gatesDef struct {
+		Name           string `json:"name"`
+		Category       string `json:"category"`
+		Severity       string `json:"severity"`
+		Script         string `json:"script"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
+	}
+	defs := []gatesDef{{
+		Name:           "test.plugin",
+		Category:       "test",
+		Severity:       string(severity),
+		Script:         scriptPath,
+		TimeoutSeconds: 5,
+	}}
+	raw, _ := json.Marshal(defs)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"), raw, 0o644))
+
+	return gate.Context{WsDir: wsDir, Store: store}
+}
+
+func TestPlugin_pass(t *testing.T) {
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir,
+		`printf '{"status":"PASS","message":"all good"}\n'`,
+		gate.SeverityWarn,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusPass, report.Gates[0].Status)
+	assert.Equal(t, "all good", report.Gates[0].Message)
+}
+
+func TestPlugin_warn(t *testing.T) {
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir,
+		`printf '{"status":"WARN","message":"advisory"}\n'`,
+		gate.SeverityWarn,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusWarn, report.Gates[0].Status)
+}
+
+// TestPluginMalformedOutput verifies CHECK 11.5: malformed plugin output
+// results in a FAIL gate, never a panic or crash.
+func TestPluginMalformedOutput(t *testing.T) {
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir,
+		`printf 'this is not json at all\n'`,
+		gate.SeverityWarn,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusFail, report.Gates[0].Status, "malformed output must be FAIL")
+	assert.Contains(t, report.Gates[0].Message, "malformed output", "message must explain the parse error")
+}
+
+// TestPluginIsolation verifies CHECK 11.6: the plugin subprocess cannot read
+// $STAIRCASE_DIR from its environment — the env is cleared before exec.
+func TestPluginIsolation(t *testing.T) {
+	t.Setenv("STAIRCASE_DIR", "/secret/workspace/path")
+	wsDir := t.TempDir()
+	// The script checks whether STAIRCASE_DIR is set; passes iff it is absent.
+	ctx := writePluginScript(t, wsDir, `
+if [ -n "${STAIRCASE_DIR+x}" ]; then
+    printf '{"status":"FAIL","message":"STAIRCASE_DIR leaked into plugin env"}\n'
+else
+    printf '{"status":"PASS","message":"STAIRCASE_DIR not in env"}\n'
+fi`,
+		gate.SeverityBlock,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusPass, report.Gates[0].Status,
+		"plugin must not see STAIRCASE_DIR: %s", report.Gates[0].Message)
+}
+
+// TestPlugin_timeout verifies CHECK 11.4: a plugin that exceeds its timeout
+// is killed and returns StatusFail within the deadline.
+func TestPlugin_timeout(t *testing.T) {
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	store := persistence.NewStore(db)
+
+	scriptPath := filepath.Join(wsDir, "slow_plugin.sh")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/sh\nsleep 99\n"), 0o755))
+
+	type gatesDef struct {
+		Name           string `json:"name"`
+		Category       string `json:"category"`
+		Severity       string `json:"severity"`
+		Script         string `json:"script"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
+	}
+	raw, _ := json.Marshal([]gatesDef{{
+		Name:           "test.slow",
+		Category:       "test",
+		Severity:       "WARN",
+		Script:         scriptPath,
+		TimeoutSeconds: 1, // 1-second timeout — script sleeps for 99 s
+	}})
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"), raw, 0o644))
+
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(gate.Context{WsDir: wsDir, Store: store})
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusFail, report.Gates[0].Status, "timed-out plugin must be FAIL")
 }
