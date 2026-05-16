@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,6 +22,7 @@ import (
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/approvalhttp"
+	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/gate"
 	"github.com/b070nd/staircase-core/src/internal/ipc"
@@ -114,7 +114,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if opts.Reconcile && project.SourcePath != "" {
 		result, err := r.Reconcile(ctx, caseID, project.SourcePath, true)
 		if err != nil {
-			log.Printf("warn: reconcile: %v", err)
+			obs.Log.Warn("reconcile", "err", err)
 		} else if len(result.StalledRuns) > 0 || len(result.OrphanBranches) > 0 {
 			fmt.Printf("   🔄 Reconcile: %d stale run(s) killed, %d orphan branch(es) pruned\n",
 				len(result.StalledRuns), len(result.OrphanBranches))
@@ -134,7 +134,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		if autoStashed && project.SourcePath != "" {
 			// go-git v5 has no stash pop support; keep as exec.Command.
 			if out, err := exec.Command("git", "-C", project.SourcePath, "stash", "pop").CombinedOutput(); err != nil {
-				log.Printf("warn: stash pop after run: %s", out)
+				obs.Log.Warn("stash pop after run", "output", string(out))
 			}
 		}
 	}()
@@ -166,7 +166,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 
 	// ── Create run record ─────────────────────────────────────────────────────
 	if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
-		log.Printf("warn: kill stale runs: %v", err)
+		obs.Log.Warn("kill stale runs", "err", err)
 	} else if n > 0 {
 		fmt.Printf("   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
 	}
@@ -193,7 +193,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		r.phase = PhaseBranchRestore
 		if runBranchCreated && gr != nil && finalStatus != persistence.RunStatusSuccess {
 			if err := gr.CheckoutBranch(gitBranch); err != nil {
-				log.Printf("warn: restore branch to %q: %v", gitBranch, err)
+				obs.Log.Warn("restore branch", "branch", gitBranch, "err", err)
 			}
 		}
 	}()
@@ -238,7 +238,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 
 	policyEngine, err := policy.LoadEngine(r.wsDir)
 	if err != nil {
-		log.Printf("warn: load policy: %v — proceeding without auto-approval", err)
+		obs.Log.Warn("load policy — proceeding without auto-approval", "err", err)
 		policyEngine = &policy.Engine{}
 	}
 
@@ -309,7 +309,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	// ── AGENT_LOOP ────────────────────────────────────────────────────────────
 	r.phase = PhaseAgentLoop
 	if err := r.store.UpdateCaseStatus(caseID, persistence.CaseStatusRunning); err != nil {
-		log.Printf("warn: update case status: %v", err)
+		obs.Log.Warn("update case status", "err", err)
 	}
 
 runLoop:
@@ -480,13 +480,13 @@ func sendWebhookYield(webhookURL string, req ipc.IpcYieldRequest) ipc.IpcYieldRe
 	body, _ := json.Marshal(req)
 	resp, err := webhookClient.Post(webhookURL, "application/json", bytes.NewReader(body))
 	if err != nil {
-		fmt.Printf("   ⚠️  Webhook POST failed: %v — auto-rejecting\n", err)
+		obs.Log.Warn("webhook POST failed — auto-rejecting", "err", err)
 		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "webhook error: " + err.Error()}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var yieldResp ipc.IpcYieldResponse
 	if err := json.NewDecoder(resp.Body).Decode(&yieldResp); err != nil {
-		fmt.Printf("   ⚠️  Webhook response decode failed: %v — auto-rejecting\n", err)
+		obs.Log.Warn("webhook response decode failed — auto-rejecting", "err", err)
 		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "webhook decode error: " + err.Error()}
 	}
 	if yieldResp.Type == "" {
