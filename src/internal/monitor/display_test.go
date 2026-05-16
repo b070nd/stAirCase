@@ -94,3 +94,26 @@ func TestDisplay_BudgetExceeded_under_cap(t *testing.T) {
 	d := monitor.NewDisplay(tr, 100.00)
 	assert.False(t, d.BudgetExceeded(), "small spend should not exceed $100 cap")
 }
+
+func TestDisplay_Render_does_not_panic(t *testing.T) {
+	d, tr := newTestDisplay(t)
+	tr.Record("planner", "claude-sonnet-4-6", 1000, 200)
+	d.AddActivity("phase: boot")
+	d.Render() // writes ANSI to stdout — no assertion, just no panic
+}
+
+func TestDisplay_Render_while_paused_is_noop(t *testing.T) {
+	d, _ := newTestDisplay(t)
+	d.Pause()
+	d.Render() // must short-circuit without panic
+}
+
+func TestDisplay_Final_success_does_not_panic(t *testing.T) {
+	d, _ := newTestDisplay(t)
+	d.Final("run complete") // must not panic
+}
+
+func TestDisplay_Final_failure_does_not_panic(t *testing.T) {
+	d, _ := newTestDisplay(t)
+	d.Final("FAIL: timeout") // status contains FAIL — alternate branch
+}

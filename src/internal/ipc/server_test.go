@@ -781,3 +781,42 @@ func TestServer_SetGitCommitHash_reflected_in_log(t *testing.T) {
 	// The event_hash is SHA-256(payload+""+gitHash); just verify it's present.
 	assert.NotEmpty(t, logs[0].EventHash)
 }
+
+// ─── Secret store error ───────────────────────────────────────────────────────
+
+// TestServer_secret_request_store_error_returns_error verifies that a DB error
+// on GetSecret returns an error response rather than panicking or hanging.
+// This covers the GetSecret-error branch and the LogSecretAccess call for that
+// path, which are not reachable via the "not found" or "decrypt error" tests.
+func TestServer_secret_request_store_error_returns_error(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("flock-based test setup not applicable on Windows")
+	}
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	store := persistence.NewStore(db)
+	// Close the DB now — subsequent queries will fail with "sql: database is closed".
+	require.NoError(t, db.Close())
+
+	sockDir, err := os.MkdirTemp("", "ipc-test-storeErr-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+
+	token := "test-token-32-bytes-padded-here!"
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, token, store, make([]byte, 32))
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, srv.Start(ctx))
+	t.Cleanup(cancel)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{
+		Type:    "secret_request",
+		KeyName: "ANY_KEY",
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcSecretResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, "secret_response", resp.Type)
+	assert.Contains(t, resp.Error, "store error", "closed DB must produce a store error response")
+}

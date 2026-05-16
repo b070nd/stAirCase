@@ -58,9 +58,10 @@ func (r *Runner) Reconcile(_ context.Context, caseID int64, sourcePath string, p
 
 	// ── 3. Prune orphan branches if requested ─────────────────────────────────
 	if pruneBranches && len(orphans) > 0 {
+		gr, grErr := OpenGitRepo(sourcePath)
 		var stillOrphaned []string
 		for _, branch := range orphans {
-			if _, err := gitOutput(sourcePath, "branch", "-D", branch); err != nil {
+			if grErr != nil || gr.DeleteBranch(branch) != nil {
 				stillOrphaned = append(stillOrphaned, branch) // could not delete
 			}
 		}
@@ -98,22 +99,17 @@ func (r *Runner) killStaleRunRecords(caseID int64) ([]int64, error) {
 // detectOrphanBranches returns staircase/run-* branch names in repoPath whose
 // corresponding DB run record is NOT in RUNNING status (or does not exist).
 func (r *Runner) detectOrphanBranches(repoPath string) ([]string, error) {
-	out, err := gitOutput(repoPath, "for-each-ref",
-		"--format=%(refname:short)", "refs/heads/staircase/run-*")
+	gr, err := OpenGitRepo(repoPath)
 	if err != nil {
 		return nil, err
 	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return nil, nil
+	branches, err := gr.ListBranches("staircase/run-")
+	if err != nil {
+		return nil, err
 	}
 
 	var orphans []string
-	for _, branch := range strings.Split(out, "\n") {
-		branch = strings.TrimSpace(branch)
-		if branch == "" {
-			continue
-		}
+	for _, branch := range branches {
 		suffix := strings.TrimPrefix(branch, "staircase/run-")
 		runID, err := strconv.ParseInt(suffix, 10, 64)
 		if err != nil {

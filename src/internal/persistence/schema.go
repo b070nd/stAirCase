@@ -36,7 +36,21 @@ CREATE TABLE IF NOT EXISTS secrets (
     key_name TEXT NOT NULL,
     encrypted_value TEXT NOT NULL,
     scoped_to_project_id INTEGER,
+    version INTEGER NOT NULL DEFAULT 1,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+    encryption_scheme TEXT NOT NULL DEFAULT 'aes-256-gcm',
     FOREIGN KEY (scoped_to_project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- Secret access audit log (SOC2 at-use audit, CHECK 4.1.3).
+-- run_id is SET NULL on run delete so audit history is never silently lost.
+CREATE TABLE IF NOT EXISTS secret_access_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    key_name TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN ('success','error','not_found')),
+    accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE SET NULL
 );
 -- Enforce deterministic secret resolution: one global entry and one per-project entry per key.
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_secrets_global
@@ -180,4 +194,17 @@ var Migrations = []string{
 	    ON secrets(key_name, scoped_to_project_id) WHERE scoped_to_project_id IS NOT NULL`,
 	`ALTER TABLE projects ADD COLUMN default_model TEXT`,
 	`ALTER TABLE projects ADD COLUMN budget_usd_per_run REAL DEFAULT 0`,
+	// §4.1.1: add versioning and activation columns to secrets (idx 8-10).
+	`ALTER TABLE secrets ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE secrets ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE secrets ADD COLUMN encryption_scheme TEXT NOT NULL DEFAULT 'aes-256-gcm'`,
+	// §4.1.3: secret at-use audit log; run_id SET NULL on delete so history is never lost (idx 11).
+	`CREATE TABLE IF NOT EXISTS secret_access_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id INTEGER,
+		key_name TEXT NOT NULL,
+		outcome TEXT NOT NULL CHECK(outcome IN ('success','error','not_found')),
+		accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE SET NULL
+	)`,
 }

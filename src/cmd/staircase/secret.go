@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/spf13/cobra"
@@ -149,8 +152,89 @@ var secretListCmd = &cobra.Command{
 	},
 }
 
+// secretRotateCmd re-encrypts all secrets under a fresh AES-256 key.
+// The old key file is replaced atomically (temp+rename) and every ciphertext
+// is updated in a single DB transaction, so a crash during rotation leaves
+// the workspace in a consistent state (either fully rotated or not at all).
+// An advisory flock on the key file prevents concurrent runs (CHECK 4.3.3).
+var secretRotateCmd = &cobra.Command{
+	Use:   "rotate",
+	Short: "Re-encrypt all secrets under a new AES-256 workspace key",
+	Long: `Generates a fresh AES-256 key, re-encrypts every stored secret in a
+single atomic DB transaction, then replaces the old key file.
+
+The operation holds an exclusive advisory lock on the workspace key file for
+the duration, preventing concurrent rotate or run commands.`,
+	RunE: func(_ *cobra.Command, _ []string) error {
+		wsDir := viper.GetString("STAIRCASE_DIR")
+		keyPath := filepath.Join(wsDir, crypto.KeyFile)
+
+		// Acquire exclusive advisory lock so concurrent staircase processes
+		// (including active runs) cannot interfere (CHECK 4.3.3).
+		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
+		if err != nil {
+			return fmt.Errorf("open key for lock: %w", err)
+		}
+		defer func() { _ = lockF.Close() }()
+		if err := syscall.Flock(int(lockF.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			return fmt.Errorf("workspace is locked by another process — is a run active?: %w", err)
+		}
+		defer func() { _ = syscall.Flock(int(lockF.Fd()), syscall.LOCK_UN) }()
+
+		oldKey, err := crypto.LoadKey(wsDir)
+		if err != nil {
+			return err
+		}
+
+		// Generate a fresh 32-byte random key (CHECK 4.2.4 pattern).
+		newKey := make([]byte, 32)
+		if _, err := io.ReadFull(rand.Reader, newKey); err != nil {
+			return fmt.Errorf("generate new key: %w", err)
+		}
+
+		store, db, err := openStore()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+
+		// Re-encrypt all secrets in one transaction (CHECK 4.3.2).
+		if err := store.RotateSecrets(oldKey, newKey, crypto.Decrypt, crypto.Encrypt); err != nil {
+			return fmt.Errorf("rotate secrets: %w", err)
+		}
+
+		// Atomically install the new key file (CHECK 4.2.4 pattern).
+		tmp, err := os.CreateTemp(wsDir, ".key-rotate-*")
+		if err != nil {
+			return fmt.Errorf("create temp key: %w", err)
+		}
+		tmpPath := tmp.Name()
+		if _, err := tmp.Write(newKey); err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("write new key: %w", err)
+		}
+		if err := tmp.Chmod(0o600); err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("chmod new key: %w", err)
+		}
+		if err := tmp.Close(); err != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("close new key: %w", err)
+		}
+		if err := os.Rename(tmpPath, keyPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("install new key: %w", err)
+		}
+
+		fmt.Println("✅ Workspace key rotated and all secrets re-encrypted.")
+		return nil
+	},
+}
+
 func init() {
 	secretSetCmd.Flags().Int64Var(&secretProjectID, "project", 0, "Scope secret to a specific project ID (0 = global)")
-	secretCmd.AddCommand(secretSetCmd, secretListCmd)
+	secretCmd.AddCommand(secretSetCmd, secretListCmd, secretRotateCmd)
 	rootCmd.AddCommand(secretCmd)
 }
