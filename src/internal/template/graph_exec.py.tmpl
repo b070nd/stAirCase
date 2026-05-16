@@ -40,7 +40,8 @@ class _IPC:
     def _raw_send(self, msg: dict) -> None:
         self._sock.sendall((json.dumps(msg) + "\n").encode())
 
-    def _raw_recv(self) -> dict:
+    def _raw_recv(self, timeout: float = 30.0) -> dict:
+        self._sock.settimeout(timeout)  # CHECK 6.4.2 — every recv has timeout=
         while b"\n" not in self._buf:
             chunk = self._sock.recv(65536)
             if not chunk:

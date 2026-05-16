@@ -89,10 +89,12 @@ type Summary struct {
 // Blocking returns true when the report has at least one hard (BLOCK) failure.
 func (r Report) Blocking() bool { return r.Overall == StatusFail }
 
-// RunAll executes every registered gate in insertion order and returns a Report.
+// RunAll executes every registered gate plus any plugin gates from
+// $wsDir/gates.json in insertion order and returns a Report.
 func RunAll(ctx Context) Report {
+	allGates := append(append([]Gate{}, registry...), loadPluginGates(ctx.WsDir)...)
 	report := Report{CaseID: ctx.CaseID, RunAt: time.Now().UTC()}
-	for _, g := range registry {
+	for _, g := range allGates {
 		res := g.Run(ctx)
 		report.Gates = append(report.Gates, res)
 		switch res.Status {
