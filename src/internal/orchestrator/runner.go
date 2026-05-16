@@ -101,6 +101,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		return fmt.Errorf("project %d not found", caseRec.ProjectID)
 	}
 
+	// ── Open git repo (used across the whole run lifecycle) ──────────────────
+	var gr *GitRepo
+	if project.SourcePath != "" {
+		gr, err = OpenGitRepo(project.SourcePath)
+		if err != nil {
+			return fmt.Errorf("open git repo: %w", err)
+		}
+	}
+
 	// ── Optional reconcile ────────────────────────────────────────────────────
 	if opts.Reconcile && project.SourcePath != "" {
 		result, err := r.Reconcile(ctx, caseID, project.SourcePath, true)
@@ -123,8 +132,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	}
 	defer func() {
 		if autoStashed && project.SourcePath != "" {
-			if _, err := gitOutput(project.SourcePath, "stash", "pop"); err != nil {
-				log.Printf("warn: stash pop after run: %v", err)
+			// go-git v5 has no stash pop support; keep as exec.Command.
+			if out, err := exec.Command("git", "-C", project.SourcePath, "stash", "pop").CombinedOutput(); err != nil {
+				log.Printf("warn: stash pop after run: %s", out)
 			}
 		}
 	}()
@@ -140,13 +150,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	topoVersion := topology.Version
 
 	// ── Resolve current git branch (capture SHA on detached HEAD) ─────────────
-	gitBranch, err := gitOutput(project.SourcePath, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil || gitBranch == "HEAD" {
-		// Detached HEAD: fall back to the full commit SHA so branch restore works.
-		if sha, shaErr := gitOutput(project.SourcePath, "rev-parse", "HEAD"); shaErr == nil {
-			gitBranch = sha
-		} else {
-			gitBranch = "unknown"
+	gitBranch := "unknown"
+	if gr != nil {
+		if b, bErr := gr.CurrentBranch(); bErr == nil {
+			gitBranch = b
 		}
 	}
 
@@ -184,21 +191,21 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 
 	defer func() {
 		r.phase = PhaseBranchRestore
-		if runBranchCreated && project.SourcePath != "" && finalStatus != persistence.RunStatusSuccess {
-			if _, err := gitOutput(project.SourcePath, "checkout", gitBranch); err != nil {
+		if runBranchCreated && gr != nil && finalStatus != persistence.RunStatusSuccess {
+			if err := gr.CheckoutBranch(gitBranch); err != nil {
 				log.Printf("warn: restore branch to %q: %v", gitBranch, err)
 			}
 		}
 	}()
 
-	if project.SourcePath != "" {
+	if gr != nil {
 		// Remove stale branch from a prior crashed run with the same ID.
-		if _, err := gitOutput(project.SourcePath, "rev-parse", "--verify", runBranch); err == nil {
-			if _, err := gitOutput(project.SourcePath, "branch", "-D", runBranch); err != nil {
+		if gr.BranchExists(runBranch) {
+			if err := gr.DeleteBranch(runBranch); err != nil {
 				return fmt.Errorf("delete stale branch %q: %w", runBranch, err)
 			}
 		}
-		if _, err := gitOutput(project.SourcePath, "checkout", "-b", runBranch); err != nil {
+		if err := gr.CreateBranch(runBranch); err != nil {
 			return fmt.Errorf("create blast-radius branch %q: %w", runBranch, err)
 		}
 		runBranchCreated = true
@@ -396,14 +403,12 @@ runLoop:
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
 	commitHash := ""
-	if finalStatus == persistence.RunStatusSuccess && project.SourcePath != "" {
-		_, _ = gitOutput(project.SourcePath, "add", ".")
+	if finalStatus == persistence.RunStatusSuccess && gr != nil {
+		_ = gr.AddAll()
 		msg := fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID)
-		if _, err := gitOutput(project.SourcePath, "commit", "-m", msg); err == nil {
-			if hash, err := gitOutput(project.SourcePath, "rev-parse", "HEAD"); err == nil {
-				commitHash = hash
-				ipcSrv.SetGitCommitHash(commitHash)
-			}
+		if hash, err := gr.Commit(msg); err == nil {
+			commitHash = hash
+			ipcSrv.SetGitCommitHash(commitHash)
 		}
 		if stories, err := r.store.ListUserStoriesByCase(caseID); err == nil {
 			for _, us := range stories {
@@ -444,25 +449,14 @@ func (r *Runner) runGates(caseID int64) error {
 
 // ─── Git helpers ──────────────────────────────────────────────────────────────
 
-// GitOutput runs a git command in repoPath and returns trimmed stdout.
-// Exported so the CLI layer can use it without duplicating the flag check.
-func GitOutput(repoPath string, args ...string) (string, error) {
-	return gitOutput(repoPath, args...)
-}
-
-func gitOutput(repoPath string, args ...string) (string, error) {
-	if repoPath == "" {
-		return "", fmt.Errorf("no source path configured")
-	}
-	cmdArgs := append([]string{"-C", repoPath}, args...)
-	out, err := exec.Command("git", cmdArgs...).Output()
-	return strings.TrimSpace(string(out)), err
-}
-
 func handleDirtyTree(repoPath string, autoStash bool) (stashed bool, err error) {
-	out, execErr := exec.Command("git", "-C", repoPath, "status", "--porcelain").Output()
-	if execErr != nil || len(strings.TrimSpace(string(out))) == 0 {
-		return false, nil // clean tree or not a git repo
+	gr, err := OpenGitRepo(repoPath)
+	if err != nil {
+		return false, nil // not a git repo
+	}
+	clean, err := gr.IsClean()
+	if err != nil || clean {
+		return false, nil // clean tree or status error
 	}
 	if !autoStash {
 		return false, fmt.Errorf(
@@ -470,8 +464,10 @@ func handleDirtyTree(repoPath string, autoStash bool) (stashed bool, err error) 
 			repoPath,
 		)
 	}
-	if _, err := gitOutput(repoPath, "stash", "push", "-m", "staircase pre-run"); err != nil {
-		return false, fmt.Errorf("auto-stash failed: %w", err)
+	// go-git v5 has no stash push support; keep as exec.Command.
+	out, stashErr := exec.Command("git", "-C", repoPath, "stash", "push", "-m", "staircase pre-run").CombinedOutput()
+	if stashErr != nil {
+		return false, fmt.Errorf("auto-stash failed: %s", out)
 	}
 	fmt.Printf("   📦 Auto-stashed dirty tree in %s\n", repoPath)
 	return true, nil

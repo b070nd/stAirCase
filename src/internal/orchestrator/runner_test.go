@@ -268,18 +268,11 @@ func TestReconcile_no_source_path_skips_git(t *testing.T) {
 	assert.Empty(t, result.OrphanBranches)
 }
 
-// ─── GitOutput helper ─────────────────────────────────────────────────────────
+// ─── OpenGitRepo helper ───────────────────────────────────────────────────────
 
-func TestGitOutput_empty_path_returns_error(t *testing.T) {
-	_, err := orchestrator.GitOutput("", "status")
-	require.Error(t, err, "empty repoPath must return an error")
-}
-
-func TestGitOutput_valid_repo_returns_branch(t *testing.T) {
-	repoPath := initGitRepo(t)
-	out, err := orchestrator.GitOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
-	require.NoError(t, err)
-	assert.Equal(t, "main", out)
+func TestGitRepo_open_empty_path_returns_error(t *testing.T) {
+	_, err := orchestrator.OpenGitRepo("")
+	require.Error(t, err, "empty path must return an error")
 }
 
 // ─── handleDirtyTree ─────────────────────────────────────────────────────────
