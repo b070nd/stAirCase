@@ -139,7 +139,7 @@ func (s *Server) Start(ctx context.Context) error {
 	go func() {
 		_ = s.httpSrv.Serve(ln) // returns ErrServerClosed on shutdown
 	}()
-	go func() {
+	go func() { // #nosec G118 -- shutdown goroutine intentionally uses Background(); ctx is already done
 		<-ctx.Done()
 		// Reject all pending yields so the swarm goroutines unblock cleanly.
 		s.rejectAll("server shutting down")
@@ -175,7 +175,7 @@ func (s *Server) StartTLS(ctx context.Context, certFile, keyFile string, cfg *tl
 	go func() {
 		_ = s.httpSrv.Serve(tlsLn)
 	}()
-	go func() {
+	go func() { // #nosec G118 -- shutdown goroutine intentionally uses Background(); ctx is already done
 		<-ctx.Done()
 		s.rejectAll("server shutting down")
 		shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
