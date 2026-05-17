@@ -82,6 +82,12 @@ func (r *Runner) Phase() RunPhase { return r.phase }
 // Phases executed in order: PRE_FLIGHT → BRANCH_CREATE → IPC_LISTEN →
 // PYTHON_BOOT → AGENT_LOOP → FINALIZE → BRANCH_RESTORE (on non-success).
 func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
+	obs.ActiveRuns.Inc()
+	t0Run := time.Now()
+	defer func() {
+		obs.ActiveRuns.Dec()
+		obs.RunDuration.Observe(time.Since(t0Run).Seconds())
+	}()
 	r.phase = PhasePreFlight
 
 	// ── Load case + project ───────────────────────────────────────────────────
@@ -294,7 +300,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if err != nil {
 		return fmt.Errorf("read canonical script: %w", err)
 	}
-	if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil {
+	if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil { // #nosec G703 -- scriptPath is built from internal wsDir, not user input
 		return fmt.Errorf("copy script to run path: %w", err)
 	}
 

@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,6 +24,7 @@ var (
 	runReconcile     bool
 	runApprovalPort  int
 	runApprovalToken string
+	runMetricsAddr   string
 )
 
 var runCmd = &cobra.Command{
@@ -45,6 +48,8 @@ func init() {
 	runCmd.Flags().StringVar(&runApprovalToken, "approval-token", "",
 		"Bearer token required by the approval HTTP server. "+
 			"If empty and --approval-port is set, a random token is generated and printed at startup.")
+	runCmd.Flags().StringVar(&runMetricsAddr, "metrics-addr", "",
+		"Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -77,6 +82,12 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		}
 		signal.Stop(sigCh)
 	}()
+
+	if runMetricsAddr != "" {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		go func() { _ = http.ListenAndServe(runMetricsAddr, mux) }() // #nosec G114 -- metrics addr is operator-controlled, not user input
+	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{

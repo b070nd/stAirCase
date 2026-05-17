@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
+	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 )
 
@@ -213,20 +214,20 @@ func (s *Server) Start(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				default:
-					log.Printf("ipc: accept error: %v", err)
+					obs.Log.Warn("ipc accept", "err", err)
 					continue
 				}
 			}
 			if atomic.AddInt32(&s.connCount, 1) > maxConnections {
 				atomic.AddInt32(&s.connCount, -1)
-				log.Printf("ipc: connection limit (%d) reached — dropping new connection", maxConnections)
+				obs.Log.Warn("ipc connection limit", "max", maxConnections)
 				_ = conn.Close()
 				continue
 			}
 			// Reject connections from different OS users (Linux: SO_PEERCRED).
 			if err := checkPeerUID(conn); err != nil {
 				atomic.AddInt32(&s.connCount, -1)
-				log.Printf("ipc: peer credential check failed: %v — dropping connection", err)
+				obs.Log.Warn("ipc peer credential", "err", err)
 				_ = conn.Close()
 				continue
 			}
@@ -276,7 +277,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 		_ = conn.SetReadDeadline(time.Now().Add(heartbeatTimeout))
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
-				log.Printf("ipc: connection error: %v", err)
+				obs.Log.Warn("ipc connection", "err", err)
 			}
 			return
 		}
@@ -298,12 +299,13 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 		// CHECK 3.5.5: validate kind before any further processing.
 		if !knownMessageKinds[base.Type] {
-			log.Printf("ipc: unknown message kind %q — dropping", base.Type)
+			obs.Log.Warn("ipc unknown kind", "kind", base.Type)
 			continue
 		}
+		obs.IPCMessagesTotal.WithLabelValues(base.Type).Inc()
 
 		if !rl.allow(base.Type) {
-			log.Printf("ipc: rate limit exceeded for kind %q — dropping message", base.Type)
+			obs.Log.Warn("ipc rate limit", "kind", base.Type)
 			// For request/response kinds, send an error so Python doesn't hang.
 			switch base.Type {
 			case "yield_request":
@@ -333,7 +335,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			var msg IpcYieldRequest
 			if err := json.Unmarshal(line, &msg); err != nil {
 				// Malformed JSON: auto-reject so Python doesn't hang waiting for a response.
-				log.Printf("ipc: malformed yield_request (json: %v) — auto-rejecting", err)
+				obs.Log.Warn("ipc malformed yield_request", "err", err)
 				_ = enc.Encode(IpcYieldResponse{
 					Type:     "yield_response",
 					Approved: false,
@@ -346,6 +348,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 				payload = payload[:maxPayloadSize]
 			}
 			s.logEvent("yield_request", payload)
+			t0Yield := time.Now()
 			// yieldMu ensures at most one yield is in flight at a time.
 			// Without this, two simultaneous Python connections could
 			// interleave sends on YieldCh / ResponseCh causing a deadlock.
@@ -365,6 +368,8 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 					}
 				}
 				_ = enc.Encode(resp)
+				obs.YieldsTotal.WithLabelValues(msg.ActionType, outcomeStr(resp.Approved)).Inc()
+				obs.YieldLatency.WithLabelValues(msg.ActionType).Observe(time.Since(t0Yield).Seconds())
 			case <-ctx.Done():
 				s.yieldMu.Unlock()
 				return
@@ -374,18 +379,20 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			var req IpcSecretRequest
 			if err := json.Unmarshal(line, &req); err != nil {
 				// Malformed JSON: send an error so Python doesn't hang waiting for a response.
-				log.Printf("ipc: malformed secret_request (json: %v) — returning error", err)
+				obs.Log.Warn("ipc malformed secret_request", "err", err)
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "malformed secret_request JSON: " + err.Error()})
 				break
 			}
 			secret, err := s.store.GetSecret(req.KeyName, req.ProjectID)
 			if err != nil {
 				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
+				obs.SecretAccessTotal.WithLabelValues("error").Inc()
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "store error: " + err.Error()})
 				break
 			}
 			if secret == nil {
 				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "not_found") // CHECK 4.4.1
+				obs.SecretAccessTotal.WithLabelValues("not_found").Inc()
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "not found"})
 				break
 			}
@@ -394,10 +401,12 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			plaintext, err := crypto.Decrypt(s.aesKey, secret.EncryptedValue)
 			if err != nil {
 				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
+				obs.SecretAccessTotal.WithLabelValues("error").Inc()
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "decrypt error"})
 				break
 			}
 			_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "success") // CHECK 4.4.1
+			obs.SecretAccessTotal.WithLabelValues("success").Inc()
 			_ = enc.Encode(IpcSecretResponse{
 				Type:           "secret_response",
 				PlaintextValue: plaintext,
@@ -409,6 +418,14 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	}
 }
 
+// outcomeStr converts a boolean approval decision to a metric label string.
+func outcomeStr(approved bool) string {
+	if approved {
+		return "approved"
+	}
+	return "rejected"
+}
+
 // logEvent appends a chain-hashed entry to the SOC2 audit log.
 func (s *Server) logEvent(eventType, payload string) {
 	s.mu.Lock()
@@ -417,10 +434,12 @@ func (s *Server) logEvent(eventType, payload string) {
 
 	prevHash, err := s.store.GetLastEventHash(s.runID)
 	if err != nil {
-		log.Printf("ipc: get last event hash: %v", err)
+		obs.Log.Warn("ipc event hash", "err", err)
 		return
 	}
 	if _, err := s.store.AppendEventLog(s.runID, eventType, payload, prevHash, gitHash); err != nil {
-		log.Printf("ipc: append event log: %v", err)
+		obs.Log.Warn("ipc append event", "err", err)
+		return
 	}
+	obs.AuditChainLength.Inc()
 }

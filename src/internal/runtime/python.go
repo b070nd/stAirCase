@@ -9,11 +9,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os/exec"
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/b070nd/staircase-core/src/internal/obs"
 )
 
 // BootstrapToken generates a cryptographically secure 32-byte random token
@@ -107,7 +108,7 @@ func LaunchPython(ctx context.Context, wsDir, scriptPath, socketPath, token stri
 	go func() {
 		sc := bufio.NewScanner(stderrPipe)
 		for sc.Scan() {
-			log.Printf("[python] %s", sc.Text())
+			obs.Log.Info("python stderr", "line", sc.Text())
 		}
 	}()
 
