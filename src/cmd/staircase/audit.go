@@ -36,6 +36,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/b070nd/staircase-core/src/internal/audit"
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
@@ -143,7 +144,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 	}
 
 	cpPath := filepath.Join(auditDir, fmt.Sprintf("run-%d.checkpoint.json", runID))
-	if err := os.WriteFile(cpPath, out, 0o600); err != nil {
+	if err := audit.AppendCheckpoint(cpPath, out); err != nil {
 		return fmt.Errorf("write checkpoint: %w", err)
 	}
 

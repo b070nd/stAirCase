@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     source_path TEXT,
     webhook_url TEXT,
+    default_model TEXT,
+    budget_usd_per_run REAL DEFAULT 0,
     FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
     UNIQUE(vendor_id, name)
 );

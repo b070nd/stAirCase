@@ -133,6 +133,57 @@ func (g *stubGate) Run(_ gate.Context) gate.Result {
 	return gate.Result{Name: g.name, Category: "test", Severity: g.sev, Status: g.stat, Message: g.msg}
 }
 
+// TestAllGates_metadata_methods verifies that every registered gate implementation
+// returns non-empty Name, Category, and Severity values.  This covers the
+// Name/Category/Severity method bodies on all concrete gate structs (CHECK 12.4.3).
+func TestAllGates_metadata_methods(t *testing.T) {
+	allGates := []gate.Gate{
+		gate.CaseProjectExistsGate,
+		gate.CaseHasStoriesGate,
+		gate.CaseHasPRDGate,
+		gate.TopologyExistsGate,
+		gate.TopologyHasAgentsGate,
+		gate.TopologySupervisorRegisteredGate,
+		gate.TopologyEdgesValidGate,
+		gate.TopologyNoOrphanAgentsGate,
+		gate.TopologyRuntimeValidGate,
+		gate.SecretAnthropicKeyGate,
+		gate.SecretKeyFileGate,
+		gate.SecretNoDuplicatesGate,
+		gate.RuntimeScriptCompiledGate,
+		gate.RuntimeVenvReadyGate,
+		gate.RuntimeVenvBrokenGate,
+		gate.RuntimeSourcePathGate,
+		gate.RuntimeNoConcurrentRunGate,
+		gate.RuntimeGitAvailableGate,
+		gate.DepNoCycleGate,
+		gate.DepDepsCompletedGate,
+	}
+	for _, g := range allGates {
+		assert.NotEmpty(t, g.Name(), "gate Name() must not be empty")
+		assert.NotEmpty(t, g.Category(), "gate Category() must not be empty")
+		assert.NotEmpty(t, string(g.Severity()), "gate Severity() must not be empty")
+	}
+}
+
+// TestRunAll_with_real_registry_nonexistent_case exercises the full registered
+// gate set on a context whose CaseID doesn't exist.  Most gates will SKIP or
+// FAIL, which covers the skip() helper in gate.go and the Skip/Fail summary
+// paths in RunAll.
+func TestRunAll_with_real_registry_nonexistent_case(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	ctx.CaseID = 999_999 // no such case → many gates will SKIP
+
+	// Do NOT replace the registry; use the real set so all Name/Category/Severity
+	// methods are invoked via RunAll.
+	report := gate.RunAll(ctx)
+
+	// At least some gates must have been executed (non-empty gates list).
+	assert.NotEmpty(t, report.Gates, "RunAll must execute the real gate registry")
+	// The overall must not be PASS on an unconfigured workspace.
+	assert.NotEqual(t, gate.StatusPass, report.Overall)
+}
+
 // ─── Structural gates ─────────────────────────────────────────────────────────
 
 func TestCaseProjectExistsGate_missing_case(t *testing.T) {

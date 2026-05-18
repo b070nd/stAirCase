@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -737,4 +738,33 @@ func TestRotateSecrets_re_encrypts_all(t *testing.T) {
 
 	ptWrong, _ := decryptFn(oldKey, sec.EncryptedValue)
 	assert.NotEqual(t, "secret1", ptWrong, "rotated secret must not decrypt with old key")
+}
+
+// TestSecretRoundTrip exercises the full secret lifecycle: generate workspace
+// key → encrypt → store → retrieve → decrypt → verify (CHECK 3.4.4).
+func TestSecretRoundTrip(t *testing.T) {
+	wsDir := t.TempDir()
+	require.NoError(t, crypto.GenerateKey(wsDir))
+
+	aesKey, err := crypto.LoadKey(wsDir)
+	require.NoError(t, err)
+
+	const keyName = "ROUNDTRIP_SECRET"
+	const originalValue = "plaintext-value-abc123"
+
+	ciphertext, err := crypto.Encrypt(aesKey, originalValue)
+	require.NoError(t, err, "Encrypt must succeed with a valid workspace key")
+
+	s := newTestStore(t)
+	_, err = s.CreateSecret(keyName, ciphertext, nil /* global scope */)
+	require.NoError(t, err, "CreateSecret must persist the ciphertext")
+
+	sec, err := s.GetSecret(keyName, nil)
+	require.NoError(t, err)
+	require.NotNil(t, sec, "GetSecret must return the stored secret")
+
+	decrypted, err := crypto.Decrypt(aesKey, sec.EncryptedValue)
+	require.NoError(t, err, "Decrypt must succeed with the same key")
+	assert.Equal(t, originalValue, decrypted,
+		"decrypted value must match the original plaintext")
 }

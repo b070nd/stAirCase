@@ -5,6 +5,7 @@ package persistence_test
 // invariant. Happy-path focus; constraint violations are tested in store_test.go.
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -335,4 +336,176 @@ func TestListRunsByStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, succeeded, 1)
 	assert.Equal(t, run.ID, succeeded[0].ID)
+}
+
+// ─── Project config ───────────────────────────────────────────────────────────
+
+func TestGetSetProjectConfig_defaults_and_update(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffoldTopology(t, s)
+
+	// Defaults: empty model, 0 budget.
+	model, budget, err := s.GetProjectConfig(projectID)
+	require.NoError(t, err)
+	assert.Equal(t, "", model)
+	assert.Equal(t, float64(0), budget)
+
+	// Update model.
+	require.NoError(t, s.SetProjectDefaultModel(projectID, "claude-opus-4"))
+	model, _, err = s.GetProjectConfig(projectID)
+	require.NoError(t, err)
+	assert.Equal(t, "claude-opus-4", model)
+
+	// Update budget.
+	require.NoError(t, s.SetProjectBudgetCap(projectID, 9.99))
+	_, budget, err = s.GetProjectConfig(projectID)
+	require.NoError(t, err)
+	assert.InDelta(t, 9.99, budget, 0.001)
+}
+
+// ─── ListAllSecrets ───────────────────────────────────────────────────────────
+
+func TestListAllSecrets_returns_all_secrets(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffoldTopology(t, s)
+
+	_, err := s.CreateSecret("KEY_A", "val-a", nil)
+	require.NoError(t, err)
+	_, err2 := s.CreateSecret("KEY_B", "val-b", &projectID)
+	require.NoError(t, err2)
+
+	secrets, err := s.ListAllSecrets()
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(secrets), 2, "ListAllSecrets must return all secrets across projects")
+}
+
+// ─── RotationLock (CHECK 4.3.3) ──────────────────────────────────────────────
+
+func TestNewRotationLock_acquires_and_unlocks(t *testing.T) {
+	wsDir := t.TempDir()
+	lock, err := persistence.NewRotationLock(wsDir)
+	require.NoError(t, err, "NewRotationLock must succeed on a fresh workspace")
+	require.NotNil(t, lock)
+	lock.Unlock() // must not panic or error
+}
+
+func TestNewRotationLock_double_acquire_fails(t *testing.T) {
+	wsDir := t.TempDir()
+	lock1, err := persistence.NewRotationLock(wsDir)
+	require.NoError(t, err)
+	defer lock1.Unlock()
+
+	// Second acquire must fail while lock1 holds the flock.
+	_, err = persistence.NewRotationLock(wsDir)
+	assert.Error(t, err, "second NewRotationLock on same dir must fail")
+	assert.Contains(t, err.Error(), "rotation already in progress")
+}
+
+// ─── RotateSecrets ─────────────────────────────────────────────────────────────
+
+// TestRotateSecrets_with_identity_funcs verifies that RotateSecrets walks
+// every secret, calls decrypt/encrypt, and commits the transaction.
+func TestRotateSecrets_with_identity_funcs(t *testing.T) {
+	s := newTestStore(t)
+	// Create two secrets with plaintext "encrypted" values (identity scheme).
+	_, err := s.CreateSecret("K1", "plaintext1", nil)
+	require.NoError(t, err)
+	_, err = s.CreateSecret("K2", "plaintext2", nil)
+	require.NoError(t, err)
+
+	// identity decrypt: returns the "ciphertext" as-is.
+	decrypt := func(_ []byte, ct string) (string, error) { return ct, nil }
+	// identity encrypt: returns the plaintext as-is (prefixed to show it ran).
+	encrypt := func(_ []byte, pt string) (string, error) { return "rotated:" + pt, nil }
+
+	require.NoError(t, s.RotateSecrets([]byte("oldkey"), []byte("newkey"), decrypt, encrypt))
+
+	// Verify both secrets were updated.
+	secrets, err := s.ListAllSecrets()
+	require.NoError(t, err)
+	for _, sec := range secrets {
+		assert.True(t,
+			sec.EncryptedValue == "rotated:plaintext1" || sec.EncryptedValue == "rotated:plaintext2",
+			"EncryptedValue should be prefixed by identity encrypt, got %q", sec.EncryptedValue,
+		)
+	}
+}
+
+// TestRotateSecrets_decrypt_error_aborts verifies that a decrypt failure
+// causes RotateSecrets to return an error (and implicitly rolls back the tx).
+func TestRotateSecrets_decrypt_error_aborts(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.CreateSecret("K1", "plaintext1", nil)
+	require.NoError(t, err)
+
+	decryptErr := fmt.Errorf("bad key")
+	decrypt := func(_ []byte, _ string) (string, error) { return "", decryptErr }
+	encrypt := func(_ []byte, pt string) (string, error) { return pt, nil }
+
+	err = s.RotateSecrets([]byte("old"), []byte("new"), decrypt, encrypt)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rotate: decrypt")
+}
+
+// ─── HasSuccessfulRunAtTopologyVersion ───────────────────────────────────────
+
+func TestHasSuccessfulRunAtTopologyVersion_false_when_no_runs(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffoldTopology(t, s)
+
+	has, err := s.HasSuccessfulRunAtTopologyVersion(projectID, 1)
+	require.NoError(t, err)
+	assert.False(t, has)
+}
+
+func TestHasSuccessfulRunAtTopologyVersion_true_after_success(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffoldTopology(t, s)
+	c, err := s.CreateCase(projectID)
+	require.NoError(t, err)
+
+	run, err := s.CreateRun(c.ID, 1, "main")
+	require.NoError(t, err)
+	now := time.Now()
+	require.NoError(t, s.UpdateRunStatus(run.ID, "SUCCESS", &now, "abc"))
+
+	has, err := s.HasSuccessfulRunAtTopologyVersion(projectID, 1)
+	require.NoError(t, err)
+	assert.True(t, has)
+}
+
+// ─── DeleteFlaggedCases / PruneEventLogs ──────────────────────────────────────
+
+func TestDeleteFlaggedCases_removes_deleted_cases(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffoldTopology(t, s)
+	c, err := s.CreateCase(projectID)
+	require.NoError(t, err)
+
+	// Flag the case as deleted.
+	require.NoError(t, s.FlagCaseDeleted(c.ID))
+
+	n, err := s.DeleteFlaggedCases()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+}
+
+func TestPruneEventLogs_keeps_rows_within_limit(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffoldTopology(t, s)
+	c, err := s.CreateCase(projectID)
+	require.NoError(t, err)
+	run, err := s.CreateRun(c.ID, 1, "main")
+	require.NoError(t, err)
+
+	// Append three event log entries.
+	for i := 0; i < 3; i++ {
+		_, err = s.AppendEventLog(run.ID, "test_event", `{"k":"v"}`, "", "")
+		require.NoError(t, err)
+	}
+
+	// Keep at most 2 rows → 1 should be pruned.
+	n, err := s.PruneEventLogs(2)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
 }

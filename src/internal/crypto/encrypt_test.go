@@ -134,6 +134,22 @@ func TestLoadKey_missing_file_returns_error(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLoadKey_unreadable_file_returns_error(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission check not enforced on Windows")
+	}
+	dir := t.TempDir()
+	require.NoError(t, crypto.GenerateKey(dir))
+	keyPath := filepath.Join(dir, ".key")
+	// Mode 0o000: stat succeeds and passes the 0o177 permission mask check,
+	// but ReadFile then fails because there is no read permission.
+	require.NoError(t, os.Chmod(keyPath, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(keyPath, 0o600) })
+
+	_, err := crypto.LoadKey(dir)
+	assert.Error(t, err)
+}
+
 func TestLoadKey_insecure_permissions_rejected(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission check not enforced on Windows")
@@ -182,6 +198,41 @@ func TestDecrypt_legacy_no_prefix_still_works(t *testing.T) {
 	got, err := crypto.Decrypt(key, legacy)
 	require.NoError(t, err)
 	assert.Equal(t, plaintext, got)
+}
+
+// ─── Error paths ─────────────────────────────────────────────────────────────
+
+func TestGenerateKey_nonwritable_dir_returns_error(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX read-only dir not enforced on Windows")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o555)) // remove write bit
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	err := crypto.GenerateKey(dir)
+	assert.Error(t, err, "GenerateKey in a non-writable directory must fail")
+}
+
+func TestEncrypt_bad_key_size_returns_error(t *testing.T) {
+	// AES requires 16, 24, or 32-byte keys; a 3-byte key triggers aes.NewCipher error.
+	_, err := crypto.Encrypt([]byte{1, 2, 3}, "plaintext")
+	assert.Error(t, err, "Encrypt with non-AES key size must fail")
+}
+
+func TestDecrypt_bad_key_size_returns_error(t *testing.T) {
+	// Valid base64 so the decode succeeds; aes.NewCipher then rejects the bad key.
+	_, err := crypto.Decrypt([]byte{1, 2, 3}, "dGVzdA==") // decodes to "test" (4 bytes)
+	assert.Error(t, err, "Decrypt with non-AES key size must fail")
+}
+
+func TestDecrypt_ciphertext_too_short_returns_error(t *testing.T) {
+	key := randomKey(t) // 32-byte key → valid AES + GCM nonce size is 12
+	// base64 of a single byte decodes to 1 byte — less than the 12-byte GCM nonce.
+	oneByteB64 := "Wg==" // base64 of 0x5A
+	_, err := crypto.Decrypt(key, oneByteB64)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ciphertext too short")
 }
 
 // ─── CHECK 4.2.5: named test aliases for checklist grep ──────────────────────

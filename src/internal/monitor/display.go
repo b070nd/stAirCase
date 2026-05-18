@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -221,9 +222,9 @@ func (d *Display) Render() {
 
 	// Erase previous render, then print new.
 	if prevLines > 0 {
-		fmt.Printf("\033[%dA\033[J", prevLines)
+		fmt.Fprintf(os.Stdout, "\033[%dA\033[J", prevLines)
 	}
-	fmt.Print(out)
+	fmt.Fprint(os.Stdout, out)
 
 	newLines := strings.Count(out, "\n")
 	d.mu.Lock()
@@ -243,7 +244,7 @@ func (d *Display) Final(status string) {
 	if strings.Contains(status, "FAIL") || strings.Contains(status, "KILL") {
 		statusLine = dWarn.Render("❌ " + status)
 	}
-	fmt.Println(statusLine)
+	fmt.Fprintln(os.Stdout, statusLine)
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────
