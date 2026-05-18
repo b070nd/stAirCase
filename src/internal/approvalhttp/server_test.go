@@ -3,10 +3,19 @@ package approvalhttp_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -365,4 +374,105 @@ func TestServer_decision_race_first_wins(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("channel should receive exactly one response")
 	}
+}
+
+// ─── MozillaTLSConfig ─────────────────────────────────────────────────────────
+
+// TestMozillaTLSConfig_returns_valid_config verifies the TLS config matches the
+// Mozilla "intermediate" profile: TLS 1.2 minimum, AEAD cipher suites (CHECK 8.5).
+func TestMozillaTLSConfig_returns_valid_config(t *testing.T) {
+	cfg := approvalhttp.MozillaTLSConfig()
+	require.NotNil(t, cfg)
+	assert.Equal(t, uint16(tls.VersionTLS12), cfg.MinVersion,
+		"Mozilla intermediate profile requires TLS 1.2 minimum")
+	assert.NotEmpty(t, cfg.CipherSuites, "cipher suites must not be empty")
+	assert.Contains(t, cfg.CurvePreferences, tls.X25519, "X25519 must be preferred")
+}
+
+// ─── handleYield default/404 path ────────────────────────────────────────────
+
+// TestHandleYield_unknown_action_returns_404 covers the default branch in
+// handleYield where neither GET (no action) nor POST approve/reject matches.
+func TestHandleYield_unknown_action_returns_404(t *testing.T) {
+	srv, _ := startServer(t)
+	id, _ := pendReq(t, srv)
+
+	// DELETE /v1/yields/{id} hits the default switch branch.
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/v1/yields/%s", baseURL(srv), id), nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+// ─── StartTLS ─────────────────────────────────────────────────────────────────
+
+// generateSelfSignedCert creates a temporary self-signed certificate and key.
+// Returns paths to the cert and key PEM files. Registers cleanup.
+func generateSelfSignedCert(t *testing.T) (certFile, keyFile string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	cf, err := os.CreateTemp(t.TempDir(), "cert*.pem")
+	require.NoError(t, err)
+	_, _ = cf.Write(certPEM)
+	_ = cf.Close()
+
+	kf, err := os.CreateTemp(t.TempDir(), "key*.pem")
+	require.NoError(t, err)
+	_, _ = kf.Write(keyPEM)
+	_ = kf.Close()
+
+	return cf.Name(), kf.Name()
+}
+
+// TestStartTLS_serves_https verifies that StartTLS starts an HTTPS listener and
+// responds to requests (CHECK 8.5).
+func TestStartTLS_serves_https(t *testing.T) {
+	certFile, keyFile := generateSelfSignedCert(t)
+
+	srv := approvalhttp.NewServer("127.0.0.1:0", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	require.NoError(t, srv.StartTLS(ctx, certFile, keyFile, approvalhttp.MozillaTLSConfig()))
+	assert.NotEmpty(t, srv.ListenAddr(), "ListenAddr must be set after StartTLS")
+
+	// Make an HTTPS GET request — skip TLS verification for self-signed cert.
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
+	}}
+	resp, err := client.Get("https://" + srv.ListenAddr() + "/v1/yields")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestStartTLS_nil_config_uses_default verifies that passing nil as the TLS
+// config falls back to a default tls.Config.
+func TestStartTLS_nil_config_uses_default(t *testing.T) {
+	certFile, keyFile := generateSelfSignedCert(t)
+
+	srv := approvalhttp.NewServer("127.0.0.1:0", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	require.NoError(t, srv.StartTLS(ctx, certFile, keyFile, nil))
+	assert.NotEmpty(t, srv.ListenAddr())
 }

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -25,6 +26,7 @@ var (
 	runApprovalPort  int
 	runApprovalToken string
 	runMetricsAddr   string
+	runOTelEndpoint  string
 )
 
 var runCmd = &cobra.Command{
@@ -50,6 +52,8 @@ func init() {
 			"If empty and --approval-port is set, a random token is generated and printed at startup.")
 	runCmd.Flags().StringVar(&runMetricsAddr, "metrics-addr", "",
 		"Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.")
+	runCmd.Flags().StringVar(&runOTelEndpoint, "otel-endpoint", "",
+		"OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled (CHECK 10.3.1).")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -88,6 +92,10 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		mux.Handle("/metrics", promhttp.Handler())
 		go func() { _ = http.ListenAndServe(runMetricsAddr, mux) }() // #nosec G114 -- metrics addr is operator-controlled, not user input
 	}
+
+	// Configure OpenTelemetry when --otel-endpoint is provided (CHECK 10.3.1).
+	otelShutdown := obs.InitOTel(runOTelEndpoint)
+	defer otelShutdown()
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{

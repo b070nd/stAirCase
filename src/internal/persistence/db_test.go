@@ -168,3 +168,25 @@ func indexExists(t *testing.T, db *sql.DB, index string) bool {
 	require.NoError(t, err)
 	return true
 }
+
+// TestStore_error_paths_with_closed_db exercises error return paths in Store
+// methods by closing the underlying DB.  Each call should return a non-nil
+// error, covering the `if err != nil { return nil, err }` branches.
+func TestStore_error_paths_with_closed_db(t *testing.T) {
+	db, err := persistence.InitDB(t.TempDir())
+	require.NoError(t, err)
+	store := persistence.NewStore(db)
+	db.Close() // all subsequent operations will fail
+
+	_, err = store.ListVendors()
+	assert.Error(t, err, "ListVendors on closed db must error")
+
+	_, _, err = store.GetProjectConfig(1)
+	assert.Error(t, err, "GetProjectConfig on closed db must error")
+
+	_, err = store.ListAllSecrets()
+	assert.Error(t, err, "ListAllSecrets on closed db must error")
+
+	_, err = store.HasSuccessfulRunAtTopologyVersion(1, 1)
+	assert.Error(t, err, "HasSuccessfulRunAtTopologyVersion on closed db must error")
+}

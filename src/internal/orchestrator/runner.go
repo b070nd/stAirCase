@@ -122,7 +122,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		if err != nil {
 			obs.Log.Warn("reconcile", "err", err)
 		} else if len(result.StalledRuns) > 0 || len(result.OrphanBranches) > 0 {
-			fmt.Printf("   🔄 Reconcile: %d stale run(s) killed, %d orphan branch(es) pruned\n",
+			fmt.Fprintf(os.Stdout, "   🔄 Reconcile: %d stale run(s) killed, %d orphan branch(es) pruned\n",
 				len(result.StalledRuns), len(result.OrphanBranches))
 		}
 	}
@@ -174,16 +174,16 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
 		obs.Log.Warn("kill stale runs", "err", err)
 	} else if n > 0 {
-		fmt.Printf("   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
+		fmt.Fprintf(os.Stdout, "   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
 	}
 	run, err := r.store.CreateRun(caseID, topoVersion, gitBranch)
 	if err != nil {
 		return fmt.Errorf("create run: %w", err)
 	}
-	fmt.Printf("🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
+	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
 
 	if opts.DryRun {
-		fmt.Printf("   [dry-run] socket would be: %s\n",
+		fmt.Fprintf(os.Stdout, "   [dry-run] socket would be: %s\n",
 			filepath.Join(r.wsDir, "tmp", fmt.Sprintf("run-%d.sock", run.ID)))
 		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusKilled, timePtr(time.Now()), "")
 		return nil
@@ -215,7 +215,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 			return fmt.Errorf("create blast-radius branch %q: %w", runBranch, err)
 		}
 		runBranchCreated = true
-		fmt.Printf("   🌿 Blast-radius branch: %s\n", runBranch)
+		fmt.Fprintf(os.Stdout, "   🌿 Blast-radius branch: %s\n", runBranch)
 	}
 
 	// ── IPC_LISTEN ────────────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if err := ipcSrv.Start(ctx); err != nil {
 		return fmt.Errorf("ipc server: %w", err)
 	}
-	fmt.Printf("   🔌 IPC socket: %s\n", socketPath)
+	fmt.Fprintf(os.Stdout, "   🔌 IPC socket: %s\n", socketPath)
 
 	policyEngine, err := policy.LoadEngine(r.wsDir)
 	if err != nil {
@@ -263,8 +263,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		if err := approvalSrv.Start(ctx); err != nil {
 			return fmt.Errorf("approval http server: %w", err)
 		}
-		fmt.Printf("   🌐 Approval API: http://%s/v1/yields\n", approvalSrv.ListenAddr())
-		fmt.Printf("   🔑 Approval token: %s\n", approvalToken)
+		fmt.Fprintf(os.Stdout, "   🌐 Approval API: http://%s/v1/yields\n", approvalSrv.ListenAddr())
+		fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", approvalToken)
 	}
 
 	if opts.Debug {
@@ -274,7 +274,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 				ipcSrv.SetDebugWriter(f)
 				defer func() { _ = f.Close() }()
-				fmt.Printf("   🔍 Debug log: %s\n", logPath)
+				fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
 			}
 		}
 	}
@@ -303,14 +303,22 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil { // #nosec G703 -- scriptPath is built from internal wsDir, not user input
 		return fmt.Errorf("copy script to run path: %w", err)
 	}
+	// Open the run-specific script as a file descriptor so the runtime can
+	// deliver it to Python via ExtraFiles (fd 3) rather than a file-path arg
+	// (CHECK 5.4.2).
+	scriptFD, err := os.Open(scriptPath)
+	if err != nil {
+		return fmt.Errorf("open script fd: %w", err)
+	}
+	defer func() { _ = scriptFD.Close() }()
 
-	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptPath, ipcSrv.ListenAddr(), token)
+	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token)
 	if err != nil {
 		now := time.Now()
 		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
 		return fmt.Errorf("launch python: %w", err)
 	}
-	fmt.Printf("   🐍 Python PID=%d\n", proc.PID())
+	fmt.Fprintf(os.Stdout, "   🐍 Python PID=%d\n", proc.PID())
 
 	// ── AGENT_LOOP ────────────────────────────────────────────────────────────
 	r.phase = PhaseAgentLoop
@@ -338,7 +346,7 @@ runLoop:
 			tracker.Record(emit.ActiveAgent, model, inputTok, outputTok)
 			display.AddActivity(fmt.Sprintf("%-14s step %d", emit.ActiveAgent, tracker.Totals().Steps))
 			if display.BudgetExceeded() {
-				fmt.Printf("\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
+				fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
 				proc.Kill()
 			}
 
@@ -435,7 +443,39 @@ runLoop:
 	}
 	_ = r.store.UpdateCaseStatus(caseID, caseStatusMap[finalStatus])
 
+	// Write per-run summary (CHECK 10.4.1).
+	_ = writeSummary(r.wsDir, RunSummary{
+		RunID:       run.ID,
+		CaseID:      caseID,
+		FinalStatus: finalStatus,
+		CommitHash:  commitHash,
+		EndTime:     endTime,
+	})
+
 	return nil
+}
+
+// RunSummary is the on-disk representation of a completed run (CHECK 10.4.1).
+type RunSummary struct {
+	RunID       int64     `json:"run_id"`
+	CaseID      int64     `json:"case_id"`
+	FinalStatus string    `json:"final_status"`
+	CommitHash  string    `json:"commit_hash,omitempty"`
+	EndTime     time.Time `json:"end_time"`
+}
+
+// writeSummary writes a RunSummary as summary.json to
+// $STAIRCASE_DIR/runs/<run_id>/ (CHECK 10.4.1).
+func writeSummary(wsDir string, s RunSummary) error {
+	dir := filepath.Join(wsDir, "runs", fmt.Sprintf("%d", s.RunID))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("mkdir runs: %w", err)
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("marshal summary: %w", err)
+	}
+	return os.WriteFile(filepath.Join(dir, "summary.json"), data, 0o600)
 }
 
 // runGates executes all quality gates and returns an error if any BLOCK gate fails.
@@ -475,7 +515,7 @@ func handleDirtyTree(repoPath string, autoStash bool) (stashed bool, err error) 
 	if stashErr != nil {
 		return false, fmt.Errorf("auto-stash failed: %s", out)
 	}
-	fmt.Printf("   📦 Auto-stashed dirty tree in %s\n", repoPath)
+	fmt.Fprintf(os.Stdout, "   📦 Auto-stashed dirty tree in %s\n", repoPath)
 	return true, nil
 }
 

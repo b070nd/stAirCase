@@ -247,7 +247,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   The response should be passed directly as an API key or similar; it should NOT be passed through a decryption call on the Python side (Python never holds the AES key).
 - **Check 3.4.4** — An end-to-end test exists that actually starts Python, requests a secret, and verifies the plaintext arrives:
   ```bash
-  go test ./tests/e2e/... -run TestSecretRoundTrip -v -count=1
+  go test ./src/internal/persistence/ -run TestSecretRoundTrip -v -count=1
   ```
 
 ### 3.5 IPC server hardening
@@ -343,7 +343,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
   Test that `fmt.Sprintf("%v", pt)` returns `<redacted>` or equivalent:
   ```bash
-  go test ./internal/secret/ -run TestPlaintextRedaction -v
+  go test ./src/internal/crypto/ -run TestPlaintextRedaction -v
   ```
 - **Check 4.2.3** — Key file permission check at every load, not just at init:
   ```bash
@@ -357,7 +357,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   If `GenerateKey` or equivalent uses `os.WriteFile`, that is R-3 / C-3 territory; MEDIUM.
 - **Check 4.2.5** — Decryption distinguishes "wrong key" from "corrupt ciphertext":
   ```bash
-  go test ./internal/crypto/ -run "TestDecrypt.*Corrupt|TestDecrypt.*WrongKey" -v
+  go test ./src/internal/crypto/ -run "TestDecrypt.*Corrupt|TestDecrypt.*WrongKey" -v
   ```
 
 ### 4.3 Rotation
@@ -381,7 +381,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
 - **Check 4.4.1** — Every code path that decrypts a secret writes a `secret_access_log` row with outcome. Read the vault's `Get` / decrypt methods; every return (including errors) must have a matching `Audit(...)` call.
 - **Check 4.4.2** — Integration test: a run that requests N secrets produces N rows in `secret_access_log`:
   ```bash
-  go test ./internal/secret/ -run TestAtUseAuditCounts -v
+  go test ./src/internal/persistence/ -run TestAtUseAuditCounts -v
   ```
 - **Check 4.4.3** — Pre-presentation secret scrub exists. In the diff presentation code (Phase 7), active secret values are scanned:
   ```bash
@@ -430,7 +430,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
   Must run LIFO regardless of panic; test this:
   ```bash
-  go test ./internal/orchestrator/ -run TestCleanupChainOnPanic -v
+  go test ./src/internal/orchestrator/ -run TestCleanupChainOnPanic -v
   ```
 - **Check 5.2.4** — Detached-HEAD handling: capture by SHA:
   ```bash
@@ -446,7 +446,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   `exec.Command("git", ...)` uses in the orchestrator (not in test fixtures) = MEDIUM.
 - **Check 5.3.2** — Integration test creates orphan branches, then runs reconciliation:
   ```bash
-  go test ./internal/orchestrator/ -run TestOrphanReconciliation -v
+  go test ./src/internal/orchestrator/ -run TestOrphanReconciliation -v
   ```
 
 ### 5.4 Python process lifecycle
@@ -479,7 +479,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
 
 - **Check 5.5.1** — Kill the orchestrator mid-run at each phase boundary; verify branch restoration on next run with `--reconcile`. An existing test must do this:
   ```bash
-  go test ./internal/orchestrator/ -run "TestCrashInjection|TestKillAtPhase" -v
+  go test ./src/internal/orchestrator/ -run "TestCrashInjection|TestKillAtPhase" -v
   ```
   Missing = HIGH.
 
@@ -578,15 +578,15 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 7.1.3** — Policies compile at load time; invalid expressions refused:
   ```bash
-  go test ./internal/policy/ -run TestPolicyLoadValidation -v
+  go test ./src/internal/policy/ -run TestPolicyLoadValidation -v
   ```
 - **Check 7.1.4** — `deny_if` wins over `allow_if`:
   ```bash
-  go test ./internal/policy/ -run TestDenyBeatsAllow -v
+  go test ./src/internal/policy/ -run TestDenyBeatsAllow -v
   ```
 - **Check 7.1.5** — Blanket-deny refused without explicit flag:
   ```bash
-  go test ./internal/policy/ -run TestBlanketDenyRequiresFlag -v
+  go test ./src/internal/policy/ -run TestBlanketDenyRequiresFlag -v
   ```
 
 ### 7.2 Session limits
@@ -597,7 +597,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 7.2.2** — Exhaustion surfaces as `Ask` to the operator (not silent allow or deny):
   ```bash
-  go test ./internal/policy/ -run TestLimitExhaustionAsksOperator -v
+  go test ./src/internal/policy/ -run TestLimitExhaustionAsksOperator -v
   ```
 
 ### 7.3 Decision recording
@@ -648,7 +648,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 8.6** — Decision race test: concurrent decides on same yield; one wins, other gets 409:
   ```bash
-  go test ./internal/http/approval/ -run TestDecisionRace -v
+  go test ./src/internal/approvalhttp/ -run TestDecisionRace -v
   ```
 
 ---
@@ -667,7 +667,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 9.1.3** — Tamper test: modify one event body; verification reports the exact break point:
   ```bash
-  go test ./internal/audit/ -run TestChainTamperDetection -v
+  go test ./src/internal/audit/ -run TestChainTamperDetection -v
   ```
 
 ### 9.2 Signed checkpoints
@@ -687,7 +687,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 9.2.4** — Signature tamper test:
   ```bash
-  go test ./internal/audit/ -run TestCheckpointSignatureTamper -v
+  go test ./src/internal/audit/ -run TestCheckpointSignatureTamper -v
   ```
 
 ### 9.3 Replay
@@ -721,7 +721,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 10.1.3** — Sensitive field redaction test: log a `Plaintext` value and a struct with field `token`; capture output; assert no leak:
   ```bash
-  go test ./internal/obs/ -run TestRedaction -v
+  go test ./src/internal/obs/ -run TestRedaction -v
   ```
 
 ### 10.2 Metrics
@@ -755,7 +755,7 @@ This is the I-3 / T-1 bug from the original review. It must be verifiable indepe
   ```
 - **Check 10.4.2** — Summary generation is deterministic (given same log, produces same output):
   ```bash
-  go test ./internal/obs/ -run TestSummaryDeterministic -v
+  go test ./src/internal/obs/ -run TestSummaryDeterministic -v
   ```
 
 ---
@@ -776,11 +776,11 @@ Mark §11 N/A if Phase 11 not started.
   ```
 - **Check 11.5** — Malformed plugin output test: plugin prints garbage; gate reports parse error, does not crash:
   ```bash
-  go test ./internal/gate/ -run TestPluginMalformedOutput -v
+  go test ./src/internal/gate/ -run TestPluginMalformedOutput -v
   ```
 - **Check 11.6** — Plugin cannot access `$STAIRCASE_DIR`:
   ```bash
-  go test ./internal/gate/ -run TestPluginIsolation -v
+  go test ./src/internal/gate/ -run TestPluginIsolation -v
   ```
 
 ---

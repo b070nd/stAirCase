@@ -41,7 +41,7 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 			return nil
 		}
 		// Requirements changed: re-run pip install in-place (no venv recreation needed).
-		fmt.Println("📦 Requirements changed — updating packages...")
+		fmt.Fprintln(os.Stdout, "📦 Requirements changed — updating packages...")
 		if err := runPipInstall(pythonExec, workspaceDir, offlineWheelsDir); err != nil {
 			// pip failed — mark the venv as broken so the next init recreates it.
 			_ = os.WriteFile(hashFile+".broken", []byte(err.Error()), 0o644)
@@ -49,7 +49,7 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 			return err
 		}
 		_ = os.WriteFile(hashFile, []byte(reqHash), 0o644)
-		fmt.Println("✅ Packages updated.")
+		fmt.Fprintln(os.Stdout, "✅ Packages updated.")
 		return nil
 	}
 
@@ -57,11 +57,11 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 	// entire venv so it is recreated from scratch below.
 	brokenSentinel := hashFile + ".broken"
 	if _, err := os.Stat(brokenSentinel); err == nil {
-		fmt.Println("⚠️  Broken venv detected — recreating from scratch...")
+		fmt.Fprintln(os.Stdout, "⚠️  Broken venv detected — recreating from scratch...")
 		_ = os.RemoveAll(venvPath)
 	}
 
-	fmt.Println("🚀 Bootstrapping isolated Python environment (Zero-Trace)...")
+	fmt.Fprintln(os.Stdout, "🚀 Bootstrapping isolated Python environment (Zero-Trace)...")
 
 	// 1. Create the virtual environment
 	cmd := exec.Command("python3", "-m", "venv", venvPath)
@@ -88,7 +88,7 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 
 	_ = os.Remove(brokenSentinel) // clear any previous broken sentinel
 	_ = os.WriteFile(hashFile, []byte(reqHash), 0o644)
-	fmt.Println("✅ Environment isolated successfully.")
+	fmt.Fprintln(os.Stdout, "✅ Environment isolated successfully.")
 	return nil
 }
 

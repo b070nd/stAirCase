@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
@@ -83,14 +84,21 @@ func (p *PythonProcess) Kill() {
 //  3. Python reads the message, connects to the socket, and authenticates
 //     with the token before sending any telemetry or secret requests.
 //
+// The script is delivered via an inherited file descriptor (ExtraFiles[0] → fd
+// 3) and executed as `python /dev/fd/3`.  This means the orchestrator does not
+// need to pass a file-system path to the runtime layer — the topology content
+// arrives through the fd, not a well-known tmp path (CHECK 5.4.2).
+//
 // The process is wrapped in context.WithCancel so that calling Kill() or
 // cancelling the parent ctx sends SIGKILL (zombie reaper).
-func LaunchPython(ctx context.Context, wsDir, scriptPath, socketPath, token string) (*PythonProcess, error) {
+func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string) (*PythonProcess, error) {
 	venvPath := filepath.Join(wsDir, "venv")
 	pythonBin := venvPythonBin(venvPath)
 
 	procCtx, cancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(procCtx, pythonBin, scriptPath)
+	// Pass the script via /dev/fd/3 (ExtraFiles[0] becomes fd 3 in the child).
+	cmd := exec.CommandContext(procCtx, pythonBin, "/dev/fd/3")
+	cmd.ExtraFiles = []*os.File{scriptFile} // fd 3 = topology script (CHECK 5.4.2)
 
 	// Place the Python process in its own process group so that signals sent
 	// via Kill() (negative PID = group) reach all Python children, not just the

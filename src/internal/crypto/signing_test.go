@@ -30,6 +30,18 @@ func TestGenerateSigningKey_creates_key_files(t *testing.T) {
 	assert.Len(t, pubData, ed25519.PublicKeySize, "public key must be 32 bytes")
 }
 
+func TestGenerateSigningKey_nonwritable_dir_returns_error(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX read-only dir not enforced on Windows")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o555)) // remove write bit
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	err := crypto.GenerateSigningKey(dir)
+	assert.Error(t, err, "GenerateSigningKey in a non-writable directory must fail")
+}
+
 func TestGenerateSigningKey_idempotent(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, crypto.GenerateSigningKey(dir))
@@ -58,6 +70,31 @@ func TestGenerateSigningKey_private_key_has_0600_permissions(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
+// TestGenerateSigningKey_pub_key_write_fails covers the path where the private
+// key is written successfully but the public key write fails. We block the
+// destination path by pre-creating a directory there; os.Rename(file→dir)
+// returns EISDIR on POSIX, triggering the cleanup that removes the private key.
+func TestGenerateSigningKey_pub_key_write_fails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX rename-over-directory semantics not guaranteed on Windows")
+	}
+	dir := t.TempDir()
+	// Block the public key path with a directory so Rename fails.
+	pubPath := filepath.Join(dir, crypto.SigningPubFile)
+	require.NoError(t, os.MkdirAll(pubPath, 0o755))
+
+	err := crypto.GenerateSigningKey(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "write signing public key",
+		"error must identify the pub key write as the failure point")
+
+	// After the pub key write fails, GenerateSigningKey must clean up the
+	// private key so the pair is always in a consistent state.
+	_, statErr := os.Stat(filepath.Join(dir, crypto.SigningKeyFile))
+	assert.True(t, os.IsNotExist(statErr),
+		"private key must be removed when pub key write fails")
+}
+
 // ─── LoadSigningKey ───────────────────────────────────────────────────────────
 
 func TestLoadSigningKey_roundtrip(t *testing.T) {
@@ -80,6 +117,21 @@ func TestLoadSigningKey_wrong_size_returns_error(t *testing.T) {
 	_, err := crypto.LoadSigningKey(dir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "corrupt")
+}
+
+func TestLoadSigningKey_unreadable_file_returns_error(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission check not enforced on Windows")
+	}
+	dir := t.TempDir()
+	require.NoError(t, crypto.GenerateSigningKey(dir))
+	keyPath := filepath.Join(dir, crypto.SigningKeyFile)
+	// Mode 0o000 passes the 0o177 mask check but makes ReadFile fail.
+	require.NoError(t, os.Chmod(keyPath, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(keyPath, 0o600) })
+
+	_, err := crypto.LoadSigningKey(dir)
+	assert.Error(t, err)
 }
 
 func TestLoadSigningKey_bad_permissions_returns_error(t *testing.T) {

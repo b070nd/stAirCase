@@ -27,3 +27,6 @@ func ExportedScrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.Ip
 // ExportedRunGates exposes runGates for whitebox testing of the quality-gate
 // pre-flight path without requiring a full Run() invocation.
 func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID) }
+
+// ExportedWriteSummary exposes writeSummary for unit testing (CHECK 10.4.1).
+func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummary(wsDir, s) }
