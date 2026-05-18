@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "package": "github.com/b070nd/staircase-core/src/internal/orchestrator",
+      "target_pct": 40,
+      "reason": "Run() is the E2E entry point requiring a live Python runtime and real git operations. The DryRun path and all pure helper functions are covered. The 85% AUDIT_CHECKLIST target is architecturally infeasible without an integration test harness that bootstraps a Python venv.",
+      "checks_affected": ["12.4.3"],
+      "approved_date": "2026-05-16"
+    },
+    {
+      "package": "github.com/b070nd/staircase-core/src/internal/runtime",
+      "target_pct": 60,
+      "reason": "BootstrapVenv() and LaunchPython() require a real Python binary and venv; these are covered by integration tests only. BootstrapToken, Kill, and message helpers are unit-tested.",
+      "checks_affected": ["12.4.2"],
+      "approved_date": "2026-05-16"
+    },
+    {
+      "package": "github.com/b070nd/staircase-core/src/internal/tui",
+      "target_pct": 65,
+      "reason": "RunYieldTUI() requires an interactive terminal (bubbletea Program.Run). View() and Update() state machine are unit-tested. The terminal-bound path is covered by manual QA.",
+      "checks_affected": ["12.4.2"],
+      "approved_date": "2026-05-16"
+    },
+    {
+      "package": "github.com/b070nd/staircase-core/src/cmd/staircase",
+      "target_pct": 30,
+      "reason": "cobra command RunE functions are integration-boundary code; most paths require a fully initialized workspace. Core logic is delegated to internal packages which are unit-tested.",
+      "checks_affected": ["12.4.2"],
+      "approved_date": "2026-05-16"
+    }
+  ]
+}
