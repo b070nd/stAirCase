@@ -1,0 +1,1 @@
+{"type": "yield_request", "agent_name": "coder", "action_type": "file_edit", "proposed_edits": [{"file": "src/main.go", "search_block": "fmt.Println(\"hello\")", "replace_block": "fmt.Println(\"world\")"}], "reasoning_trace": "Updating greeting string as requested.", "confidence_score": 0.95}

@@ -1,0 +1,18 @@
+# linear-3.yaml — three-agent linear chain: planner → coder → reviewer.
+# Used by L3/L4 tests that exercise multi-agent handoff paths.
+supervisor: planner
+agents:
+  - name: planner
+    model: claude-sonnet-4-5
+    system_prompt: "You decompose tasks into steps for the coder."
+  - name: coder
+    model: claude-sonnet-4-5
+    system_prompt: "You implement the plan provided by the planner."
+  - name: reviewer
+    model: claude-sonnet-4-5
+    system_prompt: "You review the coder's output and give a pass/fail verdict."
+edges:
+  - from: planner
+    to: coder
+  - from: coder
+    to: reviewer

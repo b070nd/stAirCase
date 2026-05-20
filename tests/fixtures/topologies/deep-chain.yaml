@@ -1,0 +1,53 @@
+# deep-chain.yaml — 10-agent linear chain: stage-1 → stage-2 → … → stage-10.
+# Tests depth limits and the long-tail handoff path.
+supervisor: stage-1
+agents:
+  - name: stage-1
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 1: receive task and pass to stage-2."
+  - name: stage-2
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 2."
+  - name: stage-3
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 3."
+  - name: stage-4
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 4."
+  - name: stage-5
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 5."
+  - name: stage-6
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 6."
+  - name: stage-7
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 7."
+  - name: stage-8
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 8."
+  - name: stage-9
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 9."
+  - name: stage-10
+    model: claude-sonnet-4-5
+    system_prompt: "Stage 10: produce final output."
+edges:
+  - from: stage-1
+    to: stage-2
+  - from: stage-2
+    to: stage-3
+  - from: stage-3
+    to: stage-4
+  - from: stage-4
+    to: stage-5
+  - from: stage-5
+    to: stage-6
+  - from: stage-6
+    to: stage-7
+  - from: stage-7
+    to: stage-8
+  - from: stage-8
+    to: stage-9
+  - from: stage-9
+    to: stage-10

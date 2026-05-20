@@ -1,0 +1,18 @@
+# cycle.yaml — deliberately invalid topology containing a directed cycle.
+# Topology validation (§7.1) must reject this with a clear error.
+# Marked invalid so loaders can use it as a negative-test fixture.
+#
+# expect_error: true
+supervisor: agent-a
+agents:
+  - name: agent-a
+    model: claude-sonnet-4-5
+    system_prompt: "Agent A."
+  - name: agent-b
+    model: claude-sonnet-4-5
+    system_prompt: "Agent B."
+edges:
+  - from: agent-a
+    to: agent-b
+  - from: agent-b
+    to: agent-a   # creates a cycle — must be rejected

@@ -1,0 +1,103 @@
+# wide-fan-out.yaml — supervisor fans out to 19 worker agents.
+# Stress-tests the many-worker path (active_agents + Send).
+supervisor: supervisor
+agents:
+  - name: supervisor
+    model: claude-sonnet-4-5
+    system_prompt: "You distribute subtasks to all 19 workers."
+  - name: worker-01
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 01."
+  - name: worker-02
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 02."
+  - name: worker-03
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 03."
+  - name: worker-04
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 04."
+  - name: worker-05
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 05."
+  - name: worker-06
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 06."
+  - name: worker-07
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 07."
+  - name: worker-08
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 08."
+  - name: worker-09
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 09."
+  - name: worker-10
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 10."
+  - name: worker-11
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 11."
+  - name: worker-12
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 12."
+  - name: worker-13
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 13."
+  - name: worker-14
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 14."
+  - name: worker-15
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 15."
+  - name: worker-16
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 16."
+  - name: worker-17
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 17."
+  - name: worker-18
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 18."
+  - name: worker-19
+    model: claude-sonnet-4-5
+    system_prompt: "Worker 19."
+edges:
+  - from: supervisor
+    to: worker-01
+  - from: supervisor
+    to: worker-02
+  - from: supervisor
+    to: worker-03
+  - from: supervisor
+    to: worker-04
+  - from: supervisor
+    to: worker-05
+  - from: supervisor
+    to: worker-06
+  - from: supervisor
+    to: worker-07
+  - from: supervisor
+    to: worker-08
+  - from: supervisor
+    to: worker-09
+  - from: supervisor
+    to: worker-10
+  - from: supervisor
+    to: worker-11
+  - from: supervisor
+    to: worker-12
+  - from: supervisor
+    to: worker-13
+  - from: supervisor
+    to: worker-14
+  - from: supervisor
+    to: worker-15
+  - from: supervisor
+    to: worker-16
+  - from: supervisor
+    to: worker-17
+  - from: supervisor
+    to: worker-18
+  - from: supervisor
+    to: worker-19

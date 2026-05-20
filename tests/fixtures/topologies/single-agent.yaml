@@ -1,0 +1,8 @@
+# single-agent.yaml — minimal topology with one supervisor agent.
+# Used by L3/L4 tests that need a deterministic, dependency-free topology.
+supervisor: supervisor
+agents:
+  - name: supervisor
+    model: claude-sonnet-4-5
+    system_prompt: "You are a helpful coding assistant."
+edges: []

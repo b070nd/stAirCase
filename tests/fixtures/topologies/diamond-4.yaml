@@ -1,0 +1,25 @@
+# diamond-4.yaml — four-agent diamond: planner fans out to coder + analyst,
+# both converge on reviewer.  Tests parallel branch execution.
+supervisor: planner
+agents:
+  - name: planner
+    model: claude-sonnet-4-5
+    system_prompt: "You decompose the task and dispatch to coder and analyst in parallel."
+  - name: coder
+    model: claude-sonnet-4-5
+    system_prompt: "You implement the feature assigned by the planner."
+  - name: analyst
+    model: claude-sonnet-4-5
+    system_prompt: "You analyse requirements and edge cases assigned by the planner."
+  - name: reviewer
+    model: claude-sonnet-4-5
+    system_prompt: "You review coder and analyst outputs and produce a final verdict."
+edges:
+  - from: planner
+    to: coder
+  - from: planner
+    to: analyst
+  - from: coder
+    to: reviewer
+  - from: analyst
+    to: reviewer
