@@ -21,7 +21,9 @@ type BootstrapMessage struct {
 	Token      string `json:"token"`
 	RecordLLM  string `json:"record_llm,omitempty"`
 	ReplayLLM  string `json:"replay_llm,omitempty"`
+	RunnerPath string `json:"runner_path,omitempty"`
 }
+
 
 // LaunchPythonOptions mirrors the non-Windows definition.
 type LaunchPythonOptions struct {

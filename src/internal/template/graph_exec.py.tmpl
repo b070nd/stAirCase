@@ -104,6 +104,10 @@ assert _boot["type"] == "bootstrap", f"unexpected: {_boot}"
 _ipc = _IPC(_boot["socket_path"], _boot["token"])
 _record_llm: str = _boot.get("record_llm", "")
 _replay_llm:  str = _boot.get("replay_llm", "")
+# Prepend the embedded staircase_runner package path so recording/replay imports work.
+_runner_path: str = _boot.get("runner_path", "")
+if _runner_path and _runner_path not in sys.path:
+    sys.path.insert(0, _runner_path)
 
 # Initialise recording/replay singletons once at module level.
 _rec_session = None

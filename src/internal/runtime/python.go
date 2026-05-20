@@ -43,6 +43,11 @@ type BootstrapMessage struct {
 	// ReplayLLM, when non-empty, is a file path from which the Python harness
 	// must replay LLM exchanges deterministically instead of calling the real API.
 	ReplayLLM string `json:"replay_llm,omitempty"`
+
+	// RunnerPath, when non-empty, is a directory that must be prepended to
+	// sys.path so that `import staircase_runner` resolves to the embedded
+	// package written by BootstrapVenv into the workspace venv.
+	RunnerPath string `json:"runner_path,omitempty"`
 }
 
 // PythonProcess wraps a managed Python subprocess.
@@ -164,6 +169,7 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 		Token:      token,
 		RecordLLM:  lpo.RecordLLM,
 		ReplayLLM:  lpo.ReplayLLM,
+		RunnerPath: RunnerInjectDir(venvPath),
 	}); err != nil {
 		cancel()
 		_ = cmd.Process.Kill()

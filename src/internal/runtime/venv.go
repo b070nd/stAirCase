@@ -15,6 +15,13 @@ import (
 //go:embed requirements.txt
 var embeddedRequirements []byte
 
+// embeddedRecording is the source of runner/staircase_runner/recording.py, copied
+// here so it can be embedded in the binary and injected into the workspace venv.
+// Keep in sync with runner/staircase_runner/recording.py.
+//
+//go:embed recording_embed.py
+var embeddedRecording []byte
+
 // BootstrapVenv ensures a strictly isolated Python environment exists in $STAIRCASE_DIR.
 // On each call it compares a SHA-256 hash of the embedded requirements.txt against a
 // stored hash in the venv directory. If the hash differs (requirements were updated),
@@ -47,6 +54,9 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 			_ = os.WriteFile(hashFile+".broken", []byte(err.Error()), 0o644)
 			_ = os.Remove(hashFile)
 			return err
+		}
+		if err := writeRunnerInject(venvPath); err != nil {
+			return fmt.Errorf("write runner_inject: %w", err)
 		}
 		_ = os.WriteFile(hashFile, []byte(reqHash), 0o644)
 		fmt.Fprintln(os.Stdout, "✅ Packages updated.")
@@ -86,10 +96,37 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 		return err
 	}
 
+	// 4. Inject the staircase_runner package so --record-llm / --replay-llm work.
+	if err := writeRunnerInject(venvPath); err != nil {
+		return fmt.Errorf("write runner_inject: %w", err)
+	}
+
 	_ = os.Remove(brokenSentinel) // clear any previous broken sentinel
 	_ = os.WriteFile(hashFile, []byte(reqHash), 0o644)
 	fmt.Fprintln(os.Stdout, "✅ Environment isolated successfully.")
 	return nil
+}
+
+// RunnerInjectDir returns the directory that must be on sys.path for
+// `import staircase_runner` to resolve inside the workspace venv.
+// Python sees: <RunnerInjectDir>/staircase_runner/__init__.py
+//              <RunnerInjectDir>/staircase_runner/recording.py
+func RunnerInjectDir(venvPath string) string {
+	return filepath.Join(venvPath, "runner_inject")
+}
+
+// writeRunnerInject writes the embedded staircase_runner package under
+// <venvPath>/runner_inject/staircase_runner/.  The directory is recreated on
+// every BootstrapVenv call so the embedded content stays in sync with the binary.
+func writeRunnerInject(venvPath string) error {
+	pkgDir := filepath.Join(RunnerInjectDir(venvPath), "staircase_runner")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "__init__.py"), []byte(""), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(pkgDir, "recording.py"), embeddedRecording, 0o644)
 }
 
 // runPipInstall writes the embedded requirements.txt to tmp/ and runs pip install.

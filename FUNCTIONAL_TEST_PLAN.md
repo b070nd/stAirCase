@@ -28,6 +28,19 @@ Five principles. If a proposed test does not serve at least one of them, drop it
 - Security pentesting (a separate, out-of-band engagement with a third party; this plan supports it with scenario fixtures but does not replace it).
 - Multi-tenant / multi-user scenarios (Principle 9 of the build plan: single-user product).
 
+The following capabilities are explicitly deferred to future roadmap phases and are **not** tested or implemented in the current prototype:
+
+| Capability | Rationale |
+|------------|-----------|
+| Multi-user RBAC | Requires identity model; single-user product by design |
+| SSO / identity provider integration | No auth layer in v0.1 |
+| Multi-tenant workspace isolation | Single workspace per binary invocation |
+| Central control plane / fleet management | Distributed architecture not yet designed |
+| SIEM webhook / audit export API | Audit evidence available via `staircase audit export`; push integration deferred |
+| Stable public SDK contract | Python runner API is internal; breaking changes allowed until v1.0 |
+
+Enterprise reviewers should treat these as known scope boundaries, not oversights.
+
 ---
 
 ## 1. The testing pyramid (what each layer is for)
