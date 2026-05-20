@@ -35,6 +35,14 @@ type BootstrapMessage struct {
 	Type       string `json:"type"`        // "bootstrap"
 	SocketPath string `json:"socket_path"` // path to the Unix Domain Socket
 	Token      string `json:"token"`       // session auth token
+
+	// RecordLLM, when non-empty, is a file path where the Python harness must
+	// write a JSON record of every LLM exchange (for replay in later test runs).
+	RecordLLM string `json:"record_llm,omitempty"`
+
+	// ReplayLLM, when non-empty, is a file path from which the Python harness
+	// must replay LLM exchanges deterministically instead of calling the real API.
+	ReplayLLM string `json:"replay_llm,omitempty"`
 }
 
 // PythonProcess wraps a managed Python subprocess.
@@ -91,7 +99,18 @@ func (p *PythonProcess) Kill() {
 //
 // The process is wrapped in context.WithCancel so that calling Kill() or
 // cancelling the parent ctx sends SIGKILL (zombie reaper).
-func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string) (*PythonProcess, error) {
+// LaunchPythonOptions carries optional bootstrap parameters for LaunchPython.
+// Zero value is safe: both fields default to empty (feature disabled).
+type LaunchPythonOptions struct {
+	// RecordLLM, if non-empty, is forwarded to Python so it records LLM exchanges
+	// to the named file for later deterministic replay.
+	RecordLLM string
+	// ReplayLLM, if non-empty, is forwarded to Python so it replays LLM exchanges
+	// from the named file instead of calling the real API.
+	ReplayLLM string
+}
+
+func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
 	venvPath := filepath.Join(wsDir, "venv")
 	pythonBin := venvPythonBin(venvPath)
 
@@ -131,12 +150,20 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 		return nil, fmt.Errorf("start python: %w", err)
 	}
 
+	// Merge optional bootstrap fields.
+	var lpo LaunchPythonOptions
+	if len(opts) > 0 {
+		lpo = opts[0]
+	}
+
 	// Write the bootstrap message then seal stdin.
 	enc := json.NewEncoder(stdin)
 	if err := enc.Encode(BootstrapMessage{
 		Type:       "bootstrap",
 		SocketPath: socketPath,
 		Token:      token,
+		RecordLLM:  lpo.RecordLLM,
+		ReplayLLM:  lpo.ReplayLLM,
 	}); err != nil {
 		cancel()
 		_ = cmd.Process.Kill()

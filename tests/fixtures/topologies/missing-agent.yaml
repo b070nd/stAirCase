@@ -1,0 +1,17 @@
+# missing-agent.yaml — topology whose edge references an agent not in the
+# agents list.  Topology validation must reject this (§7.1).
+#
+# expect_error: true
+supervisor: agent-a
+agents:
+  - name: agent-a
+    model: claude-sonnet-4-5
+    system_prompt: "Agent A."
+  - name: agent-b
+    model: claude-sonnet-4-5
+    system_prompt: "Agent B."
+edges:
+  - from: agent-a
+    to: agent-b
+  - from: agent-b
+    to: agent-c   # agent-c is not defined in agents — must be rejected

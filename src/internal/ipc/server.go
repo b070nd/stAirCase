@@ -20,14 +20,17 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 )
 
-const (
-	// heartbeatTimeout is how long the server waits between messages before
-	// treating the Python process as hung and closing the connection.
-	heartbeatTimeout = 30 * time.Second
+// heartbeatTimeout is how long the server waits between messages before
+// treating the Python process as hung and closing the connection.
+// Declared as a var (not const) so tests can lower it via export_test.go.
+var heartbeatTimeout = 30 * time.Second
 
-	// authTimeout is how long the server waits for the auth handshake on a
-	// new connection before dropping it.
-	authTimeout = 10 * time.Second
+// authTimeout is how long the server waits for the auth handshake on a
+// new connection before dropping it.
+// Declared as a var (not const) so tests can lower it via export_test.go.
+var authTimeout = 10 * time.Second
+
+const (
 
 	// maxPayloadSize caps how many bytes are stored per audit log entry.
 	// Prevents a misbehaving agent from inflating the DB without bound.
@@ -206,6 +209,12 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Capture timeout values once at Start time.  handleConnection goroutines
+	// close over these locals, never reading the package-level vars again.
+	// This eliminates data races when tests override the vars between tests.
+	hbTO := heartbeatTimeout
+	authTO := authTimeout
+
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -231,14 +240,14 @@ func (s *Server) Start(ctx context.Context) error {
 				_ = conn.Close()
 				continue
 			}
-			go s.handleConnection(ctx, conn)
+			go s.handleConnection(ctx, conn, authTO, hbTO)
 		}
 	}()
 
 	return nil
 }
 
-func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
+func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hbTO time.Duration) {
 	defer atomic.AddInt32(&s.connCount, -1)
 	defer func() { _ = conn.Close() }()
 
@@ -247,7 +256,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	enc := json.NewEncoder(conn)
 
 	// ── Auth handshake ────────────────────────────────────────────────────────
-	_ = conn.SetReadDeadline(time.Now().Add(authTimeout))
+	_ = conn.SetReadDeadline(time.Now().Add(authTO))
 	if !scanner.Scan() {
 		return
 	}
@@ -274,7 +283,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 		default:
 		}
 
-		_ = conn.SetReadDeadline(time.Now().Add(heartbeatTimeout))
+		_ = conn.SetReadDeadline(time.Now().Add(hbTO))
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
 				obs.Log.Warn("ipc connection", "err", err)

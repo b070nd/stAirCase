@@ -1,0 +1,1 @@
+{"type": "yield_request", "agent_name": "coder", "action_type": "unsupported", "proposed_edits": [], "reasoning_trace": "bad action type", "confidence_score": 0.5, "expect_error": true}

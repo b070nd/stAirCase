@@ -1,0 +1,1 @@
+{"type": "auth", "token": "valid-token", "spurious_field": "should not be here", "expect_error": true}

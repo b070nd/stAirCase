@@ -58,6 +58,12 @@ type RunOptions struct {
 	Reconcile     bool // clean up orphan branches / stale runs before proceeding
 	ApprovalPort  int
 	ApprovalToken string
+	// RecordLLM, when non-empty, is a file path where the Python harness records
+	// every LLM exchange for later deterministic replay (--record-llm flag).
+	RecordLLM string
+	// ReplayLLM, when non-empty, is a file path from which the Python harness
+	// replays LLM exchanges instead of calling the real API (--replay-llm flag).
+	ReplayLLM string
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -312,7 +318,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	}
 	defer func() { _ = scriptFD.Close() }()
 
-	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token)
+	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
+		runtime.LaunchPythonOptions{RecordLLM: opts.RecordLLM, ReplayLLM: opts.ReplayLLM})
 	if err != nil {
 		now := time.Now()
 		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")

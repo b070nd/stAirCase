@@ -1,0 +1,12 @@
+# self-loop.yaml — single agent with an edge to itself.
+# Topology validation must reject this (self-loops are cycles; §7.1).
+#
+# expect_error: true
+supervisor: agent-a
+agents:
+  - name: agent-a
+    model: claude-sonnet-4-5
+    system_prompt: "Agent A."
+edges:
+  - from: agent-a
+    to: agent-a   # self-loop — must be rejected

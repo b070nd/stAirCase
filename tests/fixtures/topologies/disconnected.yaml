@@ -1,0 +1,23 @@
+# disconnected.yaml — four agents forming two disjoint pairs with no edges
+# between the pairs.  Used as an edge-case fixture for the DAG builder.
+#
+# expect_error: true
+supervisor: agent-a
+agents:
+  - name: agent-a
+    model: claude-sonnet-4-5
+    system_prompt: "Agent A (pair 1)."
+  - name: agent-b
+    model: claude-sonnet-4-5
+    system_prompt: "Agent B (pair 1)."
+  - name: agent-c
+    model: claude-sonnet-4-5
+    system_prompt: "Agent C (pair 2, unreachable from supervisor)."
+  - name: agent-d
+    model: claude-sonnet-4-5
+    system_prompt: "Agent D (pair 2, unreachable from supervisor)."
+edges:
+  - from: agent-a
+    to: agent-b
+  - from: agent-c
+    to: agent-d   # pair 2 is disconnected from the supervisor

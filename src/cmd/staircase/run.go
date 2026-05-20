@@ -27,6 +27,8 @@ var (
 	runApprovalToken string
 	runMetricsAddr   string
 	runOTelEndpoint  string
+	runRecordLLM     string
+	runReplayLLM     string
 )
 
 var runCmd = &cobra.Command{
@@ -54,6 +56,10 @@ func init() {
 		"Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.")
 	runCmd.Flags().StringVar(&runOTelEndpoint, "otel-endpoint", "",
 		"OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled (CHECK 10.3.1).")
+	runCmd.Flags().StringVar(&runRecordLLM, "record-llm", "",
+		"File path to record all LLM exchanges for deterministic replay in future test runs.")
+	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",
+		"File path to replay recorded LLM exchanges instead of calling the real API.")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -107,5 +113,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		Reconcile:     runReconcile,
 		ApprovalPort:  runApprovalPort,
 		ApprovalToken: runApprovalToken,
+		RecordLLM:     runRecordLLM,
+		ReplayLLM:     runReplayLLM,
 	})
 }

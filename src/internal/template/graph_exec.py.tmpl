@@ -102,6 +102,18 @@ except (AttributeError, OSError):
 _boot = json.loads(sys.stdin.readline())
 assert _boot["type"] == "bootstrap", f"unexpected: {_boot}"
 _ipc = _IPC(_boot["socket_path"], _boot["token"])
+_record_llm: str = _boot.get("record_llm", "")
+_replay_llm:  str = _boot.get("replay_llm", "")
+
+# Initialise recording/replay singletons once at module level.
+_rec_session = None
+_replay_client = None
+if _replay_llm:
+    from staircase_runner.recording import ReplayClient as _ReplayClient
+    _replay_client = _ReplayClient(_replay_llm)
+elif _record_llm:
+    from staircase_runner.recording import RecordingSession as _RecordingSession
+    _rec_session = _RecordingSession(_record_llm)
 
 PROJECT_PATH = [[.ProjectPath | pystr]]
 PRD_CONTEXT  = [[.PRDContext  | pystr]]
@@ -276,23 +288,32 @@ _BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file, run_shell]
 #   grok-*            → xAI               secret: XAI_API_KEY
 
 def _make_llm(model: str, tools: list):
+    # Replay mode: return the singleton replay client (ignores model/tools).
+    if _replay_client is not None:
+        return _replay_client
+    # Build the real provider-specific LLM.
     if model.startswith("claude-"):
         from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(model=model, api_key=_ipc.get_secret("ANTHROPIC_API_KEY")).bind_tools(tools)
+        _real = ChatAnthropic(model=model, api_key=_ipc.get_secret("ANTHROPIC_API_KEY")).bind_tools(tools)
     elif model.startswith(("gpt-", "o1-", "o3-", "o4-")):
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=model, api_key=_ipc.get_secret("OPENAI_API_KEY")).bind_tools(tools)
+        _real = ChatOpenAI(model=model, api_key=_ipc.get_secret("OPENAI_API_KEY")).bind_tools(tools)
     elif model.startswith("gemini-"):
         from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(model=model, google_api_key=_ipc.get_secret("GOOGLE_API_KEY")).bind_tools(tools)
+        _real = ChatGoogleGenerativeAI(model=model, google_api_key=_ipc.get_secret("GOOGLE_API_KEY")).bind_tools(tools)
     elif model.startswith("grok-"):
         from langchain_xai import ChatXAI
-        return ChatXAI(model=model, xai_api_key=_ipc.get_secret("XAI_API_KEY")).bind_tools(tools)
+        _real = ChatXAI(model=model, xai_api_key=_ipc.get_secret("XAI_API_KEY")).bind_tools(tools)
     else:
         raise ValueError(
             f"Unknown LLM provider for model {model!r}. "
             "Supported prefixes: claude-, gpt-, o1-, o3-, o4-, gemini-, grok-"
         )
+    # Recording mode: wrap the real LLM so every exchange is appended to the session.
+    if _rec_session is not None:
+        from staircase_runner.recording import RecordingClient as _RecordingClient
+        return _RecordingClient(_real, model, _rec_session)
+    return _real
 
 
 # ── Per-agent tool lists ───────────────────────────────────────────────────────
@@ -414,4 +435,6 @@ except Exception as _exc:
     _ipc.emit_state("__error__", {"error": str(_exc)})
     raise
 finally:
+    if _rec_session is not None:
+        _rec_session.close()
     _ipc.close()

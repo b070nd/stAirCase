@@ -1,0 +1,19 @@
+# Hash-pinned requirements for staircase-runner.
+# Generated from PyPI release metadata (sha256 of first available wheel/sdist).
+# Regenerate with: pip-compile --generate-hashes pyproject.toml
+langgraph==0.2.45 \
+    --hash=sha256:adfa9545c6c27180e995b654cb5817212c134a98407c7f34253a5fae58893f28
+pydantic==2.10.6 \
+    --hash=sha256:427d664bf0b8a2b34ff5dd0f5a18df00591adcee7198fbd71981054cef37b584
+langchain-core==0.3.61 \
+    --hash=sha256:62cddbda7fb6085b6096bb4f3ad69642ebb0585bde7b210edc61dd0af33f2ea4
+langchain-anthropic==0.3.15 \
+    --hash=sha256:894d670bc44e68e0b1f2f09e7e7f977a8f07085a596f114c79aefbb789f6d88d
+langchain-openai==0.3.18 \
+    --hash=sha256:1687b972a6f6ac125cb8b23c0043278ab3bce031983ef9b32c1277155f88a03e
+langchain-google-genai==2.1.4 \
+    --hash=sha256:a3fa3cf7fe9c1de77280f42fbdd22cfcc5fbeb0d60cd5be7a0e6c50a74f5ce73
+langchain-xai==0.2.3 \
+    --hash=sha256:df8986c22c20701b4cdb116069f4fdb8938c866b4c2f8add96f7361512dc445e
+typing-extensions==4.13.2 \
+    --hash=sha256:a439e7c04b49fec3e5d3e2beaa21755cadbbdc391694e28ccdd36ca4a1408f8c
