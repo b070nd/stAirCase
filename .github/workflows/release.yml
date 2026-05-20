@@ -27,6 +27,9 @@ jobs:
       - name: Run tests
         run: CGO_ENABLED=0 go test ./...
 
+      - name: Install syft (for SBOM generation)
+        uses: anchore/sbom-action/download-syft@f325610c9f50a54015d37c8d16cb3b0e2c8f4de  # v0.20.0
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@9c156ee8a17a598c1a6b2e9162b0b4c0892d1e4c  # v6.3.0
         with:

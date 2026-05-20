@@ -26,5 +26,15 @@ jobs:
       - name: Build
         run: CGO_ENABLED=0 go build ./...
 
-      - name: Test
-        run: CGO_ENABLED=0 go test ./...
+      - name: Test (unit + conformance + audit checks)
+        run: CGO_ENABLED=0 make test-ci
+
+      - name: Race detector
+        if: matrix.os != 'windows-latest'
+        run: go test -race ./src/internal/... -count=1 -short
+
+      - name: Vulnerability scan
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

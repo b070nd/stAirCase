@@ -1,4 +1,4 @@
-.PHONY: test test-conformance test-integration test-e2e test-ci race build lint coverage
+.PHONY: test test-conformance test-integration test-e2e test-ci race build lint coverage vuln
 
 # ─── Core unit tests ──────────────────────────────────────────────────────────
 test:
@@ -38,6 +38,11 @@ coverage:
 	go test ./src/internal/... -count=1 -cover -timeout=120s 2>&1 | tee /tmp/staircase_cov_summary.txt
 	@echo "--- coverage summary ---"
 	@grep -E "coverage:" /tmp/staircase_cov_summary.txt | sort
+
+# ─── Vulnerability scan ───────────────────────────────────────────────────────
+vuln:
+	@which govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+	govulncheck ./...
 
 # ─── Static analysis ──────────────────────────────────────────────────────────
 lint:
