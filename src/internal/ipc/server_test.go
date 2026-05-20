@@ -63,7 +63,7 @@ func newIPCEnv(t *testing.T) (srv *ipc.Server, store *persistence.Store, runID i
 
 	aesKey := make([]byte, 32) // zero key for testing
 
-	srv = ipc.NewServer(socketPath, runID, token, store, aesKey)
+	srv = ipc.NewServer(socketPath, runID, 0, token, store, aesKey)
 	ctx, cancelFn := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancelFn)
@@ -138,7 +138,7 @@ func TestServer_Start_missing_socket_parent_returns_error(t *testing.T) {
 		t.Skip("Windows uses TCP loopback instead of Unix sockets")
 	}
 	socketPath := filepath.Join(t.TempDir(), "missing", "t.sock")
-	srv := ipc.NewServer(socketPath, 1, "token", nil, make([]byte, 32))
+	srv := ipc.NewServer(socketPath, 1, 0, "token", nil, make([]byte, 32))
 
 	err := srv.Start(context.Background())
 	require.Error(t, err)
@@ -249,7 +249,7 @@ func TestServer_state_emit_append_error_keeps_connection_alive(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 
 	token := "test-token-32-bytes-padded-here!"
-	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 999, token, store, make([]byte, 32))
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 999, 0, token, store, make([]byte, 32))
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancel)
@@ -360,6 +360,110 @@ func TestServer_secret_request_decrypts_before_delivery(t *testing.T) {
 	assert.Empty(t, resp.Error, "secret_request must not return an error when the key exists")
 	assert.Equal(t, "sk-plaintext-api-key", resp.PlaintextValue,
 		"IPC server must return decrypted plaintext in PlaintextValue — not the encrypted blob")
+}
+
+// ─── secret_request — project_id scoping ─────────────────────────────────────
+
+// TestServer_secret_request_project_id_mismatch verifies that a secret_request
+// targeting a different project is rejected (Fix C — CHECK 4.4.x cross-project guard).
+func TestServer_secret_request_project_id_mismatch(t *testing.T) {
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	store := persistence.NewStore(db)
+
+	sockDir, err := os.MkdirTemp("", "ipc-test-projectmatch-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+
+	token := "test-token-32-bytes-padded-here!"
+	const ownProject int64 = 42
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, ownProject, token, store, make([]byte, 32))
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, srv.Start(ctx))
+	t.Cleanup(cancel)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Send a request targeting a *different* project.
+	otherProject := int64(99)
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{
+		Type:      "secret_request",
+		KeyName:   "SOME_KEY",
+		ProjectID: &otherProject,
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcSecretResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, "project_id mismatch", resp.Error,
+		"cross-project secret request must be rejected")
+}
+
+// ─── field validation (Fix E — CHECK 3.5.5) ──────────────────────────────────
+
+func TestServer_yield_request_empty_agent_name_rejected(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	require.NoError(t, enc.Encode(map[string]any{
+		"type":             "yield_request",
+		"agent_name":       "",
+		"action_type":      "custom",
+		"confidence_score": 0.9,
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcYieldResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.False(t, resp.Approved)
+	assert.Contains(t, resp.Feedback, "agent_name required")
+}
+
+func TestServer_yield_request_invalid_confidence_rejected(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	require.NoError(t, enc.Encode(map[string]any{
+		"type":             "yield_request",
+		"agent_name":       "planner",
+		"action_type":      "custom",
+		"confidence_score": 1.5, // out of range
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcYieldResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.False(t, resp.Approved)
+	assert.Contains(t, resp.Feedback, "confidence_score")
+}
+
+func TestServer_yield_request_unknown_action_type_rejected(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	require.NoError(t, enc.Encode(map[string]any{
+		"type":             "yield_request",
+		"agent_name":       "planner",
+		"action_type":      "rm_rf", // unknown
+		"confidence_score": 0.9,
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcYieldResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.False(t, resp.Approved)
+	assert.Contains(t, resp.Feedback, "unknown action_type")
+}
+
+func TestServer_secret_request_empty_key_name_rejected(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{
+		Type:    "secret_request",
+		KeyName: "",
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcSecretResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, "key_name required", resp.Error)
 }
 
 // ─── event log hash chain ─────────────────────────────────────────────────────
@@ -583,7 +687,7 @@ func TestServer_context_cancel_during_yield_closes_connection(t *testing.T) {
 		_ = enc.Encode(ipc.IpcYieldRequest{
 			Type:            "yield_request",
 			AgentName:       "agent",
-			ActionType:      "read_file",
+			ActionType:      "file_edit",
 			ReasoningTrace:  "reading",
 			ConfidenceScore: 0.5,
 		})
@@ -668,7 +772,7 @@ func TestServer_yield_payload_large_truncated(t *testing.T) {
 		_ = enc.Encode(ipc.IpcYieldRequest{
 			Type:            "yield_request",
 			AgentName:       "agent",
-			ActionType:      "write_file",
+			ActionType:      "file_edit",
 			ReasoningTrace:  bigTrace,
 			ConfidenceScore: 0.8,
 		})
@@ -804,7 +908,7 @@ func TestServer_secret_request_store_error_returns_error(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 
 	token := "test-token-32-bytes-padded-here!"
-	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, token, store, make([]byte, 32))
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, 0, token, store, make([]byte, 32))
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancel)

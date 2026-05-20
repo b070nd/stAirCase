@@ -53,7 +53,7 @@ func newFuzzEnv(f *testing.F) (srv *ipc.Server, cancel context.CancelFunc, addr 
 	aesKey := make([]byte, 32)
 	socketPath := filepath.Join(sockDir, "f.sock")
 
-	srv = ipc.NewServer(socketPath, run.ID, token, store, aesKey)
+	srv = ipc.NewServer(socketPath, run.ID, 0, token, store, aesKey)
 	ctx, cancelFn := context.WithCancel(context.Background())
 	if err := srv.Start(ctx); err != nil {
 		cancelFn()
