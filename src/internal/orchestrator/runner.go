@@ -333,6 +333,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		obs.Log.Warn("update case status", "err", err)
 	}
 
+	// Yield counters for policy limit enforcement (CHECK 7.2.1, 7.2.2).
+	var autoApproved, totalYields int
+
 runLoop:
 	for {
 		select {
@@ -361,14 +364,36 @@ runLoop:
 			display.Render()
 
 		case yieldReq := <-ipcSrv.YieldCh:
+			totalYields++
 			var resp ipc.IpcYieldResponse
-			if dec := policyEngine.Evaluate(yieldReq); dec.Matched {
+			// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
+			// yield goes to the human operator regardless of policy rules.
+			autoDecision := false
+			if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit {
+				display.AddActivity(fmt.Sprintf("%-14s LIMIT  %s → HITL (%s)", yieldReq.AgentName, yieldReq.ActionType, limitReason))
+				display.Pause()
+				switch {
+				case approvalSrv != nil:
+					_, ch := approvalSrv.PendYield(yieldReq)
+					resp = <-ch
+				case project.WebhookURL != "":
+					resp = sendWebhookYield(project.WebhookURL, yieldReq)
+				default:
+					resp = tui.RunYieldTUI(yieldReq)
+				}
+				display.Resume()
+				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
+			} else if dec := policyEngine.Evaluate(yieldReq); dec.Matched {
 				resp = ipc.IpcYieldResponse{Type: "yield_response", Approved: dec.Approved, Feedback: dec.Reason}
+				if dec.Approved {
+					autoApproved++
+				}
 				verb := "rejected"
 				if dec.Approved {
 					verb = "approved"
 				}
 				display.AddActivity(fmt.Sprintf("%-14s AUTO   %s → %s (%s)", yieldReq.AgentName, yieldReq.ActionType, verb, dec.Reason))
+				autoDecision = true
 			} else {
 				display.Pause()
 				switch {
@@ -388,7 +413,7 @@ runLoop:
 			// Audit: record who decided and what the decision was (CHECK 7.3.1).
 			// source is "policy" for auto-decisions, "operator" for human review.
 			source := "operator"
-			if policyEngine.Evaluate(yieldReq).Matched {
+			if autoDecision {
 				source = "policy"
 			}
 			if payload, err := json.Marshal(map[string]any{

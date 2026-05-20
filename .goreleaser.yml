@@ -45,6 +45,14 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# SBOM generation (requires syft in PATH on the release runner).
+# Produces one SPDX JSON file per release archive for supply-chain provenance.
+# Install syft in CI via: anchore/sbom-action/download-syft before goreleaser step.
+sboms:
+  - artifacts: archive
+    documents:
+      - "${artifact}.spdx.json"
+
 snapshot:
   name_template: "{{ .Tag }}-next"
 
