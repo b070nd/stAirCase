@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/spf13/cobra"
@@ -176,10 +175,10 @@ the duration, preventing concurrent rotate or run commands.`,
 			return fmt.Errorf("open key for lock: %w", err)
 		}
 		defer func() { _ = lockF.Close() }()
-		if err := syscall.Flock(int(lockF.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if err := flockExclusive(lockF.Fd()); err != nil {
 			return fmt.Errorf("workspace is locked by another process — is a run active?: %w", err)
 		}
-		defer func() { _ = syscall.Flock(int(lockF.Fd()), syscall.LOCK_UN) }()
+		defer func() { _ = flockUnlock(lockF.Fd()) }()
 
 		oldKey, err := crypto.LoadKey(wsDir)
 		if err != nil {

@@ -205,7 +205,12 @@ def create_file(path: str, content: str, reasoning: str) -> str:
     if not (full_path == root or full_path.startswith(root + os.sep)):
         return f"error: path escapes project root: {path}"
     caller = getattr(_agent_ctx, "name", "agent")
-    preview = content[:200] + ("…" if len(content) > 200 else "")
+    _MAX_PREVIEW = 10_000
+    preview = (
+        content[:_MAX_PREVIEW]
+        + (f"\n\n[TRUNCATED — {len(content):,} bytes total; first {_MAX_PREVIEW:,} shown]"
+           if len(content) > _MAX_PREVIEW else "")
+    )
     resp = _ipc.yield_request(
         caller, "file_edit",
         [{"file": path, "search_block": "(new file)", "replace_block": preview}],
@@ -232,7 +237,14 @@ def create_file(path: str, content: str, reasoning: str) -> str:
 @tool
 def run_shell(command: str, reasoning: str, working_dir: str = "") -> str:
     """Execute a shell command inside the project root after HITL approval.
-    Always requires operator approval — never auto-executed."""
+    Always requires operator approval — never auto-executed.
+
+    Security model: run_shell is HITL-gated (requires operator approval) but is
+    NOT OS-sandboxed. The shell command runs as the same OS user as the
+    orchestrator with full host filesystem access. The working_dir restriction is
+    advisory only — shell=True allows the command to escape via 'cd /' or
+    absolute paths. The trust boundary is the operator's approval decision, not
+    a process sandbox."""
     caller = getattr(_agent_ctx, "name", "agent")
     resp = _ipc.yield_request(
         caller, "shell_exec",

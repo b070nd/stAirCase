@@ -110,6 +110,7 @@ func (r *connRateLimiter) allow(kind string) bool {
 type Server struct {
 	socketPath string
 	runID      int64
+	projectID  int64 // run's own project — secret requests for other projects are rejected
 	token      string
 	store      *persistence.Store
 	aesKey     []byte // AES-256 key for decrypting secrets before delivery to Python
@@ -137,10 +138,13 @@ type Server struct {
 
 // NewServer constructs a Server. Call Start to begin accepting connections.
 // aesKey is the workspace AES-256 key used to decrypt secrets before delivery to Python.
-func NewServer(socketPath string, runID int64, token string, store *persistence.Store, aesKey []byte) *Server {
+// projectID is the project owning this run; secret_request messages specifying a
+// different project_id are rejected to prevent cross-project secret leakage.
+func NewServer(socketPath string, runID, projectID int64, token string, store *persistence.Store, aesKey []byte) *Server {
 	return &Server{
 		socketPath: socketPath,
 		runID:      runID,
+		projectID:  projectID,
 		token:      token,
 		store:      store,
 		aesKey:     aesKey,
@@ -352,6 +356,20 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 				})
 				break
 			}
+			// CHECK 3.5.5 / Fix E: validate required fields before forwarding.
+			if msg.AgentName == "" {
+				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "agent_name required"})
+				break
+			}
+			if msg.ConfidenceScore < 0 || msg.ConfidenceScore > 1 {
+				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "confidence_score must be 0–1"})
+				break
+			}
+			validActionTypes := map[string]bool{"file_edit": true, "shell_exec": true, "custom": true}
+			if !validActionTypes[msg.ActionType] {
+				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "unknown action_type: " + msg.ActionType})
+				break
+			}
 			payload := string(line)
 			if len(payload) > maxPayloadSize {
 				payload = payload[:maxPayloadSize]
@@ -392,7 +410,25 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "malformed secret_request JSON: " + err.Error()})
 				break
 			}
-			secret, err := s.store.GetSecret(req.KeyName, req.ProjectID)
+			// CHECK 3.5.5 / Fix E: key_name must not be empty.
+			if req.KeyName == "" {
+				_ = s.store.LogSecretAccess(&s.runID, "", "error") // CHECK 4.4.1
+				obs.SecretAccessTotal.WithLabelValues("error").Inc()
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "key_name required"})
+				break
+			}
+			// Reject requests targeting a different project — prevents a
+			// compromised runtime from reading another project's secrets.
+			if req.ProjectID != nil && *req.ProjectID != s.projectID {
+				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
+				obs.SecretAccessTotal.WithLabelValues("error").Inc()
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "project_id mismatch"})
+				break
+			}
+			// Always look up under the run's own project, ignoring any
+			// project_id the Python side may have omitted.
+			ownProjectID := s.projectID
+			secret, err := s.store.GetSecret(req.KeyName, &ownProjectID)
 			if err != nil {
 				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
 				obs.SecretAccessTotal.WithLabelValues("error").Inc()

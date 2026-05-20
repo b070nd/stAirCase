@@ -242,7 +242,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	}
 	socketPath := filepath.Join(tmpDir, fmt.Sprintf("run-%d.sock", run.ID))
 
-	ipcSrv := ipc.NewServer(socketPath, run.ID, token, r.store, aesKey)
+	ipcSrv := ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey)
 	if err := ipcSrv.Start(ctx); err != nil {
 		return fmt.Errorf("ipc server: %w", err)
 	}

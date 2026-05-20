@@ -162,7 +162,12 @@ def make_tools(project_path: str, ipc: "IPCClient") -> list[Any]:
         if err:
             return err
         full = os.path.realpath(os.path.join(_root, path))
-        preview = content[:200] + ("…" if len(content) > 200 else "")
+        _MAX_PREVIEW = 10_000
+        preview = (
+            content[:_MAX_PREVIEW]
+            + (f"\n\n[TRUNCATED — {len(content):,} bytes total; first {_MAX_PREVIEW:,} shown]"
+               if len(content) > _MAX_PREVIEW else "")
+        )
         resp = ipc.yield_request(
             caller,
             "file_edit",
@@ -194,7 +199,14 @@ def make_tools(project_path: str, ipc: "IPCClient") -> list[Any]:
         working_dir: str = "",
         caller: str = "agent",
     ) -> str:
-        """Execute a shell command inside the project root (requires HITL approval)."""
+        """Execute a shell command inside the project root (requires HITL approval).
+
+        Security model: run_shell is HITL-gated (requires operator approval) but is
+        NOT OS-sandboxed. The shell command runs as the same OS user as the
+        orchestrator with full host filesystem access. The working_dir restriction is
+        advisory only — shell=True allows the command to escape via 'cd /' or
+        absolute paths. The trust boundary is the operator's approval decision, not
+        a process sandbox."""
         resp = ipc.yield_request(
             caller,
             "shell_exec",

@@ -28,6 +28,8 @@ package main
 // make cross-platform re-verification deterministic.
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -138,7 +140,9 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 		Entries:   entries,
 		Signature: sig,
 	}
-	out, err := json.MarshalIndent(cp, "", "  ")
+	// Compact JSON is required for NDJSON: one object per line so verify can
+	// use a line scanner even when multiple exports are appended to the same file.
+	out, err := json.Marshal(cp)
 	if err != nil {
 		return fmt.Errorf("marshal checkpoint: %w", err)
 	}
@@ -157,59 +161,79 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 
 // ─── verify ───────────────────────────────────────────────────────────────────
 
+// auditVerifyHandler reads a checkpoint file that may contain one or more
+// NDJSON records (one JSON object per line) and verifies each independently.
+// AppendCheckpoint writes one object per export call; older files may have a
+// single object without a trailing newline — both formats are handled.
 func auditVerifyHandler(_ *cobra.Command, args []string) error {
 	cpPath := args[0]
-
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
-	// ── 1. Read checkpoint ────────────────────────────────────────────────────
-	raw, err := os.ReadFile(cpPath)
-	if err != nil {
-		return fmt.Errorf("read checkpoint: %w", err)
-	}
-	var cp AuditCheckpoint
-	if err := json.Unmarshal(raw, &cp); err != nil {
-		return fmt.Errorf("parse checkpoint: %w", err)
-	}
-
-	// ── 2. Verify hash chain ──────────────────────────────────────────────────
-	chainErr := verifyHashChain(cp.Entries)
-	if chainErr != nil {
-		log.Printf("❌ Hash chain invalid: %v", chainErr)
-	}
-
-	// ── 3. Verify Ed25519 signature ───────────────────────────────────────────
 	pubKey, err := crypto.LoadSigningPublicKey(wsDir)
 	if err != nil {
 		return fmt.Errorf("load public key: %w", err)
 	}
 
-	canonical, err := marshalEntries(cp.Entries)
+	f, err := os.Open(cpPath)
 	if err != nil {
-		return fmt.Errorf("marshal entries for verification: %w", err)
+		return fmt.Errorf("open checkpoint: %w", err)
 	}
+	defer func() { _ = f.Close() }()
 
-	sigErr := crypto.Verify(pubKey, canonical, cp.Signature)
-	if sigErr != nil {
-		log.Printf("❌ Signature invalid: %v", sigErr)
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20) // 1 MiB max line
+
+	lineNum := 0
+	anyFailed := false
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		lineNum++
+
+		var cp AuditCheckpoint
+		if err := json.Unmarshal(line, &cp); err != nil {
+			return fmt.Errorf("parse checkpoint line %d: %w", lineNum, err)
+		}
+
+		if err := verifyOne(cpPath, lineNum, cp, pubKey); err != nil {
+			fmt.Printf("❌ %v\n", err)
+			anyFailed = true
+		} else {
+			fmt.Printf("✅ Checkpoint %s (record %d) OK — run_id=%d entries=%d exported=%s\n",
+				cpPath, lineNum, cp.RunID, len(cp.Entries), cp.Exported.Format(time.RFC3339))
+		}
 	}
-
-	// ── 4. Report ─────────────────────────────────────────────────────────────
-	if chainErr != nil || sigErr != nil {
-		fmt.Printf("❌ Checkpoint %s FAILED verification\n", cpPath)
-		if chainErr != nil {
-			fmt.Printf("   hash chain: %v\n", chainErr)
-		}
-		if sigErr != nil {
-			fmt.Printf("   signature:  %v\n", sigErr)
-		}
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("read checkpoint: %w", err)
+	}
+	if lineNum == 0 {
+		return fmt.Errorf("checkpoint file is empty: %s", cpPath)
+	}
+	if anyFailed {
 		return fmt.Errorf("checkpoint verification failed")
 	}
+	return nil
+}
 
-	fmt.Printf("✅ Checkpoint %s OK\n", cpPath)
-	fmt.Printf("   run_id:  %d\n", cp.RunID)
-	fmt.Printf("   entries: %d\n", len(cp.Entries))
-	fmt.Printf("   exported: %s\n", cp.Exported.Format(time.RFC3339))
+// verifyOne verifies a single AuditCheckpoint record's hash chain and signature.
+func verifyOne(cpPath string, lineNum int, cp AuditCheckpoint, pubKey []byte) error {
+	// ── 1. Hash chain ─────────────────────────────────────────────────────────
+	if chainErr := verifyHashChain(cp.Entries); chainErr != nil {
+		log.Printf("❌ Hash chain invalid: %v", chainErr)
+		return fmt.Errorf("checkpoint %s record %d: hash chain invalid: %w", cpPath, lineNum, chainErr)
+	}
+
+	// ── 2. Ed25519 signature ──────────────────────────────────────────────────
+	canonical, err := marshalEntries(cp.Entries)
+	if err != nil {
+		return fmt.Errorf("checkpoint %s record %d: marshal entries: %w", cpPath, lineNum, err)
+	}
+	if sigErr := crypto.Verify(pubKey, canonical, cp.Signature); sigErr != nil {
+		log.Printf("❌ Signature invalid: %v", sigErr)
+		return fmt.Errorf("checkpoint %s record %d: signature invalid: %w", cpPath, lineNum, sigErr)
+	}
 	return nil
 }
 
