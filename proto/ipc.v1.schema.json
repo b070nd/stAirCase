@@ -181,7 +181,8 @@
         "type": { "const": "secret_request" },
         "key_name": {
           "type": "string",
-          "description": "Name of the secret to retrieve."
+          "minLength": 1,
+          "description": "Name of the secret to retrieve. Must not be empty."
         },
         "project_id": {
           "type": "integer",

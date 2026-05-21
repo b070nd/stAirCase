@@ -471,6 +471,32 @@ func TestScrubSecrets_redacts_active_values(t *testing.T) {
 	assert.Equal(t, "/repo/normal_file.go", scrubbed.ProposedEdits[1].File, "unaffected file unchanged")
 }
 
+// TestScrubSecrets_redacts_search_replace_and_reasoning verifies that scrubSecrets
+// covers all operator-visible fields (CHECK 4.4.3 / 7.4.2).
+func TestScrubSecrets_redacts_search_replace_and_reasoning(t *testing.T) {
+	secret := "sk-super-secret-key"
+	req := ipc.IpcYieldRequest{
+		ActionType:     "file_edit",
+		ReasoningTrace: "Using " + secret + " to authenticate",
+		ProposedEdits: []ipc.ProposedEdit{
+			{
+				File:         "/repo/config.go",
+				SearchBlock:  "apiKey = " + secret,
+				ReplaceBlock: "apiKey = " + secret + "_new",
+			},
+		},
+	}
+	scrubbed := orchestrator.ExportedScrubSecrets(req, []string{secret})
+	assert.Equal(t, "Using <REDACTED> to authenticate", scrubbed.ReasoningTrace,
+		"ReasoningTrace must be scrubbed")
+	assert.Equal(t, "apiKey = <REDACTED>", scrubbed.ProposedEdits[0].SearchBlock,
+		"SearchBlock must be scrubbed")
+	assert.Equal(t, "apiKey = <REDACTED>_new", scrubbed.ProposedEdits[0].ReplaceBlock,
+		"ReplaceBlock must be scrubbed")
+	assert.Equal(t, "/repo/config.go", scrubbed.ProposedEdits[0].File,
+		"File path not containing secret should be unchanged")
+}
+
 // ─── writeSummary (CHECK 10.4.1) ──────────────────────────────────────────────
 
 func TestWriteSummary_creates_json_file(t *testing.T) {
