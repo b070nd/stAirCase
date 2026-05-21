@@ -84,6 +84,7 @@ func MozillaTLSConfig() *tls.Config {
 type Server struct {
 	mu      sync.Mutex
 	pending map[string]*PendingYield
+	decided map[string]struct{} // IDs already acted on; used to return 409 vs 404
 	nextID  int
 
 	httpSrv *http.Server
@@ -101,6 +102,7 @@ type Server struct {
 func NewServer(addr, token string) *Server {
 	s := &Server{
 		pending: make(map[string]*PendingYield),
+		decided: make(map[string]struct{}),
 		addr:    addr,
 		token:   token,
 	}
@@ -275,11 +277,18 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id strin
 	py, ok := s.pending[id]
 	if ok {
 		delete(s.pending, id)
+		s.decided[id] = struct{}{}
 	}
+	alreadyDecided := !ok && func() bool { _, d := s.decided[id]; return d }()
 	s.mu.Unlock()
 
 	if !ok {
-		http.Error(w, "yield not found", http.StatusNotFound)
+		if alreadyDecided {
+			// 409 Conflict: another decision already won the race (CHECK 8.6).
+			http.Error(w, "yield already decided", http.StatusConflict)
+		} else {
+			http.Error(w, "yield not found", http.StatusNotFound)
+		}
 		return
 	}
 

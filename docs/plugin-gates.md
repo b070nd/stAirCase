@@ -85,7 +85,7 @@ The plugin must write one JSON line to stdout before exiting:
 
 Plugin scripts run in a strict sandbox (CHECK 11.3, 11.6):
 
-- **Empty environment**: no `PATH`, no `STAIRCASE_DIR`, no secrets.
+- **Empty environment**: no `PATH`, no `STAIRCASE_DIR`, no API keys or secrets.
   Use absolute paths for any external tools.
 - **Fresh working directory**: a new temporary directory, deleted after execution.
   Do not rely on cwd persisting between runs.
@@ -100,8 +100,12 @@ See [`plugins/gates/`](../plugins/gates/) in this repository for:
 
 ## Security notes
 
-- Plugin scripts have **no access** to `$STAIRCASE_DIR`, secrets, or the
-  database — the sandbox intentionally blocks all of these.
+- Plugin scripts receive `ws_dir` (the workspace path) via JSON stdin so they
+  can inspect project state. They do **not** receive secrets, API keys, or
+  database credentials — the sandbox blocks environment inheritance and the IPC
+  socket is not available to plugins.
+- `ws_dir` is intentionally shared so gates can read topology/config files; treat
+  any world-readable workspace content as accessible to gate scripts.
 - Scripts are executed with the OS user that ran `staircase gate`. Ensure
   plugin scripts are owned and writable only by trusted users.
 - The `severity: BLOCK` setting will prevent `staircase run` when the gate

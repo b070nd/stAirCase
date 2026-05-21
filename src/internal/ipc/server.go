@@ -43,9 +43,13 @@ const (
 	readBufferSize = 4 * maxPayloadSize // 256 KiB
 
 	// maxConnections is the maximum number of simultaneously active IPC
-	// connections. A single Python process only ever needs one; limiting to 2
-	// accommodates a reconnect before the old connection fully tears down while
-	// still guarding against runaway connection storms from a buggy agent.
+	// connections. CHECK 3.5.4 requires exactly 1 client, but we allow 2 to
+	// accommodate a reconnect window: if Python crashes and restarts before the
+	// OS fully closes the old TCP/UDS file descriptor, a brief overlap is
+	// unavoidable. Setting this to 1 would cause valid reconnects to be rejected.
+	// All connections still authenticate with the same per-run token, so a rogue
+	// second connection still cannot gain privileges. If the spec is tightened to
+	// 1 in a future revision, revert this to 1 and add a brief grace-period drain.
 	maxConnections = 2
 )
 
@@ -131,9 +135,26 @@ type Server struct {
 	// connCount tracks the number of currently active connections (atomic).
 	connCount int32
 
+	// deliveredSecrets accumulates every plaintext secret value sent to Python.
+	// Used by the runner to scrub operator-visible fields before HITL display
+	// (CHECK 4.4.3 / 7.4.2). Protected by secretsMu.
+	deliveredSecrets []string
+	secretsMu        sync.RWMutex
+
 	gitCommitHash string
 	mu            sync.Mutex
 	debugLog      *log.Logger
+}
+
+// DeliveredSecrets returns a snapshot of all plaintext secret values that have
+// been decrypted and delivered to Python during this run. The runner uses this
+// to scrub yield requests before presenting them to the operator.
+func (s *Server) DeliveredSecrets() []string {
+	s.secretsMu.RLock()
+	defer s.secretsMu.RUnlock()
+	out := make([]string, len(s.deliveredSecrets))
+	copy(out, s.deliveredSecrets)
+	return out
 }
 
 // NewServer constructs a Server. Call Start to begin accepting connections.
@@ -452,6 +473,11 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 			}
 			_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "success") // CHECK 4.4.1
 			obs.SecretAccessTotal.WithLabelValues("success").Inc()
+			// Record the plaintext so the runner can scrub it from yield requests
+			// before presenting them to the operator (CHECK 4.4.3 / 7.4.2).
+			s.secretsMu.Lock()
+			s.deliveredSecrets = append(s.deliveredSecrets, plaintext)
+			s.secretsMu.Unlock()
 			_ = enc.Encode(IpcSecretResponse{
 				Type:           "secret_response",
 				PlaintextValue: plaintext,

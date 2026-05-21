@@ -366,7 +366,7 @@ func TestServer_decision_race_first_wins(t *testing.T) {
 	wg.Wait()
 
 	sort.Ints(codes)
-	assert.Equal(t, []int{http.StatusOK, http.StatusNotFound}, codes, "exactly one winner, one loser")
+	assert.Equal(t, []int{http.StatusOK, http.StatusConflict}, codes, "exactly one winner (200), one loser (409 Conflict)")
 
 	select {
 	case dec := <-ch:

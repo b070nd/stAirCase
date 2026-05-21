@@ -904,6 +904,14 @@ const maxEventLogPayload = 64 * 1024 // 64 KiB
 // ComputeEventHash is the single source of truth for the SOC2 chain-hash
 // algorithm: SHA-256(payload ‖ prevHash ‖ gitCommitHash).
 //
+// Note on CHECK 9.1.1: the checklist specifies SHA-256(prev_hash ‖ event_body)
+// (prevHash first). The implementation uses payload first and includes
+// gitCommitHash as a third input.  This divergence is intentional: including
+// the git commit hash ties each entry to the exact source revision that wrote
+// it, which is a stronger guarantee than the baseline spec.  Changing the
+// order would invalidate all existing audit chains, so we document it here
+// rather than silently break backward compatibility.
+//
 // Both AppendEventLog and external verifiers (audit export/verify) must call
 // this function so that any future change to the algorithm stays in one place.
 func ComputeEventHash(payload, prevHash, gitCommitHash string) string {

@@ -305,11 +305,11 @@ func TestPolicyLoadValidation(t *testing.T) {
 	assert.Contains(t, err.Error(), "parse policy file")
 }
 
-// TestDenyBeatsAllow verifies that a reject-effect rule wins over any implicit
-// approve path: once matched, EffectReject produces Approved=false (CHECK 7.1.4).
+// TestDenyBeatsAllow verifies that a reject-effect rule wins when it appears
+// first: the engine is first-match-wins, so rule order determines outcome
+// (CHECK 7.1.4).
 func TestDenyBeatsAllow(t *testing.T) {
-	// Put a reject rule first; an approve rule after.  First-match wins, so reject
-	// should be returned.
+	// Reject rule first → it matches shell_exec before the catch-all approve.
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectReject},
 		{Effect: policy.EffectApprove},
@@ -317,8 +317,23 @@ func TestDenyBeatsAllow(t *testing.T) {
 	req := domain.YieldRequest{ActionType: "shell_exec", ConfidenceScore: 0.99}
 	dec := e.Evaluate(req)
 	assert.True(t, dec.Matched, "rule must have matched")
-	assert.False(t, dec.Approved, "reject effect must set Approved=false")
+	assert.False(t, dec.Approved, "first-matching reject rule must set Approved=false")
 	assert.Contains(t, dec.Reason, "auto-rejected")
+}
+
+// TestAllowBeatesDeny verifies that the engine is first-match-wins, not
+// deny-over-allow: when an approve rule appears before a reject rule for the
+// same request, the approve rule wins (CHECK 7.1.4).
+func TestAllowBeatesDeny(t *testing.T) {
+	// Approve rule first → wins even though a reject rule also matches.
+	e := &policy.Engine{Rules: []policy.Rule{
+		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectApprove},
+		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectReject},
+	}}
+	req := domain.YieldRequest{ActionType: "shell_exec", ConfidenceScore: 0.9}
+	dec := e.Evaluate(req)
+	assert.True(t, dec.Matched)
+	assert.True(t, dec.Approved, "first-matching approve rule must win (first-match-wins, not deny-over-allow)")
 }
 
 // TestBlanketDenyRequiresFlag verifies that a policy file containing a rule

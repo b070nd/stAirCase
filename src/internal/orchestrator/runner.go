@@ -365,6 +365,9 @@ runLoop:
 
 		case yieldReq := <-ipcSrv.YieldCh:
 			totalYields++
+			// CHECK 4.4.3 / 7.4.2: scrub delivered secret values from all
+			// operator-visible fields before any HITL presentation path.
+			yieldReq = scrubSecrets(yieldReq, ipcSrv.DeliveredSecrets())
 			var resp ipc.IpcYieldResponse
 			// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
 			// yield goes to the human operator regardless of policy rules.
@@ -575,22 +578,28 @@ func sendWebhookYield(webhookURL string, req ipc.IpcYieldRequest) ipc.IpcYieldRe
 
 func timePtr(t time.Time) *time.Time { return &t }
 
-// scrubSecrets replaces every occurrence of each active secret value in the
-// yield request's proposed-edit content with "<REDACTED>" before the request
-// is presented to the operator via TUI or webhook (CHECK 4.4.3).
-// This prevents secret values from leaking into terminal output or HTTP
-// response bodies even if an agent accidentally embeds them in file content.
+// scrubSecrets replaces every occurrence of each active secret value with
+// "<REDACTED>" across all operator-visible fields before the yield request
+// is presented via TUI, webhook, or HTTP approval server (CHECK 4.4.3 / 7.4.2).
+// Scrubbing covers: ReasoningTrace, and every proposed edit's File, SearchBlock,
+// and ReplaceBlock — agents can embed plaintext secrets in any of these.
 func scrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.IpcYieldRequest {
 	if len(activeValues) == 0 {
 		return req
 	}
-	for i := range req.ProposedEdits {
+	redact := func(s string) string {
 		for _, v := range activeValues {
-			if v == "" {
-				continue
+			if v != "" {
+				s = strings.ReplaceAll(s, v, "<REDACTED>")
 			}
-			req.ProposedEdits[i].File = strings.ReplaceAll(req.ProposedEdits[i].File, v, "<REDACTED>")
 		}
+		return s
+	}
+	req.ReasoningTrace = redact(req.ReasoningTrace)
+	for i := range req.ProposedEdits {
+		req.ProposedEdits[i].File = redact(req.ProposedEdits[i].File)
+		req.ProposedEdits[i].SearchBlock = redact(req.ProposedEdits[i].SearchBlock)
+		req.ProposedEdits[i].ReplaceBlock = redact(req.ProposedEdits[i].ReplaceBlock)
 	}
 	return req
 }

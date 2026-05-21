@@ -67,7 +67,10 @@ func (p *PluginGate) Run(ctx Context) Result {
 	// even when child processes keep I/O pipes open (e.g. a shell spawning sleep).
 	cmd.WaitDelay = timeout
 
-	// Write JSON input to stdin.
+	// Write JSON input to stdin (CHECK 11.6).
+	// ws_dir is intentionally included so gate scripts can inspect topology and
+	// config files without needing env access.  Secrets and the IPC socket are
+	// NOT included — the plugin receives no credentials beyond the workspace path.
 	input, _ := json.Marshal(map[string]any{
 		"case_id": ctx.CaseID,
 		"ws_dir":  ctx.WsDir,
