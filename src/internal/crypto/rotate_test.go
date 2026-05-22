@@ -195,6 +195,125 @@ func TestRotateKey_reencrypt_error_cleans_up(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
+// ─── ResumeIfCommitted ────────────────────────────────────────────────────────
+
+// TestResumeIfCommitted_no_journal_is_noop verifies that the function returns
+// nil and leaves the workspace unchanged when no journal file exists.
+func TestResumeIfCommitted_no_journal_is_noop(t *testing.T) {
+	dir := setupWsDir(t)
+	originalKey, err := LoadKey(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, ResumeIfCommitted(dir))
+
+	currentKey, err := LoadKey(dir)
+	require.NoError(t, err)
+	assert.Equal(t, originalKey, currentKey, "key must be unchanged when no journal exists")
+}
+
+// TestResumeIfCommitted_committed_journal_installs_key verifies that a
+// "committed" journal causes the temp key to be renamed to .key and the
+// journal to be removed.
+func TestResumeIfCommitted_committed_journal_installs_key(t *testing.T) {
+	dir := setupWsDir(t)
+
+	newKey := make([]byte, 32)
+	for i := range newKey {
+		newKey[i] = 0xBB
+	}
+	tmp, err := os.CreateTemp(dir, ".key-rotate-*")
+	require.NoError(t, err)
+	_, err = tmp.Write(newKey)
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+	tmpPath := tmp.Name()
+
+	journalPath := filepath.Join(dir, rotateJournalFile)
+	require.NoError(t, writeRotateJournal(journalPath, rotateJournal{
+		Stage:      "committed",
+		NewKeyPath: tmpPath,
+	}))
+
+	require.NoError(t, ResumeIfCommitted(dir))
+
+	installed, err := LoadKey(dir)
+	require.NoError(t, err)
+	assert.Equal(t, newKey, installed, "committed key must be installed")
+
+	_, statErr := os.Stat(journalPath)
+	assert.True(t, os.IsNotExist(statErr), "journal must be removed after resume")
+	_, statErr = os.Stat(tmpPath)
+	assert.True(t, os.IsNotExist(statErr), "temp key must be gone after rename")
+}
+
+// TestResumeIfCommitted_pending_journal_leaves_unchanged verifies that a
+// "pending" journal is not touched by ResumeIfCommitted (it requires
+// tryDecryptAny and is handled exclusively by RotateKey).
+func TestResumeIfCommitted_pending_journal_leaves_unchanged(t *testing.T) {
+	dir := setupWsDir(t)
+	originalKey, err := LoadKey(dir)
+	require.NoError(t, err)
+
+	staleKey := make([]byte, 32)
+	tmp, err := os.CreateTemp(dir, ".key-rotate-*")
+	require.NoError(t, err)
+	_, err = tmp.Write(staleKey)
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+	tmpPath := tmp.Name()
+
+	journalPath := filepath.Join(dir, rotateJournalFile)
+	require.NoError(t, writeRotateJournal(journalPath, rotateJournal{
+		Stage:      "pending",
+		NewKeyPath: tmpPath,
+	}))
+
+	require.NoError(t, ResumeIfCommitted(dir))
+
+	// Key must be unchanged.
+	currentKey, err := LoadKey(dir)
+	require.NoError(t, err)
+	assert.Equal(t, originalKey, currentKey, "key must not change for pending journal")
+
+	// Journal and temp file must still exist (RotateKey will handle them).
+	_, statErr := os.Stat(journalPath)
+	assert.False(t, os.IsNotExist(statErr), "pending journal must still exist")
+	_, statErr = os.Stat(tmpPath)
+	assert.False(t, os.IsNotExist(statErr), "temp key for pending journal must still exist")
+}
+
+// TestLoadKey_auto_resumes_committed_journal verifies that LoadKey itself
+// self-heals a "committed" journal, so any command that loads the workspace
+// key recovers from a crashed rotation automatically.
+func TestLoadKey_auto_resumes_committed_journal(t *testing.T) {
+	dir := setupWsDir(t)
+
+	newKey := make([]byte, 32)
+	for i := range newKey {
+		newKey[i] = 0xCC
+	}
+	tmp, err := os.CreateTemp(dir, ".key-rotate-*")
+	require.NoError(t, err)
+	_, err = tmp.Write(newKey)
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+
+	journalPath := filepath.Join(dir, rotateJournalFile)
+	require.NoError(t, writeRotateJournal(journalPath, rotateJournal{
+		Stage:      "committed",
+		NewKeyPath: tmp.Name(),
+	}))
+
+	// LoadKey should resume and return the new key without any explicit
+	// call to RotateKey or ResumeIfCommitted.
+	loaded, err := LoadKey(dir)
+	require.NoError(t, err)
+	assert.Equal(t, newKey, loaded, "LoadKey must auto-resume a committed journal")
+
+	_, statErr := os.Stat(journalPath)
+	assert.True(t, os.IsNotExist(statErr), "journal must be cleaned up by LoadKey")
+}
+
 // TestWriteRotateJournal_is_atomic verifies that writeRotateJournal produces a
 // valid JSON file and that re-reading it round-trips correctly.
 func TestWriteRotateJournal_is_atomic(t *testing.T) {
