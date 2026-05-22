@@ -60,7 +60,11 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	return os.Rename(tmpPath, journalPath)
+	if err := os.Rename(tmpPath, journalPath); err != nil {
+		return err
+	}
+	_ = syncDir(filepath.Dir(journalPath)) // durable directory entry for journal
+	return nil
 }
 
 // syncDir fsyncs the directory at path so that a preceding rename is visible
@@ -91,19 +95,21 @@ func syncDir(path string) error {
 // # Durability scope
 //
 // The journal temp file and the new key temp file are fsynced before their
-// respective renames, and the workspace directory is fsynced after the final
-// key-file rename.  This provides power-loss durability for the key file and
-// journal on most filesystems.
+// respective renames, and the workspace directory is fsynced after every key
+// rename (including recovery paths).  This provides power-loss durability for
+// the key file and journal on most filesystems.
 //
-// The DB re-encryption transaction durability is governed by SQLite's
-// synchronous mode (default: FULL on WAL databases).  No additional fsync is
-// required for the DB commit itself.
+// The DB is opened with synchronous=NORMAL by default, which is not
+// power-loss safe.  For full durability the caller's reencrypt callback must
+// set PRAGMA synchronous=FULL before beginning the rotation transaction and
+// restore NORMAL afterward.
 //
 // # Concurrency
 //
 // The caller must hold an exclusive advisory flock on <wsDir>/.key before
-// calling this function so that no active run or concurrent 'secret set'
-// command is accessing the key concurrently (CHECK 4.3.3).
+// calling this function.  The flock is non-blocking (LOCK_NB): it fails fast
+// if any active run or concurrent 'secret set' already holds a shared lock
+// (CHECK 4.3.3).  No waiting occurs.
 //
 // tryDecryptAny must return true if at least one stored secret can be
 // decrypted with the given key.  It is only called during "pending" recovery
@@ -128,6 +134,7 @@ func RotateKey(
 				if renErr := os.Rename(j.NewKeyPath, keyPath); renErr != nil {
 					return fmt.Errorf("rotate resume committed: install key: %w", renErr)
 				}
+				_ = syncDir(wsDir)
 			}
 			_ = os.Remove(journalPath)
 			return nil
@@ -141,6 +148,7 @@ func RotateKey(
 				if renErr := os.Rename(j.NewKeyPath, keyPath); renErr != nil {
 					return fmt.Errorf("rotate resume pending→committed: install key: %w", renErr)
 				}
+				_ = syncDir(wsDir)
 				_ = os.Remove(journalPath)
 				return nil
 			}
