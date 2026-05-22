@@ -66,15 +66,38 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 	return syncDir(filepath.Dir(journalPath)) // durable directory entry for journal
 }
 
-// syncDir fsyncs the directory at path so that a preceding rename is visible
-// after a power loss.  Errors are non-fatal (best-effort durability upgrade).
-func syncDir(path string) error {
-	d, err := os.Open(path)
-	if err != nil {
-		return err
+// ResumeIfCommitted checks for a "committed" rotation journal in wsDir and,
+// if found, completes the interrupted key installation atomically.  It is
+// called by LoadKey so that any command that reads the workspace key
+// self-heals a crash that left the DB committed but the key file unreplaced.
+//
+// "pending" journals are not touched here — their resolution requires
+// tryDecryptAny and is handled exclusively by RotateKey.
+func ResumeIfCommitted(wsDir string) error {
+	journalPath := filepath.Join(wsDir, rotateJournalFile)
+	j, err := readRotateJournal(journalPath)
+	if os.IsNotExist(err) {
+		return nil // normal case: no journal
 	}
-	defer func() { _ = d.Close() }()
-	return d.Sync()
+	if err != nil {
+		return fmt.Errorf("resume committed: read journal: %w", err)
+	}
+	if j.Stage != "committed" {
+		return nil // "pending" left for RotateKey + tryDecryptAny
+	}
+	keyPath := filepath.Join(wsDir, KeyFile)
+	if _, statErr := os.Stat(j.NewKeyPath); statErr == nil {
+		if renErr := os.Rename(j.NewKeyPath, keyPath); renErr != nil {
+			return fmt.Errorf("resume committed: install key: %w", renErr)
+		}
+		if synErr := syncDir(wsDir); synErr != nil {
+			return fmt.Errorf("resume committed: sync dir: %w", synErr)
+		}
+	}
+	// Cleanup is idempotent: a stale journal with a missing temp file means
+	// the rename already succeeded on a previous recovery attempt.
+	_ = os.Remove(journalPath)
+	return nil
 }
 
 // RotateKey generates a new AES-256 key, re-encrypts all secrets via
@@ -137,7 +160,7 @@ func RotateKey(
 					return fmt.Errorf("rotate resume committed: sync dir: %w", synErr)
 				}
 			}
-			_ = os.Remove(journalPath)
+			_ = os.Remove(journalPath) // idempotent: stale journal is recoverable
 			return nil
 
 		case "pending":
@@ -152,7 +175,7 @@ func RotateKey(
 				if synErr := syncDir(wsDir); synErr != nil {
 					return fmt.Errorf("rotate resume pending→committed: sync dir: %w", synErr)
 				}
-				_ = os.Remove(journalPath)
+				_ = os.Remove(journalPath) // idempotent: stale journal is recoverable
 				return nil
 			}
 			// DB not committed (or no secrets): clean up and start fresh.

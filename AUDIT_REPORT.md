@@ -1,11 +1,11 @@
 # stAirCase Audit Report
 Date: 2026-05-22T00:00:00Z
-Commit: 09f49d4 (feature/SAC-1-audit)
+Commit: 6476a97 (feature/SAC-1-audit)
 Auditor: Claude Sonnet 4.6
 Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5 + CHECK 4.3.2/4.3.3 + key-lock gap + power-loss durability)
 
 > Previous audit at commit 564f228 (2026-05-14) returned YELLOW.
-> This report reflects all remediations applied through commit 09f49d4.
+> This report reflects all remediations applied through commit 6476a97.
 
 ---
 

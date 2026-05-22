@@ -5,10 +5,12 @@ package persistence_test
 // invariant. Happy-path focus; constraint violations are tested in store_test.go.
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -508,4 +510,53 @@ func TestPruneEventLogs_keeps_rows_within_limit(t *testing.T) {
 	n, err := s.PruneEventLogs(2)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
+}
+
+// ─── RotateSecretsOnConn ──────────────────────────────────────────────────────
+
+// TestRotateSecretsOnConn_happy_path verifies that RotateSecretsOnConn
+// re-encrypts all secrets on the provided pinned connection and that the
+// new ciphertexts are readable with the new key (and not with the old key).
+// This test also exercises the synchronous=FULL pattern that the rotate
+// command uses to guarantee power-loss durability of the DB commit.
+func TestRotateSecretsOnConn_happy_path(t *testing.T) {
+	db, err := persistence.InitDB(t.TempDir())
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	s := persistence.NewStore(db)
+
+	oldKey := make([]byte, 32)
+	newKey := make([]byte, 32)
+	for i := range newKey {
+		newKey[i] = 0xBB
+	}
+
+	// Store a secret encrypted under oldKey.
+	oldEnc, err := crypto.Encrypt(oldKey, "super-secret")
+	require.NoError(t, err)
+	_, err = s.CreateSecret("CONN_TEST_KEY", oldEnc, nil)
+	require.NoError(t, err)
+
+	// Obtain a pinned connection, set synchronous=FULL, then rotate.
+	conn, err := db.Conn(context.Background())
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	_, err = conn.ExecContext(context.Background(), "PRAGMA synchronous=FULL")
+	require.NoError(t, err)
+
+	err = s.RotateSecretsOnConn(context.Background(), conn, oldKey, newKey, crypto.Decrypt, crypto.Encrypt)
+	require.NoError(t, err)
+
+	// New ciphertext must decrypt with newKey.
+	secrets, err := s.ListAllSecrets()
+	require.NoError(t, err)
+	require.Len(t, secrets, 1)
+	plaintext, err := crypto.Decrypt(newKey, secrets[0].EncryptedValue)
+	require.NoError(t, err)
+	assert.Equal(t, "super-secret", plaintext)
+
+	// Old key must no longer decrypt the updated ciphertext.
+	_, err = crypto.Decrypt(oldKey, secrets[0].EncryptedValue)
+	assert.Error(t, err, "old key must not decrypt after rotation")
 }
