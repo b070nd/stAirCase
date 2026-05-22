@@ -64,7 +64,8 @@ Or enter it interactively (input will not be echoed):
 		// CreateSecret.  Without this, a concurrent 'staircase secret rotate'
 		// could commit under the new key between our Encrypt call and the DB
 		// insert, stranding the new ciphertext (it would be encrypted under the
-		// now-superseded key).  The exclusive rotate lock waits until we release
+		// now-superseded key).  The exclusive rotate lock (LOCK_NB) fails fast if
+		// we hold the shared lock — it does not wait, it refuses
 		// (CHECK 4.3.3 extension to write path).
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
@@ -207,7 +208,15 @@ the duration, preventing concurrent rotate or run commands.`,
 		defer func() { _ = db.Close() }()
 
 		// reencrypt re-encrypts every secret in a single DB transaction (CHECK 4.3.2).
+		// Pin to a single connection and set synchronous=FULL so the WAL write is
+		// fsynced before COMMIT returns, making the DB commit power-loss durable.
 		reencrypt := func(oldKey, newKey []byte) error {
+			db.SetMaxOpenConns(1)
+			defer db.SetMaxOpenConns(0)
+			if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+				return fmt.Errorf("set synchronous=FULL: %w", err)
+			}
+			defer func() { _, _ = db.Exec("PRAGMA synchronous=NORMAL") }()
 			return store.RotateSecrets(oldKey, newKey, crypto.Decrypt, crypto.Encrypt)
 		}
 
