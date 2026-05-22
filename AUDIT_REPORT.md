@@ -1,11 +1,11 @@
 # stAirCase Audit Report
 Date: 2026-05-22T00:00:00Z
-Commit: a8cb19b (feature/SAC-1-audit)
+Commit: ccc0d29 (feature/SAC-1-audit)
 Auditor: Claude Sonnet 4.6
-Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5 + CHECK 4.3.2/4.3.3 + key-lock gap + fsync)
+Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5 + CHECK 4.3.2/4.3.3 + key-lock gap + power-loss durability)
 
 > Previous audit at commit 564f228 (2026-05-14) returned YELLOW.
-> This report reflects all remediations applied through commit a8cb19b.
+> This report reflects all remediations applied through commit ccc0d29.
 
 ---
 
@@ -321,6 +321,7 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | Sprint 2 M4 | GitHub Actions SHA-pinned; GoReleaser SBOM block added; syft installed in release CI |
 | CHECK 4.3.2/4.3.3 | Two-stage journal rotation (`crypto/rotate.go`); `wslock` package; shared flock in runner; 6 crash-recovery tests |
 | CHECK 4.3.3 (gap) | Shared lock added to `secret set` (LoadKey→CreateSecret); fsync on temp key + journal; syncDir after rename; 3 wslock concurrency tests |
+| Power-loss durability | `syncDir` added after journal rename + all recovery key renames; `synchronous=FULL` set in `reencrypt` callback via `SetMaxOpenConns(1)` + PRAGMA; comments corrected (NORMAL default, LOCK_NB is fail-fast not wait) |
 | Sprint 1 (7 findings) | Windows build stub; secret project_id scoping; HITL truncation 200→10k chars; IPC field validation; audit NDJSON parse; sandbox comment |
 
 ## Remaining Incomplete / Deferred
