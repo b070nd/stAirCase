@@ -1,11 +1,11 @@
 # stAirCase Audit Report
 Date: 2026-05-22T00:00:00Z
-Commit: 52ef006 (feature/SAC-1-audit)
+Commit: dcda158 (feature/SAC-1-audit)
 Auditor: Claude Sonnet 4.6
-Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5)
+Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5 + CHECK 4.3.2/4.3.3)
 
 > Previous audit at commit 564f228 (2026-05-14) returned YELLOW.
-> This report reflects all remediations applied through commit 52ef006.
+> This report reflects all remediations applied through commit dcda158.
 
 ---
 
@@ -16,13 +16,13 @@ Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL rem
 - High findings: 0 (F-001–F-003 resolved: `go 1.26.3` + `govulncheck` clean)
 - Medium findings: 2 (exec.Command git shell-outs; orchestrator coverage)
 - Low findings: 2 (TUI snapshot tests absent; TLS on approval server)
-- Deferred architectural items: 3 (crash-atomic rotation, fd-only topology delivery, OTel real integration)
+- Deferred architectural items: 2 (fd-only topology delivery, OTel real integration)
 
 **Top 3 recommendations:**
 
 1. Replace `exec.Command("git", ...)` shell-outs in `internal/orchestrator/runner.go` with the `go-git` library (CHECK 5.3.1 FAIL; shell-outs are fragile on PATH-restricted systems and miss git config isolation).
-2. Make secret rotation crash-atomic (CHECK 4.3.2): DB re-encryption must commit after key rename, not before — requires a journal file or two-phase write.
-3. Eliminate the canonical `graph_exec_case*.py` tmp script (CHECK 5.4.2/6.1.2): fd delivery via `ExtraFiles` is already wired in the runner, but compile still writes a persistent file; runner should consume the fd without creating a run-specific copy on disk.
+2. Eliminate the canonical `graph_exec_case*.py` tmp script (CHECK 5.4.2/6.1.2): fd delivery via `ExtraFiles` is already wired in the runner, but compile still writes a persistent file; runner should consume the fd without creating a run-specific copy on disk.
+3. Implement real OTel exporter (CHECK 10.3.1): `otel.go` is currently a stub; wire to an OTLP endpoint for production observability.
 
 ---
 
@@ -170,8 +170,8 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | 4.2.4 Atomic key write (temp+rename) | **PASS** | `encrypt.go` uses `os.CreateTemp` + `os.Rename` |
 | 4.2.5 Decrypt distinguishes wrong key | **INCONCLUSIVE** | No `TestDecryptWrongKey` or `TestDecryptCorrupt` test; AES-GCM authentication tag naturally distinguishes them but no dedicated test |
 | 4.3.1 Rotation command exists | **PASS** | `staircase secret rotate` in `cmd/staircase/secret.go` |
-| 4.3.2 Rotation crash-atomic | **FAIL** | DB re-encryption commits before key rename; power-loss between those steps strands ciphertext under wrong key (deferred) |
-| 4.3.3 Rotation blocks active runs | **FAIL** | `rotate` acquires key-file flock but active run goroutines do not hold same lock (deferred) |
+| 4.3.2 Rotation crash-atomic | **PASS** | Two-stage journal (pending→committed) + `tryDecryptAny` recovery in `crypto/rotate.go`; all crash points covered by 6 tests |
+| 4.3.3 Rotation blocks active runs | **PASS** | `wslock.LockShared` acquired in runner before `LoadKey`; `wslock.LockExclusive` held by rotate; mutually exclusive via `LOCK_NB` |
 | 4.4.1 Secret access logged | **PASS** | `secret_access_log` INSERT in `secret_request` handler |
 | 4.4.2 Log survives run delete | **PASS** | `ON DELETE SET NULL` on `run_id` |
 | 4.4.3 Secret scrubbing before render | **PASS** | `scrubSecrets()` called before every HITL path (TUI / approvalhttp / webhook); covers `File`, `SearchBlock`, `ReplaceBlock`, `ReasoningTrace` |
@@ -319,13 +319,13 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | Sprint 2 M1 | Policy `CheckLimits` wired |
 | Sprint 2 M3 | Workspace dir `MkdirAll` now `0o700` |
 | Sprint 2 M4 | GitHub Actions SHA-pinned; GoReleaser SBOM block added; syft installed in release CI |
+| CHECK 4.3.2/4.3.3 | Two-stage journal rotation (`crypto/rotate.go`); `wslock` package; shared flock in runner; 6 crash-recovery tests |
 | Sprint 1 (7 findings) | Windows build stub; secret project_id scoping; HITL truncation 200→10k chars; IPC field validation; audit NDJSON parse; sandbox comment |
 
 ## Remaining Incomplete / Deferred
 
 | Section | Issue | Disposition |
 |---------|-------|-------------|
-| 4.3.2/4.3.3 Crash-atomic rotation | DB re-encrypt commits before key rename; rotate doesn't block active runs | Deferred — needs journal / two-phase write |
 | 5.4.2/6.1.2 fd topology (partial) | `ExtraFiles` fd wired in runner but canonical `graph_exec_case*.py` still written to tmp/ by compile | Deferred — requires compile/run boundary redesign |
 | 7.1.1 CEL policy | Struct-based rules only | Deferred — Phase 8 |
 | 10.3.1 OTel real exporter | `otel.go` is stub | Deferred — Phase 10 |
