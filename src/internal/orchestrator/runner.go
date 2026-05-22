@@ -31,6 +31,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/policy"
 	"github.com/b070nd/staircase-core/src/internal/runtime"
 	"github.com/b070nd/staircase-core/src/internal/tui"
+	"github.com/b070nd/staircase-core/src/internal/wslock"
 )
 
 // RunPhase labels each boundary of the orchestration state machine.
@@ -229,6 +230,18 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	token, err := runtime.BootstrapToken()
 	if err != nil {
 		return fmt.Errorf("generate token: %w", err)
+	}
+
+	// Acquire a shared advisory flock on the key file for the duration of this
+	// run so that 'staircase secret rotate' (which holds an exclusive lock)
+	// cannot replace the key while decryption is in progress (CHECK 4.3.3).
+	keyLockF, err := os.Open(filepath.Join(r.wsDir, crypto.KeyFile))
+	if err != nil {
+		return fmt.Errorf("load workspace key: open for lock: %w", err)
+	}
+	defer func() { _ = wslock.Unlock(keyLockF.Fd()); _ = keyLockF.Close() }()
+	if err := wslock.LockShared(keyLockF.Fd()); err != nil {
+		return fmt.Errorf("load workspace key: acquire lock: %w", err)
 	}
 
 	aesKey, err := crypto.LoadKey(r.wsDir)
