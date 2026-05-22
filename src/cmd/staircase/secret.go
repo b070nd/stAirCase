@@ -58,18 +58,38 @@ Or enter it interactively (input will not be echoed):
 		}
 
 		wsDir := viper.GetString("STAIRCASE_DIR")
+		keyPath := filepath.Join(wsDir, crypto.KeyFile)
+
+		// Hold a shared advisory lock on the key file from LoadKey through
+		// CreateSecret.  Without this, a concurrent 'staircase secret rotate'
+		// could commit under the new key between our Encrypt call and the DB
+		// insert, stranding the new ciphertext (it would be encrypted under the
+		// now-superseded key).  The exclusive rotate lock waits until we release
+		// (CHECK 4.3.3 extension to write path).
+		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
+		if err != nil {
+			return fmt.Errorf("open key for lock: %w", err)
+		}
+		defer func() { _ = lockF.Close() }()
+		if err := flockShared(lockF.Fd()); err != nil {
+			return fmt.Errorf("workspace is locked by another process — is a rotate active?: %w", err)
+		}
+
 		key, err := crypto.LoadKey(wsDir)
 		if err != nil {
+			_ = flockUnlock(lockF.Fd())
 			return err
 		}
 
 		encrypted, err := crypto.Encrypt(key, value)
 		if err != nil {
+			_ = flockUnlock(lockF.Fd())
 			return fmt.Errorf("encrypt: %w", err)
 		}
 
 		store, db, err := openStore()
 		if err != nil {
+			_ = flockUnlock(lockF.Fd())
 			return err
 		}
 		defer func() { _ = db.Close() }()
@@ -80,6 +100,7 @@ Or enter it interactively (input will not be echoed):
 		}
 
 		sec, err := store.CreateSecret(args[0], encrypted, pid)
+		_ = flockUnlock(lockF.Fd()) // release before any further I/O
 		if err != nil {
 			return fmt.Errorf("store secret: %w", err)
 		}

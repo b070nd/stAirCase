@@ -35,7 +35,7 @@ func readRotateJournal(journalPath string) (*rotateJournal, error) {
 	return &j, nil
 }
 
-// writeRotateJournal writes j atomically (temp+rename) to journalPath.
+// writeRotateJournal writes j atomically (temp+fsync+rename) to journalPath.
 func writeRotateJournal(journalPath string, j rotateJournal) error {
 	data, err := json.Marshal(j)
 	if err != nil {
@@ -51,6 +51,11 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
+	if err := tmp.Sync(); err != nil { // flush journal bytes before rename
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return err
@@ -58,10 +63,23 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 	return os.Rename(tmpPath, journalPath)
 }
 
+// syncDir fsyncs the directory at path so that a preceding rename is visible
+// after a power loss.  Errors are non-fatal (best-effort durability upgrade).
+func syncDir(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return d.Sync()
+}
+
 // RotateKey generates a new AES-256 key, re-encrypts all secrets via
 // reencrypt, and atomically installs the new key file (CHECK 4.3.2).
 //
-// A two-stage journal provides crash recovery:
+// # Crash-recovery guarantee
+//
+// A two-stage journal provides process-crash recovery at every step:
 //
 //   - Stage "pending": new key written to temp, journal written, DB not yet
 //     committed.  Recovery checks tryDecryptAny to determine whether the DB
@@ -70,9 +88,22 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 //   - Stage "committed": DB committed, temp file holds new key, key file not
 //     yet replaced.  Recovery renames temp → key file.
 //
+// # Durability scope
+//
+// The journal temp file and the new key temp file are fsynced before their
+// respective renames, and the workspace directory is fsynced after the final
+// key-file rename.  This provides power-loss durability for the key file and
+// journal on most filesystems.
+//
+// The DB re-encryption transaction durability is governed by SQLite's
+// synchronous mode (default: FULL on WAL databases).  No additional fsync is
+// required for the DB commit itself.
+//
+// # Concurrency
+//
 // The caller must hold an exclusive advisory flock on <wsDir>/.key before
-// calling this function so that no active run is decrypting secrets
-// concurrently (CHECK 4.3.3).
+// calling this function so that no active run or concurrent 'secret set'
+// command is accessing the key concurrently (CHECK 4.3.3).
 //
 // tryDecryptAny must return true if at least one stored secret can be
 // decrypted with the given key.  It is only called during "pending" recovery
@@ -147,6 +178,11 @@ func RotateKey(
 		_ = os.Remove(newKeyPath)
 		return fmt.Errorf("rotate: chmod temp key: %w", err)
 	}
+	if err := tmp.Sync(); err != nil { // flush key bytes before journal
+		_ = tmp.Close()
+		_ = os.Remove(newKeyPath)
+		return fmt.Errorf("rotate: sync temp key: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(newKeyPath)
 		return fmt.Errorf("rotate: close temp key: %w", err)
@@ -183,6 +219,8 @@ func RotateKey(
 	if err := os.Rename(newKeyPath, keyPath); err != nil {
 		return fmt.Errorf("rotate: install key: %w", err)
 	}
+	// Sync parent directory so the rename is durable after a power loss.
+	_ = syncDir(wsDir)
 
 	// 7. Cleanup.
 	_ = os.Remove(journalPath)
