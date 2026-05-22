@@ -2,8 +2,10 @@ package ipc
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,7 +20,50 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
+
+//go:embed ipc.v1.schema.json
+var embeddedIPCSchema []byte
+
+// ipcSchemaID is the resource name used when registering the embedded schema
+// with the compiler.  It does not need to be a reachable URL.
+const ipcSchemaID = "ipc.v1.schema.json"
+
+// compiledIPCSchemas holds per-kind compiled JSON Schemas.
+// Compiled once at package init time and reused across all Server instances.
+var compiledIPCSchemas map[string]*jsonschema.Schema
+
+func init() {
+	c := jsonschema.NewCompiler()
+	c.Draft = jsonschema.Draft2020
+	if err := c.AddResource(ipcSchemaID, bytes.NewReader(embeddedIPCSchema)); err != nil {
+		panic("ipc: failed to register embedded schema: " + err.Error())
+	}
+	kinds := []string{"auth", "state_emit", "yield_request", "secret_request", "heartbeat"}
+	compiledIPCSchemas = make(map[string]*jsonschema.Schema, len(kinds))
+	for _, k := range kinds {
+		sch, err := c.Compile(ipcSchemaID + "#/$defs/" + k)
+		if err != nil {
+			panic("ipc: failed to compile schema for " + k + ": " + err.Error())
+		}
+		compiledIPCSchemas[k] = sch
+	}
+}
+
+// validateMsg validates raw JSON bytes against the pre-compiled schema for kind.
+// Returns nil when valid, a descriptive error otherwise.
+func validateMsg(kind string, raw []byte) error {
+	sch, ok := compiledIPCSchemas[kind]
+	if !ok {
+		return nil // unknown kinds are handled elsewhere
+	}
+	var v interface{}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return err
+	}
+	return sch.Validate(v)
+}
 
 // heartbeatTimeout is how long the server waits between messages before
 // treating the Python process as hung and closing the connection.
@@ -286,11 +331,21 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 		return
 	}
 
+	rawAuth := make([]byte, len(scanner.Bytes()))
+	copy(rawAuth, scanner.Bytes())
+
+	// CHECK 3.5.5: validate against schema before typed unmarshal.
+	// This enforces additionalProperties:false and required fields at wire level.
+	if err := validateMsg("auth", rawAuth); err != nil {
+		_ = enc.Encode(map[string]string{"type": "auth_failed", "reason": "schema: " + err.Error()})
+		return
+	}
+
 	var authMsg struct {
 		Type  string `json:"type"`
 		Token string `json:"token"`
 	}
-	if err := json.Unmarshal(scanner.Bytes(), &authMsg); err != nil ||
+	if err := json.Unmarshal(rawAuth, &authMsg); err != nil ||
 		authMsg.Type != "auth" ||
 		subtle.ConstantTimeCompare([]byte(authMsg.Token), []byte(s.token)) != 1 {
 		_ = enc.Encode(map[string]string{"type": "auth_failed"})
@@ -336,6 +391,23 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 			obs.Log.Warn("ipc unknown kind", "kind", base.Type)
 			continue
 		}
+
+		// CHECK 3.5.5: validate raw JSON against the JSON Schema sub-definition
+		// for this message kind before any typed unmarshal.  This enforces
+		// additionalProperties:false and all required/format/enum constraints at
+		// the wire level, catching payloads that would otherwise be silently
+		// accepted despite violating the published IPC schema.
+		if err := validateMsg(base.Type, line); err != nil {
+			obs.Log.Warn("ipc schema validation failed", "kind", base.Type, "err", err)
+			switch base.Type {
+			case "yield_request":
+				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "schema: " + err.Error()})
+			case "secret_request":
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "schema: " + err.Error()})
+			}
+			continue
+		}
+
 		obs.IPCMessagesTotal.WithLabelValues(base.Type).Inc()
 
 		if !rl.allow(base.Type) {

@@ -405,10 +405,14 @@ func TestServer_yield_request_empty_agent_name_rejected(t *testing.T) {
 	srv, _, _, token, _ := newIPCEnv(t)
 	enc, sc, _ := dial(t, srv.ListenAddr(), token)
 
+	// All required fields present; agent_name is empty string.
+	// Schema does not constrain minLength on agent_name, so struct-level
+	// validation rejects it after schema passes.
 	require.NoError(t, enc.Encode(map[string]any{
 		"type":             "yield_request",
 		"agent_name":       "",
 		"action_type":      "custom",
+		"reasoning_trace":  "t",
 		"confidence_score": 0.9,
 	}))
 	require.True(t, sc.Scan())
@@ -422,16 +426,19 @@ func TestServer_yield_request_invalid_confidence_rejected(t *testing.T) {
 	srv, _, _, token, _ := newIPCEnv(t)
 	enc, sc, _ := dial(t, srv.ListenAddr(), token)
 
+	// Schema enforces maximum:1 on confidence_score; schema rejects before struct validation.
 	require.NoError(t, enc.Encode(map[string]any{
 		"type":             "yield_request",
 		"agent_name":       "planner",
 		"action_type":      "custom",
+		"reasoning_trace":  "t",
 		"confidence_score": 1.5, // out of range
 	}))
 	require.True(t, sc.Scan())
 	var resp ipc.IpcYieldResponse
 	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
 	assert.False(t, resp.Approved)
+	// Schema catches this before struct-level validation.
 	assert.Contains(t, resp.Feedback, "confidence_score")
 }
 
@@ -439,17 +446,20 @@ func TestServer_yield_request_unknown_action_type_rejected(t *testing.T) {
 	srv, _, _, token, _ := newIPCEnv(t)
 	enc, sc, _ := dial(t, srv.ListenAddr(), token)
 
+	// Schema enforces the action_type enum; rejects before struct validation.
 	require.NoError(t, enc.Encode(map[string]any{
 		"type":             "yield_request",
 		"agent_name":       "planner",
-		"action_type":      "rm_rf", // unknown
+		"action_type":      "rm_rf", // not in enum
+		"reasoning_trace":  "t",
 		"confidence_score": 0.9,
 	}))
 	require.True(t, sc.Scan())
 	var resp ipc.IpcYieldResponse
 	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
 	assert.False(t, resp.Approved)
-	assert.Contains(t, resp.Feedback, "unknown action_type")
+	// Schema error mentions the action_type path.
+	assert.Contains(t, resp.Feedback, "action_type")
 }
 
 func TestServer_secret_request_empty_key_name_rejected(t *testing.T) {
@@ -463,7 +473,8 @@ func TestServer_secret_request_empty_key_name_rejected(t *testing.T) {
 	require.True(t, sc.Scan())
 	var resp ipc.IpcSecretResponse
 	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
-	assert.Equal(t, "key_name required", resp.Error)
+	// Schema now catches empty key_name via minLength:1 before struct validation.
+	assert.NotEmpty(t, resp.Error)
 }
 
 // ─── event log hash chain ─────────────────────────────────────────────────────
@@ -820,31 +831,33 @@ func TestServer_secret_request_decrypt_error_returns_error(t *testing.T) {
 
 // ─── Rate limit — yield_request response ─────────────────────────────────────
 
-// TestServer_rate_limit_yield_request_sends_rejection verifies that once the
-// yield_request rate limit (10/sec) is exceeded the server sends an explicit
-// rejection response so Python doesn't block on ResponseCh (CHECK §3.5.6).
-func TestServer_rate_limit_yield_request_sends_rejection(t *testing.T) {
+// TestServer_rate_limit_secret_request_sends_rejection verifies that once the
+// secret_request rate limit (30/sec) is exceeded the server sends an explicit
+// error response so Python doesn't block on a response (CHECK §3.5.6).
+//
+// We use secret_request (not yield_request) because it returns an immediate
+// "not found" response without needing a ResponseCh drain goroutine, making
+// the test self-contained.
+func TestServer_rate_limit_secret_request_sends_rejection(t *testing.T) {
 	srv, _, _, token, _ := newIPCEnv(t)
-	_, _, conn := dial(t, srv.ListenAddr(), token)
-	sc := bufio.NewScanner(conn)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
 
-	// Exhaust the limit (10/sec) using malformed requests so we don't block on
-	// ResponseCh — each malformed request gets an immediate auto-reject.
-	for i := 0; i < 10; i++ {
-		_, _ = fmt.Fprintf(conn, `{"type":"yield_request","confidence_score":"bad"}`+"\n")
-		require.True(t, sc.Scan(), "expected auto-reject #%d", i+1)
-		var r ipc.IpcYieldResponse
+	// Exhaust the limit (30/sec) — each request for a nonexistent key gets an
+	// immediate "not found" error without blocking.
+	for i := 0; i < 30; i++ {
+		require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "NO_SUCH_KEY"}))
+		require.True(t, sc.Scan(), "expected not-found response #%d", i+1)
+		var r ipc.IpcSecretResponse
 		require.NoError(t, json.Unmarshal(sc.Bytes(), &r))
-		assert.Equal(t, "yield_response", r.Type)
+		assert.Equal(t, "secret_response", r.Type)
 	}
 
-	// 11th: rate limit exceeded — server must respond with "rate limit exceeded".
-	_, err := fmt.Fprintf(conn, `{"type":"yield_request","confidence_score":"bad"}`+"\n")
-	require.NoError(t, err)
+	// 31st: rate limit exceeded.
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "NO_SUCH_KEY"}))
 	require.True(t, sc.Scan(), "server must send a rejection on rate limit")
-	var r ipc.IpcYieldResponse
+	var r ipc.IpcSecretResponse
 	require.NoError(t, json.Unmarshal(sc.Bytes(), &r))
-	assert.Equal(t, "rate limit exceeded", r.Feedback)
+	assert.Equal(t, "rate limit exceeded", r.Error)
 }
 
 // ─── Connection closed before auth ───────────────────────────────────────────
@@ -999,4 +1012,182 @@ func TestServer_heartbeat_timeout_closes_connection(t *testing.T) {
 	// connection within the heartbeat window — if it didn't, SetReadDeadline
 	// above would have fired and sc.Err() would be a deadline exceeded error.
 	// Either way, the connection is no longer open.
+}
+
+// ─── CHECK 3.5.5: JSON Schema validation before typed unmarshal ───────────────
+
+// TestIPCSchema_embedded_matches_proto ensures the schema copy inside the ipc
+// package stays in sync with the canonical source at proto/ipc.v1.schema.json.
+// A mismatch here means someone updated one file without updating the other.
+func TestIPCSchema_embedded_matches_proto(t *testing.T) {
+	// Walk up from the test binary's source file to find the repo root.
+	// The test binary is in src/internal/ipc/; proto/ is at ../../proto/ from there.
+	_, thisFile, _, _ := callerFile()
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	protoPath := filepath.Join(repoRoot, "proto", "ipc.v1.schema.json")
+
+	proto, err := os.ReadFile(protoPath)
+	require.NoError(t, err, "cannot read proto/ipc.v1.schema.json — check repoRoot path")
+
+	embedded, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "ipc.v1.schema.json"))
+	require.NoError(t, err)
+
+	require.Equal(t, string(proto), string(embedded),
+		"src/internal/ipc/ipc.v1.schema.json is out of sync with proto/ipc.v1.schema.json — re-copy the file")
+}
+
+// callerFile returns the source-file path of its caller using runtime.Callers.
+func callerFile() (ok bool, file string, line int, fn string) {
+	var pcs [2]uintptr
+	n := callersPkg(pcs[:])
+	if n < 1 {
+		return
+	}
+	frames := runtime.CallersFrames(pcs[:n])
+	f, _ := frames.Next()
+	return true, f.File, f.Line, f.Function
+}
+
+func callersPkg(pcs []uintptr) int { return runtime.Callers(2, pcs) }
+
+// TestServer_schema_rejects_extra_fields verifies that additionalProperties:false
+// is enforced before typed unmarshal: a yield_request with an unknown field must
+// be auto-rejected rather than silently accepted (CHECK 3.5.5).
+func TestServer_schema_rejects_extra_fields_yield_request(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Send a yield_request with a forbidden extra field.
+	msg := map[string]interface{}{
+		"type":             "yield_request",
+		"agent_name":       "agent1",
+		"action_type":      "file_edit",
+		"reasoning_trace":  "fix bug",
+		"confidence_score": 0.9,
+		"evil_extra_field": "should be rejected",
+	}
+	require.NoError(t, enc.Encode(msg))
+
+	require.True(t, sc.Scan(), "expected a response")
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	require.Equal(t, "yield_response", resp["type"])
+	assert.Equal(t, false, resp["approved"], "extra field must cause schema rejection")
+	assert.Contains(t, resp["feedback"], "schema:", "feedback must mention schema")
+}
+
+// TestServer_schema_rejects_missing_required_field verifies that a yield_request
+// without the required agent_name field is rejected at the schema layer.
+func TestServer_schema_rejects_missing_required_field(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	msg := map[string]interface{}{
+		"type":             "yield_request",
+		// agent_name intentionally omitted
+		"action_type":      "file_edit",
+		"reasoning_trace":  "fix bug",
+		"confidence_score": 0.9,
+	}
+	require.NoError(t, enc.Encode(msg))
+
+	require.True(t, sc.Scan())
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, false, resp["approved"])
+	assert.Contains(t, fmt.Sprint(resp["feedback"]), "schema:")
+}
+
+// TestServer_schema_rejects_bad_action_type verifies that an action_type value
+// not in the schema enum is rejected before typed validation.
+func TestServer_schema_rejects_bad_action_type(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	msg := map[string]interface{}{
+		"type":             "yield_request",
+		"agent_name":       "agent1",
+		"action_type":      "read_file", // not in enum
+		"reasoning_trace":  "something",
+		"confidence_score": 0.5,
+	}
+	require.NoError(t, enc.Encode(msg))
+
+	require.True(t, sc.Scan())
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, false, resp["approved"])
+	assert.Contains(t, fmt.Sprint(resp["feedback"]), "schema:")
+}
+
+// TestServer_schema_rejects_empty_key_name verifies that secret_request with an
+// empty key_name is rejected at the schema layer (minLength:1 in schema).
+func TestServer_schema_rejects_empty_key_name(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	msg := map[string]interface{}{
+		"type":     "secret_request",
+		"key_name": "", // violates minLength:1
+	}
+	require.NoError(t, enc.Encode(msg))
+
+	require.True(t, sc.Scan())
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	require.Equal(t, "secret_response", resp["type"])
+	assert.NotEmpty(t, resp["error"], "empty key_name must produce an error")
+	assert.Contains(t, fmt.Sprint(resp["error"]), "schema:")
+}
+
+// TestServer_schema_rejects_extra_fields_auth verifies that an auth message with
+// additional fields is rejected at the auth stage (CHECK 3.5.5).
+func TestServer_schema_rejects_extra_fields_auth(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	addr := srv.ListenAddr()
+
+	conn, err := net.DialTimeout(networkForAddr(addr), addr, time.Second)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	enc := json.NewEncoder(conn)
+	sc := bufio.NewScanner(conn)
+
+	// Auth with a forbidden extra field.
+	require.NoError(t, enc.Encode(map[string]interface{}{
+		"type":        "auth",
+		"token":       token,
+		"extra_field": "bad",
+	}))
+	require.True(t, sc.Scan())
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, "auth_failed", resp["type"])
+}
+
+// TestServer_schema_accepts_valid_yield_request confirms a fully-valid
+// yield_request passes schema validation and reaches the HITL channel.
+func TestServer_schema_accepts_valid_yield_request(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t)
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Send a valid yield_request, then immediately approve it via ResponseCh.
+	go func() {
+		<-srv.YieldCh
+		srv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: true}
+	}()
+
+	msg := map[string]interface{}{
+		"type":             "yield_request",
+		"agent_name":       "agent1",
+		"action_type":      "shell_exec",
+		"reasoning_trace":  "run tests",
+		"confidence_score": 0.95,
+	}
+	require.NoError(t, enc.Encode(msg))
+
+	require.True(t, sc.Scan())
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Equal(t, true, resp["approved"], "valid yield_request must not be rejected by schema")
 }
