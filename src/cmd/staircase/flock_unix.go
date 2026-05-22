@@ -2,12 +2,7 @@
 
 package main
 
-import "syscall"
+import "github.com/b070nd/staircase-core/src/internal/wslock"
 
-func flockExclusive(fd uintptr) error {
-	return syscall.Flock(int(fd), syscall.LOCK_EX|syscall.LOCK_NB)
-}
-
-func flockUnlock(fd uintptr) error {
-	return syscall.Flock(int(fd), syscall.LOCK_UN)
-}
+func flockExclusive(fd uintptr) error { return wslock.LockExclusive(fd) }
+func flockUnlock(fd uintptr) error    { return wslock.Unlock(fd) }

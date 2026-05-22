@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
@@ -180,51 +179,33 @@ the duration, preventing concurrent rotate or run commands.`,
 		}
 		defer func() { _ = flockUnlock(lockF.Fd()) }()
 
-		oldKey, err := crypto.LoadKey(wsDir)
-		if err != nil {
-			return err
-		}
-
-		// Generate a fresh 32-byte random key (CHECK 4.2.4 pattern).
-		newKey := make([]byte, 32)
-		if _, err := io.ReadFull(rand.Reader, newKey); err != nil {
-			return fmt.Errorf("generate new key: %w", err)
-		}
-
 		store, db, err := openStore()
 		if err != nil {
 			return err
 		}
 		defer func() { _ = db.Close() }()
 
-		// Re-encrypt all secrets in one transaction (CHECK 4.3.2).
-		if err := store.RotateSecrets(oldKey, newKey, crypto.Decrypt, crypto.Encrypt); err != nil {
-			return fmt.Errorf("rotate secrets: %w", err)
+		// reencrypt re-encrypts every secret in a single DB transaction (CHECK 4.3.2).
+		reencrypt := func(oldKey, newKey []byte) error {
+			return store.RotateSecrets(oldKey, newKey, crypto.Decrypt, crypto.Encrypt)
 		}
 
-		// Atomically install the new key file (CHECK 4.2.4 pattern).
-		tmp, err := os.CreateTemp(wsDir, ".key-rotate-*")
-		if err != nil {
-			return fmt.Errorf("create temp key: %w", err)
+		// tryDecryptAny probes whether the DB was already committed to the new key
+		// (used by crash-recovery in crypto.RotateKey to distinguish "pending" from
+		// "pending but already committed").
+		tryDecryptAny := func(key []byte) bool {
+			secrets, err := store.ListAllSecrets()
+			if err != nil || len(secrets) == 0 {
+				return false
+			}
+			_, decErr := crypto.Decrypt(key, secrets[0].EncryptedValue)
+			return decErr == nil
 		}
-		tmpPath := tmp.Name()
-		if _, err := tmp.Write(newKey); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("write new key: %w", err)
-		}
-		if err := tmp.Chmod(0o600); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("chmod new key: %w", err)
-		}
-		if err := tmp.Close(); err != nil {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("close new key: %w", err)
-		}
-		if err := os.Rename(tmpPath, keyPath); err != nil {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("install new key: %w", err)
+
+		// RotateKey handles key generation, journal-based crash recovery, and
+		// atomic key-file installation (CHECK 4.3.2).
+		if err := crypto.RotateKey(wsDir, reencrypt, tryDecryptAny); err != nil {
+			return err
 		}
 
 		fmt.Println("✅ Workspace key rotated and all secrets re-encrypted.")

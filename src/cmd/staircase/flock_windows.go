@@ -2,10 +2,8 @@
 
 package main
 
-// flockExclusive is a no-op on Windows (advisory file locking via Flock is
-// not supported).  Key rotation without locking is safe because the Windows
-// build cannot launch Python subprocesses, so no concurrent run can hold the
-// key open.
-func flockExclusive(_ uintptr) error { return nil }
+import "github.com/b070nd/staircase-core/src/internal/wslock"
 
-func flockUnlock(_ uintptr) error { return nil }
+// Advisory file locking on Windows is a no-op (see wslock package).
+func flockExclusive(fd uintptr) error { return wslock.LockExclusive(fd) }
+func flockUnlock(fd uintptr) error    { return wslock.Unlock(fd) }
