@@ -6,7 +6,7 @@ import "github.com/b070nd/staircase-core/src/internal/domain"
 type IpcStateEmit struct {
 	Type         string                 `json:"type"` // "state_emit"
 	ActiveAgent  string                 `json:"active_agent"`
-	State        map[string]interface{} `json:"state"`
+	State        map[string]interface{} `json:"state,omitempty"`
 	InputTokens  int                    `json:"input_tokens,omitempty"`
 	OutputTokens int                    `json:"output_tokens,omitempty"`
 	Model        string                 `json:"model,omitempty"`
