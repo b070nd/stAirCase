@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
@@ -393,7 +394,26 @@ func (s *Store) RotateSecrets(oldKey, newKey []byte, decrypt func([]byte, string
 		return fmt.Errorf("rotate: begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return rotateSecretsOnTx(tx, oldKey, newKey, decrypt, encrypt)
+}
 
+// RotateSecretsOnConn is like RotateSecrets but runs the transaction on the
+// provided pinned connection.  Use this when the caller needs to set
+// per-connection PRAGMAs (e.g. synchronous=FULL) before the transaction
+// begins, guaranteeing that the PRAGMA and the transaction share the same
+// underlying SQLite connection.
+func (s *Store) RotateSecretsOnConn(ctx context.Context, conn *sql.Conn, oldKey, newKey []byte, decrypt func([]byte, string) (string, error), encrypt func([]byte, string) (string, error)) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("rotate: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return rotateSecretsOnTx(tx, oldKey, newKey, decrypt, encrypt)
+}
+
+// rotateSecretsOnTx performs the re-encryption work inside an already-open
+// transaction.  Shared by RotateSecrets and RotateSecretsOnConn.
+func rotateSecretsOnTx(tx *sql.Tx, oldKey, newKey []byte, decrypt func([]byte, string) (string, error), encrypt func([]byte, string) (string, error)) error {
 	rows, err := tx.Query(`SELECT id, encrypted_value, version FROM secrets`)
 	if err != nil {
 		return fmt.Errorf("rotate: list: %w", err)

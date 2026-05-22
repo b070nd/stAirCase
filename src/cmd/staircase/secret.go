@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -176,28 +177,31 @@ var secretListCmd = &cobra.Command{
 // The old key file is replaced atomically (temp+rename) and every ciphertext
 // is updated in a single DB transaction, so a crash during rotation leaves
 // the workspace in a consistent state (either fully rotated or not at all).
-// An advisory flock on the key file prevents concurrent runs (CHECK 4.3.3).
+// An exclusive non-blocking flock on the key file fails fast if any concurrent
+// process (active run, secret set) already holds a shared lock (CHECK 4.3.3).
 var secretRotateCmd = &cobra.Command{
 	Use:   "rotate",
 	Short: "Re-encrypt all secrets under a new AES-256 workspace key",
 	Long: `Generates a fresh AES-256 key, re-encrypts every stored secret in a
 single atomic DB transaction, then replaces the old key file.
 
-The operation holds an exclusive advisory lock on the workspace key file for
-the duration, preventing concurrent rotate or run commands.`,
+The operation holds an exclusive non-blocking advisory lock on the workspace
+key file.  It fails fast (does not wait) if any concurrent process — an active
+run or a 'secret set' command — already holds a shared lock on the key.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		keyPath := filepath.Join(wsDir, crypto.KeyFile)
 
-		// Acquire exclusive advisory lock so concurrent staircase processes
-		// (including active runs) cannot interfere (CHECK 4.3.3).
+		// Acquire exclusive non-blocking advisory lock.  Fails fast if any
+		// concurrent process (active run, 'secret set') holds a shared lock
+		// (CHECK 4.3.3).
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
 			return fmt.Errorf("open key for lock: %w", err)
 		}
 		defer func() { _ = lockF.Close() }()
 		if err := flockExclusive(lockF.Fd()); err != nil {
-			return fmt.Errorf("workspace is locked by another process — is a run active?: %w", err)
+			return fmt.Errorf("workspace key is locked — is a run or 'secret set' active?: %w", err)
 		}
 		defer func() { _ = flockUnlock(lockF.Fd()) }()
 
@@ -208,28 +212,41 @@ the duration, preventing concurrent rotate or run commands.`,
 		defer func() { _ = db.Close() }()
 
 		// reencrypt re-encrypts every secret in a single DB transaction (CHECK 4.3.2).
-		// Pin to a single connection and set synchronous=FULL so the WAL write is
-		// fsynced before COMMIT returns, making the DB commit power-loss durable.
+		// Opens a pinned *sql.Conn, sets synchronous=FULL on it, then runs the
+		// rotation transaction on the same connection — guaranteeing that the PRAGMA
+		// and the transaction share the underlying SQLite connection and the WAL
+		// write is fsynced before COMMIT returns (power-loss durable).
 		reencrypt := func(oldKey, newKey []byte) error {
-			db.SetMaxOpenConns(1)
-			defer db.SetMaxOpenConns(0)
-			if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
-				return fmt.Errorf("set synchronous=FULL: %w", err)
+			conn, err := db.Conn(context.Background())
+			if err != nil {
+				return fmt.Errorf("rotate: open conn: %w", err)
 			}
-			defer func() { _, _ = db.Exec("PRAGMA synchronous=NORMAL") }()
-			return store.RotateSecrets(oldKey, newKey, crypto.Decrypt, crypto.Encrypt)
+			defer func() { _ = conn.Close() }()
+			if _, err := conn.ExecContext(context.Background(), "PRAGMA synchronous=FULL"); err != nil {
+				return fmt.Errorf("rotate: set synchronous=FULL: %w", err)
+			}
+			defer func() {
+				_, _ = conn.ExecContext(context.Background(), "PRAGMA synchronous=NORMAL")
+			}()
+			return store.RotateSecretsOnConn(context.Background(), conn, oldKey, newKey, crypto.Decrypt, crypto.Encrypt)
 		}
 
 		// tryDecryptAny probes whether the DB was already committed to the new key
 		// (used by crash-recovery in crypto.RotateKey to distinguish "pending" from
-		// "pending but already committed").
+		// "pending but already committed").  Scans every secret so a partial
+		// failure (e.g. first secret still under old key) is not mistaken for
+		// an uncommitted DB.
 		tryDecryptAny := func(key []byte) bool {
 			secrets, err := store.ListAllSecrets()
 			if err != nil || len(secrets) == 0 {
 				return false
 			}
-			_, decErr := crypto.Decrypt(key, secrets[0].EncryptedValue)
-			return decErr == nil
+			for _, s := range secrets {
+				if _, decErr := crypto.Decrypt(key, s.EncryptedValue); decErr == nil {
+					return true
+				}
+			}
+			return false
 		}
 
 		// RotateKey handles key generation, journal-based crash recovery, and

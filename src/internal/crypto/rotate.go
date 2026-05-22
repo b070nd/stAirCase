@@ -63,8 +63,7 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 	if err := os.Rename(tmpPath, journalPath); err != nil {
 		return err
 	}
-	_ = syncDir(filepath.Dir(journalPath)) // durable directory entry for journal
-	return nil
+	return syncDir(filepath.Dir(journalPath)) // durable directory entry for journal
 }
 
 // syncDir fsyncs the directory at path so that a preceding rename is visible
@@ -134,7 +133,9 @@ func RotateKey(
 				if renErr := os.Rename(j.NewKeyPath, keyPath); renErr != nil {
 					return fmt.Errorf("rotate resume committed: install key: %w", renErr)
 				}
-				_ = syncDir(wsDir)
+				if synErr := syncDir(wsDir); synErr != nil {
+					return fmt.Errorf("rotate resume committed: sync dir: %w", synErr)
+				}
 			}
 			_ = os.Remove(journalPath)
 			return nil
@@ -148,7 +149,9 @@ func RotateKey(
 				if renErr := os.Rename(j.NewKeyPath, keyPath); renErr != nil {
 					return fmt.Errorf("rotate resume pending→committed: install key: %w", renErr)
 				}
-				_ = syncDir(wsDir)
+				if synErr := syncDir(wsDir); synErr != nil {
+					return fmt.Errorf("rotate resume pending→committed: sync dir: %w", synErr)
+				}
 				_ = os.Remove(journalPath)
 				return nil
 			}
@@ -228,7 +231,9 @@ func RotateKey(
 		return fmt.Errorf("rotate: install key: %w", err)
 	}
 	// Sync parent directory so the rename is durable after a power loss.
-	_ = syncDir(wsDir)
+	if err := syncDir(wsDir); err != nil {
+		return fmt.Errorf("rotate: sync dir: %w", err)
+	}
 
 	// 7. Cleanup.
 	_ = os.Remove(journalPath)
