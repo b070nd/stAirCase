@@ -1,28 +1,28 @@
 # stAirCase Audit Report
-Date: 2026-05-21T00:00:00Z
-Commit: 863b1b5 (feature/SAC-1-audit)
+Date: 2026-05-22T00:00:00Z
+Commit: 52ef006 (feature/SAC-1-audit)
 Auditor: Claude Sonnet 4.6
-Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation)
+Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5)
 
 > Previous audit at commit 564f228 (2026-05-14) returned YELLOW.
-> This report reflects all remediations applied through commit 863b1b5.
+> This report reflects all remediations applied through commit 52ef006.
 
 ---
 
 ## Executive Summary
 
-- **Overall status: YELLOW** (improved; 4 architectural deferred items remain)
+- **Overall status: YELLOW** (improved; 3 architectural deferred items remain)
 - Critical findings: 0
-- High findings: 1 (F-001–F-003 rolled up: Go stdlib CVEs — toolchain upgrade needed)
+- High findings: 0 (F-001–F-003 resolved: `go 1.26.3` + `govulncheck` clean)
 - Medium findings: 2 (exec.Command git shell-outs; orchestrator coverage)
-- Low findings: 3 (TUI snapshot tests absent; EventYieldDecided audit event; TLS on approval server)
-- Deferred architectural items: 4 (JSON Schema pre-validation, crash-atomic rotation, fd-based topology delivery, OTel real integration)
+- Low findings: 2 (TUI snapshot tests absent; TLS on approval server)
+- Deferred architectural items: 3 (crash-atomic rotation, fd-only topology delivery, OTel real integration)
 
 **Top 3 recommendations:**
 
-1. Upgrade Go toolchain from 1.26.1 → 1.26.3 to fix 6 stdlib CVEs (`govulncheck` reports active call-graph paths into `net`, `crypto/tls`, `crypto/x509`, `net/http`; see F-001–F-003).
-2. Replace `exec.Command("git", ...)` shell-outs in `internal/orchestrator/runner.go` with the `go-git` library (CHECK 5.3.1 FAIL; shell-outs are fragile on PATH-restricted systems and miss git config isolation).
-3. Add JSON Schema pre-validation before `json.Unmarshal` in the IPC server (CHECK 3.5.5 FAIL; currently only struct-level validation; `additionalProperties:false` not enforced at wire level).
+1. Replace `exec.Command("git", ...)` shell-outs in `internal/orchestrator/runner.go` with the `go-git` library (CHECK 5.3.1 FAIL; shell-outs are fragile on PATH-restricted systems and miss git config isolation).
+2. Make secret rotation crash-atomic (CHECK 4.3.2): DB re-encryption must commit after key rename, not before — requires a journal file or two-phase write.
+3. Eliminate the canonical `graph_exec_case*.py` tmp script (CHECK 5.4.2/6.1.2): fd delivery via `ExtraFiles` is already wired in the runner, but compile still writes a persistent file; runner should consume the fd without creating a run-specific copy on disk.
 
 ---
 
@@ -30,16 +30,16 @@ Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL rem
 
 | ID | Sev | Area | Summary | Status | File:Line |
 |----|-----|------|---------|--------|-----------|
-| F-001 | HIGH | build | Go 1.26.1 has active CVE path in `net` (GO-2026-4971) | **OPEN** | `go.mod:3` |
-| F-002 | HIGH | build | Go 1.26.1 has active CVE path in `crypto/tls` (GO-2026-4870) | **OPEN** | `go.mod:3` |
-| F-003 | HIGH | build | Go 1.26.1 has active CVE path in `crypto/x509` (GO-2026-4946/4947/4866) | **OPEN** | `go.mod:3` |
+| F-001 | HIGH | build | Go 1.26.1 has active CVE path in `net` (GO-2026-4971) | **RESOLVED** — `go 1.26.3`; `govulncheck` clean | `go.mod:3` |
+| F-002 | HIGH | build | Go 1.26.1 has active CVE path in `crypto/tls` (GO-2026-4870) | **RESOLVED** — `go 1.26.3`; `govulncheck` clean | `go.mod:3` |
+| F-003 | HIGH | build | Go 1.26.1 has active CVE path in `crypto/x509` (GO-2026-4946/4947/4866) | **RESOLVED** — `go 1.26.3`; `govulncheck` clean | `go.mod:3` |
 | F-004 | MEDIUM | orchestrator | `exec.Command("git", ...)` shell-outs in orchestrator (3 call-sites) — not go-git | **OPEN** | `src/internal/orchestrator/runner.go:163,167` |
 | F-005 | MEDIUM | coverage | Total coverage 61.0% vs 70% target | **RESOLVED** — 76.6% as of 863b1b5 | — |
 | F-006 | MEDIUM | coverage | `internal/orchestrator` coverage 24.7% vs 85% target; `Run()` is E2E boundary | **OPEN** — 59.5% | `src/internal/orchestrator/runner.go` |
 | F-007 | MEDIUM | policy | No session limits enforced (`max_auto_approved`, `max_total_yields`) in run loop | **RESOLVED** — `CheckLimits` wired in M1 (863b1b5) | `src/internal/orchestrator/runner.go` |
 | F-008 | MEDIUM | observability | `fmt.Printf`/`log.Printf` in orchestrator (18 call-sites); no structured `slog` | **OPEN** | `src/internal/orchestrator/runner.go` |
 | F-009 | LOW | hitl | No TUI snapshot tests | **OPEN** | `src/internal/tui/` |
-| F-010 | LOW | hitl | No `EventYieldDecided` audit event on operator/policy decision (CHECK 7.3.1) | **OPEN** | `src/internal/orchestrator/runner.go` |
+| F-010 | LOW | hitl | No `EventYieldDecided` audit event on operator/policy decision (CHECK 7.3.1) | **RESOLVED** — `runner.go:423` appends `yield_decided` event with source/outcome | `src/internal/orchestrator/runner.go` |
 | F-011 | LOW | approvalhttp | No TLS config on approval HTTP server; HTTP-only (CHECK 8.5) | **OPEN** (loopback-only; `MozillaTLSConfig()` + `StartTLS()` available but not wired by default) | `src/internal/approvalhttp/server.go` |
 | F-012 | LOW | build | `gofumpt` not installed; CHECK 12.2.4 INCONCLUSIVE | **OPEN** | — |
 
@@ -47,29 +47,14 @@ Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL rem
 
 ## Detail Per Finding
 
-### F-001 / F-002 / F-003 — Go 1.26.1 stdlib CVEs (HIGH)
+### F-001 / F-002 / F-003 — Go stdlib CVEs (HIGH) — **RESOLVED**
 
-**Evidence:** `govulncheck ./...` output:
+`go.mod` upgraded to `go 1.26.3`. Fresh `govulncheck ./...` returns:
 ```
-Vulnerability #1: GO-2026-4971 Panic in Dial/LookupPort (NUL byte on Windows)
-  Found in: net@go1.26.1 / Fixed in: go1.26.3
-  Trace: orchestrator.sendWebhookYield → http.Client.Post → net.Dialer.DialContext
-         ipc.Server.Start → net.Listen
-
-Vulnerability #2: GO-2026-4870 TLS 1.3 KeyUpdate DoS
-  Found in: crypto/tls@go1.26.1 / Fixed in: go1.26.2
-  Trace: approvalhttp.Start → http.Server.Serve → tls.Conn.HandshakeContext
-
-Vulnerability #3 / #4 / #6: crypto/x509 chain building, policy validation, name constraints
-  Found in: crypto/x509@go1.26.1 / Fixed in: go1.26.2
-  Trace: approvalhttp.Start → http.Server.Serve → x509.Certificate.Verify
-
-Vulnerability #5: GO-2026-4918 HTTP/2 infinite loop
-  Found in: net/http@go1.26.1 / Fixed in: go1.26.3
-  Trace: orchestrator.sendWebhookYield → http.Client.Post
+No vulnerabilities found.
+Your code is affected by 0 vulnerabilities.
 ```
-
-**Suggested fix:** Update `go.mod` line 3 to `go 1.26.3` and run `go get toolchain@go1.26.3`.
+All previously reported CVEs (GO-2026-4971, GO-2026-4870, GO-2026-4918, GO-2026-4946/4947/4866) are fixed in Go 1.26.2/1.26.3.
 
 ---
 
@@ -88,9 +73,9 @@ CHECK 5.3.1 asks for `go-git` library, not shell-outs. Shell-outs fail silently 
 
 ---
 
-### F-005 — Total coverage 61.0% (MEDIUM)
+### F-005 — Total coverage (MEDIUM) — **RESOLVED**
 
-`internal/runtime` (0%) requires a live Python venv; `internal/tui` (0%) requires bubbletea/teatest. Both are structural E2E boundaries. Closing the gap requires either integration test infrastructure (recommended) or accepting the ceiling with documentation.
+Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal/tui` (88.3%) now have test suites. Target of 70% is met.
 
 ---
 
@@ -100,9 +85,9 @@ CHECK 5.3.1 asks for `go-git` library, not shell-outs. Shell-outs fail silently 
 
 ---
 
-### F-007 — No session limits in policy engine (MEDIUM)
+### F-007 — No session limits in policy engine (MEDIUM) — **RESOLVED**
 
-`internal/policy/engine.go` has no `max_auto_approved`, `max_total_yields`, or `max_run_duration` fields. Policy evaluation returns `PolicyDecision{Matched: false}` if no rule fires; the caller always asks the operator. There is no limit-exhaustion path that surfaces as `Ask`. Planned for Phase 8 (CEL expressions).
+`CheckLimits(autoApproved, totalYields)` wired in the runner run loop (M1). `MaxAutoApproved` and `MaxTotalYields` from `policy.json` are enforced; exhaustion routes to HITL operator. `TestRunLoop_limit_exhaustion_routes_to_hitl` covers this path.
 
 ---
 
@@ -114,13 +99,13 @@ CHECK 5.3.1 asks for `go-git` library, not shell-outs. Shell-outs fail silently 
 
 ### F-009 — No TUI snapshot tests (LOW)
 
-`internal/tui/` has no test files. Bubbletea's `teatest` package enables model snapshot assertions. Absence means rendering regressions are invisible until manual smoke testing.
+`internal/tui/` now has tests (88.3% coverage) but no bubbletea model snapshot assertions. Rendering regressions remain invisible until manual smoke testing. Adding `teatest` snapshot tests would close this gap.
 
 ---
 
-### F-010 — No EventYieldDecided audit event (LOW)
+### F-010 — EventYieldDecided audit event (LOW) — **RESOLVED**
 
-The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not append an audit log entry recording the decision source (operator/policy rule/limit). CHECK 7.3.1 requires a `source` field. Each decision should call `s.store.AppendEventLog(runID, "yield_decided", ...)`.
+`runner.go:423` appends a `yield_decided` event via `store.AppendEventLog` with decision source (policy/HITL/limit) and outcome (approved/rejected) after every yield resolution.
 
 ---
 
@@ -162,7 +147,7 @@ The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not
 | 3.5.2 Test verifies 0600 mode | **PASS** | `server_test.go:TestServer_UDS_socket_has_mode_0600` |
 | 3.5.3 Peer credential check | **PASS** | `peercred_linux.go` uses `SO_PEERCRED`; `peercred_other.go` stubs for non-Linux |
 | 3.5.4 Connection limit | **PASS** | `maxConnections = 2`, enforced with `atomic.AddInt32`; intentional (Python + doctor tool); documented in source (CHECK 3.5.4) |
-| 3.5.5 Schema validation before unmarshal | **FAIL** | No JSON Schema validator; raw `json.Unmarshal` only |
+| 3.5.5 Schema validation before unmarshal | **PASS** | `santhosh-tekuri/jsonschema/v5` compiles per-kind sub-schemas at init; `validateMsg()` validates raw bytes before typed unmarshal in auth handshake and message loop (52ef006) |
 | 3.5.6 Rate limits per kind | **PASS** | `kindRateLimits` map with per-second budgets per message kind |
 | 3.5.7 Heartbeat timeout | **PASS** | `heartbeatTimeout = 30s`, `SetReadDeadline` on every iteration |
 | 3.5.8 All handlers respond | **PASS** | Malformed JSON auto-rejects with error response on all request kinds |
@@ -206,7 +191,7 @@ The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not
 | 5.3.1 Uses go-git | **FAIL** | 3 `exec.Command("git", ...)` call-sites in `runner.go` (see F-004) |
 | 5.3.2 TestOrphanReconciliation | **FAIL** | No test with that name; reconcile.go has no unit tests |
 | 5.4.1 Token via stdin not env | **PASS** | `BootstrapMessage` written to stdin pipe; comment: "passed over stdin (not env vars)" |
-| 5.4.2 Topology via ExtraFiles | **INCONCLUSIVE** | `template/codegen.go` generates `graph_exec.py` to a file path; no `ExtraFiles` usage found |
+| 5.4.2 Topology via ExtraFiles | **PARTIAL** | `runner.go:321` opens script as fd and passes via `ExtraFiles` (fd 3) to Python; however `compile.go:172` still writes a canonical `graph_exec_case{N}.py` to tmp/ and runner copies it to a run-specific path before opening — the file-on-disk step is not eliminated |
 | 5.4.3 Setpgid: true | **PASS** | `python.go:95` `cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}` |
 | 5.4.4 Stderr captured | **PASS** | `python.go` uses `cmd.StderrPipe()` → goroutine → `log.Printf("[python] %s", line)` |
 | 5.4.5 SIGTERM → 5s → SIGKILL | **PASS** | `python.go:Kill()` sends `SIGTERM` then `time.After(5s)` then `SIGKILL` |
@@ -231,7 +216,7 @@ The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not
 | 7.1.5 TestBlanketDenyRequiresFlag | **FAIL** | No such test; blanket-deny not protected by explicit flag |
 | 7.2.1 Session limits enforced | **PASS** | `CheckLimits(autoApproved, totalYields)` called before `Evaluate` in runner; limit hit → routes to HITL |
 | 7.2.2 TestLimitExhaustionAsksOperator | **PASS** | `TestRunLoop_limit_exhaustion_routes_to_hitl` in `runner_test.go` |
-| 7.3.1 EventYieldDecided audit event | **FAIL** | No `yield_decided` event appended on decision (F-010) |
+| 7.3.1 EventYieldDecided audit event | **PASS** | `runner.go:423` appends `yield_decided` with source and outcome after every yield resolution |
 | 7.3.2 TestPolicyE2E | **FAIL** | No e2e suite |
 | 7.4.1 TUI snapshot tests | **FAIL** | `internal/tui` has tests (88.3% coverage) but no bubbletea snapshot assertions |
 | 7.4.2 Secret scrubbing before render | **PASS** | `scrubSecrets()` wired before TUI/approvalhttp/webhook; covers all operator-visible fields |
@@ -288,7 +273,7 @@ The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not
 | 12.2.3 golangci-lint | **PASS** | 0 issues (golangci-lint 2.11.3) |
 | 12.2.4 gofumpt -l | **INCONCLUSIVE** | `gofumpt` not installed (F-012) |
 | 12.3.1 gosec 0 HIGH/CRITICAL | **PASS** | `jq '.Issues | map(select(.severity == "HIGH" or .severity == "CRITICAL")) | length'` = 0 |
-| 12.3.2 govulncheck 0 unfixed | **FAIL** | 6 stdlib vulnerabilities with active call-graph paths (F-001–F-003); fixed in Go 1.26.2/1.26.3 |
+| 12.3.2 govulncheck 0 unfixed | **PASS** | `go 1.26.3` + fresh `govulncheck ./...` → "No vulnerabilities found" (F-001–F-003 resolved) |
 | 12.3.3 No hardcoded credentials | **PASS** | `rg -i "password\s*=\s*\"|api[_-]?key\s*=\s*\"|secret\s*=\s*\""` — no hits in production code |
 | 12.4.1 Race-clean | **PASS** | `go test -race ./...` passes all packages |
 | 12.4.2 Total coverage ≥ 70% | **PASS** | 76.6% (was 61.0%); `runtime` 84.2%, `tui` 88.3% now covered |
@@ -306,19 +291,22 @@ The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not
 
 ## Out-of-Scope Observations
 
-- `internal/template/codegen.go` generates `graph_exec.py` to a file path on disk. CHECK 5.4.2 asks for topology delivery via inherited FD (`ExtraFiles`). This is a Phase 6 concern — file delivery is simpler and works but leaves a temp file on disk between Python boot and first read.
+- CHECK 5.4.2 (partial): `runner.go` opens the compiled script as an fd and passes it via `ExtraFiles` (fd 3). However `compile.go` still writes a canonical `graph_exec_case{N}.py` to `$STAIRCASE_DIR/tmp/` and the runner copies it to a run-specific path before opening. The file-on-disk step is not eliminated — see Remaining Deferred.
 - `internal/persistence/store.go` `DB()` accessor was added for test use. In production callers, direct SQL is never needed. The accessor is correctly documented as for tests/tooling only.
 - `approvalhttp` authentication allows `token = ""` (no auth) — documented as "dev/test mode only". Should be blocked in production startup if `WebhookURL` is set.
 - `internal/ipc/peercred_other.go` stubs out peer credential checking on non-Linux platforms with a no-op (always returns nil). macOS `getpeereid(3)` is mentioned in a comment as "future improvement". On macOS, any local user can connect to the UDS.
 
 ---
 
-## Resolved Since Previous Audit (564f228 → 863b1b5)
+## Resolved Since Previous Audit (564f228 → 52ef006)
 
 | Finding | Resolution |
 |---------|-----------|
+| F-001/F-002/F-003 Go CVEs | `go 1.26.3`; `govulncheck ./...` → "No vulnerabilities found" |
 | F-005 Coverage 61% | 76.6% — `runtime` (84.2%) and `tui` (88.3%) now have test suites |
 | F-007 Session limits | `CheckLimits` wired in runner run loop (M1); `MaxAutoApproved` / `MaxTotalYields` enforced |
+| F-010 EventYieldDecided | `runner.go:423` appends `yield_decided` event with source/outcome |
+| CHECK 3.5.5 Schema pre-validation | Per-kind sub-schemas compiled at init; `validateMsg()` validates before typed unmarshal (52ef006) |
 | CHECK 8.6 Race 404 → 409 | `decided map` added; race loser gets 409 Conflict, never-existed gets 404 |
 | CHECK 4.4.3 Scrubber | `scrubSecrets` wired before all HITL paths; expanded to cover all operator-visible fields |
 | CHECK 7.4.2 Scrubber scope | `ReasoningTrace`, `SearchBlock`, `ReplaceBlock` scrubbed (previously only `File`) |
@@ -337,11 +325,9 @@ The orchestrator approves/rejects yields via `ipc.IpcYieldResponse` but does not
 
 | Section | Issue | Disposition |
 |---------|-------|-------------|
-| 3.5.5 Schema pre-validation | No JSON Schema validator before unmarshal | Deferred — requires new dependency |
-| 4.3.2/4.3.3 Crash-atomic rotation | DB re-encrypt commits before key rename | Deferred — needs two-phase write |
-| 5.4.2/6.1.2 fd topology delivery | `graph_exec_case*.py` written to tmp/ | Deferred — architectural redesign |
+| 4.3.2/4.3.3 Crash-atomic rotation | DB re-encrypt commits before key rename; rotate doesn't block active runs | Deferred — needs journal / two-phase write |
+| 5.4.2/6.1.2 fd topology (partial) | `ExtraFiles` fd wired in runner but canonical `graph_exec_case*.py` still written to tmp/ by compile | Deferred — requires compile/run boundary redesign |
 | 7.1.1 CEL policy | Struct-based rules only | Deferred — Phase 8 |
-| 7.3.1 EventYieldDecided | No audit event on decision | Open |
 | 10.3.1 OTel real exporter | `otel.go` is stub | Deferred — Phase 10 |
 | §12.2.4 gofumpt | Not installed | Inconclusive |
 | §12.5.3 License check | `go-licenses` not installed | Inconclusive |
