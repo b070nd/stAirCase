@@ -1,11 +1,11 @@
 # stAirCase Audit Report
 Date: 2026-05-22T00:00:00Z
-Commit: dcda158 (feature/SAC-1-audit)
+Commit: a8cb19b (feature/SAC-1-audit)
 Auditor: Claude Sonnet 4.6
-Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5 + CHECK 4.3.2/4.3.3)
+Duration: multiple sessions (Sprint 1 critical/high + Sprint 2 medium + FAIL remediation + CHECK 3.5.5 + CHECK 4.3.2/4.3.3 + key-lock gap + fsync)
 
 > Previous audit at commit 564f228 (2026-05-14) returned YELLOW.
-> This report reflects all remediations applied through commit dcda158.
+> This report reflects all remediations applied through commit a8cb19b.
 
 ---
 
@@ -171,7 +171,7 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | 4.2.5 Decrypt distinguishes wrong key | **INCONCLUSIVE** | No `TestDecryptWrongKey` or `TestDecryptCorrupt` test; AES-GCM authentication tag naturally distinguishes them but no dedicated test |
 | 4.3.1 Rotation command exists | **PASS** | `staircase secret rotate` in `cmd/staircase/secret.go` |
 | 4.3.2 Rotation crash-atomic | **PASS** | Two-stage journal (pending→committed) + `tryDecryptAny` recovery in `crypto/rotate.go`; all crash points covered by 6 tests |
-| 4.3.3 Rotation blocks active runs | **PASS** | `wslock.LockShared` acquired in runner before `LoadKey`; `wslock.LockExclusive` held by rotate; mutually exclusive via `LOCK_NB` |
+| 4.3.3 Rotation blocks active runs | **PASS** | `wslock.LockShared` in runner + `secret set`; `wslock.LockExclusive` in rotate; mutually exclusive via `LOCK_NB`; 3 wslock concurrency tests |
 | 4.4.1 Secret access logged | **PASS** | `secret_access_log` INSERT in `secret_request` handler |
 | 4.4.2 Log survives run delete | **PASS** | `ON DELETE SET NULL` on `run_id` |
 | 4.4.3 Secret scrubbing before render | **PASS** | `scrubSecrets()` called before every HITL path (TUI / approvalhttp / webhook); covers `File`, `SearchBlock`, `ReplaceBlock`, `ReasoningTrace` |
@@ -320,6 +320,7 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | Sprint 2 M3 | Workspace dir `MkdirAll` now `0o700` |
 | Sprint 2 M4 | GitHub Actions SHA-pinned; GoReleaser SBOM block added; syft installed in release CI |
 | CHECK 4.3.2/4.3.3 | Two-stage journal rotation (`crypto/rotate.go`); `wslock` package; shared flock in runner; 6 crash-recovery tests |
+| CHECK 4.3.3 (gap) | Shared lock added to `secret set` (LoadKey→CreateSecret); fsync on temp key + journal; syncDir after rename; 3 wslock concurrency tests |
 | Sprint 1 (7 findings) | Windows build stub; secret project_id scoping; HITL truncation 200→10k chars; IPC field validation; audit NDJSON parse; sandbox comment |
 
 ## Remaining Incomplete / Deferred
