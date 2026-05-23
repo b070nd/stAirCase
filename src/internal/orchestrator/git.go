@@ -9,6 +9,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
 // GitRepo wraps a go-git repository and worktree, providing the small set of
@@ -161,5 +162,41 @@ func (g *GitRepo) ListBranches(prefix string) ([]string, error) {
 		}
 		return nil
 	})
+
 	return branches, nil
+}
+
+// RemoteURL returns the fetch URL of the named remote (typically "origin").
+// Returns an error when the remote does not exist or has no URLs configured.
+func (g *GitRepo) RemoteURL(name string) (string, error) {
+	remote, err := g.r.Remote(name)
+	if err != nil {
+		return "", fmt.Errorf("git remote %q: %w", name, err)
+	}
+	urls := remote.Config().URLs
+	if len(urls) == 0 {
+		return "", fmt.Errorf("git remote %q has no URLs", name)
+	}
+	return urls[0], nil
+}
+
+// Push pushes branch to the named remote. When token is non-empty it is used
+// as a GitHub-compatible Personal Access Token (BasicAuth with "x-token-auth"
+// username). When token is empty the push uses unauthenticated transport
+// (suitable for local remotes or repos with SSH keys configured in the OS).
+func (g *GitRepo) Push(remoteName, branch, token string) error {
+	refSpec := config.RefSpec(
+		"refs/heads/" + branch + ":refs/heads/" + branch,
+	)
+	opts := &gogit.PushOptions{
+		RemoteName: remoteName,
+		RefSpecs:   []config.RefSpec{refSpec},
+	}
+	if token != "" {
+		opts.Auth = &githttp.BasicAuth{Username: "x-token-auth", Password: token}
+	}
+	if err := g.r.Push(opts); err != nil && err != gogit.NoErrAlreadyUpToDate {
+		return fmt.Errorf("git push %s %s: %w", remoteName, branch, err)
+	}
+	return nil
 }
