@@ -376,7 +376,10 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 		copy(line, scanner.Bytes())
 
 		if s.debugLog != nil {
-			s.debugLog.Printf(`{"dir":"in","ts":%q,"payload":%s}`, time.Now().Format(time.RFC3339Nano), line)
+			s.secretsMu.RLock()
+			logged := crypto.ScrubBytes(line, s.deliveredSecrets)
+			s.secretsMu.RUnlock()
+			s.debugLog.Printf(`{"dir":"in","ts":%q,"payload":%s}`, time.Now().Format(time.RFC3339Nano), logged)
 		}
 
 		var base struct {
@@ -484,6 +487,9 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 				s.yieldMu.Unlock()
 				if s.debugLog != nil {
 					if b, err2 := json.Marshal(resp); err2 == nil {
+						s.secretsMu.RLock()
+						b = crypto.ScrubBytes(b, s.deliveredSecrets)
+						s.secretsMu.RUnlock()
 						s.debugLog.Printf(`{"dir":"out","ts":%q,"payload":%s}`, time.Now().Format(time.RFC3339Nano), b)
 					}
 				}

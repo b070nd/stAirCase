@@ -1,5 +1,21 @@
 package crypto
 
+import "bytes"
+
+// ScrubBytes replaces every occurrence of each secret value in data with
+// []byte("<REDACTED>") and returns the result. It is safe to call with a nil
+// or empty secrets slice (returns data unchanged). Empty secret strings are
+// skipped to avoid replacing every empty match in the payload.
+func ScrubBytes(data []byte, secrets []string) []byte {
+	for _, s := range secrets {
+		if s == "" {
+			continue
+		}
+		data = bytes.ReplaceAll(data, []byte(s), []byte("<REDACTED>"))
+	}
+	return data
+}
+
 // Plaintext is a byte-slice wrapper that:
 //   - never leaks its value through fmt.Sprintf / log / json (String returns
 //     "<redacted>" — satisfying CHECK 4.2.2),
