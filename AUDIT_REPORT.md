@@ -326,6 +326,8 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | Commit only approved files (P1) | `GitRepo.AddFiles(paths)` added; runner now collects `ProposedEdits[].File` from approved `file_edit` yields and stages only those paths at finalize — `AddAll()` no longer used |
 | Script integrity at run time (P1) | `staircase compile` writes `graph_exec_case{N}.py.sha256` sidecar; runner verifies SHA-256 before using canonical script — mismatch returns hard error; absent sidecar warns (backward compat) |
 | Signed policy bundles (P2-a) | `policy.VerifyPolicySignature` added; runner warns on unsigned policy, fails hard on invalid signature; `staircase policy sign` / `staircase policy verify` subcommands added; 4 tests (valid, tampered, absent, no-file) |
+| Policy `AgentNames` condition (P2-a CEL subset) | `Rule.AgentNames []string` added; Evaluate checks agent before action_type; 4 tests (match, mismatch, empty=any, case-insensitive) — most common CEL use-case without cel-go dep |
+| GitHub PR creation + CI status gate (P2-b) | `staircase push <run-id>` command: pushes run branch via go-git + BasicAuth token; creates GitHub PR via `net/http` GitHub REST API; posts `staircase/run` commit status; `--draft` flag; `parseGitHubOwnerRepo` handles HTTPS + SSH remotes; GitLab manual URL fallback |
 | Sprint 1 (7 findings) | Windows build stub; secret project_id scoping; HITL truncation 200→10k chars; IPC field validation; audit NDJSON parse; sandbox comment |
 
 ## Remaining Incomplete / Deferred

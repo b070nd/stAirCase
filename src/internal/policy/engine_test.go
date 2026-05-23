@@ -94,6 +94,45 @@ func TestEvaluate_action_type_mismatch_falls_through(t *testing.T) {
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
 
+func TestEvaluate_agent_name_match(t *testing.T) {
+	e := &policy.Engine{Rules: []policy.Rule{
+		{AgentNames: []string{"coder"}, ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
+	}}
+	req := domain.YieldRequest{AgentName: "coder", ActionType: "file_edit", ConfidenceScore: 0.5}
+	dec := e.Evaluate(req)
+	assert.True(t, dec.Matched)
+	assert.True(t, dec.Approved)
+}
+
+func TestEvaluate_agent_name_mismatch_falls_through(t *testing.T) {
+	e := &policy.Engine{Rules: []policy.Rule{
+		{AgentNames: []string{"coder"}, ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
+	}}
+	req := domain.YieldRequest{AgentName: "reviewer", ActionType: "file_edit", ConfidenceScore: 0.5}
+	dec := e.Evaluate(req)
+	assert.False(t, dec.Matched, "different agent must not match")
+	assert.Contains(t, dec.Reason, "no matching rule")
+}
+
+func TestEvaluate_empty_agent_names_matches_any(t *testing.T) {
+	e := &policy.Engine{Rules: []policy.Rule{
+		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
+	}}
+	for _, name := range []string{"coder", "reviewer", "architect", ""} {
+		req := domain.YieldRequest{AgentName: name, ActionType: "file_edit", ConfidenceScore: 0.5}
+		dec := e.Evaluate(req)
+		assert.True(t, dec.Matched, "empty agent_names must match agent %q", name)
+	}
+}
+
+func TestEvaluate_agent_name_case_insensitive(t *testing.T) {
+	e := &policy.Engine{Rules: []policy.Rule{
+		{AgentNames: []string{"Coder"}, Effect: policy.EffectApprove},
+	}}
+	req := domain.YieldRequest{AgentName: "CODER", ActionType: "file_edit"}
+	assert.True(t, e.Evaluate(req).Matched)
+}
+
 func TestEvaluate_empty_action_types_matches_any(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: nil, Effect: policy.EffectApprove},

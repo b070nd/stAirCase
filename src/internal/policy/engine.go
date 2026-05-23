@@ -77,6 +77,10 @@ type Rule struct {
 	// An empty slice matches any extension.
 	AllowedExtensions []string `json:"allowed_extensions"`
 
+	// AgentNames restricts the rule to yields from the named agents.
+	// An empty slice matches any agent (same semantics as ActionTypes).
+	AgentNames []string `json:"agent_names,omitempty"`
+
 	// Effect is the action taken when all conditions match.
 	// Defaults to "approve" when the zero value is provided.
 	Effect Effect `json:"effect"`
@@ -223,6 +227,9 @@ type PolicyDecision struct {
 // The first matching rule wins; rules are evaluated in declaration order.
 func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 	for i, r := range e.Rules {
+		if !r.matchesAgentName(req.AgentName) {
+			continue
+		}
 		if !r.matchesActionType(req.ActionType) {
 			continue
 		}
@@ -245,7 +252,19 @@ func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 	return PolicyDecision{Matched: false, Reason: "no matching rule"}
 }
 
-// ─── predicate helpers ────────────────────────────────────────────────────────
+// ─── predicate helpers ──────────��────────────────────────────��────────────────
+
+func (r Rule) matchesAgentName(agentName string) bool {
+	if len(r.AgentNames) == 0 {
+		return true
+	}
+	for _, n := range r.AgentNames {
+		if strings.EqualFold(n, agentName) {
+			return true
+		}
+	}
+	return false
+}
 
 func (r Rule) matchesActionType(actionType string) bool {
 	if len(r.ActionTypes) == 0 {
