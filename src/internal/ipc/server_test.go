@@ -305,6 +305,97 @@ func TestServer_state_emit_redacts_delivered_secret(t *testing.T) {
 	assert.Contains(t, last.Payload, "<REDACTED>", "audit log must contain redaction marker")
 }
 
+// TestServer_state_emit_redacts_boundary_crossing_secret verifies that a
+// secret straddling the 64 KiB truncation point is fully redacted because
+// scrubbing now happens on the full line before truncation (not after).
+func TestServer_state_emit_redacts_boundary_crossing_secret(t *testing.T) {
+	srv, store, runID, token, _ := newIPCEnv(t)
+
+	aesKey := make([]byte, 32)
+	secret := "BOUNDARY-SECRET-XYZ"
+	encrypted, err := crypto.Encrypt(aesKey, secret)
+	require.NoError(t, err)
+	_, err = store.CreateSecret("BOUNDARY_KEY", encrypted, nil)
+	require.NoError(t, err)
+
+	// First connection: deliver the secret to populate deliveredSecrets.
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "BOUNDARY_KEY"}))
+	require.True(t, sc.Scan())
+
+	// Build a state_emit whose raw JSON places the secret starting 10 bytes
+	// before the 64 KiB mark, so it straddles the truncation boundary.
+	const cap64k = 64 * 1024
+	prefix := `{"type":"state_emit","active_agent":"a","state":{"pad":"`
+	mid := `","key":"`
+	suffix := `"}}`
+	// We want: len(prefix) + padLen + len(mid) + len(secret) + len(suffix) > cap64k
+	// and the secret to start at (cap64k - 10).
+	secretStart := cap64k - 10
+	padLen := secretStart - len(prefix) - len(mid)
+	require.Positive(t, padLen, "padLen must be positive")
+	line := prefix + strings.Repeat("x", padLen) + mid + secret + suffix + "\n"
+	require.Greater(t, len(line), cap64k, "line must exceed 64 KiB cap")
+
+	// Second connection: send the raw oversized line without JSON re-encoding.
+	_, _, conn2 := dial(t, srv.ListenAddr(), token)
+	_, writeErr := fmt.Fprint(conn2, line)
+	require.NoError(t, writeErr)
+	time.Sleep(80 * time.Millisecond)
+
+	logs, err := store.ListEventLogs(runID)
+	require.NoError(t, err)
+	var found bool
+	for _, l := range logs {
+		if l.EventType == "state_emit" {
+			found = true
+			assert.NotContains(t, l.Payload, secret,
+				"boundary-crossing secret must be scrubbed before truncation")
+		}
+	}
+	assert.True(t, found, "state_emit must have been logged")
+}
+
+// TestServer_state_emit_redacts_json_escaped_secret verifies that a secret
+// containing characters JSON escapes (e.g. `"`) is redacted even when the
+// payload contains the escaped wire form (`\"`).
+func TestServer_state_emit_redacts_json_escaped_secret(t *testing.T) {
+	srv, store, runID, token, _ := newIPCEnv(t)
+
+	aesKey := make([]byte, 32)
+	// Secret contains a double-quote; in a JSON string this becomes \".
+	secret := `sk-val"ue`
+	encrypted, err := crypto.Encrypt(aesKey, secret)
+	require.NoError(t, err)
+	_, err = store.CreateSecret("QUOTE_KEY", encrypted, nil)
+	require.NoError(t, err)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Deliver the secret.
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "QUOTE_KEY"}))
+	require.True(t, sc.Scan())
+
+	// Emit a state message; json.Encoder will escape the `"` in the value.
+	raw := map[string]interface{}{
+		"type":         "state_emit",
+		"active_agent": "coder",
+		"state":        map[string]interface{}{"api_key": secret},
+	}
+	require.NoError(t, enc.Encode(raw))
+	time.Sleep(50 * time.Millisecond)
+
+	logs, err := store.ListEventLogs(runID)
+	require.NoError(t, err)
+	require.NotEmpty(t, logs)
+	last := logs[len(logs)-1]
+	assert.Equal(t, "state_emit", last.EventType)
+	// Neither the plaintext nor the JSON-escaped wire form must appear.
+	assert.NotContains(t, last.Payload, secret, "plaintext secret must not appear in audit log")
+	assert.NotContains(t, last.Payload, `sk-val\"ue`, "JSON-escaped secret must not appear in audit log")
+	assert.Contains(t, last.Payload, "<REDACTED>", "audit log must contain redaction marker")
+}
+
 // ─── yield_request round-trip ─────────────────────────────────────────────────
 
 func TestServer_yield_request_roundtrip(t *testing.T) {
