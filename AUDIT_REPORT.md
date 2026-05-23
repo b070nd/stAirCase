@@ -325,6 +325,7 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | IPC debug-log secret leak (P0) | `crypto.ScrubBytes` added; wired in `ipc/server.go` for both inbound (`dir:in`) and outbound (`dir:out`) debug log paths before writing; secrets replaced with `<REDACTED>` (CHECK 4.4.3 / 7.4.2) |
 | Commit only approved files (P1) | `GitRepo.AddFiles(paths)` added; runner now collects `ProposedEdits[].File` from approved `file_edit` yields and stages only those paths at finalize — `AddAll()` no longer used |
 | Script integrity at run time (P1) | `staircase compile` writes `graph_exec_case{N}.py.sha256` sidecar; runner verifies SHA-256 before using canonical script — mismatch returns hard error; absent sidecar warns (backward compat) |
+| Signed policy bundles (P2-a) | `policy.VerifyPolicySignature` added; runner warns on unsigned policy, fails hard on invalid signature; `staircase policy sign` / `staircase policy verify` subcommands added; 4 tests (valid, tampered, absent, no-file) |
 | Sprint 1 (7 findings) | Windows build stub; secret project_id scoping; HITL truncation 200→10k chars; IPC field validation; audit NDJSON parse; sandbox comment |
 
 ## Remaining Incomplete / Deferred
@@ -337,6 +338,8 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | §12.2.4 gofumpt | Not installed | Inconclusive |
 | §12.5.3 License check | `go-licenses` not installed | Inconclusive |
 | Python supply chain `--require-hashes` (P0) | `runner/requirements.txt` pins 8 direct deps with SHA-256 hashes but transitive deps are not hash-pinned; `pip install --require-hashes` cannot be added without regenerating via `pip-compile --generate-hashes` | Open — requires full `pip-compile --generate-hashes` regeneration of requirements.txt; no code change until then |
+| GitHub/GitLab PR creation (P2-b) | No remote push or PR API today; would require new external auth + `go-github` dep + `git push` | Roadmap — implement alongside server mode / CI integration |
+| KMS/OS-keychain vault backend (P2-c) | `.key` at 0600 in 0700 workspace is adequate for single-user; keychain would require platform-specific dep per OS | Roadmap — implement when multi-user/shared-runner support is added |
 
 ---
 

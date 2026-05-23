@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/domain"
 )
 
@@ -141,6 +142,45 @@ func LoadEngine(wsDir string) (*Engine, error) {
 		}
 	}
 	return &e, nil
+}
+
+// PolicySigFile is the sidecar written by 'staircase policy sign'.
+const PolicySigFile = "policy.json.sig"
+
+// VerifyPolicySignature checks the Ed25519 signature sidecar (policy.json.sig)
+// against the current policy.json content using the workspace signing public key.
+//
+// Returns (false, nil) when either policy.json or the signature sidecar are
+// absent — the caller should warn the operator but continue.  Returns
+// (true, nil) when the signature is present and valid.  Returns (true, err)
+// when the signature is present but invalid (tamper detected).
+func VerifyPolicySignature(wsDir string) (sigPresent bool, err error) {
+	policyPath := filepath.Join(wsDir, "policy.json")
+	data, err := os.ReadFile(policyPath)
+	if os.IsNotExist(err) {
+		return false, nil // no policy file — nothing to verify
+	}
+	if err != nil {
+		return false, fmt.Errorf("read policy.json for verification: %w", err)
+	}
+
+	sigPath := filepath.Join(wsDir, PolicySigFile)
+	sigHex, err := os.ReadFile(sigPath)
+	if os.IsNotExist(err) {
+		return false, nil // no sig sidecar — unsigned policy
+	}
+	if err != nil {
+		return true, fmt.Errorf("read policy signature: %w", err)
+	}
+
+	pub, err := crypto.LoadSigningPublicKey(wsDir)
+	if err != nil {
+		return true, fmt.Errorf("load signing public key: %w", err)
+	}
+	if err := crypto.Verify(pub, data, strings.TrimSpace(string(sigHex))); err != nil {
+		return true, fmt.Errorf("policy.json signature invalid (file may have been tampered): %w", err)
+	}
+	return true, nil
 }
 
 // CheckLimits returns (true, reason) when the supplied counters have reached or
