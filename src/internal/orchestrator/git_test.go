@@ -223,6 +223,43 @@ func TestGitRepo_Commit_falls_back_to_default_author_when_no_global_config(t *te
 	assert.Len(t, sha, 40, "commit must succeed with default author")
 }
 
+// ─── AddFiles ────────────────────────────────────────────────────────────────
+
+// TestGitRepo_AddFiles_stages_only_specified_paths verifies that AddFiles
+// stages only the listed paths and leaves unlisted changes unstaged.
+func TestGitRepo_AddFiles_stages_only_specified_paths(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	// Create two files; only stage the first via AddFiles.
+	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "approved.txt"), []byte("ok"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "unrelated.txt"), []byte("nope"), 0o644))
+
+	require.NoError(t, gr.AddFiles([]string{"approved.txt"}))
+
+	sha, err := gr.Commit("test: only approved.txt")
+	require.NoError(t, err)
+	assert.Len(t, sha, 40)
+
+	// approved.txt must be in the commit; unrelated.txt must not.
+	out, gitErr := exec.Command("git", "-C", repoPath, "show", "--name-only", "--format=", "HEAD").Output()
+	require.NoError(t, gitErr)
+	names := strings.TrimSpace(string(out))
+	assert.Contains(t, names, "approved.txt")
+	assert.NotContains(t, names, "unrelated.txt")
+}
+
+// TestGitRepo_AddFiles_empty_slice_is_noop verifies that an empty path list
+// does not stage anything (no panic, no error).
+func TestGitRepo_AddFiles_empty_slice_is_noop(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+	assert.NoError(t, gr.AddFiles(nil))
+	assert.NoError(t, gr.AddFiles([]string{}))
+}
+
 // ─── AddAll / Commit ─────────────────────────────────────────────────────────
 
 func TestGitRepo_AddAll_and_Commit_returns_sha(t *testing.T) {

@@ -104,6 +104,18 @@ func (g *GitRepo) AddAll() error {
 	return g.w.AddWithOptions(&gogit.AddOptions{All: true})
 }
 
+// AddFiles stages only the named paths. Paths should be relative to the
+// repository root. An empty slice is a no-op. Returns the first error
+// encountered; remaining paths are not staged when an error occurs.
+func (g *GitRepo) AddFiles(paths []string) error {
+	for _, p := range paths {
+		if _, err := g.w.Add(p); err != nil {
+			return fmt.Errorf("git add %q: %w", p, err)
+		}
+	}
+	return nil
+}
+
 // Commit creates a new commit with the given message. The author name and email
 // are read from the global git config; if absent "staircase" / "staircase@local"
 // are used as fallbacks. Returns the new commit's full SHA.

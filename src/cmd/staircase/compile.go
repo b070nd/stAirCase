@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -178,6 +180,18 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 
 	if err := scaffoldtpl.GenerateGraphExec(outPath, params); err != nil {
 		return fmt.Errorf("generate script: %w", err)
+	}
+
+	// Write a SHA-256 sidecar so the runner can detect tampering between
+	// compile and run (P1: sign/hash tmp generated scripts).
+	scriptBytes, err := os.ReadFile(outPath)
+	if err != nil {
+		return fmt.Errorf("read script for hash: %w", err)
+	}
+	sum := sha256.Sum256(scriptBytes)
+	hashPath := outPath + ".sha256"
+	if err := os.WriteFile(hashPath, []byte(hex.EncodeToString(sum[:])), 0o600); err != nil {
+		return fmt.Errorf("write script hash: %w", err)
 	}
 
 	// Write a topology-version sidecar so runtime.script_compiled can detect

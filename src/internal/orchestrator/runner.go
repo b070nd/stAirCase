@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -319,6 +320,22 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if err != nil {
 		return fmt.Errorf("read canonical script: %w", err)
 	}
+	// P1: verify the SHA-256 sidecar written at compile time to detect
+	// tampering between 'staircase compile' and 'staircase run'.
+	// If the sidecar is absent (pre-existing script compiled before this
+	// feature), log a warning and continue for backward compatibility.
+	// If the sidecar is present but does not match, fail hard.
+	hashSidecar := canonicalScript + ".sha256"
+	if storedHex, readErr := os.ReadFile(hashSidecar); readErr == nil {
+		actual := sha256.Sum256(srcBytes)
+		if hex.EncodeToString(actual[:]) != strings.TrimSpace(string(storedHex)) {
+			now := time.Now()
+			_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
+			return fmt.Errorf("graph_exec script integrity check failed — recompile with 'staircase compile %d'", caseID)
+		}
+	} else {
+		obs.Log.Warn("graph_exec script has no .sha256 sidecar — skipping integrity check (recompile to enable)")
+	}
 	if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil { // #nosec G703 -- scriptPath is built from internal wsDir, not user input
 		return fmt.Errorf("copy script to run path: %w", err)
 	}
@@ -348,6 +365,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 
 	// Yield counters for policy limit enforcement (CHECK 7.2.1, 7.2.2).
 	var autoApproved, totalYields int
+	// approvedFiles accumulates the file paths from each approved file_edit
+	// yield. Used at finalize to stage only the operator-approved edits rather
+	// than all worktree changes (prevents committing unrelated modifications).
+	var approvedFiles []string
 
 runLoop:
 	for {
@@ -426,6 +447,16 @@ runLoop:
 			}
 			ipcSrv.ResponseCh <- resp
 
+			// Collect approved file paths so finalize stages only operator-
+			// approved edits (P1: commit only approved files, not git add all).
+			if resp.Approved && yieldReq.ActionType == "file_edit" {
+				for _, pe := range yieldReq.ProposedEdits {
+					if pe.File != "" {
+						approvedFiles = append(approvedFiles, pe.File)
+					}
+				}
+			}
+
 			// Audit: record who decided and what the decision was (CHECK 7.3.1).
 			// source is "policy" for auto-decisions, "operator" for human review.
 			source := "operator"
@@ -466,7 +497,10 @@ runLoop:
 	r.phase = PhaseFinalize
 	commitHash := ""
 	if finalStatus == persistence.RunStatusSuccess && gr != nil {
-		_ = gr.AddAll()
+		// Stage only paths that were explicitly approved via file_edit yields.
+		// AddAll() is intentionally NOT used: it would commit any unrelated
+		// worktree changes (stale edits, leftover tmp files, etc.).
+		_ = gr.AddFiles(approvedFiles)
 		msg := fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID)
 		if hash, err := gr.Commit(msg); err == nil {
 			commitHash = hash
