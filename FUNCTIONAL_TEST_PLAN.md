@@ -30,14 +30,21 @@ Five principles. If a proposed test does not serve at least one of them, drop it
 
 The following capabilities are explicitly deferred to future roadmap phases and are **not** tested or implemented in the current prototype:
 
-| Capability | Rationale |
-|------------|-----------|
-| Multi-user RBAC | Requires identity model; single-user product by design |
-| SSO / identity provider integration | No auth layer in v0.1 |
-| Multi-tenant workspace isolation | Single workspace per binary invocation |
-| Central control plane / fleet management | Distributed architecture not yet designed |
-| SIEM webhook / audit export API | Audit evidence available via `staircase audit export`; push integration deferred |
-| Stable public SDK contract | Python runner API is internal; breaking changes allowed until v1.0 |
+| Capability | Priority | Rationale |
+|------------|----------|-----------|
+| Multi-user RBAC | P3 | Requires identity model + tenant-scoped DB queries; single-user product by design |
+| SSO / identity provider integration | P3 | No auth layer in v0.1; SAML/OIDC requires external provider and session model |
+| Multi-tenant workspace isolation | P3 | Single workspace per binary invocation; tenant_id would require full schema migration |
+| Server mode / HTTP API | P3 | CLI-first; `runner.Run()` is already an API-callable library; server shell requires job queue, WS streaming, concurrent git isolation |
+| Remote runners | P3 | Requires bidirectional agent protocol (gRPC/WS), runner registration, heartbeat/failover; local-only execution by design |
+| MCP protocol server | P3 | No MCP references in codebase; full MCP SDK not yet evaluated; gates.json signing (implemented) is the current tool-trust boundary |
+| Central control plane / fleet management | P3 | Distributed architecture not yet designed |
+| SIEM webhook / audit export API | P3 | Audit evidence available via `staircase audit export`; push integration deferred |
+| KMS/OS-keychain vault backend | P2-deferred | `.key` file at 0600 in 0700 workspace adequate for single-user; keychain requires per-OS dep |
+| CEL/OPA policy expressions | P2-deferred | Struct-based rules cover common cases; full CEL deferred to Phase 8 (documented in policy package) |
+| Stable public SDK contract | P3 | Python runner API is internal; breaking changes allowed until v1.0 |
+
+**What "P3 not implemented" means operationally**: The current architecture is a well-designed foundation. Each P3 item has a clear extension point in the codebase (e.g., `runner.Run()` for server mode, `policy.Engine` for CEL, signing infrastructure for MCP), but none were built speculatively — they require multi-month design commitments and external infrastructure decisions before code is warranted.
 
 Enterprise reviewers should treat these as known scope boundaries, not oversights.
 

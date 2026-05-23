@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/gate"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -35,9 +37,64 @@ Exit codes:
 	RunE: runGateHandler,
 }
 
+// gateSignCmd signs gates.json with the workspace Ed25519 signing key.
+var gateSignCmd = &cobra.Command{
+	Use:   "sign",
+	Short: "Sign gates.json with the workspace signing key",
+	Long: `Sign $STAIRCASE_DIR/gates.json with the workspace Ed25519 signing key
+and write $STAIRCASE_DIR/gates.json.sig.
+
+Re-run after any edit to gates.json. staircase gate warns when the
+signature is absent and blocks execution when the signature is invalid.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		wsDir := viper.GetString("STAIRCASE_DIR")
+		gatesPath := filepath.Join(wsDir, "gates.json")
+		data, err := os.ReadFile(gatesPath)
+		if err != nil {
+			return fmt.Errorf("read gates.json: %w", err)
+		}
+		privKey, err := crypto.LoadSigningKey(wsDir)
+		if err != nil {
+			return fmt.Errorf("load signing key: %w", err)
+		}
+		sigHex := crypto.Sign(privKey, data)
+		sigPath := filepath.Join(wsDir, gate.GatesSigFile)
+		if err := os.WriteFile(sigPath, []byte(sigHex), 0o644); err != nil {
+			return fmt.Errorf("write gates signature: %w", err)
+		}
+		fmt.Printf("✅ gates.json signed → %s\n", sigPath)
+		fmt.Printf("   sig: %s…\n", sigHex[:16])
+		return nil
+	},
+}
+
+// gateVerifyCmd verifies gates.json.sig against the current gates.json.
+var gateVerifyCmd = &cobra.Command{
+	Use:   "verify",
+	Short: "Verify the gates.json signature",
+	Long: `Verify $STAIRCASE_DIR/gates.json.sig against the current gates.json
+content and the workspace public key (.signing.pub).
+
+Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
+gates.json has not been modified since it was last signed.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		wsDir := viper.GetString("STAIRCASE_DIR")
+		sigPresent, err := gate.VerifyGatesSignature(wsDir)
+		if err != nil {
+			return fmt.Errorf("gates signature invalid: %w", err)
+		}
+		if !sigPresent {
+			return fmt.Errorf("no gates.json.sig found — run 'staircase gate sign' first")
+		}
+		fmt.Println("✅ gates.json signature verified.")
+		return nil
+	},
+}
+
 func init() {
 	gateCmd.Flags().BoolVar(&gateJSONOut, "json", false, "Emit machine-readable JSON report")
 	gateCmd.Flags().StringVar(&gateOutFile, "out", "", "Write report to file (default: stdout)")
+	gateCmd.AddCommand(gateSignCmd, gateVerifyCmd)
 	rootCmd.AddCommand(gateCmd)
 }
 
