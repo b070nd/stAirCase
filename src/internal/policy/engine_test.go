@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/policy"
 	"github.com/stretchr/testify/assert"
@@ -376,4 +377,62 @@ func TestLimitExhaustionAsksOperator(t *testing.T) {
 	e2 := &policy.Engine{}
 	exhausted, _ = e2.CheckLimits(1000, 1000)
 	assert.False(t, exhausted, "zero limit (unlimited) must always return exhausted=false")
+}
+
+// ─── VerifyPolicySignature ────────────────────────────────────────────────────
+
+// setupSignedPolicy creates a temp workspace with a valid policy.json + signing
+// key pair + policy.json.sig so tests can exercise VerifyPolicySignature.
+func setupSignedPolicy(t *testing.T) (wsDir string, policyData []byte) {
+	t.Helper()
+	wsDir = t.TempDir()
+	policyData = []byte(`{"rules":[],"limits":{"max_auto_approved":5}}`)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), policyData, 0o600))
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+
+	privKey, err := crypto.LoadSigningKey(wsDir)
+	require.NoError(t, err)
+	sigHex := crypto.Sign(privKey, policyData)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, policy.PolicySigFile), []byte(sigHex), 0o644))
+	return wsDir, policyData
+}
+
+// TestVerifyPolicySignature_valid_signature returns (true, nil) when the
+// sidecar matches the current policy.json content.
+func TestVerifyPolicySignature_valid_signature(t *testing.T) {
+	wsDir, _ := setupSignedPolicy(t)
+	sigPresent, err := policy.VerifyPolicySignature(wsDir)
+	require.NoError(t, err)
+	assert.True(t, sigPresent)
+}
+
+// TestVerifyPolicySignature_tampered_policy returns (true, err) when
+// policy.json is modified after signing.
+func TestVerifyPolicySignature_tampered_policy(t *testing.T) {
+	wsDir, _ := setupSignedPolicy(t)
+	// Overwrite policy.json with different content (tamper).
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{"rules":[]}`), 0o600))
+
+	sigPresent, err := policy.VerifyPolicySignature(wsDir)
+	assert.True(t, sigPresent, "sig file is present even when tampered")
+	assert.Error(t, err, "tampered policy must return an error")
+}
+
+// TestVerifyPolicySignature_absent_sig returns (false, nil) when policy.json
+// exists but no .sig sidecar is present (unsigned policy).
+func TestVerifyPolicySignature_absent_sig(t *testing.T) {
+	wsDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{}`), 0o600))
+
+	sigPresent, err := policy.VerifyPolicySignature(wsDir)
+	assert.NoError(t, err, "absent sig is not an error")
+	assert.False(t, sigPresent, "absent sig must return sigPresent=false")
+}
+
+// TestVerifyPolicySignature_no_policy_file returns (false, nil) when neither
+// policy.json nor the sidecar exist (empty workspace).
+func TestVerifyPolicySignature_no_policy_file(t *testing.T) {
+	sigPresent, err := policy.VerifyPolicySignature(t.TempDir())
+	assert.NoError(t, err)
+	assert.False(t, sigPresent)
 }

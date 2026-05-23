@@ -267,6 +267,13 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		obs.Log.Warn("load policy — proceeding without auto-approval", "err", err)
 		policyEngine = &policy.Engine{}
 	}
+	// P2: verify Ed25519 signature on policy.json when sidecar is present.
+	// Absent signature warns (backward compat); invalid signature is fatal.
+	if sigPresent, sigErr := policy.VerifyPolicySignature(r.wsDir); sigErr != nil {
+		return fmt.Errorf("policy integrity check failed — re-sign with 'staircase policy sign': %w", sigErr)
+	} else if !sigPresent {
+		obs.Log.Warn("policy.json is unsigned — run 'staircase policy sign' to enable tamper detection")
+	}
 
 	var approvalSrv *approvalhttp.Server
 	if opts.ApprovalPort > 0 {
