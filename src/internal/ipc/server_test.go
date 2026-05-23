@@ -268,6 +268,43 @@ func TestServer_state_emit_append_error_keeps_connection_alive(t *testing.T) {
 	assert.Equal(t, "heartbeat_ack", resp["type"])
 }
 
+// TestServer_state_emit_redacts_delivered_secret verifies that a plaintext
+// secret delivered via secret_request is scrubbed from the state_emit audit
+// DB entry before persistence (CHECK 4.4.3 audit-log redaction).
+func TestServer_state_emit_redacts_delivered_secret(t *testing.T) {
+	srv, store, runID, token, _ := newIPCEnv(t)
+
+	// Seed an encrypted secret so the server can deliver it.
+	aesKey := make([]byte, 32)
+	encrypted, err := crypto.Encrypt(aesKey, "sk-secret-value")
+	require.NoError(t, err)
+	_, err = store.CreateSecret("MY_API_KEY", encrypted, nil)
+	require.NoError(t, err)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Step 1: deliver the secret — populates server's deliveredSecrets cache.
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "MY_API_KEY"}))
+	require.True(t, sc.Scan())
+
+	// Step 2: emit state that embeds the plaintext value.
+	raw := map[string]interface{}{
+		"type":         "state_emit",
+		"active_agent": "coder",
+		"state":        map[string]interface{}{"api_key": "sk-secret-value"},
+	}
+	require.NoError(t, enc.Encode(raw))
+	time.Sleep(50 * time.Millisecond)
+
+	logs, err := store.ListEventLogs(runID)
+	require.NoError(t, err)
+	require.NotEmpty(t, logs)
+	last := logs[len(logs)-1]
+	assert.Equal(t, "state_emit", last.EventType)
+	assert.NotContains(t, last.Payload, "sk-secret-value", "plaintext secret must not appear in audit log")
+	assert.Contains(t, last.Payload, "<REDACTED>", "audit log must contain redaction marker")
+}
+
 // ─── yield_request round-trip ─────────────────────────────────────────────────
 
 func TestServer_yield_request_roundtrip(t *testing.T) {
@@ -314,6 +351,66 @@ func TestServer_yield_request_roundtrip(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for yield goroutine")
 	}
+}
+
+// TestServer_yield_request_redacts_delivered_secret verifies that a plaintext
+// secret delivered via secret_request is scrubbed from the yield_request audit
+// DB entry before persistence (CHECK 4.4.3 audit-log redaction).
+func TestServer_yield_request_redacts_delivered_secret(t *testing.T) {
+	srv, store, runID, token, _ := newIPCEnv(t)
+
+	aesKey := make([]byte, 32)
+	encrypted, err := crypto.Encrypt(aesKey, "sk-secret-value")
+	require.NoError(t, err)
+	_, err = store.CreateSecret("MY_API_KEY", encrypted, nil)
+	require.NoError(t, err)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Deliver the secret first.
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "MY_API_KEY"}))
+	require.True(t, sc.Scan())
+
+	// Send a yield_request that embeds the plaintext secret in its reasoning trace.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		yr := ipc.IpcYieldRequest{
+			Type:            "yield_request",
+			AgentName:       "planner",
+			ActionType:      "file_edit",
+			ReasoningTrace:  "key=sk-secret-value embedded here",
+			ConfidenceScore: 0.9,
+		}
+		if err := enc.Encode(yr); err != nil {
+			return
+		}
+		sc.Scan() // consume the yield_response
+	}()
+
+	select {
+	case <-srv.YieldCh:
+		srv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: true}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for yield")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for yield goroutine")
+	}
+
+	logs, err := store.ListEventLogs(runID)
+	require.NoError(t, err)
+	yieldIdx := -1
+	for i, l := range logs {
+		if l.EventType == "yield_request" {
+			yieldIdx = i
+		}
+	}
+	require.NotEqual(t, -1, yieldIdx, "yield_request must be logged")
+	assert.NotContains(t, logs[yieldIdx].Payload, "sk-secret-value", "plaintext secret must not appear in audit log")
+	assert.Contains(t, logs[yieldIdx].Payload, "<REDACTED>", "audit log must contain redaction marker")
 }
 
 // ─── secret_request — not found ───────────────────────────────────────────────

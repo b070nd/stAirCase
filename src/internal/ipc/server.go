@@ -433,6 +433,9 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 				if len(payload) > maxPayloadSize {
 					payload = payload[:maxPayloadSize]
 				}
+				s.secretsMu.RLock()
+				payload = string(crypto.ScrubBytes([]byte(payload), s.deliveredSecrets))
+				s.secretsMu.RUnlock()
 				s.logEvent("state_emit", payload)
 				select {
 				case s.StatEmitCh <- msg:
@@ -470,6 +473,9 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 			if len(payload) > maxPayloadSize {
 				payload = payload[:maxPayloadSize]
 			}
+			s.secretsMu.RLock()
+			payload = string(crypto.ScrubBytes([]byte(payload), s.deliveredSecrets))
+			s.secretsMu.RUnlock()
 			s.logEvent("yield_request", payload)
 			t0Yield := time.Now()
 			// yieldMu ensures at most one yield is in flight at a time.
