@@ -323,13 +323,15 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | CHECK 4.3.3 (gap) | Shared lock added to `secret set` (LoadKey→CreateSecret); fsync on temp key + journal; syncDir after rename; 3 wslock concurrency tests |
 | Power-loss durability | `syncDir` added after journal rename + all recovery key renames; `synchronous=FULL` set in `reencrypt` callback via `SetMaxOpenConns(1)` + PRAGMA; comments corrected (NORMAL default, LOCK_NB is fail-fast not wait) |
 | IPC debug-log secret leak (P0) | `crypto.ScrubBytes` added; wired in `ipc/server.go` for both inbound (`dir:in`) and outbound (`dir:out`) debug log paths before writing; secrets replaced with `<REDACTED>` (CHECK 4.4.3 / 7.4.2) |
+| Commit only approved files (P1) | `GitRepo.AddFiles(paths)` added; runner now collects `ProposedEdits[].File` from approved `file_edit` yields and stages only those paths at finalize — `AddAll()` no longer used |
+| Script integrity at run time (P1) | `staircase compile` writes `graph_exec_case{N}.py.sha256` sidecar; runner verifies SHA-256 before using canonical script — mismatch returns hard error; absent sidecar warns (backward compat) |
 | Sprint 1 (7 findings) | Windows build stub; secret project_id scoping; HITL truncation 200→10k chars; IPC field validation; audit NDJSON parse; sandbox comment |
 
 ## Remaining Incomplete / Deferred
 
 | Section | Issue | Disposition |
 |---------|-------|-------------|
-| 5.4.2/6.1.2 fd topology (partial) | `ExtraFiles` fd wired in runner but canonical `graph_exec_case*.py` still written to tmp/ by compile | Deferred — requires compile/run boundary redesign |
+| 5.4.2/6.1.2 fd topology (partial) | `ExtraFiles` fd wired in runner; SHA-256 sidecar now verifies integrity at run time; canonical `graph_exec_case*.py` file still written to disk | Partial — hash integrity added; full elimination requires compile/run boundary redesign |
 | 7.1.1 CEL policy | Struct-based rules only | Deferred — Phase 8 |
 | 10.3.1 OTel real exporter | `otel.go` is stub | Deferred — Phase 10 |
 | §12.2.4 gofumpt | Not installed | Inconclusive |
