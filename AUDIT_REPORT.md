@@ -342,6 +342,7 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | Python supply chain `--require-hashes` (P0) | `runner/requirements.txt` pins 8 direct deps with SHA-256 hashes but transitive deps are not hash-pinned; `pip install --require-hashes` cannot be added without regenerating via `pip-compile --generate-hashes` | Open — requires full `pip-compile --generate-hashes` regeneration of requirements.txt; no code change until then |
 | GitHub/GitLab PR creation (P2-b) | No remote push or PR API today; would require new external auth + `go-github` dep + `git push` | Roadmap — implement alongside server mode / CI integration |
 | KMS/OS-keychain vault backend (P2-c) | `.key` at 0600 in 0700 workspace is adequate for single-user; keychain would require platform-specific dep per OS | Roadmap — implement when multi-user/shared-runner support is added |
+| Signed gate manifests / MCP tool trust (P3) | `gate.VerifyGatesSignature` added; `RunAll` blocks on tampered gates.json; `staircase gate sign/verify` subcommands; 4 tests; P3 server/RBAC/SSO/MCP roadmap documented in FUNCTIONAL_TEST_PLAN.md |
 
 ---
 
