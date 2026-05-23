@@ -429,13 +429,13 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 		case "state_emit":
 			var msg IpcStateEmit
 			if err := json.Unmarshal(line, &msg); err == nil {
-				payload := string(line)
+				s.secretsMu.RLock()
+				scrubbed := crypto.ScrubBytes(line, s.deliveredSecrets)
+				s.secretsMu.RUnlock()
+				payload := string(scrubbed)
 				if len(payload) > maxPayloadSize {
 					payload = payload[:maxPayloadSize]
 				}
-				s.secretsMu.RLock()
-				payload = string(crypto.ScrubBytes([]byte(payload), s.deliveredSecrets))
-				s.secretsMu.RUnlock()
 				s.logEvent("state_emit", payload)
 				select {
 				case s.StatEmitCh <- msg:
@@ -469,13 +469,13 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "unknown action_type: " + msg.ActionType})
 				break
 			}
-			payload := string(line)
+			s.secretsMu.RLock()
+			scrubbed := crypto.ScrubBytes(line, s.deliveredSecrets)
+			s.secretsMu.RUnlock()
+			payload := string(scrubbed)
 			if len(payload) > maxPayloadSize {
 				payload = payload[:maxPayloadSize]
 			}
-			s.secretsMu.RLock()
-			payload = string(crypto.ScrubBytes([]byte(payload), s.deliveredSecrets))
-			s.secretsMu.RUnlock()
 			s.logEvent("yield_request", payload)
 			t0Yield := time.Now()
 			// yieldMu ensures at most one yield is in flight at a time.
@@ -557,10 +557,18 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 			}
 			_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "success") // CHECK 4.4.1
 			obs.SecretAccessTotal.WithLabelValues("success").Inc()
-			// Record the plaintext so the runner can scrub it from yield requests
-			// before presenting them to the operator (CHECK 4.4.3 / 7.4.2).
+			// Record the plaintext (and its JSON-escaped form) so the server can
+			// scrub both representations from audit/debug log entries before
+			// persistence (CHECK 4.4.3 / 7.4.2).  JSON-escaping handles secrets
+			// that contain characters JSON encodes differently (e.g. `"` → `\"`).
 			s.secretsMu.Lock()
 			s.deliveredSecrets = append(s.deliveredSecrets, plaintext)
+			if b, err2 := json.Marshal(plaintext); err2 == nil && len(b) >= 2 {
+				// b is `"escaped"` — strip surrounding quotes to get the wire form.
+				if escaped := string(b[1 : len(b)-1]); escaped != plaintext {
+					s.deliveredSecrets = append(s.deliveredSecrets, escaped)
+				}
+			}
 			s.secretsMu.Unlock()
 			_ = enc.Encode(IpcSecretResponse{
 				Type:           "secret_response",
