@@ -504,6 +504,130 @@ func TestServer_yield_request_redacts_delivered_secret(t *testing.T) {
 	assert.Contains(t, logs[yieldIdx].Payload, "<REDACTED>", "audit log must contain redaction marker")
 }
 
+// TestServer_yield_request_redacts_boundary_crossing_secret mirrors the
+// state_emit boundary test for yield_request: the secret straddles the 64 KiB
+// truncation point and must be fully redacted because scrubbing runs on the
+// full line before truncation.
+func TestServer_yield_request_redacts_boundary_crossing_secret(t *testing.T) {
+	srv, store, runID, token, _ := newIPCEnv(t)
+
+	aesKey := make([]byte, 32)
+	secret := "YIELD-BOUNDARY-SECRET"
+	encrypted, err := crypto.Encrypt(aesKey, secret)
+	require.NoError(t, err)
+	_, err = store.CreateSecret("YIELD_BOUNDARY_KEY", encrypted, nil)
+	require.NoError(t, err)
+
+	// First connection: deliver the secret.
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "YIELD_BOUNDARY_KEY"}))
+	require.True(t, sc.Scan())
+
+	// Build a raw yield_request JSON whose reasoning_trace places the secret
+	// starting 10 bytes before the 64 KiB truncation mark.
+	const cap64k = 64 * 1024
+	prefix := `{"type":"yield_request","agent_name":"a","action_type":"file_edit","confidence_score":0.5,"reasoning_trace":"`
+	suffix := secret + `"}`
+	padLen := (cap64k - 10) - len(prefix)
+	require.Positive(t, padLen)
+	line := prefix + strings.Repeat("x", padLen) + suffix + "\n"
+	require.Greater(t, len(line), cap64k)
+
+	// Drain YieldCh in a goroutine so the server handler doesn't block.
+	go func() {
+		select {
+		case <-srv.YieldCh:
+			srv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: true}
+		case <-time.After(3 * time.Second):
+		}
+	}()
+
+	// Second connection: send the raw oversized line.
+	_, _, conn2 := dial(t, srv.ListenAddr(), token)
+	_, writeErr := fmt.Fprint(conn2, line)
+	require.NoError(t, writeErr)
+	time.Sleep(80 * time.Millisecond)
+
+	logs, err := store.ListEventLogs(runID)
+	require.NoError(t, err)
+	yieldIdx := -1
+	for i, l := range logs {
+		if l.EventType == "yield_request" {
+			yieldIdx = i
+		}
+	}
+	require.NotEqual(t, -1, yieldIdx, "yield_request must be logged")
+	assert.NotContains(t, logs[yieldIdx].Payload, secret,
+		"boundary-crossing secret must be scrubbed before truncation")
+}
+
+// TestServer_yield_request_redacts_json_escaped_secret mirrors the
+// state_emit escaped-secret test for yield_request: a secret containing `"`
+// is sent via json.Encoder (which produces `\"` on the wire) and must be
+// absent from the audit DB entry in both the plaintext and escaped forms.
+func TestServer_yield_request_redacts_json_escaped_secret(t *testing.T) {
+	srv, store, runID, token, _ := newIPCEnv(t)
+
+	aesKey := make([]byte, 32)
+	secret := `sk-val"ue`
+	encrypted, err := crypto.Encrypt(aesKey, secret)
+	require.NoError(t, err)
+	_, err = store.CreateSecret("QUOTE_YIELD_KEY", encrypted, nil)
+	require.NoError(t, err)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+
+	// Deliver the secret.
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{Type: "secret_request", KeyName: "QUOTE_YIELD_KEY"}))
+	require.True(t, sc.Scan())
+
+	// Send a yield_request with the secret embedded in reasoning_trace.
+	// json.Encoder will escape the `"` to `\"` in the wire bytes.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		yr := ipc.IpcYieldRequest{
+			Type:            "yield_request",
+			AgentName:       "coder",
+			ActionType:      "file_edit",
+			ReasoningTrace:  "key=" + secret,
+			ConfidenceScore: 0.8,
+		}
+		if err := enc.Encode(yr); err != nil {
+			return
+		}
+		sc.Scan() // consume yield_response
+	}()
+
+	select {
+	case <-srv.YieldCh:
+		srv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: true}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for yield")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for yield goroutine")
+	}
+
+	logs, err := store.ListEventLogs(runID)
+	require.NoError(t, err)
+	yieldIdx := -1
+	for i, l := range logs {
+		if l.EventType == "yield_request" {
+			yieldIdx = i
+		}
+	}
+	require.NotEqual(t, -1, yieldIdx, "yield_request must be logged")
+	assert.NotContains(t, logs[yieldIdx].Payload, secret,
+		"plaintext secret must not appear in audit log")
+	assert.NotContains(t, logs[yieldIdx].Payload, `sk-val\"ue`,
+		"JSON-escaped secret must not appear in audit log")
+	assert.Contains(t, logs[yieldIdx].Payload, "<REDACTED>",
+		"audit log must contain redaction marker")
+}
+
 // ─── secret_request — not found ───────────────────────────────────────────────
 
 func TestServer_secret_request_not_found(t *testing.T) {
