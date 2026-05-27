@@ -49,10 +49,9 @@ type BootstrapMessage struct {
 	// package written by BootstrapVenv into the workspace venv.
 	RunnerPath string `json:"runner_path,omitempty"`
 
-	// DisableShellExec, when true, instructs the Python harness to omit the
-	// run_shell tool from its built-in tool list so that agents cannot request
-	// OS-level shell execution during this run.
-	DisableShellExec bool `json:"disable_shell_exec,omitempty"`
+	// AllowShellExec, when true, includes run_shell in the agent tool list.
+	// Absent (false) means shell execution is disabled — the safe default.
+	AllowShellExec bool `json:"allow_shell_exec,omitempty"`
 }
 
 // PythonProcess wraps a managed Python subprocess.
@@ -118,9 +117,9 @@ type LaunchPythonOptions struct {
 	// ReplayLLM, if non-empty, is forwarded to Python so it replays LLM exchanges
 	// from the named file instead of calling the real API.
 	ReplayLLM string
-	// DisableShellExec, when true, instructs Python to omit run_shell from the
-	// built-in tool list so that no agent can request OS-level shell execution.
-	DisableShellExec bool
+	// AllowShellExec, when true, includes run_shell in the agent tool list.
+	// Defaults to false (disabled) — callers must explicitly opt in.
+	AllowShellExec bool
 }
 
 func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
@@ -178,7 +177,7 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 		RecordLLM:        lpo.RecordLLM,
 		ReplayLLM:        lpo.ReplayLLM,
 		RunnerPath:       RunnerInjectDir(venvPath),
-		DisableShellExec: lpo.DisableShellExec,
+		AllowShellExec: lpo.AllowShellExec,
 	}); err != nil {
 		cancel()
 		_ = cmd.Process.Kill()

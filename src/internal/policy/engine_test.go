@@ -89,7 +89,7 @@ func TestEvaluate_action_type_mismatch_falls_through(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("shell_exec", 0.5))
+	dec := e.Evaluate(fileEditReq("custom", 0.5))
 	assert.False(t, dec.Matched)
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
@@ -137,7 +137,7 @@ func TestEvaluate_empty_action_types_matches_any(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: nil, Effect: policy.EffectApprove},
 	}}
-	for _, at := range []string{"file_edit", "shell_exec", "custom"} {
+	for _, at := range []string{"file_edit", "custom"} { // shell_exec is blocked at policy level — tested separately
 		dec := e.Evaluate(fileEditReq(at, 0.5))
 		assert.True(t, dec.Matched, "expected match for %q", at)
 		assert.True(t, dec.Approved, "expected approve for %q", at)
@@ -233,8 +233,8 @@ func TestEvaluate_no_edits_vacuously_satisfies_extension_rule(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{AllowedExtensions: []string{".md"}, Effect: policy.EffectApprove},
 	}}
-	// shell_exec yield has no ProposedEdits; extension condition is vacuously true.
-	req := domain.YieldRequest{Type: "yield_request", ActionType: "shell_exec", ConfidenceScore: 1.0}
+	// custom yield has no ProposedEdits; extension condition is vacuously true.
+	req := domain.YieldRequest{Type: "yield_request", ActionType: "custom", ConfidenceScore: 1.0}
 	dec := e.Evaluate(req)
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
@@ -244,9 +244,9 @@ func TestEvaluate_no_edits_vacuously_satisfies_extension_rule(t *testing.T) {
 
 func TestEvaluate_reject_effect_matched_is_true_approved_is_false(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
-		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectReject},
+		{ActionTypes: []string{"custom"}, Effect: policy.EffectReject},
 	}}
-	dec := e.Evaluate(fileEditReq("shell_exec", 1.0))
+	dec := e.Evaluate(fileEditReq("custom", 1.0))
 	assert.True(t, dec.Matched)
 	assert.False(t, dec.Approved)
 	assert.Contains(t, dec.Reason, "auto-rejected")
@@ -349,12 +349,12 @@ func TestPolicyLoadValidation(t *testing.T) {
 // first: the engine is first-match-wins, so rule order determines outcome
 // (CHECK 7.1.4).
 func TestDenyBeatsAllow(t *testing.T) {
-	// Reject rule first → it matches shell_exec before the catch-all approve.
+	// Reject rule first → it matches custom before the catch-all approve.
 	e := &policy.Engine{Rules: []policy.Rule{
-		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectReject},
+		{ActionTypes: []string{"custom"}, Effect: policy.EffectReject},
 		{Effect: policy.EffectApprove},
 	}}
-	req := domain.YieldRequest{ActionType: "shell_exec", ConfidenceScore: 0.99}
+	req := domain.YieldRequest{ActionType: "custom", ConfidenceScore: 0.99}
 	dec := e.Evaluate(req)
 	assert.True(t, dec.Matched, "rule must have matched")
 	assert.False(t, dec.Approved, "first-matching reject rule must set Approved=false")
@@ -367,10 +367,10 @@ func TestDenyBeatsAllow(t *testing.T) {
 func TestAllowBeatesDeny(t *testing.T) {
 	// Approve rule first → wins even though a reject rule also matches.
 	e := &policy.Engine{Rules: []policy.Rule{
-		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectApprove},
-		{ActionTypes: []string{"shell_exec"}, Effect: policy.EffectReject},
+		{ActionTypes: []string{"custom"}, Effect: policy.EffectApprove},
+		{ActionTypes: []string{"custom"}, Effect: policy.EffectReject},
 	}}
-	req := domain.YieldRequest{ActionType: "shell_exec", ConfidenceScore: 0.9}
+	req := domain.YieldRequest{ActionType: "custom", ConfidenceScore: 0.9}
 	dec := e.Evaluate(req)
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved, "first-matching approve rule must win (first-match-wins, not deny-over-allow)")
@@ -434,6 +434,40 @@ func setupSignedPolicy(t *testing.T) (wsDir string, policyData []byte) {
 	sigHex := crypto.Sign(privKey, policyData)
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, policy.PolicySigFile), []byte(sigHex), 0o644))
 	return wsDir, policyData
+}
+
+// TestPolicyEngine_shell_exec_never_auto_approved verifies the hard invariant:
+// no policy rule — even a broad auto-approve wildcard — can auto-approve a
+// shell_exec yield.  The operator must always personally review shell commands.
+func TestPolicyEngine_shell_exec_never_auto_approved(t *testing.T) {
+	// Wildcard rule: approve anything from any agent with any confidence.
+	eng := &policy.Engine{Rules: []policy.Rule{
+		{Effect: "approve", MinConfidence: 0.0},
+	}}
+	req := domain.YieldRequest{
+		AgentName:       "any-agent",
+		ActionType:      "shell_exec",
+		ConfidenceScore: 1.0, // maximum confidence
+	}
+	dec := eng.Evaluate(req)
+	assert.False(t, dec.Matched, "shell_exec must not match any policy rule")
+	assert.False(t, dec.Approved, "shell_exec must never be auto-approved")
+}
+
+// TestPolicyEngine_non_shell_exec_still_auto_approved verifies that the
+// shell_exec guard does not block auto-approval of other action types.
+func TestPolicyEngine_non_shell_exec_still_auto_approved(t *testing.T) {
+	eng := &policy.Engine{Rules: []policy.Rule{
+		{Effect: "approve", MinConfidence: 0.0},
+	}}
+	req := domain.YieldRequest{
+		AgentName:       "coder",
+		ActionType:      "file_edit",
+		ConfidenceScore: 0.9,
+	}
+	dec := eng.Evaluate(req)
+	assert.True(t, dec.Matched, "file_edit should match the wildcard rule")
+	assert.True(t, dec.Approved, "file_edit with high confidence should be auto-approved")
 }
 
 // TestVerifyPolicySignature_valid_signature returns (true, nil) when the

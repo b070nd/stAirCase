@@ -63,7 +63,7 @@ func newIPCEnv(t *testing.T) (srv *ipc.Server, store *persistence.Store, runID i
 
 	aesKey := make([]byte, 32) // zero key for testing
 
-	srv = ipc.NewServer(socketPath, runID, 0, token, store, aesKey)
+	srv = ipc.NewServer(socketPath, runID, 0, token, store, aesKey, true /* allowShellExec */)
 	ctx, cancelFn := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancelFn)
@@ -138,7 +138,7 @@ func TestServer_Start_missing_socket_parent_returns_error(t *testing.T) {
 		t.Skip("Windows uses TCP loopback instead of Unix sockets")
 	}
 	socketPath := filepath.Join(t.TempDir(), "missing", "t.sock")
-	srv := ipc.NewServer(socketPath, 1, 0, "token", nil, make([]byte, 32))
+	srv := ipc.NewServer(socketPath, 1, 0, "token", nil, make([]byte, 32), true /* allowShellExec */)
 
 	err := srv.Start(context.Background())
 	require.Error(t, err)
@@ -249,7 +249,7 @@ func TestServer_state_emit_append_error_keeps_connection_alive(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 
 	token := "test-token-32-bytes-padded-here!"
-	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 999, 0, token, store, make([]byte, 32))
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 999, 0, token, store, make([]byte, 32), true /* allowShellExec */)
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancel)
@@ -690,7 +690,7 @@ func TestServer_secret_request_project_id_mismatch(t *testing.T) {
 
 	token := "test-token-32-bytes-padded-here!"
 	const ownProject int64 = 42
-	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, ownProject, token, store, make([]byte, 32))
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, ownProject, token, store, make([]byte, 32), true /* allowShellExec */)
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancel)
@@ -772,6 +772,73 @@ func TestServer_yield_request_unknown_action_type_rejected(t *testing.T) {
 	assert.False(t, resp.Approved)
 	// Schema error mentions the action_type path.
 	assert.Contains(t, resp.Feedback, "action_type")
+}
+
+// TestServer_shell_exec_rejected_when_disabled verifies that the IPC server
+// rejects shell_exec yields with Approved=false when allowShellExec=false
+// (the default), providing defense-in-depth in addition to the template guard.
+func TestServer_shell_exec_rejected_when_disabled(t *testing.T) {
+	// Build a server with shell exec explicitly disabled.
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	store := persistence.NewStore(db)
+	sockDir, err := os.MkdirTemp("", "ipc-test-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	token := "test-token-32-bytes-padded-here!"
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, 0, token, store, make([]byte, 32), false /* allowShellExec=false */)
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, srv.Start(ctx))
+	t.Cleanup(cancel)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+	require.NoError(t, enc.Encode(ipc.IpcYieldRequest{
+		Type:            "yield_request",
+		AgentName:       "planner",
+		ActionType:      "shell_exec",
+		ReasoningTrace:  "run ls -la",
+		ConfidenceScore: 0.9,
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcYieldResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.False(t, resp.Approved, "shell_exec must be rejected when disabled")
+	assert.Contains(t, resp.Feedback, "shell_exec disabled")
+}
+
+// TestServer_shell_exec_forwarded_when_allowed verifies that shell_exec yields
+// reach YieldCh (for HITL) when the server is started with allowShellExec=true.
+func TestServer_shell_exec_forwarded_when_allowed(t *testing.T) {
+	srv, _, _, token, _ := newIPCEnv(t) // newIPCEnv passes allowShellExec=true
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		enc, sc, _ := dial(t, srv.ListenAddr(), token)
+		_ = enc.Encode(ipc.IpcYieldRequest{
+			Type:            "yield_request",
+			AgentName:       "planner",
+			ActionType:      "shell_exec",
+			ReasoningTrace:  "run git status",
+			ConfidenceScore: 0.9,
+		})
+		sc.Scan() // consume response
+	}()
+
+	select {
+	case req := <-srv.YieldCh:
+		assert.Equal(t, "shell_exec", req.ActionType, "shell_exec must reach YieldCh when allowed")
+		srv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: true}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: shell_exec did not reach YieldCh")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for goroutine")
+	}
 }
 
 func TestServer_secret_request_empty_key_name_rejected(t *testing.T) {
@@ -1233,7 +1300,7 @@ func TestServer_secret_request_store_error_returns_error(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 
 	token := "test-token-32-bytes-padded-here!"
-	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, 0, token, store, make([]byte, 32))
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, 0, token, store, make([]byte, 32), true /* allowShellExec */)
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancel)
