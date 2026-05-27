@@ -108,6 +108,7 @@ _replay_llm:  str = _boot.get("replay_llm", "")
 _runner_path: str = _boot.get("runner_path", "")
 if _runner_path and _runner_path not in sys.path:
     sys.path.insert(0, _runner_path)
+_disable_shell_exec: bool = bool(_boot.get("disable_shell_exec", False))
 
 # Initialise recording/replay singletons once at module level.
 _rec_session = None
@@ -293,7 +294,7 @@ def list_dir(path: str) -> str:
     except Exception as _e:
         return f"error listing {path}: {_e}"
 
-_BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file, run_shell]
+_BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file] + ([] if _disable_shell_exec else [run_shell])
 
 
 # ── LLM provider dispatcher ───────────────────────────────────────────────────

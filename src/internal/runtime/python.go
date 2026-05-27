@@ -48,6 +48,11 @@ type BootstrapMessage struct {
 	// sys.path so that `import staircase_runner` resolves to the embedded
 	// package written by BootstrapVenv into the workspace venv.
 	RunnerPath string `json:"runner_path,omitempty"`
+
+	// DisableShellExec, when true, instructs the Python harness to omit the
+	// run_shell tool from its built-in tool list so that agents cannot request
+	// OS-level shell execution during this run.
+	DisableShellExec bool `json:"disable_shell_exec,omitempty"`
 }
 
 // PythonProcess wraps a managed Python subprocess.
@@ -105,7 +110,7 @@ func (p *PythonProcess) Kill() {
 // The process is wrapped in context.WithCancel so that calling Kill() or
 // cancelling the parent ctx sends SIGKILL (zombie reaper).
 // LaunchPythonOptions carries optional bootstrap parameters for LaunchPython.
-// Zero value is safe: both fields default to empty (feature disabled).
+// Zero value is safe: all fields default to empty/false (feature disabled).
 type LaunchPythonOptions struct {
 	// RecordLLM, if non-empty, is forwarded to Python so it records LLM exchanges
 	// to the named file for later deterministic replay.
@@ -113,6 +118,9 @@ type LaunchPythonOptions struct {
 	// ReplayLLM, if non-empty, is forwarded to Python so it replays LLM exchanges
 	// from the named file instead of calling the real API.
 	ReplayLLM string
+	// DisableShellExec, when true, instructs Python to omit run_shell from the
+	// built-in tool list so that no agent can request OS-level shell execution.
+	DisableShellExec bool
 }
 
 func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
@@ -164,12 +172,13 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	// Write the bootstrap message then seal stdin.
 	enc := json.NewEncoder(stdin)
 	if err := enc.Encode(BootstrapMessage{
-		Type:       "bootstrap",
-		SocketPath: socketPath,
-		Token:      token,
-		RecordLLM:  lpo.RecordLLM,
-		ReplayLLM:  lpo.ReplayLLM,
-		RunnerPath: RunnerInjectDir(venvPath),
+		Type:             "bootstrap",
+		SocketPath:       socketPath,
+		Token:            token,
+		RecordLLM:        lpo.RecordLLM,
+		ReplayLLM:        lpo.ReplayLLM,
+		RunnerPath:       RunnerInjectDir(venvPath),
+		DisableShellExec: lpo.DisableShellExec,
 	}); err != nil {
 		cancel()
 		_ = cmd.Process.Kill()
