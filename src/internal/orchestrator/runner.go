@@ -66,6 +66,10 @@ type RunOptions struct {
 	// ReplayLLM, when non-empty, is a file path from which the Python harness
 	// replays LLM exchanges instead of calling the real API (--replay-llm flag).
 	ReplayLLM string
+	// DisableShellExec, when true, omits run_shell from the agent tool list for
+	// this run — useful for environments where OS-level shell execution must be
+	// prohibited regardless of HITL approval (--no-shell-exec flag).
+	DisableShellExec bool
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -356,7 +360,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	defer func() { _ = scriptFD.Close() }()
 
 	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
-		runtime.LaunchPythonOptions{RecordLLM: opts.RecordLLM, ReplayLLM: opts.ReplayLLM})
+		runtime.LaunchPythonOptions{RecordLLM: opts.RecordLLM, ReplayLLM: opts.ReplayLLM, DisableShellExec: opts.DisableShellExec})
 	if err != nil {
 		now := time.Now()
 		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
