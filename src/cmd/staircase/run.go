@@ -29,7 +29,7 @@ var (
 	runOTelEndpoint  string
 	runRecordLLM     string
 	runReplayLLM     string
-	runNoShellExec   bool
+	runAllowShellExec bool
 )
 
 var runCmd = &cobra.Command{
@@ -61,9 +61,9 @@ func init() {
 		"File path to record all LLM exchanges for deterministic replay in future test runs.")
 	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",
 		"File path to replay recorded LLM exchanges instead of calling the real API.")
-	runCmd.Flags().BoolVar(&runNoShellExec, "no-shell-exec", false,
-		"Disable run_shell for this run — agents cannot request OS-level shell execution. "+
-			"Use in environments where shell access must be prohibited regardless of HITL approval.")
+	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
+		"Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. "+
+			"Shell execution is disabled by default; pass this flag to opt in.")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -119,6 +119,6 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		ApprovalToken: runApprovalToken,
 		RecordLLM:        runRecordLLM,
 		ReplayLLM:        runReplayLLM,
-		DisableShellExec: runNoShellExec,
+		AllowShellExec:   runAllowShellExec,
 	})
 }

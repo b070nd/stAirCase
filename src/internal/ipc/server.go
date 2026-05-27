@@ -186,6 +186,12 @@ type Server struct {
 	deliveredSecrets []string
 	secretsMu        sync.RWMutex
 
+	// allowShellExec controls whether shell_exec yield_requests are forwarded
+	// to the operator. When false the server immediately rejects them with a
+	// clear error so that the Python side does not hang waiting for a response.
+	// Set by NewServer; defaults to false (safe default).
+	allowShellExec bool
+
 	gitCommitHash string
 	mu            sync.Mutex
 	debugLog      *log.Logger
@@ -206,17 +212,20 @@ func (s *Server) DeliveredSecrets() []string {
 // aesKey is the workspace AES-256 key used to decrypt secrets before delivery to Python.
 // projectID is the project owning this run; secret_request messages specifying a
 // different project_id are rejected to prevent cross-project secret leakage.
-func NewServer(socketPath string, runID, projectID int64, token string, store *persistence.Store, aesKey []byte) *Server {
+// allowShellExec controls whether shell_exec yield_requests are forwarded to the
+// operator; pass false (the safe default) unless --allow-shell-exec was given.
+func NewServer(socketPath string, runID, projectID int64, token string, store *persistence.Store, aesKey []byte, allowShellExec bool) *Server {
 	return &Server{
-		socketPath: socketPath,
-		runID:      runID,
-		projectID:  projectID,
-		token:      token,
-		store:      store,
-		aesKey:     aesKey,
-		YieldCh:    make(chan IpcYieldRequest, 1),
-		ResponseCh: make(chan IpcYieldResponse, 1),
-		StatEmitCh: make(chan IpcStateEmit, 32),
+		socketPath:     socketPath,
+		runID:          runID,
+		projectID:      projectID,
+		token:          token,
+		store:          store,
+		aesKey:         aesKey,
+		allowShellExec: allowShellExec,
+		YieldCh:        make(chan IpcYieldRequest, 1),
+		ResponseCh:     make(chan IpcYieldResponse, 1),
+		StatEmitCh:     make(chan IpcStateEmit, 32),
 	}
 }
 
@@ -467,6 +476,12 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 			validActionTypes := map[string]bool{"file_edit": true, "shell_exec": true, "custom": true}
 			if !validActionTypes[msg.ActionType] {
 				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "unknown action_type: " + msg.ActionType})
+				break
+			}
+			// Defense-in-depth: reject shell_exec when the run was not started with
+			// --allow-shell-exec, even if the Python harness somehow registered the tool.
+			if msg.ActionType == "shell_exec" && !s.allowShellExec {
+				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "shell_exec disabled — restart with --allow-shell-exec to enable"})
 				break
 			}
 			s.secretsMu.RLock()

@@ -225,7 +225,16 @@ type PolicyDecision struct {
 
 // Evaluate applies the engine's rules to req and returns a PolicyDecision.
 // The first matching rule wins; rules are evaluated in declaration order.
+//
+// shell_exec actions are never auto-approved: the operator must personally
+// review and approve every shell command regardless of policy configuration.
 func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
+	// Hard invariant: shell commands must always reach a human operator.
+	// No policy rule can override this — a broad auto-approve rule could
+	// otherwise silently execute arbitrary OS commands.
+	if req.ActionType == "shell_exec" {
+		return PolicyDecision{}
+	}
 	for i, r := range e.Rules {
 		if !r.matchesAgentName(req.AgentName) {
 			continue

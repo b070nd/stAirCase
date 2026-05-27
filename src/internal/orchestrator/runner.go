@@ -66,10 +66,9 @@ type RunOptions struct {
 	// ReplayLLM, when non-empty, is a file path from which the Python harness
 	// replays LLM exchanges instead of calling the real API (--replay-llm flag).
 	ReplayLLM string
-	// DisableShellExec, when true, omits run_shell from the agent tool list for
-	// this run — useful for environments where OS-level shell execution must be
-	// prohibited regardless of HITL approval (--no-shell-exec flag).
-	DisableShellExec bool
+	// AllowShellExec, when true, includes run_shell in the agent tool list.
+	// Defaults to false — operators must explicitly pass --allow-shell-exec.
+	AllowShellExec bool
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -260,7 +259,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	}
 	socketPath := filepath.Join(tmpDir, fmt.Sprintf("run-%d.sock", run.ID))
 
-	ipcSrv := ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey)
+	ipcSrv := ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey, opts.AllowShellExec)
 	if err := ipcSrv.Start(ctx); err != nil {
 		return fmt.Errorf("ipc server: %w", err)
 	}
@@ -360,7 +359,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	defer func() { _ = scriptFD.Close() }()
 
 	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
-		runtime.LaunchPythonOptions{RecordLLM: opts.RecordLLM, ReplayLLM: opts.ReplayLLM, DisableShellExec: opts.DisableShellExec})
+		runtime.LaunchPythonOptions{RecordLLM: opts.RecordLLM, ReplayLLM: opts.ReplayLLM, AllowShellExec: opts.AllowShellExec})
 	if err != nil {
 		now := time.Now()
 		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")

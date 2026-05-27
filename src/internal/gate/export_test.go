@@ -5,14 +5,6 @@ package gate
 
 import "testing"
 
-// ShellSandboxGate helpers — expose metadata and Run for black-box testing.
-var shellSandboxGateSingleton Gate = &shellSandboxGate{}
-
-func ExportedShellSandboxRun(ctx Context) Result { return shellSandboxGateSingleton.Run(ctx) }
-func ExportedShellSandboxName() string           { return shellSandboxGateSingleton.Name() }
-func ExportedShellSandboxCategory() string       { return shellSandboxGateSingleton.Category() }
-func ExportedShellSandboxSeverity() Severity     { return shellSandboxGateSingleton.Severity() }
-
 // Individual gate singletons — one per registered gate implementation.
 var (
 	CaseProjectExistsGate            Gate = &caseProjectExistsGate{}
