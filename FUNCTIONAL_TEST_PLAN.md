@@ -42,6 +42,7 @@ The following capabilities are explicitly deferred to future roadmap phases and 
 | SIEM webhook / audit export API | P3 | Audit evidence available via `staircase audit export`; push integration deferred |
 | KMS/OS-keychain vault backend | P2-deferred | `.key` file at 0600 in 0700 workspace adequate for single-user; keychain requires per-OS dep |
 | CEL/OPA policy expressions | P2-deferred | Struct-based rules cover common cases; full CEL deferred to Phase 8 (documented in policy package) |
+| OS-level shell sandbox (Docker/bwrap/gVisor) | P2-deferred | `shell_exec` is **disabled by default**; pass `--allow-shell-exec` to opt in. When enabled, commands run unsandboxed as the orchestrator user. Three enforcement layers prevent accidental enablement: template tool gate, IPC server rejection (logged as `shell_exec_rejected` audit event), policy engine hard block. Full OS namespace/seccomp isolation requires a separate container-runtime architecture design. |
 | Stable public SDK contract | P3 | Python runner API is internal; breaking changes allowed until v1.0 |
 
 **What "P3 not implemented" means operationally**: The current architecture is a well-designed foundation. Each P3 item has a clear extension point in the codebase (e.g., `runner.Run()` for server mode, `policy.Engine` for CEL, signing infrastructure for MCP), but none were built speculatively — they require multi-month design commitments and external infrastructure decisions before code is warranted.

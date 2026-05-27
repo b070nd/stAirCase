@@ -480,7 +480,18 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 			}
 			// Defense-in-depth: reject shell_exec when the run was not started with
 			// --allow-shell-exec, even if the Python harness somehow registered the tool.
+			// Log the attempt as a security audit event so operators can detect
+			// unexpected shell_exec requests in environments where it is disabled.
 			if msg.ActionType == "shell_exec" && !s.allowShellExec {
+				s.secretsMu.RLock()
+				rejPayload := string(crypto.ScrubBytes(line, s.deliveredSecrets))
+				s.secretsMu.RUnlock()
+				if len(rejPayload) > maxPayloadSize {
+					rejPayload = rejPayload[:maxPayloadSize]
+				}
+				s.logEvent("shell_exec_rejected", rejPayload)
+				obs.Log.Warn("shell_exec yield rejected — run not started with --allow-shell-exec",
+					"agent", msg.AgentName, "run_id", s.runID)
 				_ = enc.Encode(IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "shell_exec disabled — restart with --allow-shell-exec to enable"})
 				break
 			}

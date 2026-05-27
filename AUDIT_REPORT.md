@@ -343,6 +343,7 @@ Coverage increased from 61.0% to 76.6%. `internal/runtime` (84.2%) and `internal
 | GitHub/GitLab PR creation (P2-b) | No remote push or PR API today; would require new external auth + `go-github` dep + `git push` | Roadmap — implement alongside server mode / CI integration |
 | KMS/OS-keychain vault backend (P2-c) | `.key` at 0600 in 0700 workspace is adequate for single-user; keychain would require platform-specific dep per OS | Roadmap — implement when multi-user/shared-runner support is added |
 | Signed gate manifests / MCP tool trust (P3) | `gate.VerifyGatesSignature` added; `RunAll` blocks on tampered gates.json; `staircase gate sign/verify` subcommands; 4 tests; P3 server/RBAC/SSO/MCP roadmap documented in FUNCTIONAL_TEST_PLAN.md |
+| OS-level sandbox for `run_shell` | `shell_exec` is disabled by default (`--allow-shell-exec` opt-in); three enforcement layers (template, IPC, policy); rejected attempts logged as `shell_exec_rejected` audit events. When `--allow-shell-exec` is used, commands still run unsandboxed as the orchestrator OS user. | Partial — default-off + audit trail implemented; OS namespace/seccomp isolation is a separate architecture design (Docker/bwrap/gVisor) |
 
 ---
 

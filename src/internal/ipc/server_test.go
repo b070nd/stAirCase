@@ -779,16 +779,23 @@ func TestServer_yield_request_unknown_action_type_rejected(t *testing.T) {
 // (the default), providing defense-in-depth in addition to the template guard.
 func TestServer_shell_exec_rejected_when_disabled(t *testing.T) {
 	// Build a server with shell exec explicitly disabled.
+	// Use the same scaffolding as newIPCEnv so logEvent has a valid run row.
 	wsDir := t.TempDir()
 	db, err := persistence.InitDB(wsDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	store := persistence.NewStore(db)
+	v, _ := store.CreateVendor("v")
+	p, _ := store.CreateProject(v.ID, "p", "")
+	c, _ := store.CreateCase(p.ID)
+	topo, _ := store.CreateSwarmTopology(p.ID, "sup", "memory", "langgraph")
+	run, _ := store.CreateRun(c.ID, topo.Version, "main")
+
 	sockDir, err := os.MkdirTemp("", "ipc-test-*")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	token := "test-token-32-bytes-padded-here!"
-	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), 1, 0, token, store, make([]byte, 32), false /* allowShellExec=false */)
+	srv := ipc.NewServer(filepath.Join(sockDir, "t.sock"), run.ID, 0, token, store, make([]byte, 32), false /* allowShellExec=false */)
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(cancel)
@@ -806,6 +813,19 @@ func TestServer_shell_exec_rejected_when_disabled(t *testing.T) {
 	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
 	assert.False(t, resp.Approved, "shell_exec must be rejected when disabled")
 	assert.Contains(t, resp.Feedback, "shell_exec disabled")
+
+	// The rejection must also be recorded in the audit event log.
+	time.Sleep(30 * time.Millisecond)
+	logs, err := store.ListEventLogs(run.ID)
+	require.NoError(t, err)
+	var found bool
+	for _, l := range logs {
+		if l.EventType == "shell_exec_rejected" {
+			found = true
+			assert.Contains(t, l.Payload, "planner", "audit entry must identify the requesting agent")
+		}
+	}
+	assert.True(t, found, "shell_exec_rejected must be written to the audit log")
 }
 
 // TestServer_shell_exec_forwarded_when_allowed verifies that shell_exec yields
