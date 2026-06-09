@@ -359,7 +359,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	defer func() { _ = scriptFD.Close() }()
 
 	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
-		runtime.LaunchPythonOptions{RecordLLM: opts.RecordLLM, ReplayLLM: opts.ReplayLLM, AllowShellExec: opts.AllowShellExec})
+		runtime.LaunchPythonOptions{
+			RecordLLM:      opts.RecordLLM,
+			ReplayLLM:      opts.ReplayLLM,
+			AllowShellExec: opts.AllowShellExec,
+			// Redact any delivered secret from Python stderr before it is logged.
+			ScrubStderr: func(line string) string {
+				return string(crypto.ScrubBytes([]byte(line), ipcSrv.DeliveredSecrets()))
+			},
+		})
 	if err != nil {
 		now := time.Now()
 		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
@@ -379,6 +387,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	// yield. Used at finalize to stage only the operator-approved edits rather
 	// than all worktree changes (prevents committing unrelated modifications).
 	var approvedFiles []string
+	// approvedHashes maps file path → SHA-256 of the operator-approved content
+	// (last approval wins). Verified against on-disk content before commit so
+	// an agent cannot apply different content than what was approved.
+	approvedHashes := map[string]string{}
 
 runLoop:
 	for {
@@ -463,6 +475,9 @@ runLoop:
 				for _, pe := range yieldReq.ProposedEdits {
 					if pe.File != "" {
 						approvedFiles = append(approvedFiles, pe.File)
+						if pe.ContentHash != "" {
+							approvedHashes[pe.File] = pe.ContentHash
+						}
 					}
 				}
 			}
@@ -506,6 +521,32 @@ runLoop:
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
 	commitHash := ""
+	if finalStatus == persistence.RunStatusSuccess && gr != nil {
+		// Approval-content binding: re-hash every file whose edit carried a
+		// content_hash and refuse to commit when the on-disk bytes differ from
+		// what the operator approved (audit: approval_content_mismatch).
+		for file, want := range approvedHashes {
+			data, readErr := os.ReadFile(filepath.Join(project.SourcePath, file))
+			got := ""
+			if readErr == nil {
+				sum := sha256.Sum256(data)
+				got = hex.EncodeToString(sum[:])
+			}
+			if got != want {
+				if payload, err := json.Marshal(map[string]any{
+					"type": "approval_content_mismatch", "file": file,
+					"approved_hash": want, "actual_hash": got,
+				}); err == nil {
+					prevHash, _ := r.store.GetLastEventHash(run.ID)
+					_, _ = r.store.AppendEventLog(run.ID, "approval_content_mismatch", string(payload), prevHash, "")
+				}
+				obs.Log.Error("approved content hash mismatch — refusing to commit",
+					"file", file, "approved", want, "actual", got, "run_id", run.ID)
+				display.AddActivity(fmt.Sprintf("%-14s ABORT  %s content differs from approved version", "finalize", file))
+				finalStatus = persistence.RunStatusFailed
+			}
+		}
+	}
 	if finalStatus == persistence.RunStatusSuccess && gr != nil {
 		// Stage only paths that were explicitly approved via file_edit yields.
 		// AddAll() is intentionally NOT used: it would commit any unrelated
