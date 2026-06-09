@@ -16,19 +16,22 @@ func BootstrapToken() (string, error) {
 // BootstrapMessage mirrors the non-Windows definition so the orchestrator
 // compiles on Windows even though LaunchPython always returns an error.
 type BootstrapMessage struct {
-	Type       string `json:"type"`
-	SocketPath string `json:"socket_path"`
-	Token      string `json:"token"`
-	RecordLLM  string `json:"record_llm,omitempty"`
-	ReplayLLM  string `json:"replay_llm,omitempty"`
-	RunnerPath string `json:"runner_path,omitempty"`
+	Type           string `json:"type"`
+	SocketPath     string `json:"socket_path"`
+	Token          string `json:"token"`
+	RecordLLM      string `json:"record_llm,omitempty"`
+	ReplayLLM      string `json:"replay_llm,omitempty"`
+	RunnerPath     string `json:"runner_path,omitempty"`
+	AllowShellExec bool   `json:"allow_shell_exec,omitempty"`
 }
 
 
 // LaunchPythonOptions mirrors the non-Windows definition.
 type LaunchPythonOptions struct {
-	RecordLLM string
-	ReplayLLM string
+	RecordLLM      string
+	ReplayLLM      string
+	AllowShellExec bool
+	ScrubStderr    func(string) string
 }
 
 // PythonProcess mirrors the non-Windows definition.

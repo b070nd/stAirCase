@@ -120,6 +120,11 @@ type LaunchPythonOptions struct {
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
 	// Defaults to false (disabled) — callers must explicitly opt in.
 	AllowShellExec bool
+	// ScrubStderr, when non-nil, is applied to every Python stderr line before
+	// it is logged. The orchestrator passes a redactor backed by the IPC
+	// server's delivered-secrets cache so an agent printing a plaintext secret
+	// to stderr cannot leak it into orchestrator logs (CHECK 4.4.3).
+	ScrubStderr func(string) string
 }
 
 func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
@@ -136,9 +141,17 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	// direct subprocess (CHECK 5.4.3).
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	// Merge optional bootstrap fields (needed below for stderr scrubbing).
+	var lpo LaunchPythonOptions
+	if len(opts) > 0 {
+		lpo = opts[0]
+	}
+
 	// Pipe Python's stderr through a goroutine that prefixes each line with
 	// "[python]" so tracebacks are distinguishable in the orchestrator log
 	// (CHECK 5.4.4 — stderr must be captured and routed, not silently inherited).
+	// Each line is passed through ScrubStderr (when set) so delivered secrets
+	// never reach the log in plaintext.
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		cancel()
@@ -147,7 +160,11 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	go func() {
 		sc := bufio.NewScanner(stderrPipe)
 		for sc.Scan() {
-			obs.Log.Info("python stderr", "line", sc.Text())
+			line := sc.Text()
+			if lpo.ScrubStderr != nil {
+				line = lpo.ScrubStderr(line)
+			}
+			obs.Log.Info("python stderr", "line", line)
 		}
 	}()
 
@@ -160,12 +177,6 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return nil, fmt.Errorf("start python: %w", err)
-	}
-
-	// Merge optional bootstrap fields.
-	var lpo LaunchPythonOptions
-	if len(opts) > 0 {
-		lpo = opts[0]
 	}
 
 	// Write the bootstrap message then seal stdin.
