@@ -74,10 +74,25 @@ func checkGatesSignature(wsDir string, report *Report) {
 			fmt.Sprintf("gates.json tampered — re-sign with 'staircase gate sign': %v", err),
 		))
 		report.Summary.Fail++
+		report.Overall = StatusFail // must be set here; RunAll checks this before executing plugins
 		obs.Log.Error("gates.json integrity check failed", "err", err)
 		return
 	}
 	if !sigPresent {
+		// When the workspace has signing infrastructure, an unsigned gates.json
+		// is treated as a tamper event: an adversary could otherwise bypass the
+		// signature check entirely by deleting the sidecar. Workspaces that never
+		// initialized signing keep the advisory warning (non-breaking).
+		if _, keyErr := os.Stat(filepath.Join(wsDir, crypto.SigningPubFile)); keyErr == nil {
+			report.Gates = append(report.Gates, fail(
+				"gates.json-integrity", "security", SeverityBlock,
+				"gates.json is unsigned but this workspace has a signing key — run 'staircase gate sign'",
+			))
+			report.Summary.Fail++
+			report.Overall = StatusFail
+			obs.Log.Error("gates.json unsigned in a signing-enabled workspace — plugin gates blocked")
+			return
+		}
 		obs.Log.Warn("gates.json is unsigned — run 'staircase gate sign' to enable tamper detection")
 	}
 }

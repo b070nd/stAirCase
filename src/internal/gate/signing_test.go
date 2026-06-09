@@ -63,3 +63,46 @@ func TestVerifyGatesSignature_no_gates_file(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, sigPresent)
 }
+
+// TestRunAll_unsigned_gates_blocked_when_key_present: a workspace that has
+// signing infrastructure must not execute plugin gates from an unsigned
+// gates.json — deleting the sidecar would otherwise bypass tamper detection.
+func TestRunAll_unsigned_gates_blocked_when_key_present(t *testing.T) {
+	gate.ReplaceRegistry(t, nil)
+	ctx, wsDir := newGateEnv(t)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"),
+		[]byte(`[{"name":"plugin-probe","category":"security","severity":"WARN","script":"/bin/true"}]`), 0o644))
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+	// deliberately no gates.json.sig
+
+	r := gate.RunAll(ctx)
+
+	assert.Equal(t, gate.StatusFail, r.Overall)
+	assert.True(t, r.Blocking())
+	require.NotEmpty(t, r.Gates)
+	assert.Equal(t, "gates.json-integrity", r.Gates[0].Name)
+	for _, g := range r.Gates {
+		assert.NotEqual(t, "plugin-probe", g.Name, "plugin gate must not execute")
+	}
+}
+
+// TestRunAll_unsigned_gates_warn_only_without_key: workspaces that never
+// initialized signing keep the advisory warning and plugin gates still run.
+func TestRunAll_unsigned_gates_warn_only_without_key(t *testing.T) {
+	gate.ReplaceRegistry(t, nil)
+	ctx, wsDir := newGateEnv(t)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"),
+		[]byte(`[{"name":"plugin-probe","category":"security","severity":"WARN","script":"/bin/true"}]`), 0o644))
+	// no signing key, no sig — legacy/unsigned workspace
+
+	r := gate.RunAll(ctx)
+
+	executed := false
+	for _, g := range r.Gates {
+		assert.NotEqual(t, "gates.json-integrity", g.Name, "no integrity failure expected")
+		if g.Name == "plugin-probe" {
+			executed = true
+		}
+	}
+	assert.True(t, executed, "plugin gate must still execute in unsigned workspace")
+}
