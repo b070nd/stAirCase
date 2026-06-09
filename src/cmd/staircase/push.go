@@ -92,21 +92,29 @@ is skipped and the PR URL is printed for manual use.`,
 		if remote == "" {
 			remote = "origin"
 		}
+
+		// Resolve the remote URL before pushing: the GitHub token must only
+		// ever be attached to a github.com remote, otherwise a misconfigured
+		// or malicious remote URL receives the credential in BasicAuth.
+		remoteURL, err := gr.RemoteURL(remote)
+		if err != nil {
+			return fmt.Errorf("read remote %q URL: %w", remote, err)
+		}
+		owner, repo, isGitHub := parseGitHubOwnerRepo(remoteURL)
+		pushToken := token
+		if !isGitHub && pushToken != "" {
+			fmt.Printf("   ⚠️  Remote %q is not github.com — pushing without the GitHub token\n", remoteURL)
+			pushToken = ""
+		}
+
 		fmt.Printf("⬆️  Pushing %s → %s/%s …\n", runBranch, remote, runBranch)
-		if err := gr.Push(remote, runBranch, token); err != nil {
+		if err := gr.Push(remote, runBranch, pushToken); err != nil {
 			return fmt.Errorf("push failed: %w", err)
 		}
 		fmt.Println("✅ Branch pushed.")
 
 		// ── GitHub PR creation ────────────────────────────────────────────────
-		remoteURL, err := gr.RemoteURL(remote)
-		if err != nil {
-			fmt.Printf("   ⚠️  Could not read remote URL: %v — skipping PR creation\n", err)
-			return nil
-		}
-
-		owner, repo, ok := parseGitHubOwnerRepo(remoteURL)
-		if !ok {
+		if !isGitHub {
 			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL — create the PR manually:\n", remoteURL)
 			fmt.Printf("   %s\n", manualPRURL(remoteURL, runBranch, run.GitBranch))
 			return nil
@@ -144,8 +152,11 @@ is skipped and the PR URL is printed for manual use.`,
 //
 //	https://github.com/owner/repo.git → owner, repo, true
 //	git@github.com:owner/repo.git     → owner, repo, true
-var reGitHubHTTPS = regexp.MustCompile(`(?i)https?://github\.com/([^/]+)/([^/.]+)`)
-var reGitHubSSH = regexp.MustCompile(`(?i)git@github\.com:([^/]+)/([^/.]+)`)
+// Anchored (^) so a malicious URL embedding "github.com" in its path
+// (e.g. https://evil.example/https://github.com/o/r) is never treated as
+// a GitHub remote — that decision also gates token attachment on push.
+var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://github\.com/([^/]+)/([^/.]+)`)
+var reGitHubSSH = regexp.MustCompile(`^(?i)git@github\.com:([^/]+)/([^/.]+)`)
 
 func parseGitHubOwnerRepo(remoteURL string) (owner, repo string, ok bool) {
 	for _, re := range []*regexp.Regexp{reGitHubHTTPS, reGitHubSSH} {

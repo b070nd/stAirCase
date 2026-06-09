@@ -18,6 +18,10 @@ func TestParseGitHubOwnerRepo(t *testing.T) {
 		{"git@github.com:acme/my-repo.git", "acme", "my-repo", true},
 		{"git@github.com:acme/my-repo", "acme", "my-repo", true},
 		{"https://gitlab.com/acme/repo.git", "", "", false},
+		// Embedded-github.com bypass attempts must NOT be treated as GitHub —
+		// this decision gates whether the PAT is attached to the push.
+		{"https://evil.example/https://github.com/acme/repo", "", "", false},
+		{"https://github.com.evil.example/acme/repo.git", "", "", false},
 		{"https://bitbucket.org/acme/repo.git", "", "", false},
 		{"/local/path/to/repo", "", "", false},
 		{"", "", "", false},
