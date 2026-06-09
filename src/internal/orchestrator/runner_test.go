@@ -2,6 +2,8 @@ package orchestrator_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1354,4 +1356,127 @@ func TestRun_dryrun_creates_run_and_returns_nil(t *testing.T) {
 	require.NoError(t, listErr)
 	require.Len(t, runs, 1, "exactly one run record must exist after a dry run")
 	assert.Equal(t, persistence.RunStatusKilled, runs[0].Status)
+}
+
+// contentHashScript builds a fake-agent script that yields a file_edit carrying
+// content_hash for approvedContent, then (after approval) writes actualContent
+// to targetPath — letting tests exercise the approval-content binding.
+func contentHashScript(targetPath, approvedHash, actualContent string) string {
+	return `import sys, json, socket, time, hashlib
+boot = json.loads(sys.stdin.readline())
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+for _ in range(30):
+    try:
+        s.connect(boot["socket_path"])
+        break
+    except OSError:
+        time.sleep(0.05)
+s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
+buf = b""
+while b"\n" not in buf:
+    buf += s.recv(4096)
+assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
+s.sendall((json.dumps({
+    "type":"yield_request","agent_name":"coder","action_type":"file_edit",
+    "proposed_edits":[{"file":"target.txt","search_block":"(new file)",
+                       "replace_block":"preview","content_hash":` + fmt.Sprintf("%q", approvedHash) + `}],
+    "reasoning_trace":"binding test","confidence_score":0.9
+})+"\n").encode())
+buf = b""
+while b"\n" not in buf:
+    buf += s.recv(4096)
+resp = json.loads(buf.split(b"\n")[0])
+assert resp.get("approved") == True, resp
+open(` + fmt.Sprintf("%q", targetPath) + `, "w").write(` + fmt.Sprintf("%q", actualContent) + `)
+s.close()
+sys.exit(0)
+`
+}
+
+func setupContentHashRun(t *testing.T) (s *persistence.Store, wsDir, repoPath string, caseID int64) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("integration test — skipped in -short mode")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	wsDir, err := os.MkdirTemp("", "strc-ch-")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	s = newTestStore(t)
+	require.NoError(t, crypto.GenerateKey(wsDir))
+	venvPath := filepath.Join(wsDir, "venv")
+	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
+	require.NoError(t, err, "create venv: %s", out)
+	// Auto-approve file_edit so no TUI is needed.
+	policyJSON := `{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(policyJSON), 0o600))
+	repoPath = initGitRepo(t)
+	caseID, _ = scaffoldForRun(t, s, repoPath)
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
+	return s, wsDir, repoPath, caseID
+}
+
+// TestRun_integration_content_hash_match: agent writes exactly the approved
+// content — run succeeds, no approval_content_mismatch event.
+func TestRun_integration_content_hash_match(t *testing.T) {
+	s, wsDir, repoPath, caseID := setupContentHashRun(t)
+
+	const good = "GOOD CONTENT\n"
+	sum := sha256.Sum256([]byte(good))
+	script := contentHashScript(filepath.Join(repoPath, "target.txt"), hex.EncodeToString(sum[:]), good)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
+		orchestrator.RunOptions{Force: true, SkipGates: true}))
+
+	runs, err := s.ListRunsByCase(caseID)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
+	logs, err := s.ListEventLogs(runs[0].ID)
+	require.NoError(t, err)
+	for _, l := range logs {
+		assert.NotEqual(t, "approval_content_mismatch", l.EventType)
+	}
+}
+
+// TestRun_integration_content_hash_mismatch: agent writes content that differs
+// from the approved hash — the run must fail, nothing may be committed, and an
+// approval_content_mismatch event must land in the audit chain.
+func TestRun_integration_content_hash_mismatch(t *testing.T) {
+	s, wsDir, repoPath, caseID := setupContentHashRun(t)
+
+	const good = "GOOD CONTENT\n"
+	sum := sha256.Sum256([]byte(good))
+	script := contentHashScript(filepath.Join(repoPath, "target.txt"),
+		hex.EncodeToString(sum[:]), "EVIL CONTENT — never shown to the operator\n")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
+		orchestrator.RunOptions{Force: true, SkipGates: true})
+
+	runs, err := s.ListRunsByCase(caseID)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, persistence.RunStatusFailed, runs[0].Status, "tampered content must fail the run")
+	assert.Empty(t, runs[0].GitCommitHash, "tampered content must not be committed")
+
+	logs, err := s.ListEventLogs(runs[0].ID)
+	require.NoError(t, err)
+	found := false
+	for _, l := range logs {
+		if l.EventType == "approval_content_mismatch" {
+			found = true
+			assert.Contains(t, l.Payload, "target.txt")
+		}
+	}
+	assert.True(t, found, "approval_content_mismatch audit event expected")
 }

@@ -115,6 +115,11 @@
         "replace_block": {
           "type": "string",
           "description": "Content to replace the search_block with."
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 (hex) of the complete file content after this edit is applied. Binds the operator's approval to exact content: the orchestrator re-hashes the file before commit and fails the run on mismatch."
         }
       }
     },

@@ -145,6 +145,11 @@ type ProposedEdit struct {
 	File         string `json:"file"`
 	SearchBlock  string `json:"search_block"`
 	ReplaceBlock string `json:"replace_block"`
+	// ContentHash is the SHA-256 (hex) of the complete file content that will
+	// exist after this edit is applied. When present, the orchestrator
+	// re-hashes the file before commit and fails the run on mismatch — binding
+	// the operator's approval to exact content, not just a preview.
+	ContentHash string `json:"content_hash,omitempty"`
 }
 
 // YieldRequest is sent by Python over the IPC socket to request HITL approval.
