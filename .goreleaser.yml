@@ -53,6 +53,21 @@ sboms:
     documents:
       - "${artifact}.spdx.json"
 
+# Keyless (Sigstore OIDC) signing of the checksum file. Verifying the signed
+# checksums transitively verifies every archive. Requires cosign in PATH and
+# an OIDC token (id-token: write) on the release job. Skipped in snapshot builds.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+
 snapshot:
   name_template: "{{ .Tag }}-next"
 

@@ -55,6 +55,24 @@ stAirCase v2.0.0
 
 The single static binary ships with no CGo; it uses a pure-Go SQLite driver. No shared libraries required.
 
+### Verifying release artifacts
+
+Tagged releases ship a syft SBOM (`*.spdx.json`) per archive and a Sigstore
+keyless signature over `checksums.txt`. To verify a download:
+
+```bash
+# 1. Verify the checksum file signature (keyless — no public key to manage)
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity-regexp 'github.com/b070nd/staircase-core' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+
+# 2. Verify the archive against the now-trusted checksums
+shasum -a 256 -c checksums.txt --ignore-missing
+```
+
 ---
 
 ## 3. Smoke Test (no API key)
