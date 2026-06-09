@@ -137,7 +137,9 @@ func runPipInstall(pythonExec, workspaceDir, offlineWheelsDir string) error {
 		return err
 	}
 
-	pipCmdArgs := []string{"-m", "pip", "install", "-r", reqPath}
+	// --require-hashes: requirements.txt is fully hash-pinned; pip fails closed
+	// on any package whose hash is missing or mismatched (supply-chain drift).
+	pipCmdArgs := []string{"-m", "pip", "install", "--require-hashes", "-r", reqPath}
 	if offlineWheelsDir != "" {
 		pipCmdArgs = append(pipCmdArgs, "--no-index", "--find-links", offlineWheelsDir)
 	}
