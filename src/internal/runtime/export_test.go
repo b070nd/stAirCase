@@ -23,3 +23,8 @@ func NewPythonProcessForTest(cmd *exec.Cmd, done chan error) *PythonProcess {
 		Done:   done,
 	}
 }
+
+// ExportedPipInstallArgs exposes pipInstallArgs for whitebox testing.
+func ExportedPipInstallArgs(reqPath, offlineWheelsDir string, requirements []byte) []string {
+	return pipInstallArgs(reqPath, offlineWheelsDir, requirements)
+}
