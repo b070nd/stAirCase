@@ -110,7 +110,8 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 // RunnerInjectDir returns the directory that must be on sys.path for
 // `import staircase_runner` to resolve inside the workspace venv.
 // Python sees: <RunnerInjectDir>/staircase_runner/__init__.py
-//              <RunnerInjectDir>/staircase_runner/recording.py
+//
+//	<RunnerInjectDir>/staircase_runner/recording.py
 func RunnerInjectDir(venvPath string) string {
 	return filepath.Join(venvPath, "runner_inject")
 }
@@ -129,6 +130,24 @@ func writeRunnerInject(venvPath string) error {
 	return os.WriteFile(filepath.Join(pkgDir, "recording.py"), embeddedRecording, 0o644)
 }
 
+// pipInstallArgs builds the `python -m pip install` argument list.
+//
+// --require-hashes makes pip fail closed on any package whose hash is missing
+// or mismatched. It is added only when the requirements content actually
+// carries hashes ("--hash=" lines): pip rejects --require-hashes when no hashes
+// are present, so this keeps the current unpinned requirements working while
+// automatically enforcing a future hash-pinned lock file.
+func pipInstallArgs(reqPath, offlineWheelsDir string, requirements []byte) []string {
+	args := []string{"-m", "pip", "install", "-r", reqPath}
+	if bytes.Contains(requirements, []byte("--hash=")) {
+		args = append(args, "--require-hashes")
+	}
+	if offlineWheelsDir != "" {
+		args = append(args, "--no-index", "--find-links", offlineWheelsDir)
+	}
+	return args
+}
+
 // runPipInstall writes the embedded requirements.txt to tmp/ and runs pip install.
 func runPipInstall(pythonExec, workspaceDir, offlineWheelsDir string) error {
 	reqPath := filepath.Join(workspaceDir, "tmp", "requirements.txt")
@@ -137,14 +156,7 @@ func runPipInstall(pythonExec, workspaceDir, offlineWheelsDir string) error {
 		return err
 	}
 
-	// --require-hashes: requirements.txt is fully hash-pinned; pip fails closed
-	// on any package whose hash is missing or mismatched (supply-chain drift).
-	pipCmdArgs := []string{"-m", "pip", "install", "--require-hashes", "-r", reqPath}
-	if offlineWheelsDir != "" {
-		pipCmdArgs = append(pipCmdArgs, "--no-index", "--find-links", offlineWheelsDir)
-	}
-
-	pipCmd := exec.Command(pythonExec, pipCmdArgs...)
+	pipCmd := exec.Command(pythonExec, pipInstallArgs(reqPath, offlineWheelsDir, embeddedRequirements)...)
 	var stderr bytes.Buffer
 	pipCmd.Stderr = &stderr
 
