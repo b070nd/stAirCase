@@ -12,6 +12,7 @@ import (
 )
 
 var offlineWheels string
+var initSkipVenv bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -40,8 +41,11 @@ var initCmd = &cobra.Command{
 		}
 		fmt.Println("🔏 Audit signing key ready.")
 
-		// 3. Bootstrap Python Venv
-		if err := runtime.BootstrapVenv(wsDir, offlineWheels); err != nil {
+		// 3. Bootstrap Python Venv (skippable for air-gapped/CI setups that
+		//    provision the runtime separately).
+		if initSkipVenv {
+			fmt.Println("⏭  Skipped Python venv bootstrap (--skip-venv); provision $STAIRCASE_DIR/venv yourself before 'staircase run'.")
+		} else if err := runtime.BootstrapVenv(wsDir, offlineWheels); err != nil {
 			log.Fatalf("Environment bootstrap failed: %v", err)
 		}
 
@@ -51,5 +55,6 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().StringVar(&offlineWheels, "offline-wheels", "", "Path to local pip wheels for air-gapped installation")
+	initCmd.Flags().BoolVar(&initSkipVenv, "skip-venv", false, "Skip Python venv bootstrap (provision $STAIRCASE_DIR/venv yourself)")
 	rootCmd.AddCommand(initCmd)
 }
