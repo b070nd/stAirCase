@@ -23,11 +23,11 @@ import (
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/approvalhttp"
-	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/gate"
 	"github.com/b070nd/staircase-core/src/internal/ipc"
 	"github.com/b070nd/staircase-core/src/internal/monitor"
+	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/b070nd/staircase-core/src/internal/policy"
 	"github.com/b070nd/staircase-core/src/internal/runtime"
