@@ -1,4 +1,4 @@
-.PHONY: test test-conformance test-integration test-e2e test-ci race build lint coverage vuln
+.PHONY: test test-conformance test-integration test-e2e test-ci race build lint coverage vuln demo
 
 # ─── Core unit tests ──────────────────────────────────────────────────────────
 test:
@@ -48,3 +48,10 @@ vuln:
 lint:
 	go vet ./...
 	@which staticcheck >/dev/null 2>&1 && staticcheck ./... || true
+
+# ─── Offline demo (no API key) ────────────────────────────────────────────────
+# Runs the full HITL + approval-content-binding + audit-chain walkthrough with a
+# stub agent. --auto approves via curl so it is non-interactive in CI.
+demo:
+	./demo/run-demo.sh --auto
+	./demo/run-demo.sh --auto --tamper
