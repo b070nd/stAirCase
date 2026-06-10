@@ -182,12 +182,12 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	// Write the bootstrap message then seal stdin.
 	enc := json.NewEncoder(stdin)
 	if err := enc.Encode(BootstrapMessage{
-		Type:             "bootstrap",
-		SocketPath:       socketPath,
-		Token:            token,
-		RecordLLM:        lpo.RecordLLM,
-		ReplayLLM:        lpo.ReplayLLM,
-		RunnerPath:       RunnerInjectDir(venvPath),
+		Type:           "bootstrap",
+		SocketPath:     socketPath,
+		Token:          token,
+		RecordLLM:      lpo.RecordLLM,
+		ReplayLLM:      lpo.ReplayLLM,
+		RunnerPath:     RunnerInjectDir(venvPath),
 		AllowShellExec: lpo.AllowShellExec,
 	}); err != nil {
 		cancel()

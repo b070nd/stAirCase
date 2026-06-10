@@ -152,6 +152,7 @@ is skipped and the PR URL is printed for manual use.`,
 //
 //	https://github.com/owner/repo.git → owner, repo, true
 //	git@github.com:owner/repo.git     → owner, repo, true
+//
 // Anchored (^) so a malicious URL embedding "github.com" in its path
 // (e.g. https://evil.example/https://github.com/o/r) is never treated as
 // a GitHub remote — that decision also gates token attachment on push.

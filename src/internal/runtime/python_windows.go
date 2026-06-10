@@ -25,7 +25,6 @@ type BootstrapMessage struct {
 	AllowShellExec bool   `json:"allow_shell_exec,omitempty"`
 }
 
-
 // LaunchPythonOptions mirrors the non-Windows definition.
 type LaunchPythonOptions struct {
 	RecordLLM      string
