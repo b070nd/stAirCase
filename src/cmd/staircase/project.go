@@ -135,7 +135,17 @@ var projectDepAddCmd = &cobra.Command{
 var projectSetWebhookCmd = &cobra.Command{
 	Use:   "set-webhook <project-id> <url>",
 	Short: "Set (or clear) the HITL webhook URL for a project",
-	Args:  cobra.RangeArgs(1, 2),
+	Long: `Set (or clear) the HITL webhook URL for a project.
+
+To authenticate the webhook channel (strongly recommended — otherwise a network
+attacker can forge approvals), store a shared HMAC secret under the reserved key:
+
+    staircase secret set __webhook_hmac_secret__ <secret> --project <project-id>
+
+When that secret is present, stAirCase HMAC-signs each outbound yield and rejects
+any response that is not validly signed with the same secret. The approver must
+verify the X-Staircase-Signature request header and sign its response the same way.`,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()
 		if err != nil {
