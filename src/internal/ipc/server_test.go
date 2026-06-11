@@ -644,6 +644,33 @@ func TestServer_secret_request_not_found(t *testing.T) {
 	assert.Equal(t, "not found", resp.Error)
 }
 
+// ─── secret_request — reserved keys are not deliverable to agents ─────────────
+
+// TestServer_secret_request_rejects_reserved_key verifies that an agent cannot
+// fetch an infrastructure secret (e.g. the webhook HMAC secret) via the IPC
+// secret channel — even when such a secret exists in the store — which would
+// otherwise let a compromised runtime forge webhook approvals.
+func TestServer_secret_request_rejects_reserved_key(t *testing.T) {
+	srv, store, _, token, _ := newIPCEnv(t)
+
+	aesKey := make([]byte, 32)
+	encrypted, err := crypto.Encrypt(aesKey, "super-secret-hmac")
+	require.NoError(t, err)
+	_, err = store.CreateSecret("__webhook_hmac_secret__", encrypted, nil)
+	require.NoError(t, err)
+
+	enc, sc, _ := dial(t, srv.ListenAddr(), token)
+	require.NoError(t, enc.Encode(ipc.IpcSecretRequest{
+		Type:    "secret_request",
+		KeyName: "__webhook_hmac_secret__",
+	}))
+	require.True(t, sc.Scan())
+	var resp ipc.IpcSecretResponse
+	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
+	assert.Empty(t, resp.PlaintextValue, "reserved secret must never be delivered")
+	assert.Contains(t, resp.Error, "reserved key")
+}
+
 // ─── secret_request — found and decrypted ────────────────────────────────────
 
 // TestServer_secret_request_decrypts_before_delivery verifies the critical
@@ -1482,7 +1509,7 @@ func TestServer_schema_rejects_missing_required_field(t *testing.T) {
 	enc, sc, _ := dial(t, srv.ListenAddr(), token)
 
 	msg := map[string]interface{}{
-		"type":             "yield_request",
+		"type": "yield_request",
 		// agent_name intentionally omitted
 		"action_type":      "file_edit",
 		"reasoning_trace":  "fix bug",

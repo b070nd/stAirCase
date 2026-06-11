@@ -16,10 +16,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/policy"
 	"github.com/b070nd/staircase-core/src/internal/runtime"
 	"github.com/b070nd/staircase-core/src/internal/tui"
+	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
 )
 
@@ -261,6 +264,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		return fmt.Errorf("load workspace key: %w", err)
 	}
 
+	// Per-project HMAC secret for authenticating webhook approvals. When a
+	// webhook is configured without a secret the channel is unauthenticated —
+	// warn loudly so operators know to set one with `staircase project set-webhook --secret`.
+	webhookSecret := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
+	if project.WebhookURL != "" && len(webhookSecret) == 0 {
+		obs.Log.Warn("webhook approvals are UNAUTHENTICATED — set a secret with 'staircase project set-webhook --secret' to prevent forged approvals",
+			"project_id", caseRec.ProjectID)
+	}
+
 	tmpDir := filepath.Join(r.wsDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
@@ -444,7 +456,7 @@ runLoop:
 					_, ch := approvalSrv.PendYield(yieldReq)
 					resp = <-ch
 				case project.WebhookURL != "":
-					resp = sendWebhookYield(project.WebhookURL, yieldReq)
+					resp = sendWebhookYield(project.WebhookURL, webhookSecret, yieldReq)
 				default:
 					resp = tui.RunYieldTUI(yieldReq)
 				}
@@ -468,7 +480,7 @@ runLoop:
 					_, ch := approvalSrv.PendYield(yieldReq)
 					resp = <-ch
 				case project.WebhookURL != "":
-					resp = sendWebhookYield(project.WebhookURL, yieldReq)
+					resp = sendWebhookYield(project.WebhookURL, webhookSecret, yieldReq)
 				default:
 					resp = tui.RunYieldTUI(yieldReq)
 				}
@@ -666,18 +678,73 @@ func handleDirtyTree(repoPath string, autoStash bool) (stashed bool, err error) 
 // webhookClient is shared across all webhook calls within a single run.
 var webhookClient = &http.Client{Timeout: 30 * time.Second}
 
-func sendWebhookYield(webhookURL string, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
+// loadWebhookSecret returns the decrypted per-project webhook HMAC secret, or
+// nil when none is configured. A missing secret is not an error — it means the
+// webhook channel runs unauthenticated (legacy behaviour, warned about once).
+func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
+	sec, err := r.store.GetSecret(webhookauth.SecretKeyName, &projectID)
+	if err != nil || sec == nil {
+		return nil
+	}
+	plaintext, err := crypto.Decrypt(aesKey, sec.EncryptedValue)
+	if err != nil {
+		obs.Log.Warn("webhook secret decrypt failed — treating channel as unauthenticated", "err", err)
+		return nil
+	}
+	return []byte(plaintext)
+}
+
+// sendWebhookYield POSTs the yield to the project webhook and returns the
+// operator decision. When secret is non-empty the request is HMAC-signed and
+// the response signature is verified; an unsigned, mis-signed, stale, or
+// otherwise unverifiable response is treated as a rejection so a network
+// attacker cannot forge an approval.
+func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
+	reject := func(msg string) ipc.IpcYieldResponse {
+		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: msg}
+	}
 	body, _ := json.Marshal(req)
-	resp, err := webhookClient.Post(webhookURL, "application/json", bytes.NewReader(body))
+
+	httpReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
+	if err != nil {
+		obs.Log.Warn("webhook request build failed — auto-rejecting", "err", err)
+		return reject("webhook error: " + err.Error())
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if len(secret) > 0 {
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		httpReq.Header.Set(webhookauth.HeaderTimestamp, ts)
+		httpReq.Header.Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, ts, body))
+	}
+
+	resp, err := webhookClient.Do(httpReq)
 	if err != nil {
 		obs.Log.Warn("webhook POST failed — auto-rejecting", "err", err)
-		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "webhook error: " + err.Error()}
+		return reject("webhook error: " + err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		obs.Log.Warn("webhook response read failed — auto-rejecting", "err", err)
+		return reject("webhook read error: " + err.Error())
+	}
+
+	// Authenticated channel: the response MUST carry a valid signature.
+	if len(secret) > 0 {
+		if verr := webhookauth.Verify(secret,
+			resp.Header.Get(webhookauth.HeaderTimestamp),
+			resp.Header.Get(webhookauth.HeaderSignature),
+			respBody, time.Now(), webhookauth.DefaultMaxSkew); verr != nil {
+			obs.Log.Error("webhook response signature INVALID — rejecting (possible forgery)", "err", verr)
+			return reject("webhook response failed signature verification: " + verr.Error())
+		}
+	}
+
 	var yieldResp ipc.IpcYieldResponse
-	if err := json.NewDecoder(resp.Body).Decode(&yieldResp); err != nil {
+	if err := json.Unmarshal(respBody, &yieldResp); err != nil {
 		obs.Log.Warn("webhook response decode failed — auto-rejecting", "err", err)
-		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "webhook decode error: " + err.Error()}
+		return reject("webhook decode error: " + err.Error())
 	}
 	if yieldResp.Type == "" {
 		yieldResp.Type = "yield_response"

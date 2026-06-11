@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -546,6 +547,16 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 				_ = s.store.LogSecretAccess(&s.runID, "", "error") // CHECK 4.4.1
 				obs.SecretAccessTotal.WithLabelValues("error").Inc()
 				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "key_name required"})
+				break
+			}
+			// Reserved keys (e.g. the webhook HMAC secret) are infrastructure
+			// secrets the orchestrator uses on the agent's behalf; they must
+			// never be deliverable to the agent runtime, which could otherwise
+			// exfiltrate them to forge approvals.
+			if strings.HasPrefix(req.KeyName, "__") {
+				_ = s.store.LogSecretAccess(&s.runID, req.KeyName, "error") // CHECK 4.4.1
+				obs.SecretAccessTotal.WithLabelValues("error").Inc()
+				_ = enc.Encode(IpcSecretResponse{Type: "secret_response", Error: "reserved key not available to agents"})
 				break
 			}
 			// Reject requests targeting a different project — prevents a

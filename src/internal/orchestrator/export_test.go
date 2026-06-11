@@ -15,8 +15,9 @@ var ExportedHandleDirtyTree = handleDirtyTree
 func ExportedTimePtr(t time.Time) *time.Time { return timePtr(t) }
 
 // ExportedSendWebhookYield wraps sendWebhookYield for round-trip testing.
-func ExportedSendWebhookYield(url string, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
-	return sendWebhookYield(url, req)
+// secret may be nil for the unauthenticated path.
+func ExportedSendWebhookYield(url string, secret []byte, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
+	return sendWebhookYield(url, secret, req)
 }
 
 // ExportedScrubSecrets exposes scrubSecrets for whitebox tests (CHECK 4.4.3).

@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/ipc"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -698,13 +701,13 @@ func TestSendWebhookYield_successful_approval(t *testing.T) {
 		ReasoningTrace:  "trace",
 		ConfidenceScore: 0.9,
 	}
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, req)
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, req)
 	assert.True(t, resp.Approved)
 	assert.Equal(t, "looks good", resp.Feedback)
 }
 
 func TestSendWebhookYield_network_error_auto_rejects(t *testing.T) {
-	resp := orchestrator.ExportedSendWebhookYield("http://127.0.0.1:1", ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield("http://127.0.0.1:1", nil, ipc.IpcYieldRequest{})
 	assert.False(t, resp.Approved)
 	assert.Contains(t, resp.Feedback, "webhook error")
 }
@@ -718,7 +721,7 @@ func TestSendWebhookYield_fills_missing_type_field(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, ipc.IpcYieldRequest{})
 	assert.Equal(t, "yield_response", resp.Type)
 	assert.True(t, resp.Approved)
 }
@@ -729,9 +732,62 @@ func TestSendWebhookYield_bad_json_response_auto_rejects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, ipc.IpcYieldRequest{})
 	assert.False(t, resp.Approved)
 	assert.Contains(t, resp.Feedback, "webhook decode error")
+}
+
+// ─── authenticated webhook (HMAC) ─────────────────────────────────────────────
+
+// signedOperator returns an httptest server that verifies the inbound request
+// signature and signs its approval response with the same secret.
+func signedOperator(t *testing.T, secret []byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if err := webhookauth.Verify(secret,
+			r.Header.Get(webhookauth.HeaderTimestamp),
+			r.Header.Get(webhookauth.HeaderSignature),
+			raw, time.Now(), webhookauth.DefaultMaxSkew); err != nil {
+			http.Error(w, "bad signature", http.StatusUnauthorized)
+			return
+		}
+		respBody := []byte(`{"type":"yield_response","approved":true,"feedback":"signed-approve"}`)
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		w.Header().Set(webhookauth.HeaderTimestamp, ts)
+		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, ts, respBody))
+		_, _ = w.Write(respBody)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSendWebhookYield_signed_roundtrip_approves(t *testing.T) {
+	secret := []byte("project-secret")
+	srv := signedOperator(t, secret)
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, secret, ipc.IpcYieldRequest{Type: "yield_request"})
+	assert.True(t, resp.Approved)
+	assert.Equal(t, "signed-approve", resp.Feedback)
+}
+
+func TestSendWebhookYield_unsigned_response_rejected_when_secret_set(t *testing.T) {
+	// A forged/unsigned response must be rejected when the channel is
+	// authenticated — a network attacker cannot fabricate an approval.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"type":"yield_response","approved":true,"feedback":"forged"}`)
+	}))
+	defer srv.Close()
+
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, []byte("project-secret"), ipc.IpcYieldRequest{})
+	assert.False(t, resp.Approved, "unsigned response must not be honoured")
+	assert.Contains(t, resp.Feedback, "signature verification")
+}
+
+func TestSendWebhookYield_wrong_secret_rejected(t *testing.T) {
+	srv := signedOperator(t, []byte("operator-secret"))
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, []byte("attacker-secret"), ipc.IpcYieldRequest{})
+	// The operator rejects the mis-signed request (401) → invalid body → rejection.
+	assert.False(t, resp.Approved)
 }
 
 // ─── Run() integration — full lifecycle ──────────────────────────────────────
