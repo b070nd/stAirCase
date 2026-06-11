@@ -19,19 +19,19 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create workspace dir: %w", err)
 	}
 
-	// Safely inject SQLite pragmas in the connection string.
-	// busy_timeout(5000) prevents database locking errors during concurrent IPC writes.
-	// journal_mode(WAL) & synchronous(NORMAL) ensures high-throughput safety.
-	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	// Inject SQLite pragmas in the connection string so the driver applies them
+	// to EVERY pooled connection, not just the first one.
+	//   busy_timeout(5000) — wait out brief write locks instead of erroring.
+	//   journal_mode(WAL) & synchronous(NORMAL) — high-throughput durability.
+	//   foreign_keys(1) — FK enforcement is per-connection in SQLite; a one-shot
+	//     `PRAGMA foreign_keys=ON` only covered the single connection it ran on,
+	//     leaving other pooled connections unenforced. Setting it in the DSN
+	//     guarantees every connection enforces referential integrity.
+	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
 
 	db, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-
-	// Explicitly enforce foreign keys at the connection level
-	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
 	freshSchema, err := isFreshSchema(db)
