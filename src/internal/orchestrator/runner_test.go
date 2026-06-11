@@ -833,7 +833,10 @@ func TestRun_integration_script_failure(t *testing.T) {
 	defer cancel()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	_ = r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	// A failed run must surface as an error so the CLI exits non-zero.
+	require.Error(t, runErr)
+	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful)
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1460,8 +1463,9 @@ func TestRun_integration_content_hash_mismatch(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_ = orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
+	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
 		orchestrator.RunOptions{Force: true, SkipGates: true})
+	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful, "tampered run must surface as a non-success error")
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
