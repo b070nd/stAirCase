@@ -141,8 +141,9 @@ else
   fi
 fi
 
-# ── wait for completion ───────────────────────────────────────────────────────
-wait "$RUN_PID" || true
+# ── wait for completion (capture the exit code — CI relies on it) ─────────────
+RUN_EXIT=0
+wait "$RUN_PID" || RUN_EXIT=$?
 RUN_PID=""
 
 # ── show the result ───────────────────────────────────────────────────────────
@@ -153,12 +154,19 @@ if [ "$TAMPER" = "1" ]; then
   else
     echo "✗ expected the tampered run to FAIL"; cat "$RUN_LOG"; exit 1
   fi
+  if [ "$RUN_EXIT" -eq 0 ]; then
+    echo "✗ a failed run must exit non-zero so CI can detect it (got 0)"; exit 1
+  fi
+  note "✓ Process exited non-zero ($RUN_EXIT) — CI/automation detects the failure."
   if git -C "$TARGET_REPO" log --oneline 2>/dev/null | grep -q "staircase: run"; then
     echo "✗ tampered content must NOT be committed"; exit 1
   fi
   note "✓ Nothing committed. Look for the approval_content_mismatch event below."
 else
-  say "Run finished — here is what the agent actually committed"
+  if [ "$RUN_EXIT" -ne 0 ]; then
+    echo "✗ a successful run must exit 0 (got $RUN_EXIT)"; cat "$RUN_LOG"; exit 1
+  fi
+  say "Run finished (exit 0) — here is what the agent actually committed"
   if git -C "$TARGET_REPO" rev-parse --verify -q "staircase/run-1" >/dev/null 2>&1; then
     git -C "$TARGET_REPO" log "staircase/run-1" --stat --oneline -1 || true
   elif git -C "$TARGET_REPO" log --oneline -1 2>/dev/null | grep -q staircase; then

@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -34,6 +35,13 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
 )
+
+// ErrRunNotSuccessful is returned by [Runner.Run] when a run reaches a
+// non-success terminal state (FAILED or KILLED). The run is still fully
+// recorded and finalized; this error exists so that `staircase run` exits
+// non-zero and CI/automation can detect failure instead of treating a failed
+// agent run as success.
+var ErrRunNotSuccessful = errors.New("run did not complete successfully")
 
 // RunPhase labels each boundary of the orchestration state machine.
 // A crashed run leaves its [Runner.Phase] at the last phase it entered,
@@ -583,6 +591,11 @@ runLoop:
 		EndTime:     endTime,
 	})
 
+	// Surface a non-success terminal state as an error so the CLI exits
+	// non-zero (CI/automation must not treat a FAILED/KILLED run as success).
+	if finalStatus != persistence.RunStatusSuccess {
+		return fmt.Errorf("run #%d finished with status %s: %w", run.ID, finalStatus, ErrRunNotSuccessful)
+	}
 	return nil
 }
 

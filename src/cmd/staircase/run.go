@@ -17,18 +17,18 @@ import (
 )
 
 var (
-	runDryRun        bool
-	runForce         bool
-	runSkipGate      bool
-	runAutoStash     bool
-	runDebug         bool
-	runReconcile     bool
-	runApprovalPort  int
-	runApprovalToken string
-	runMetricsAddr   string
-	runOTelEndpoint  string
-	runRecordLLM     string
-	runReplayLLM     string
+	runDryRun         bool
+	runForce          bool
+	runSkipGate       bool
+	runAutoStash      bool
+	runDebug          bool
+	runReconcile      bool
+	runApprovalPort   int
+	runApprovalToken  string
+	runMetricsAddr    string
+	runOTelEndpoint   string
+	runRecordLLM      string
+	runReplayLLM      string
 	runAllowShellExec bool
 )
 
@@ -37,6 +37,11 @@ var runCmd = &cobra.Command{
 	Short: "Execute a Case run with the active swarm topology",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runCaseHandler,
+	// A FAILED/KILLED run returns an error so the process exits non-zero; the
+	// run already printed its own status, so suppress cobra's usage/error dump
+	// to keep that exit clean.
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func init() {
@@ -109,16 +114,16 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
-		DryRun:        runDryRun,
-		Force:         runForce,
-		SkipGates:     runSkipGate,
-		AutoStash:     runAutoStash,
-		Debug:         runDebug,
-		Reconcile:     runReconcile,
-		ApprovalPort:  runApprovalPort,
-		ApprovalToken: runApprovalToken,
-		RecordLLM:        runRecordLLM,
-		ReplayLLM:        runReplayLLM,
-		AllowShellExec:   runAllowShellExec,
+		DryRun:         runDryRun,
+		Force:          runForce,
+		SkipGates:      runSkipGate,
+		AutoStash:      runAutoStash,
+		Debug:          runDebug,
+		Reconcile:      runReconcile,
+		ApprovalPort:   runApprovalPort,
+		ApprovalToken:  runApprovalToken,
+		RecordLLM:      runRecordLLM,
+		ReplayLLM:      runReplayLLM,
+		AllowShellExec: runAllowShellExec,
 	})
 }
