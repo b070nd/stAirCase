@@ -621,12 +621,7 @@ func (s *Server) logEvent(eventType, payload string) {
 	gitHash := s.gitCommitHash
 	s.mu.Unlock()
 
-	prevHash, err := s.store.GetLastEventHash(s.runID)
-	if err != nil {
-		obs.Log.Warn("ipc event hash", "err", err)
-		return
-	}
-	if _, err := s.store.AppendEventLog(s.runID, eventType, payload, prevHash, gitHash); err != nil {
+	if _, err := s.store.AppendEventLogChained(s.runID, eventType, payload, gitHash); err != nil {
 		obs.Log.Warn("ipc append event", "err", err)
 		return
 	}

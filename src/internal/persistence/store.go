@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/domain"
@@ -13,6 +14,11 @@ import (
 // Store provides all persistence operations for stAirCase.
 type Store struct {
 	db *sql.DB
+	// appendMu serializes the read-last-hash + insert in AppendEventLogChained
+	// so two concurrent appenders (e.g. the IPC server goroutine and the
+	// orchestrator run loop) cannot read the same prevHash and fork the
+	// tamper-proof audit chain.
+	appendMu sync.Mutex
 }
 
 // NewStore creates a Store backed by an open database connection.
@@ -968,6 +974,24 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 		EventHash:     eventHash,
 		GitCommitHash: gitCommitHash,
 	}, nil
+}
+
+// AppendEventLogChained atomically reads the run's last event hash and appends
+// a new entry chained to it. The read+insert is serialized by appendMu so that
+// concurrent callers within the process cannot both observe the same prevHash
+// and fork the chain. This is the method production callers must use; the
+// lower-level AppendEventLog (explicit prevHash) is retained for tests and
+// external verifiers. Single-process serialization is sufficient because the
+// no_concurrent_run gate guarantees only one run writes a given workspace's
+// event log at a time.
+func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommitHash string) (*domain.RunEventLog, error) {
+	s.appendMu.Lock()
+	defer s.appendMu.Unlock()
+	prevHash, err := s.GetLastEventHash(runID)
+	if err != nil {
+		return nil, fmt.Errorf("read last event hash: %w", err)
+	}
+	return s.AppendEventLog(runID, eventType, payload, prevHash, gitCommitHash)
 }
 
 func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
