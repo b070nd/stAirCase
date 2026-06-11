@@ -496,8 +496,7 @@ runLoop:
 				"approved":    resp.Approved,
 				"feedback":    resp.Feedback,
 			}); err == nil {
-				prevHash, _ := r.store.GetLastEventHash(run.ID)
-				_, _ = r.store.AppendEventLog(run.ID, "yield_decided", string(payload), prevHash, "")
+				_, _ = r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), "")
 			}
 
 		case procErr := <-proc.Done:
@@ -537,8 +536,7 @@ runLoop:
 					"type": "approval_content_mismatch", "file": file,
 					"approved_hash": want, "actual_hash": got,
 				}); err == nil {
-					prevHash, _ := r.store.GetLastEventHash(run.ID)
-					_, _ = r.store.AppendEventLog(run.ID, "approval_content_mismatch", string(payload), prevHash, "")
+					_, _ = r.store.AppendEventLogChained(run.ID, "approval_content_mismatch", string(payload), "")
 				}
 				obs.Log.Error("approved content hash mismatch — refusing to commit",
 					"file", file, "approved", want, "actual", got, "run_id", run.ID)
