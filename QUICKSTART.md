@@ -50,7 +50,7 @@ sudo mv staircase /usr/local/bin/
 Verify:
 ```
 $ staircase version
-stAirCase v2.0.0
+stAirCase v0.1.0-dev (commit none, built unknown)
 ```
 
 The single static binary ships with no CGo; it uses a pure-Go SQLite driver. No shared libraries required.
