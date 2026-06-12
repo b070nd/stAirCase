@@ -37,6 +37,8 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ErrRunNotSuccessful is returned by [Runner.Run] when a run reaches a
@@ -106,6 +108,10 @@ func (r *Runner) Phase() RunPhase { return r.phase }
 func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	obs.ActiveRuns.Inc()
 	t0Run := time.Now()
+	// Root span for the whole run; yield spans become children via ctx.
+	ctx, runSpan := obs.Tracer.Start(ctx, "staircase.run",
+		trace.WithAttributes(attribute.Int64("staircase.case_id", caseID)))
+	defer runSpan.End()
 	defer func() {
 		obs.ActiveRuns.Dec()
 		obs.RunDuration.Observe(time.Since(t0Run).Seconds())
@@ -378,11 +384,18 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	}
 	defer func() { _ = scriptFD.Close() }()
 
+	// W3C traceparent of the run span so the Python runtime can join the trace.
+	traceparent := ""
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		traceparent = fmt.Sprintf("00-%s-%s-%s", sc.TraceID(), sc.SpanID(), sc.TraceFlags())
+	}
+
 	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
 		runtime.LaunchPythonOptions{
 			RecordLLM:      opts.RecordLLM,
 			ReplayLLM:      opts.ReplayLLM,
 			AllowShellExec: opts.AllowShellExec,
+			Traceparent:    traceparent,
 			// Redact any delivered secret from Python stderr before it is logged.
 			ScrubStderr: func(line string) string {
 				return string(crypto.ScrubBytes([]byte(line), ipcSrv.DeliveredSecrets()))
@@ -444,6 +457,12 @@ runLoop:
 			// CHECK 4.4.3 / 7.4.2: scrub delivered secret values from all
 			// operator-visible fields before any HITL presentation path.
 			yieldReq = scrubSecrets(yieldReq, ipcSrv.DeliveredSecrets())
+			// Child span of the run: its duration is the yield→decision
+			// latency, i.e. how long the human (or policy) took to decide.
+			_, yieldSpan := obs.Tracer.Start(ctx, "staircase.yield",
+				trace.WithAttributes(
+					attribute.String("staircase.agent", yieldReq.AgentName),
+					attribute.String("staircase.action_type", yieldReq.ActionType)))
 			var resp ipc.IpcYieldResponse
 			// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
 			// yield goes to the human operator regardless of policy rules.
@@ -508,6 +527,10 @@ runLoop:
 			if autoDecision {
 				source = "policy"
 			}
+			yieldSpan.SetAttributes(
+				attribute.Bool("staircase.approved", resp.Approved),
+				attribute.String("staircase.decision_source", source))
+			yieldSpan.End()
 			if payload, err := json.Marshal(map[string]any{
 				"type":        "yield_decided",
 				"source":      source,

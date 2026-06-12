@@ -108,6 +108,11 @@ _replay_llm:  str = _boot.get("replay_llm", "")
 _runner_path: str = _boot.get("runner_path", "")
 if _runner_path and _runner_path not in sys.path:
     sys.path.insert(0, _runner_path)
+# W3C trace context of the orchestrator's run span — exported so any OTel
+# instrumentation inside the runtime can join the distributed trace.
+_traceparent: str = _boot.get("traceparent", "")
+if _traceparent:
+    os.environ.setdefault("TRACEPARENT", _traceparent)
 _allow_shell_exec: bool = bool(_boot.get("allow_shell_exec", False))
 
 # Initialise recording/replay singletons once at module level.
