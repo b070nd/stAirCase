@@ -52,6 +52,11 @@ type BootstrapMessage struct {
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
 	// Absent (false) means shell execution is disabled — the safe default.
 	AllowShellExec bool `json:"allow_shell_exec,omitempty"`
+
+	// Traceparent is the W3C trace-context value of the orchestrator's run
+	// span. The Python runtime may use it to join the distributed trace; it
+	// is informational and safe to ignore.
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 // PythonProcess wraps a managed Python subprocess.
@@ -125,6 +130,8 @@ type LaunchPythonOptions struct {
 	// server's delivered-secrets cache so an agent printing a plaintext secret
 	// to stderr cannot leak it into orchestrator logs (CHECK 4.4.3).
 	ScrubStderr func(string) string
+	// Traceparent propagates the orchestrator's trace context (W3C format).
+	Traceparent string
 }
 
 func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
@@ -189,6 +196,7 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 		ReplayLLM:      lpo.ReplayLLM,
 		RunnerPath:     RunnerInjectDir(venvPath),
 		AllowShellExec: lpo.AllowShellExec,
+		Traceparent:    lpo.Traceparent,
 	}); err != nil {
 		cancel()
 		_ = cmd.Process.Kill()

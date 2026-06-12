@@ -23,6 +23,7 @@ type BootstrapMessage struct {
 	ReplayLLM      string `json:"replay_llm,omitempty"`
 	RunnerPath     string `json:"runner_path,omitempty"`
 	AllowShellExec bool   `json:"allow_shell_exec,omitempty"`
+	Traceparent    string `json:"traceparent,omitempty"`
 }
 
 // LaunchPythonOptions mirrors the non-Windows definition.
@@ -31,6 +32,7 @@ type LaunchPythonOptions struct {
 	ReplayLLM      string
 	AllowShellExec bool
 	ScrubStderr    func(string) string
+	Traceparent    string
 }
 
 // PythonProcess mirrors the non-Windows definition.
