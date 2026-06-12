@@ -14,14 +14,21 @@ package main
 // environments without Python3 remain green.
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/b070nd/staircase-core/src/internal/audit"
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/gate"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
@@ -623,4 +630,59 @@ func TestCheckpointSignatureTamper(t *testing.T) {
 
 	err = auditVerifyHandler(nil, []string{cpPath})
 	assert.Error(t, err, "tampered Ed25519 signature must fail verification")
+}
+
+// TestAudit_Export_anchor_and_verify_checkAnchor exercises the full B3 flow at
+// the CLI-handler level: export --anchor against a mock Rekor writes the
+// .anchor sidecar, and verify --check-anchor confirms the record against the
+// log. Flipping a byte in the checkpoint then makes --check-anchor fail.
+func TestAudit_Export_anchor_and_verify_checkAnchor(t *testing.T) {
+	wsDir, s := e2eWorkspace(t)
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+	runID := seedRunWithLogs(t, s, 2)
+
+	// Minimal mock Rekor: accepts any entry, serves it back by uuid.
+	entries := map[string]string{}
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var e map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&e)
+			raw, _ := json.Marshal(e)
+			sum := sha256.Sum256(raw)
+			uuid := hex.EncodeToString(sum[:])
+			entries[uuid] = base64.StdEncoding.EncodeToString(raw)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				uuid: map[string]any{"logIndex": 1, "logID": "mock", "integratedTime": 1750000000},
+			})
+			return
+		}
+		uuid := strings.TrimPrefix(r.URL.Path, "/api/v1/log/entries/")
+		if b, ok := entries[uuid]; ok {
+			_ = json.NewEncoder(w).Encode(map[string]any{uuid: map[string]any{"body": b}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(mock.Close)
+
+	// Export with anchoring enabled.
+	auditAnchor, auditRekorURL = true, mock.URL
+	t.Cleanup(func() { auditAnchor, auditCheckAnchor, auditRekorURL = false, false, audit.DefaultRekorURL })
+	require.NoError(t, auditExportHandler(nil, []string{strconv.FormatInt(runID, 10)}))
+
+	cpPath := filepath.Join(wsDir, "audit", fmt.Sprintf("run-%d.checkpoint.json", runID))
+	require.FileExists(t, cpPath+".anchor", "anchor sidecar must be written")
+
+	// Verify with anchor checking enabled.
+	auditCheckAnchor = true
+	require.NoError(t, auditVerifyHandler(nil, []string{cpPath}))
+
+	// Tamper with the checkpoint record → both signature and anchor must fail.
+	raw, err := os.ReadFile(cpPath)
+	require.NoError(t, err)
+	tampered := bytes.Replace(raw, []byte(`"state_emit"`), []byte(`"FORGED_evt"`), 1)
+	require.NotEqual(t, raw, tampered, "tamper must change the file")
+	require.NoError(t, os.WriteFile(cpPath, tampered, 0o600))
+	assert.Error(t, auditVerifyHandler(nil, []string{cpPath}))
 }
