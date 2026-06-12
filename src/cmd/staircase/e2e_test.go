@@ -6,7 +6,7 @@ package main
 // functions directly without spawning a subprocess, making them runnable in
 // standard `go test` without a pre-built binary or a Python venv.
 //
-// Coverage targets (from TECHNICAL_REVIEW §6 "What is not tested"):
+// Coverage targets (from docs/architecture.md §6 "What is not tested"):
 //   - cmd/staircase/* — all CLI command handlers
 //   - Full data-flow: persistence → gate → compile → inspect
 //

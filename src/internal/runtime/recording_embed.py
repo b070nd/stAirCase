@@ -13,7 +13,7 @@ Usage (controlled by the bootstrap message):
   boot["record_llm"] = "/path/to/new-recording.json"   → RecordingSession + RecordingClient
   boot["replay_llm"] = "/path/to/existing.json"         → ReplayClient (no real API calls)
 
-Recording format (compatible with FUNCTIONAL_TEST_PLAN.md §2.3):
+Recording format (compatible with docs/testing.md §2.3):
   {
     "id":        "<basename of file without .json>",
     "model":     "<first model seen, or 'multi' for mixed runs>",
