@@ -564,6 +564,26 @@ runLoop:
 	r.phase = PhaseFinalize
 	commitHash := ""
 	if finalStatus == persistence.RunStatusSuccess && gr != nil {
+		// Trust-boundary path sandbox: a compromised runtime can bypass the
+		// Python-side path guard and get an out-of-repo edit approved. Reject
+		// any approved path that escapes the project root BEFORE reading it —
+		// otherwise the content-hash check below becomes an arbitrary-file-read
+		// primitive (audit: approval_path_escape).
+		for _, file := range approvedFiles {
+			if !pathWithinRoot(project.SourcePath, file) {
+				if payload, err := json.Marshal(map[string]any{
+					"type": "approval_path_escape", "file": file,
+				}); err == nil {
+					_, _ = r.store.AppendEventLogChained(run.ID, "approval_path_escape", string(payload), "")
+				}
+				obs.Log.Error("approved file path escapes project root — refusing to commit",
+					"file", file, "root", project.SourcePath, "run_id", run.ID)
+				display.AddActivity(fmt.Sprintf("%-14s ABORT  %s escapes the project root", "finalize", file))
+				finalStatus = persistence.RunStatusFailed
+			}
+		}
+	}
+	if finalStatus == persistence.RunStatusSuccess && gr != nil {
 		// Approval-content binding: re-hash every file whose edit carried a
 		// content_hash and refuse to commit when the on-disk bytes differ from
 		// what the operator approved (audit: approval_content_mismatch).
@@ -776,6 +796,19 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 }
 
 func timePtr(t time.Time) *time.Time { return &t }
+
+// pathWithinRoot reports whether rel, joined onto root, stays inside root.
+// Absolute paths and any path that climbs out via ".." are rejected. Used to
+// sandbox agent-proposed file paths to the project repository at the commit
+// boundary, independent of the Python runtime's own path checks.
+func pathWithinRoot(root, rel string) bool {
+	if rel == "" || filepath.IsAbs(rel) {
+		return false
+	}
+	cleanRoot := filepath.Clean(root)
+	joined := filepath.Clean(filepath.Join(cleanRoot, rel))
+	return joined == cleanRoot || strings.HasPrefix(joined, cleanRoot+string(os.PathSeparator))
+}
 
 // scrubSecrets replaces every occurrence of each active secret value with
 // "<REDACTED>" across all operator-visible fields before the yield request

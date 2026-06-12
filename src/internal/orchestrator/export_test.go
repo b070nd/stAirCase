@@ -31,3 +31,6 @@ func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID)
 
 // ExportedWriteSummary exposes writeSummary for unit testing (CHECK 10.4.1).
 func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummary(wsDir, s) }
+
+// PathWithinRootForTest exposes pathWithinRoot for sandbox-predicate unit tests.
+func PathWithinRootForTest(root, rel string) bool { return pathWithinRoot(root, rel) }

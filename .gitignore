@@ -11,6 +11,7 @@ tasks/
 .setup/
 .claude/
 .review/
+graphify-out/
 vendor/
 /staircase
 /staircase-*
