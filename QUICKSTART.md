@@ -40,8 +40,8 @@ stAirCase embeds its own Python virtual environment (LangGraph, pydantic, langch
 
 ```bash
 # Clone and build
-git clone https://github.com/b070nd/staircase-core.git
-cd staircase-core
+git clone https://github.com/b070nd/stAirCase.git
+cd stAirCase
 
 CGO_ENABLED=0 go build -o staircase ./src/cmd/staircase/
 sudo mv staircase /usr/local/bin/

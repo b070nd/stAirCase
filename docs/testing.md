@@ -4,7 +4,7 @@
 
 **Audience:** engineer implementing tests, release manager deciding whether to ship, security reviewer deciding whether to sign off.
 
-**Companion documents:** `STAIRCASE_PLAN.md` (what we're building), `AUDIT_CHECKLIST.md` (what we check on every PR). This document covers what we do **before declaring a release ready**.
+**Companion documents:** [`architecture.md`](architecture.md) (how the system is built) and [`compliance-checklist.md`](compliance-checklist.md) (the CHECK-x.y.z controls verified on every PR). This document covers what we do **before declaring a release ready**.
 
 ---
 

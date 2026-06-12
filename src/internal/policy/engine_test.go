@@ -333,7 +333,7 @@ func TestEvaluate_type_compatible_with_domain(t *testing.T) {
 }
 
 // ─── Checklist-named tests (CHECK 7.1.3–7.2.2) ───────────────────────────────
-// The AUDIT_CHECKLIST.md specifies exact test names via grep.
+// The compliance checklist (docs/compliance-checklist.md) specifies exact test names via grep.
 
 // TestPolicyLoadValidation verifies that LoadEngine rejects files with invalid
 // JSON so the caller can surface the error to the operator (CHECK 7.1.3).
