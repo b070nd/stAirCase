@@ -30,6 +30,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -67,7 +69,21 @@ var auditVerifyCmd = &cobra.Command{
 	RunE:  auditVerifyHandler,
 }
 
+var (
+	auditAnchor      bool
+	auditCheckAnchor bool
+	auditRekorURL    string
+)
+
 func init() {
+	auditExportCmd.Flags().BoolVar(&auditAnchor, "anchor", false,
+		"Also anchor the signed checkpoint in a Rekor transparency log (external witness)")
+	auditExportCmd.Flags().StringVar(&auditRekorURL, "rekor-url", audit.DefaultRekorURL,
+		"Rekor server URL used by --anchor / --check-anchor")
+	auditVerifyCmd.Flags().BoolVar(&auditCheckAnchor, "check-anchor", false,
+		"Also verify each record against its Rekor anchor sidecar (<file>.anchor)")
+	auditVerifyCmd.Flags().StringVar(&auditRekorURL, "rekor-url", audit.DefaultRekorURL,
+		"Rekor server URL used by --anchor / --check-anchor")
 	auditCmd.AddCommand(auditExportCmd)
 	auditCmd.AddCommand(auditVerifyCmd)
 	rootCmd.AddCommand(auditCmd)
@@ -156,6 +172,21 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 	fmt.Printf("   run_id:  %d\n", runID)
 	fmt.Printf("   entries: %d\n", len(entries))
 	fmt.Printf("   sig:     %s…\n", sig[:16])
+
+	// External witness: anchor this record in a Rekor transparency log.
+	if auditAnchor {
+		recordHash := sha256.Sum256(out)
+		anchor, err := audit.AnchorRecord(auditRekorURL, out, hex.EncodeToString(recordHash[:]), privKey)
+		if err != nil {
+			return fmt.Errorf("anchor checkpoint: %w", err)
+		}
+		if err := audit.AppendAnchor(cpPath+".anchor", anchor); err != nil {
+			return fmt.Errorf("write anchor sidecar: %w", err)
+		}
+		fmt.Printf("🪨 Anchored in Rekor: %s\n", anchor.RekorURL)
+		fmt.Printf("   uuid:      %s\n", anchor.UUID)
+		fmt.Printf("   log_index: %d\n", anchor.LogIndex)
+	}
 	return nil
 }
 
@@ -203,6 +234,25 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("✅ Checkpoint %s (record %d) OK — run_id=%d entries=%d exported=%s\n",
 				cpPath, lineNum, cp.RunID, len(cp.Entries), cp.Exported.Format(time.RFC3339))
+		}
+
+		// Optional external-witness check against the Rekor anchor sidecar.
+		// Scope: confirms the entry exists in the log and the logged artifact
+		// matches this record byte-for-byte (no Merkle inclusion proof yet).
+		if auditCheckAnchor {
+			anchors, aErr := audit.LoadAnchors(cpPath + ".anchor")
+			if aErr != nil {
+				fmt.Printf("❌ record %d: load anchors: %v\n", lineNum, aErr)
+				anyFailed = true
+			} else {
+				recordHash := sha256.Sum256(line)
+				if anchor, vErr := audit.VerifyAnchor(line, hex.EncodeToString(recordHash[:]), anchors); vErr != nil {
+					fmt.Printf("❌ record %d: %v\n", lineNum, vErr)
+					anyFailed = true
+				} else {
+					fmt.Printf("🪨 record %d anchored OK — uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
+				}
+			}
 		}
 	}
 	if err := sc.Err(); err != nil {
