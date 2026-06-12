@@ -39,10 +39,12 @@ func TestScrubBytes(t *testing.T) {
 func TestPlaintextRedaction(t *testing.T) {
 	pt := crypto.NewPlaintext("super-secret-value")
 
-	// String() and %v must return the redacted sentinel.
+	// String(), %v, and %s must all return the redacted sentinel. The %s case
+	// intentionally exercises the fmt verb (not String() directly) to prove an
+	// accidental "%s" on a secret in logging code still redacts.
 	assert.Equal(t, "<redacted>", pt.String())
 	assert.Equal(t, "<redacted>", fmt.Sprintf("%v", pt))
-	assert.Equal(t, "<redacted>", fmt.Sprintf("%s", pt))
+	assert.Equal(t, "<redacted>", fmt.Sprintf("%s", pt)) //nolint:staticcheck // S1025: %s verb is the behavior under test
 
 	// Value() still returns the underlying string.
 	assert.Equal(t, "super-secret-value", pt.Value())

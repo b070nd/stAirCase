@@ -18,7 +18,7 @@ const rotateJournalFile = ".key-rotate-journal"
 type rotateJournal struct {
 	// Stage is "pending" (before DB commit) or "committed" (after DB commit,
 	// before key-file rename).
-	Stage      string `json:"stage"`
+	Stage string `json:"stage"`
 	// NewKeyPath is the absolute path of the temp file holding the new key bytes.
 	NewKeyPath string `json:"new_key_path"`
 }
