@@ -37,6 +37,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
+	gogit "github.com/go-git/go-git/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -70,7 +71,7 @@ type RunOptions struct {
 	SkipGates     bool
 	AutoStash     bool
 	Debug         bool
-	Reconcile     bool // clean up orphan branches / stale runs before proceeding
+	Reconcile     bool // inspect orphan branches / stale runs before proceeding
 	ApprovalPort  int
 	ApprovalToken string
 	// RecordLLM, when non-empty, is a file path where the Python harness records
@@ -105,7 +106,9 @@ func (r *Runner) Phase() RunPhase { return r.phase }
 //
 // Phases executed in order: PRE_FLIGHT → BRANCH_CREATE → IPC_LISTEN →
 // PYTHON_BOOT → AGENT_LOOP → FINALIZE → BRANCH_RESTORE (on non-success).
-func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
+func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	obs.ActiveRuns.Inc()
 	t0Run := time.Now()
 	// Root span for the whole run; yield spans become children via ctx.
@@ -150,7 +153,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 		if err != nil {
 			obs.Log.Warn("reconcile", "err", err)
 		} else if len(result.StalledRuns) > 0 || len(result.OrphanBranches) > 0 {
-			fmt.Fprintf(os.Stdout, "   🔄 Reconcile: %d stale run(s) killed, %d orphan branch(es) pruned\n",
+			fmt.Fprintf(os.Stdout, "   🔄 Reconcile: %d stale run(s) killed, %d branch(es) retained for inspection\n",
 				len(result.StalledRuns), len(result.OrphanBranches))
 		}
 	}
@@ -213,31 +216,57 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if opts.DryRun {
 		fmt.Fprintf(os.Stdout, "   [dry-run] socket would be: %s\n",
 			filepath.Join(r.wsDir, "tmp", fmt.Sprintf("run-%d.sock", run.ID)))
-		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusKilled, timePtr(time.Now()), "")
-		return nil
+		return r.store.UpdateRunStatus(run.ID, persistence.RunStatusKilled, timePtr(time.Now()), "")
 	}
 
 	// ── BRANCH_CREATE ─────────────────────────────────────────────────────────
 	r.phase = PhaseBranchCreate
 	runBranch := fmt.Sprintf("staircase/run-%d", run.ID)
 	runBranchCreated := false
-	finalStatus := ""
+	finalStatus := persistence.RunStatusFailed
+	commitHash := ""
+	var display *monitor.Display
 
 	defer func() {
+		if runErr != nil && finalStatus == persistence.RunStatusSuccess {
+			finalStatus = persistence.RunStatusFailed
+		}
+		endTime := time.Now()
+		if err := r.store.FinishRun(run.ID, finalStatus, endTime, commitHash); err != nil {
+			finalStatus = persistence.RunStatusFailed
+			runErr = errors.Join(runErr, err)
+			if err := r.store.FinishRun(run.ID, finalStatus, endTime, commitHash); err != nil {
+				runErr = errors.Join(runErr, err)
+			}
+		}
+		if err := writeSummary(r.wsDir, RunSummary{
+			RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus,
+			CommitHash: commitHash, EndTime: endTime,
+		}); err != nil {
+			finalStatus = persistence.RunStatusFailed
+			runErr = errors.Join(runErr, fmt.Errorf("write run summary: %w", err))
+			if err := r.store.FinishRun(run.ID, finalStatus, endTime, commitHash); err != nil {
+				runErr = errors.Join(runErr, err)
+			}
+		}
 		r.phase = PhaseBranchRestore
 		if runBranchCreated && gr != nil && finalStatus != persistence.RunStatusSuccess {
 			if err := gr.CheckoutBranch(gitBranch); err != nil {
-				obs.Log.Warn("restore branch", "branch", gitBranch, "err", err)
+				runErr = errors.Join(runErr, fmt.Errorf("restore branch %q: %w", gitBranch, err))
 			}
+		}
+		if finalStatus != persistence.RunStatusSuccess {
+			runErr = errors.Join(runErr, fmt.Errorf("run #%d finished with status %s: %w", run.ID, finalStatus, ErrRunNotSuccessful))
+		}
+		if display != nil {
+			display.Final(fmt.Sprintf("Run #%d %s", run.ID, finalStatus))
 		}
 	}()
 
 	if gr != nil {
-		// Remove stale branch from a prior crashed run with the same ID.
+		// A workspace-local run ID does not prove ownership of an existing ref.
 		if gr.BranchExists(runBranch) {
-			if err := gr.DeleteBranch(runBranch); err != nil {
-				return fmt.Errorf("delete stale branch %q: %w", runBranch, err)
-			}
+			return fmt.Errorf("run branch %q already exists; inspect and preserve it before retrying", runBranch)
 		}
 		if err := gr.CreateBranch(runBranch); err != nil {
 			return fmt.Errorf("create blast-radius branch %q: %w", runBranch, err)
@@ -337,7 +366,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 
 	tracker := monitor.NewTracker(run.ID, caseID, project.Name, gitBranch)
 	_, budgetCap, _ := r.store.GetProjectConfig(caseRec.ProjectID)
-	display := monitor.NewDisplay(tracker, budgetCap)
+	display = monitor.NewDisplay(tracker, budgetCap)
 	display.Render()
 
 	renderTicker := time.NewTicker(500 * time.Millisecond)
@@ -348,8 +377,6 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	canonicalScript := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
 	scriptPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_%d.py", run.ID))
 	if _, err := os.Stat(canonicalScript); os.IsNotExist(err) {
-		now := time.Now()
-		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
 		return fmt.Errorf("graph_exec script not found — run 'staircase compile %d' first", caseID)
 	}
 	srcBytes, err := os.ReadFile(canonicalScript)
@@ -365,8 +392,6 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 	if storedHex, readErr := os.ReadFile(hashSidecar); readErr == nil {
 		actual := sha256.Sum256(srcBytes)
 		if hex.EncodeToString(actual[:]) != strings.TrimSpace(string(storedHex)) {
-			now := time.Now()
-			_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
 			return fmt.Errorf("graph_exec script integrity check failed — recompile with 'staircase compile %d'", caseID)
 		}
 	} else {
@@ -402,16 +427,20 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
 			},
 		})
 	if err != nil {
-		now := time.Now()
-		_ = r.store.UpdateRunStatus(run.ID, persistence.RunStatusFailed, &now, "")
 		return fmt.Errorf("launch python: %w", err)
 	}
+	processFinished := false
+	defer func() {
+		if !processFinished {
+			proc.Kill()
+		}
+	}()
 	fmt.Fprintf(os.Stdout, "   🐍 Python PID=%d\n", proc.PID())
 
 	// ── AGENT_LOOP ────────────────────────────────────────────────────────────
 	r.phase = PhaseAgentLoop
 	if err := r.store.UpdateCaseStatus(caseID, persistence.CaseStatusRunning); err != nil {
-		obs.Log.Warn("update case status", "err", err)
+		return fmt.Errorf("mark case running: %w", err)
 	}
 
 	// Yield counters for policy limit enforcement (CHECK 7.2.1, 7.2.2).
@@ -447,6 +476,9 @@ runLoop:
 			if display.BudgetExceeded() {
 				fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
 				proc.Kill()
+				processFinished = true
+				finalStatus = persistence.RunStatusKilled
+				break runLoop
 			}
 
 		case <-renderTicker.C:
@@ -543,18 +575,18 @@ runLoop:
 			}
 
 		case procErr := <-proc.Done:
+			processFinished = true
 			if procErr != nil {
-				display.Final(fmt.Sprintf("Run #%d FAILED: %v", run.ID, procErr))
+				runErr = fmt.Errorf("agent process: %w", procErr)
 				finalStatus = persistence.RunStatusFailed
 			} else {
-				display.Final(fmt.Sprintf("Run #%d completed.", run.ID))
 				finalStatus = persistence.RunStatusSuccess
 			}
 			break runLoop
 
 		case <-ctx.Done():
 			proc.Kill()
-			display.Final(fmt.Sprintf("Run #%d KILLED", run.ID))
+			processFinished = true
 			finalStatus = persistence.RunStatusKilled
 			break runLoop
 		}
@@ -562,7 +594,6 @@ runLoop:
 
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
-	commitHash := ""
 	if finalStatus == persistence.RunStatusSuccess && gr != nil {
 		// Trust-boundary path sandbox: a compromised runtime can bypass the
 		// Python-side path guard and get an out-of-repo edit approved. Reject
@@ -608,50 +639,23 @@ runLoop:
 			}
 		}
 	}
-	if finalStatus == persistence.RunStatusSuccess && gr != nil {
+	if finalStatus == persistence.RunStatusSuccess && gr != nil && len(approvedFiles) > 0 {
 		// Stage only paths that were explicitly approved via file_edit yields.
 		// AddAll() is intentionally NOT used: it would commit any unrelated
 		// worktree changes (stale edits, leftover tmp files, etc.).
-		_ = gr.AddFiles(approvedFiles)
+		if err := gr.AddFiles(approvedFiles); err != nil {
+			return fmt.Errorf("stage approved files: %w", err)
+		}
 		msg := fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID)
 		if hash, err := gr.Commit(msg); err == nil {
 			commitHash = hash
 			ipcSrv.SetGitCommitHash(commitHash)
-		}
-		if stories, err := r.store.ListUserStoriesByCase(caseID); err == nil {
-			for _, us := range stories {
-				if us.Status == persistence.StoryStatusPending {
-					_ = r.store.UpdateUserStoryStatus(us.ID, persistence.StoryStatusImplemented)
-				}
-			}
+		} else if !errors.Is(err, gogit.ErrEmptyCommit) {
+			return fmt.Errorf("commit approved files: %w", err)
 		}
 	}
 
-	endTime := time.Now()
-	_ = r.store.UpdateRunStatus(run.ID, finalStatus, &endTime, commitHash)
-
-	caseStatusMap := map[string]string{
-		persistence.RunStatusSuccess: persistence.CaseStatusCompleted,
-		persistence.RunStatusFailed:  persistence.CaseStatusFailed,
-		persistence.RunStatusKilled:  persistence.CaseStatusFailed,
-	}
-	_ = r.store.UpdateCaseStatus(caseID, caseStatusMap[finalStatus])
-
-	// Write per-run summary (CHECK 10.4.1).
-	_ = writeSummary(r.wsDir, RunSummary{
-		RunID:       run.ID,
-		CaseID:      caseID,
-		FinalStatus: finalStatus,
-		CommitHash:  commitHash,
-		EndTime:     endTime,
-	})
-
-	// Surface a non-success terminal state as an error so the CLI exits
-	// non-zero (CI/automation must not treat a FAILED/KILLED run as success).
-	if finalStatus != persistence.RunStatusSuccess {
-		return fmt.Errorf("run #%d finished with status %s: %w", run.ID, finalStatus, ErrRunNotSuccessful)
-	}
-	return nil
+	return runErr
 }
 
 // RunSummary is the on-disk representation of a completed run (CHECK 10.4.1).
@@ -674,7 +678,21 @@ func writeSummary(wsDir string, s RunSummary) error {
 	if err != nil {
 		return fmt.Errorf("marshal summary: %w", err)
 	}
-	return os.WriteFile(filepath.Join(dir, "summary.json"), data, 0o600)
+	f, err := os.CreateTemp(dir, ".summary-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), filepath.Join(dir, "summary.json"))
 }
 
 // runGates executes all quality gates and returns an error if any BLOCK gate fails.

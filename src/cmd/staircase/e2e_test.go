@@ -97,6 +97,21 @@ func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 
 // ─── Scenario 1: Workspace bootstrap ─────────────────────────────────────────
 
+func TestStoryAccept_requires_explicit_existing_story(t *testing.T) {
+	_, s := e2eWorkspace(t)
+	caseID, _ := seedFullCase(t, s)
+	stories, err := s.ListUserStoriesByCase(caseID)
+	require.NoError(t, err)
+	require.Len(t, stories, 1)
+	assert.Equal(t, persistence.StoryStatusPending, stories[0].Status)
+	require.NoError(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{strconv.FormatInt(stories[0].ID, 10)}))
+	stories, err = s.ListUserStoriesByCase(caseID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.StoryStatusImplemented, stories[0].Status)
+	require.ErrorContains(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{"999999"}), "not found")
+	require.Error(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{"invalid"}))
+}
+
 // TestE2E_WorkspaceBootstrap_DBAndKey verifies that InitDB + GenerateKey
 // produce a usable workspace on a fresh directory.
 func TestE2E_WorkspaceBootstrap_DBAndKey(t *testing.T) {

@@ -101,7 +101,29 @@ var storyInvalidateCmd = &cobra.Command{
 	},
 }
 
+var storyAcceptCmd = &cobra.Command{
+	Use:   "accept <story-id>",
+	Short: "Record operator acceptance after independently verifying a story",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		storyID, err := parseID("story-id", args[0])
+		if err != nil {
+			return err
+		}
+		store, db, err := openStore()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+		if err := store.UpdateUserStoryStatus(storyID, persistence.StoryStatusImplemented); err != nil {
+			return fmt.Errorf("accept story: %w", err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Story #%d accepted by operator and marked IMPLEMENTED.\n", storyID)
+		return nil
+	},
+}
+
 func init() {
-	storyCmd.AddCommand(storyAddCmd, storyListCmd, storyInvalidateCmd)
+	storyCmd.AddCommand(storyAddCmd, storyListCmd, storyInvalidateCmd, storyAcceptCmd)
 	rootCmd.AddCommand(storyCmd)
 }

@@ -588,8 +588,18 @@ func (s *Store) CreateUserStory(caseID int64, description string) (*domain.UserS
 }
 
 func (s *Store) UpdateUserStoryStatus(storyID int64, status string) error {
-	_, err := s.db.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, status, storyID)
-	return err
+	res, err := s.db.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, status, storyID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("story %d not found", storyID)
+	}
+	return nil
 }
 
 func (s *Store) ListUserStoriesByCase(caseID int64) ([]domain.UserStory, error) {
@@ -864,6 +874,44 @@ func (s *Store) UpdateRunStatus(runID int64, status string, endTime *time.Time, 
 		status, endTime, commitHash, runID,
 	)
 	return err
+}
+
+// FinishRun atomically records a terminal run and its case outcome. Execution
+// does not accept stories: a successful case with unverified work stays pending.
+func (s *Store) FinishRun(runID int64, status string, endTime time.Time, commitHash string) error {
+	if status != RunStatusSuccess && status != RunStatusFailed && status != RunStatusKilled {
+		return fmt.Errorf("finish run: invalid terminal status %q", status)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("finish run: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var caseID int64
+	if err := tx.QueryRow(`SELECT case_id FROM runs WHERE id = ?`, runID).Scan(&caseID); err != nil {
+		return fmt.Errorf("finish run: load case: %w", err)
+	}
+	caseStatus := CaseStatusFailed
+	if status == RunStatusSuccess {
+		var remaining int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM user_stories WHERE case_id = ? AND status != 'IMPLEMENTED'`, caseID).Scan(&remaining); err != nil {
+			return fmt.Errorf("finish run: inspect stories: %w", err)
+		}
+		caseStatus = CaseStatusCompleted
+		if remaining > 0 {
+			caseStatus = CaseStatusPending
+		}
+	}
+	if _, err := tx.Exec(`UPDATE runs SET status = ?, end_time = ?, git_commit_hash = ? WHERE id = ?`, status, endTime, commitHash, runID); err != nil {
+		return fmt.Errorf("finish run: update run: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE cases SET status = ?, last_modified = ? WHERE id = ?`, caseStatus, endTime, caseID); err != nil {
+		return fmt.Errorf("finish run: update case: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("finish run: commit: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) ListRunsByCase(caseID int64) ([]domain.Run, error) {

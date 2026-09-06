@@ -4,6 +4,12 @@
 
 stAirCase orchestrates multi-agent LLM swarms (built on LangGraph) against your source repositories. You describe *what* to build in plain English; a supervisor agent routes specialised workers to read, reason about, and edit your code — with a human-in-the-loop approval gate before every change lands.
 
+**Evaluation safety:** use a disposable project clone and an external workspace.
+Read [Project Use and Current Safety Boundary](docs/project-use.md) before a live
+run. The runtime is not OS-sandboxed, and an execution marked `SUCCESS` does not
+automatically accept user stories. After independently checking the result, use
+`staircase story accept <story-id>` and explicitly complete the case.
+
 ---
 
 ## Table of Contents
