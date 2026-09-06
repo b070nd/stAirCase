@@ -16,18 +16,23 @@ coordinate a fix and disclosure timeline with you.
 
 ## Security model
 
-The design assumes **the agent runtime is potentially compromised**. The Go
-control plane is the trust boundary; every security decision is enforced there,
-never delegated to the Python side.
+The intended design must handle a potentially compromised runtime, but the
+current implementation does **not** provide OS-enforced containment. Go is the
+authority for the supported IPC protocol. Python runs as the same OS user and
+can bypass that protocol to access host files, Git metadata, or credentials.
+Disabling the provided shell tool does not remove those process privileges.
+See [Project Use and Current Safety Boundary](docs/project-use.md).
 
 - **Trust boundary at the orchestrator.** The Python/LangGraph runtime speaks an
   authenticated IPC protocol over a `0600` Unix domain socket with a per-run
-  token. It is never trusted to police itself — path sandboxing, approval,
-  secret delivery, and audit logging are all enforced in Go.
+  token. Go checks protocol requests, but the socket does not restrict direct
+  filesystem or process access by the runtime.
 - **Content-bound approval.** A `file_edit` approval is bound to a SHA-256 of the
-  exact post-edit content. Before commit, the orchestrator re-hashes the file and
-  refuses to commit (recording `approval_content_mismatch`) if the bytes differ
-  from what was approved.
+  agent-supplied post-edit content. When a hash is supplied, the orchestrator
+  re-hashes the file before commit and refuses to commit on mismatch (recording
+  `approval_content_mismatch`). Hashes are currently optional and are not derived
+  independently from the displayed proposal; this is not protection against
+  dishonest proposals or direct index manipulation.
 - **Repository path sandbox.** Approved file paths that are absolute or escape the
   project root are rejected at the commit boundary (recording
   `approval_path_escape`) — even if the agent bypasses the runtime's own checks.
@@ -50,9 +55,11 @@ never delegated to the Python side.
 
 These are documented, not hidden:
 
-- When `--allow-shell-exec` is enabled, commands run as the orchestrator OS user
-  **without** an OS-level sandbox (namespaces/seccomp). Run such workloads in a
-  container until native isolation lands.
+- All Python runs, not only `--allow-shell-exec` runs, execute as the orchestrator
+  OS user **without** an OS-level sandbox. Use a restricted container or VM for
+  untrusted workloads; do not expose the primary checkout or unrelated secrets.
+- Runs currently operate in the supplied repository's working tree. A dedicated
+  branch is not a separate checkout or a permission boundary.
 - The audit chain uses raw Ed25519 over canonical JSON, not yet DSSE envelopes;
   Rekor anchoring proves log inclusion and content match but not (yet) full Merkle
   inclusion-proof verification.

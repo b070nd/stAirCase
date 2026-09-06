@@ -14,28 +14,23 @@ import (
 type ReconcileResult struct {
 	// StalledRuns holds the IDs of runs that were RUNNING and got marked KILLED.
 	StalledRuns []int64
-	// OrphanBranches holds staircase/run-* branch names that had no corresponding
-	// RUNNING run in the database. If pruneBranches was true, these are branches
-	// that could NOT be deleted (delete failed); successfully pruned branches are
-	// not included.
+	// OrphanBranches holds staircase/run-* branches requiring manual inspection.
+	// A missing/failed run record does not prove that its branch is disposable.
 	OrphanBranches []string
 }
 
-// Reconcile detects and optionally cleans up orphan staircase/run-* branches
+// Reconcile detects orphan staircase/run-* branches
 // in sourcePath and stale RUNNING run records for caseID.
 //
 // A run is considered stale if it has been RUNNING for more than 2 hours — the
 // same heuristic used by [persistence.Store.KillStaleRuns] in the normal path.
 //
-// An orphan branch is a staircase/run-{N} branch where run N is not currently
-// RUNNING in the database (either no DB record exists, or the record is not RUNNING).
-// This happens when the orchestrator crashes after creating the branch but before
-// completing the run.
-//
-// If pruneBranches is true, orphan branches are deleted from the git repository.
-// OrphanBranches in the returned result then only contains branches that failed
-// to delete (i.e., those that still need attention).
-func (r *Runner) Reconcile(_ context.Context, caseID int64, sourcePath string, pruneBranches bool) (ReconcileResult, error) {
+// Completed-run branches are delivery evidence, not orphans. Other inactive
+// branches are reported but never automatically deleted: they may contain
+// unmerged work or belong to another workspace with overlapping numeric IDs.
+// The former pruneBranches argument is retained for callers but no longer
+// authorizes deleting refs without an independent ownership/retention check.
+func (r *Runner) Reconcile(_ context.Context, caseID int64, sourcePath string, _ bool) (ReconcileResult, error) {
 	var result ReconcileResult
 
 	// ── 1. Kill stale RUNNING DB records for this case ────────────────────────
@@ -55,18 +50,6 @@ func (r *Runner) Reconcile(_ context.Context, caseID int64, sourcePath string, p
 		return result, nil
 	}
 	result.OrphanBranches = orphans
-
-	// ── 3. Prune orphan branches if requested ─────────────────────────────────
-	if pruneBranches && len(orphans) > 0 {
-		gr, grErr := OpenGitRepo(sourcePath)
-		var stillOrphaned []string
-		for _, branch := range orphans {
-			if grErr != nil || gr.DeleteBranch(branch) != nil {
-				stillOrphaned = append(stillOrphaned, branch) // could not delete
-			}
-		}
-		result.OrphanBranches = stillOrphaned
-	}
 
 	return result, nil
 }
@@ -97,7 +80,7 @@ func (r *Runner) killStaleRunRecords(caseID int64) ([]int64, error) {
 }
 
 // detectOrphanBranches returns staircase/run-* branch names in repoPath whose
-// corresponding DB run record is NOT in RUNNING status (or does not exist).
+// corresponding DB run record is neither active nor successfully delivered.
 func (r *Runner) detectOrphanBranches(repoPath string) ([]string, error) {
 	gr, err := OpenGitRepo(repoPath)
 	if err != nil {
@@ -116,7 +99,10 @@ func (r *Runner) detectOrphanBranches(repoPath string) ([]string, error) {
 			continue // unexpected branch name format; skip
 		}
 		run, err := r.store.GetRun(runID)
-		if err != nil || run == nil || run.Status != persistence.RunStatusRunning {
+		if err != nil {
+			return nil, fmt.Errorf("inspect run for branch %q: %w", branch, err)
+		}
+		if run == nil || (run.Status != persistence.RunStatusRunning && run.Status != persistence.RunStatusSuccess && run.GitCommitHash == "") {
 			orphans = append(orphans, branch)
 		}
 	}

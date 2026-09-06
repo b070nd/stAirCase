@@ -51,7 +51,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runAutoStash, "auto-stash", false, "Auto-stash dirty working tree instead of aborting")
 	runCmd.Flags().BoolVar(&runDebug, "debug", false, "Write all IPC messages to $STAIRCASE_DIR/log/staircase-debug.log")
 	runCmd.Flags().BoolVar(&runReconcile, "reconcile", false,
-		"Clean up orphan staircase/run-* branches and stale RUNNING records before starting")
+		"Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records")
 	runCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
 		"Start an inbound HTTP approval server on this port (0 = disabled). "+
 			"Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.")

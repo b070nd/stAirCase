@@ -163,8 +163,7 @@ func TestCrashInjection_stale_run_marked_killed(t *testing.T) {
 // TestKillAtPhase verifies the full crash-at-phase-boundary + reconcile cycle
 // (CHECK 5.5.1): a run crashes at PhaseBranchCreate (branch created but status
 // never updated), leaving a stale RUNNING record and an orphan git branch.
-// On the next startup, Reconcile with pruneBranches=true kills the record and
-// deletes the orphan branch.
+// On the next startup, Reconcile reports the branch without deleting evidence.
 func TestKillAtPhase(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := initGitRepo(t)
@@ -188,17 +187,17 @@ func TestKillAtPhase(t *testing.T) {
 	r := orchestrator.NewRunner(s, t.TempDir())
 	result, err := r.Reconcile(context.Background(), caseID, repoPath, true /* pruneBranches */)
 	require.NoError(t, err)
-	assert.Empty(t, result.OrphanBranches,
-		"Reconcile must prune the orphan branch left by the crash at PhaseBranchCreate")
+	assert.Contains(t, result.OrphanBranches, runBranchName(run.ID),
+		"Reconcile must retain the orphan branch left by the crash at PhaseBranchCreate")
 
-	// Verify the branch was physically removed from git.
+	// A failed run can contain unmerged work; preserve its branch.
 	branch := runBranchName(run.ID)
 	out, _ := exec.Command(
 		"git", "-C", repoPath,
 		"for-each-ref", "--format=%(refname:short)",
 		"refs/heads/"+branch,
 	).Output()
-	assert.Empty(t, string(out), "git must not retain the branch after reconcile")
+	assert.NotEmpty(t, string(out), "git must retain the branch after reconcile")
 }
 
 func TestCrashInjection_recent_run_not_killed_by_reconcile(t *testing.T) {
@@ -241,7 +240,7 @@ func TestOrphanReconciliation_branch_with_no_run_record(t *testing.T) {
 		"branch with no DB run record must be reported as orphan")
 }
 
-func TestOrphanReconciliation_branch_with_completed_run_is_orphan(t *testing.T) {
+func TestOrphanReconciliation_branch_with_completed_run_is_preserved(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := initGitRepo(t)
 	caseID, _ := scaffoldForRun(t, s, repoPath)
@@ -255,12 +254,15 @@ func TestOrphanReconciliation_branch_with_completed_run_is_orphan(t *testing.T) 
 	createStaircaseBranch(t, repoPath, run.ID)
 
 	r := orchestrator.NewRunner(s, t.TempDir())
-	result, err := r.Reconcile(context.Background(), caseID, repoPath, false)
+	result, err := r.Reconcile(context.Background(), caseID, repoPath, true)
 
 	require.NoError(t, err)
 	branch := runBranchName(run.ID)
-	assert.Contains(t, result.OrphanBranches, branch,
-		"branch for a completed (non-RUNNING) run must be reported as orphan")
+	assert.NotContains(t, result.OrphanBranches, branch,
+		"a completed run branch is delivery evidence, not an orphan")
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+	assert.True(t, gr.BranchExists(branch))
 }
 
 func TestOrphanReconciliation_active_run_branch_is_not_orphan(t *testing.T) {
@@ -282,7 +284,7 @@ func TestOrphanReconciliation_active_run_branch_is_not_orphan(t *testing.T) {
 		"branch for an active RUNNING run must not be flagged as orphan")
 }
 
-func TestOrphanReconciliation_prune_deletes_orphan_branch(t *testing.T) {
+func TestOrphanReconciliation_prune_preserves_unknown_branch(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := initGitRepo(t)
 	caseID, _ := scaffoldForRun(t, s, repoPath)
@@ -294,15 +296,14 @@ func TestOrphanReconciliation_prune_deletes_orphan_branch(t *testing.T) {
 	result, err := r.Reconcile(context.Background(), caseID, repoPath, true /* prune */)
 
 	require.NoError(t, err)
-	// After pruning, OrphanBranches should be empty (the delete succeeded).
-	assert.Empty(t, result.OrphanBranches, "successfully pruned branches must not appear in result")
+	assert.Contains(t, result.OrphanBranches, runBranchName(fakeRunID), "unknown branches need manual inspection")
 
-	// Verify the branch is gone from git.
+	// The run may belong to another workspace; do not delete its branch.
 	out, _ := exec.Command(
 		"git", "-C", repoPath,
 		"for-each-ref", "--format=%(refname:short)", "refs/heads/staircase/run-*",
 	).Output()
-	assert.Empty(t, string(out), "branch must be deleted from git after prune")
+	assert.NotEmpty(t, string(out), "branch must survive reconcile")
 }
 
 func TestReconcile_invalid_git_path_is_nonfatal(t *testing.T) {
