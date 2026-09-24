@@ -2,8 +2,6 @@ package orchestrator_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1361,11 +1359,11 @@ func TestRun_dryrun_creates_nothing(t *testing.T) {
 	assert.Empty(t, runs, "a dry run must not create a run record")
 }
 
-// contentHashScript builds a fake-agent script that yields a file_edit carrying
-// content_hash for approvedContent, then (after approval) writes actualContent
-// to target.txt in the run's worktree (bootstrap project_path) — letting tests
-// exercise the approval-content binding.
-func contentHashScript(approvedHash, actualContent string) string {
+// contentHashScript builds a fake-agent script that proposes creating
+// target.txt with approvedContent (the bytes the operator is shown, which the
+// orchestrator binds the approval to), then after approval writes
+// actualContent into the run's worktree (bootstrap project_path).
+func contentHashScript(approvedContent, actualContent string) string {
 	return `import sys, json, socket, time, hashlib
 boot = json.loads(sys.stdin.readline())
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -1383,7 +1381,7 @@ assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
 s.sendall((json.dumps({
     "type":"yield_request","agent_name":"coder","action_type":"file_edit",
     "proposed_edits":[{"file":"target.txt","search_block":"(new file)",
-                       "replace_block":"preview","content_hash":` + fmt.Sprintf("%q", approvedHash) + `}],
+                       "replace_block":` + fmt.Sprintf("%q", approvedContent) + `}],
     "reasoning_trace":"binding test","confidence_score":0.9
 })+"\n").encode())
 buf = b""
@@ -1436,8 +1434,7 @@ func TestRun_integration_long_workspace_path(t *testing.T) {
 	wsDir := filepath.Join(shortWS, strings.Repeat("w", 120))
 	prepareRunWorkspace(t, wsDir)
 	const content = "long workspace path\n"
-	sum := sha256.Sum256([]byte(content))
-	script := contentHashScript(hex.EncodeToString(sum[:]), content)
+	script := contentHashScript(content, content)
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -1450,8 +1447,7 @@ func TestRun_integration_content_hash_match(t *testing.T) {
 	s, wsDir, repoPath, caseID := setupContentHashRun(t)
 
 	const good = "GOOD CONTENT\n"
-	sum := sha256.Sum256([]byte(good))
-	script := contentHashScript(hex.EncodeToString(sum[:]), good)
+	script := contentHashScript(good, good)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 
@@ -1481,8 +1477,7 @@ func TestRun_integration_content_hash_mismatch(t *testing.T) {
 	s, wsDir, _, caseID := setupContentHashRun(t)
 
 	const good = "GOOD CONTENT\n"
-	sum := sha256.Sum256([]byte(good))
-	script := contentHashScript(hex.EncodeToString(sum[:]), "EVIL CONTENT — never shown to the operator\n")
+	script := contentHashScript(good, "EVIL CONTENT — never shown to the operator\n")
 	require.NoError(t, os.WriteFile(
 		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 

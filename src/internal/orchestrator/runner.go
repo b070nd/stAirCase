@@ -227,6 +227,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	runBranch := fmt.Sprintf("staircase/run-%d", run.ID)
 	worktree := "" // the run's checkout: the agent's project root, never the developer's
 	var wgr *GitRepo
+	var appr *approvals // trusted record of what the approvals mean, byte for byte
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
 	var display *monitor.Display
@@ -284,6 +285,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		worktree = wt
 		if wgr, err = OpenGitRepo(worktree); err != nil {
 			return fmt.Errorf("open run worktree: %w", err)
+		}
+		if appr, err = newApprovals(worktree, wgr, baseSHA); err != nil {
+			return err
 		}
 		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", runBranch, worktree)
 	}
@@ -484,14 +488,6 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 
 	// Yield counters for policy limit enforcement (CHECK 7.2.1, 7.2.2).
 	var autoApproved, totalYields int
-	// approvedFiles accumulates the file paths from each approved file_edit
-	// yield. Used at finalize to stage only the operator-approved edits rather
-	// than all worktree changes (prevents committing unrelated modifications).
-	var approvedFiles []string
-	// approvedHashes maps file path → SHA-256 of the operator-approved content
-	// (last approval wins). Verified against on-disk content before commit so
-	// an agent cannot apply different content than what was approved.
-	approvedHashes := map[string]string{}
 
 	processExited := func(procErr error) {
 		processFinished = true
@@ -550,10 +546,30 @@ runLoop:
 					attribute.String("staircase.agent", yieldReq.AgentName),
 					attribute.String("staircase.action_type", yieldReq.ActionType)))
 			var resp ipc.IpcYieldResponse
-			// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
-			// yield goes to the human operator regardless of policy rules.
-			autoDecision := false
-			if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit {
+			source := "operator"
+			// The orchestrator derives exactly what approving this proposal would
+			// commit. A proposal that cannot be applied as shown (bad path, search
+			// text not found, too large) is refused before policy or human.
+			var next map[string]*approvedFile
+			refusal := ""
+			if yieldReq.ActionType == "file_edit" && appr != nil {
+				if n, err := appr.derive(yieldReq.ProposedEdits); err != nil {
+					refusal = err.Error()
+					if errors.Is(err, errBadPath) {
+						payload, _ := json.Marshal(map[string]any{"type": "approval_path_escape", "agent": yieldReq.AgentName, "reason": refusal})
+						_, _ = r.store.AppendEventLogChained(run.ID, "approval_path_escape", string(payload), "")
+					}
+				} else {
+					next = n
+				}
+			}
+			if refusal != "" {
+				resp = ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "refused by the orchestrator: " + refusal}
+				source = "orchestrator"
+				display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", yieldReq.AgentName, yieldReq.ActionType, refusal))
+			} else if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit {
+				// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
+				// yield goes to the human operator regardless of policy rules.
 				display.AddActivity(fmt.Sprintf("%-14s LIMIT  %s → HITL (%s)", yieldReq.AgentName, yieldReq.ActionType, limitReason))
 				display.Pause()
 				switch {
@@ -577,7 +593,7 @@ runLoop:
 					verb = "approved"
 				}
 				display.AddActivity(fmt.Sprintf("%-14s AUTO   %s → %s (%s)", yieldReq.AgentName, yieldReq.ActionType, verb, dec.Reason))
-				autoDecision = true
+				source = "policy"
 			} else {
 				display.Pause()
 				switch {
@@ -592,41 +608,37 @@ runLoop:
 				display.Resume()
 				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
 			}
-			ipcSrv.ResponseCh <- resp
-
-			// Collect approved file paths so finalize stages only operator-
-			// approved edits (P1: commit only approved files, not git add all).
-			if resp.Approved && yieldReq.ActionType == "file_edit" {
-				for _, pe := range yieldReq.ProposedEdits {
-					if pe.File != "" {
-						approvedFiles = append(approvedFiles, pe.File)
-						if pe.ContentHash != "" {
-							approvedHashes[pe.File] = pe.ContentHash
-						}
-					}
-				}
-			}
-
-			// Audit: record who decided and what the decision was (CHECK 7.3.1).
-			// source is "policy" for auto-decisions, "operator" for human review.
-			source := "operator"
-			if autoDecision {
-				source = "policy"
-			}
+			// Record the decision, with the exact approved content, before the
+			// runtime can act on it: an approval that is not on the audit chain
+			// is never released (CHECK 7.3.1).
 			yieldSpan.SetAttributes(
 				attribute.Bool("staircase.approved", resp.Approved),
 				attribute.String("staircase.decision_source", source))
 			yieldSpan.End()
-			if payload, err := json.Marshal(map[string]any{
-				"type":        "yield_decided",
-				"source":      source,
-				"agent":       yieldReq.AgentName,
-				"action_type": yieldReq.ActionType,
-				"approved":    resp.Approved,
-				"feedback":    resp.Feedback,
-			}); err == nil {
-				_, _ = r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), "")
+			reqJSON, _ := json.Marshal(yieldReq)
+			decided := map[string]any{
+				"type": "yield_decided", "seq": totalYields, "source": source,
+				"agent": yieldReq.AgentName, "action_type": yieldReq.ActionType,
+				"approved": resp.Approved, "feedback": resp.Feedback,
+				"request_sha256": sha256Hex(reqJSON), "base_sha": baseSHA,
 			}
+			if resp.Approved && next != nil {
+				decided["files"] = digest(next)
+			}
+			payload, _ := json.Marshal(decided)
+			if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
+				ipcSrv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: false,
+					Feedback: "the orchestrator could not record this decision; the run is stopping"}
+				proc.Kill()
+				processFinished = true
+				finalStatus = persistence.RunStatusFailed
+				runErr = fmt.Errorf("audit yield_decided: %w", err)
+				break runLoop
+			}
+			if resp.Approved && next != nil {
+				appr.record(next)
+			}
+			ipcSrv.ResponseCh <- resp
 
 		case procErr := <-proc.Done:
 			processExited(procErr)
@@ -660,57 +672,25 @@ runLoop:
 
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
-	if finalStatus == persistence.RunStatusSuccess && wgr != nil {
-		// Trust-boundary path sandbox: a compromised runtime can bypass the
-		// Python-side path guard and get an out-of-repo edit approved. Reject
-		// any approved path that escapes the project root BEFORE reading it —
-		// otherwise the content-hash check below becomes an arbitrary-file-read
-		// primitive (audit: approval_path_escape).
-		for _, file := range approvedFiles {
-			if !pathWithinRoot(worktree, file) {
-				if payload, err := json.Marshal(map[string]any{
-					"type": "approval_path_escape", "file": file,
-				}); err == nil {
-					_, _ = r.store.AppendEventLogChained(run.ID, "approval_path_escape", string(payload), "")
-				}
-				obs.Log.Error("approved file path escapes project root — refusing to commit",
-					"file", file, "root", worktree, "run_id", run.ID)
-				display.AddActivity(fmt.Sprintf("%-14s ABORT  %s escapes the project root", "finalize", file))
-				finalStatus = persistence.RunStatusFailed
-			}
+	if finalStatus == persistence.RunStatusSuccess && appr != nil {
+		// The worktree must hold exactly the approved state: approved paths with
+		// their approved bytes, and no other change in the files or the index.
+		changes, err := appr.verify(wgr)
+		if err != nil {
+			return err
+		}
+		for _, c := range changes {
+			payload, _ := json.Marshal(map[string]any{"type": c.event, "file": c.file, "detail": c.detail})
+			_, _ = r.store.AppendEventLogChained(run.ID, c.event, string(payload), "")
+			obs.Log.Error("worktree does not match the approvals — refusing to commit",
+				"event", c.event, "file", c.file, "detail", c.detail, "run_id", run.ID)
+			display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", c.file, c.detail))
+			finalStatus = persistence.RunStatusFailed
 		}
 	}
-	if finalStatus == persistence.RunStatusSuccess && wgr != nil {
-		// Approval-content binding: re-hash every file whose edit carried a
-		// content_hash and refuse to commit when the on-disk bytes differ from
-		// what the operator approved (audit: approval_content_mismatch).
-		for file, want := range approvedHashes {
-			data, readErr := os.ReadFile(filepath.Join(worktree, file))
-			got := ""
-			if readErr == nil {
-				sum := sha256.Sum256(data)
-				got = hex.EncodeToString(sum[:])
-			}
-			if got != want {
-				if payload, err := json.Marshal(map[string]any{
-					"type": "approval_content_mismatch", "file": file,
-					"approved_hash": want, "actual_hash": got,
-				}); err == nil {
-					_, _ = r.store.AppendEventLogChained(run.ID, "approval_content_mismatch", string(payload), "")
-				}
-				obs.Log.Error("approved content hash mismatch — refusing to commit",
-					"file", file, "approved", want, "actual", got, "run_id", run.ID)
-				display.AddActivity(fmt.Sprintf("%-14s ABORT  %s content differs from approved version", "finalize", file))
-				finalStatus = persistence.RunStatusFailed
-			}
-		}
-	}
-	if finalStatus == persistence.RunStatusSuccess && wgr != nil && len(approvedFiles) > 0 {
-		// Stage only paths that were explicitly approved via file_edit yields.
-		// AddAll() is intentionally NOT used: it would commit any unrelated
-		// worktree changes (stale edits, leftover tmp files, etc.).
-		if err := wgr.AddFiles(approvedFiles); err != nil {
-			return fmt.Errorf("stage approved files: %w", err)
+	if finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
+		if err := appr.stage(wgr); err != nil {
+			return err
 		}
 		msg := fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID)
 		if hash, err := wgr.Commit(msg); err == nil {
@@ -868,19 +848,6 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 }
 
 func timePtr(t time.Time) *time.Time { return &t }
-
-// pathWithinRoot reports whether rel, joined onto root, stays inside root.
-// Absolute paths and any path that climbs out via ".." are rejected. Used to
-// sandbox agent-proposed file paths to the project repository at the commit
-// boundary, independent of the Python runtime's own path checks.
-func pathWithinRoot(root, rel string) bool {
-	if rel == "" || filepath.IsAbs(rel) {
-		return false
-	}
-	cleanRoot := filepath.Clean(root)
-	joined := filepath.Clean(filepath.Join(cleanRoot, rel))
-	return joined == cleanRoot || strings.HasPrefix(joined, cleanRoot+string(os.PathSeparator))
-}
 
 // scrubSecrets replaces every occurrence of each active secret value with
 // "<REDACTED>" across all operator-visible fields before the yield request

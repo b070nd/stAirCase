@@ -27,6 +27,7 @@ from typing import Any
 HEARTBEAT_SECS = 10.0  # well under the orchestrator's 30 s idle deadline
 REPLY_TIMEOUT = 30.0  # auth and secret replies; approvals have no timeout
 EXIT_IPC_FAILURE = 70
+MAX_LINE_BYTES = 256 * 1024  # the orchestrator's line limit, newline included (ipc/server.go readBufferSize)
 
 
 class IPCClient:
@@ -61,6 +62,13 @@ class IPCClient:
         }
         if batch_id:
             msg["batch_id"] = batch_id
+        # JSON escaping can grow text up to 6x; a line over the limit would make
+        # the orchestrator drop the connection, so refuse it here instead.
+        size = len(json.dumps(msg)) + 1
+        if size > MAX_LINE_BYTES:
+            return {"type": "yield_response", "approved": False,
+                    "feedback": f"proposal is {size:,} bytes encoded; at most {MAX_LINE_BYTES:,} can be sent "
+                                "for approval — split it into smaller changes"}
         return self._request(msg, wait_forever=True)
 
     def get_secret(self, key: str, project_id: int | None = None) -> str | None:

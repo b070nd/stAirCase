@@ -110,11 +110,11 @@ def request_edit(file: str, search_block: str, replace_block: str, reasoning: st
     if not (full_path == root or full_path.startswith(root + os.sep)):
         return f"error: path escapes project root: {file}"
     caller = getattr(_agent_ctx, "name", "agent")
-    # Compute the complete post-edit content BEFORE the yield so the approval is
-    # bound (via content_hash) to the exact bytes that will be written — the
-    # orchestrator re-hashes the file before commit and fails on mismatch.
+    # Compute the post-edit content before asking, exactly as the orchestrator
+    # derives it (UTF-8, universal newlines, first occurrence): finalize commits
+    # only if the file then holds the bytes the operator approved.
     try:
-        src = open(full_path).read()
+        src = open(full_path, encoding="utf-8").read()
     except Exception as _e:
         return f"error opening {file}: {_e}"
     src_n = src.replace("\r\n", "\n")
@@ -135,7 +135,7 @@ def request_edit(file: str, search_block: str, replace_block: str, reasoning: st
     # Abort if the file changed between preview and approval — writing now would
     # produce content the operator never saw.
     try:
-        cur = open(full_path).read().replace("\r\n", "\n")
+        cur = open(full_path, encoding="utf-8").read().replace("\r\n", "\n")
     except Exception as _e:
         return f"error reopening {file}: {_e}"
     if cur != src_n:
@@ -143,7 +143,7 @@ def request_edit(file: str, search_block: str, replace_block: str, reasoning: st
     tmp = None
     try:
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(full_path))
-        with os.fdopen(fd, "w") as _f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as _f:
             _f.write(new_src)
         os.replace(tmp, full_path)
     except Exception as _e:
@@ -155,34 +155,36 @@ def request_edit(file: str, search_block: str, replace_block: str, reasoning: st
         return f"error writing {file}: {_e}"
     return "applied"
 
+# Mirrors maxApprovedFileBytes (orchestrator/approval.go): the operator is shown
+# the complete content, and the approval is bound to exactly those bytes.
+_MAX_APPROVAL_BYTES = 200 * 1024
+
 @tool
 def create_file(path: str, content: str, reasoning: str) -> str:
     """Create a new file inside the project root (or overwrite if it already exists).
-    Requires HITL approval before writing."""
+    Requires HITL approval before writing; the operator sees the full content."""
     full_path = os.path.realpath(os.path.join(PROJECT_PATH, path))
     root = os.path.realpath(PROJECT_PATH)
     if not (full_path == root or full_path.startswith(root + os.sep)):
         return f"error: path escapes project root: {path}"
+    size = len(content.encode())
+    if size > _MAX_APPROVAL_BYTES:
+        return (f"error: {path} is {size:,} bytes; at most {_MAX_APPROVAL_BYTES:,} can be approved "
+                "at once — split it into smaller files")
     caller = getattr(_agent_ctx, "name", "agent")
-    _MAX_PREVIEW = 10_000
-    preview = (
-        content[:_MAX_PREVIEW]
-        + (f"\n\n[TRUNCATED — {len(content):,} bytes total; first {_MAX_PREVIEW:,} shown]"
-           if len(content) > _MAX_PREVIEW else "")
-    )
     resp = _ipc.yield_request(
         caller, "file_edit",
-        [{"file": path, "search_block": "(new file)", "replace_block": preview,
+        [{"file": path, "search_block": "(new file)", "replace_block": content,
           "content_hash": hashlib.sha256(content.encode()).hexdigest()}],
         reasoning,
     )
     if not resp.get("approved"):
         return f"rejected: {resp.get('feedback', 'no feedback')}"
+    tmp = None
     try:
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        tmp = None
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(full_path))
-        with os.fdopen(fd, "w") as _f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as _f:
             _f.write(content)
         os.replace(tmp, full_path)
     except Exception as _e:
@@ -193,6 +195,29 @@ def create_file(path: str, content: str, reasoning: str) -> str:
                 pass
         return f"error creating {path}: {_e}"
     return f"created {path}"
+
+@tool
+def delete_file(path: str, reasoning: str) -> str:
+    """Delete an existing file inside the project root. Requires HITL approval."""
+    full_path = os.path.realpath(os.path.join(PROJECT_PATH, path))
+    root = os.path.realpath(PROJECT_PATH)
+    if not (full_path == root or full_path.startswith(root + os.sep)):
+        return f"error: path escapes project root: {path}"
+    if not os.path.isfile(full_path):
+        return f"error: {path} is not an existing file"
+    caller = getattr(_agent_ctx, "name", "agent")
+    resp = _ipc.yield_request(
+        caller, "file_edit",
+        [{"file": path, "search_block": "(delete file)", "replace_block": ""}],
+        reasoning,
+    )
+    if not resp.get("approved"):
+        return f"rejected: {resp.get('feedback', 'no feedback')}"
+    try:
+        os.remove(full_path)
+    except Exception as _e:
+        return f"error deleting {path}: {_e}"
+    return f"deleted {path}"
 
 @tool
 def run_shell(command: str, reasoning: str, working_dir: str = "") -> str:
@@ -249,7 +274,7 @@ def list_dir(path: str) -> str:
     except Exception as _e:
         return f"error listing {path}: {_e}"
 
-_BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file] + ([run_shell] if _allow_shell_exec else [])
+_BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file, delete_file] + ([run_shell] if _allow_shell_exec else [])
 
 
 # ── LLM provider dispatcher ───────────────────────────────────────────────────

@@ -28,8 +28,8 @@ func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID)
 // ExportedWriteSummary exposes writeSummary for unit testing (CHECK 10.4.1).
 func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummary(wsDir, s) }
 
-// PathWithinRootForTest exposes pathWithinRoot for sandbox-predicate unit tests.
-func PathWithinRootForTest(root, rel string) bool { return pathWithinRoot(root, rel) }
+// CleanApprovedPathForTest exposes cleanApprovedPath for trust-boundary tests.
+func CleanApprovedPathForTest(root, rel string) (string, error) { return cleanApprovedPath(root, rel) }
 
 // SetLostGraceForTest shortens how long a run waits for a runtime that dropped
 // its IPC connection to exit before killing it. Restore with the returned func.

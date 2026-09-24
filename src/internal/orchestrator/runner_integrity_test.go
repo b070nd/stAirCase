@@ -2,8 +2,6 @@ package orchestrator_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -65,8 +63,7 @@ func TestRun_integrity_finalization(t *testing.T) {
 			_, err := s.CreateUserStory(caseID, "Must be independently verified")
 			require.NoError(t, err)
 			const content = "approved content\n"
-			sum := sha256.Sum256([]byte(content))
-			script := contentHashScript(hex.EncodeToString(sum[:]), content)
+			script := contentHashScript(content, content)
 			wantStatus := persistence.RunStatusSuccess
 			wantCaseStatus := persistence.CaseStatusPending
 			var errorPart string

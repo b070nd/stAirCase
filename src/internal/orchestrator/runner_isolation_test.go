@@ -206,8 +206,7 @@ func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 func TestRun_refuses_scripts_from_another_template(t *testing.T) {
 	s, wsDir, _, caseID := setupContentHashRun(t)
 	const content = "fingerprinted\n"
-	sum := sha256.Sum256([]byte(content))
-	script := []byte(contentHashScript(hex.EncodeToString(sum[:]), content))
+	script := []byte(contentHashScript(content, content))
 	path := filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID))
 	require.NoError(t, os.WriteFile(path, script, 0o600))
 	scriptSum := sha256.Sum256(script)

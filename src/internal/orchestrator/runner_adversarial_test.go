@@ -94,26 +94,35 @@ func TestRun_adversarial_path_escape_blocked(t *testing.T) {
 	assert.True(t, found, "approval_path_escape audit event expected")
 }
 
-// TestPathWithinRoot covers the sandbox predicate directly so the edge cases
-// are pinned without needing a full run.
-func TestPathWithinRoot(t *testing.T) {
-	root := "/work/repo"
-	cases := []struct {
-		rel  string
-		want bool
-	}{
-		{"file.txt", true},
-		{"sub/dir/file.go", true},
-		{"./a.txt", true},
-		{"../escape.txt", false},
-		{"../../etc/passwd", false},
-		{"sub/../ok.txt", true},
-		{"sub/../../escape.txt", false},
-		{"/etc/passwd", false}, // absolute
-		{"", false},            // empty
+// TestCleanApprovedPath pins the trust-boundary path rules on a real tree
+// (symlink and directory checks need actual filesystem entries).
+func TestCleanApprovedPath(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "sub", "dir"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sub", "f.txt"), []byte("x"), 0o644))
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(root, "link")))
+	require.NoError(t, os.Symlink(filepath.Join(root, "sub", "f.txt"), filepath.Join(root, "alias.txt")))
+	ok := map[string]string{
+		"file.txt":             "file.txt",
+		"sub/f.txt":            "sub/f.txt",
+		"./a.txt":              "a.txt",
+		"sub/../ok.txt":        "ok.txt",
+		"sub/new/deeper/n.txt": "sub/new/deeper/n.txt",
+		"sub/.gitignore":       "sub/.gitignore",
+		"docs/.github/ci.yml":  "docs/.github/ci.yml",
 	}
-	for _, c := range cases {
-		assert.Equalf(t, c.want, orchestrator.PathWithinRootForTest(root, c.rel),
-			"pathWithinRoot(%q, %q)", root, c.rel)
+	for in, want := range ok {
+		got, err := orchestrator.CleanApprovedPathForTest(root, in)
+		assert.NoError(t, err, "%q", in)
+		assert.Equal(t, want, got, "%q", in)
+	}
+	for _, bad := range []string{
+		"", ".", "..", "../escape.txt", "../../etc/passwd", "sub/../../escape.txt", "/etc/passwd",
+		".git", ".git/config", "sub/.git/x", ".GIT/hooks/pre-commit", // repository internals
+		"sub", "sub/dir", // directories
+		"link/x.txt", "alias.txt", // symlinks
+	} {
+		_, err := orchestrator.CleanApprovedPathForTest(root, bad)
+		assert.Error(t, err, "%q must be refused", bad)
 	}
 }

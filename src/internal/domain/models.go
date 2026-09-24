@@ -145,10 +145,9 @@ type ProposedEdit struct {
 	File         string `json:"file"`
 	SearchBlock  string `json:"search_block"`
 	ReplaceBlock string `json:"replace_block"`
-	// ContentHash is the SHA-256 (hex) of the complete file content that will
-	// exist after this edit is applied. When present, the orchestrator
-	// re-hashes the file before commit and fails the run on mismatch — binding
-	// the operator's approval to exact content, not just a preview.
+	// ContentHash is the runtime's own SHA-256 of the file after the edit. It is
+	// advisory and never trusted: the orchestrator derives the approved content
+	// from the base commit and the edits shown (see orchestrator/approval.go).
 	ContentHash string `json:"content_hash,omitempty"`
 }
 
