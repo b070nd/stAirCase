@@ -80,6 +80,9 @@ type RunOptions struct {
 	Reconcile     bool // inspect orphan branches / stale runs before proceeding
 	ApprovalPort  int
 	ApprovalToken string
+	// Agent, when set, runs in-process in place of the compiled Python runtime
+	// (no script, venv or IPC). Phase R makes the Go LLM runtime the default.
+	Agent Agent
 	// RecordLLM, when non-empty, is a file path where the Python harness records
 	// every LLM exchange for later deterministic replay (--record-llm flag).
 	RecordLLM string
@@ -302,10 +305,6 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 
 	// ── IPC_LISTEN ────────────────────────────────────────────────────────────
 	r.phase = PhaseIPCListen
-	token, err := runtime.BootstrapToken()
-	if err != nil {
-		return fmt.Errorf("generate token: %w", err)
-	}
 
 	// Acquire a shared advisory flock on the key file for the duration of this
 	// run so that 'staircase secret rotate' (which holds an exclusive lock)
@@ -337,24 +336,32 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	// The socket lives in a short per-run temp dir, not under STAIRCASE_DIR: unix
-	// socket paths are capped at 104 bytes on macOS (108 on Linux), which a deep
-	// workspace path exceeds. MkdirTemp creates it 0700 with an unpredictable name.
-	sockDir, err := os.MkdirTemp("", "staircase-ipc-")
-	if err != nil {
-		return fmt.Errorf("ipc socket dir: %w", err)
+	// The Python runtime talks to the orchestrator over a unix socket; an
+	// in-process agent (RunOptions.Agent) needs none of this.
+	var ipcSrv *ipc.Server
+	var token string
+	if opts.Agent == nil {
+		if token, err = runtime.BootstrapToken(); err != nil {
+			return fmt.Errorf("generate token: %w", err)
+		}
+		// The socket lives in a short per-run temp dir, not under STAIRCASE_DIR: unix
+		// socket paths are capped at 104 bytes on macOS (108 on Linux), which a deep
+		// workspace path exceeds. MkdirTemp creates it 0700 with an unpredictable name.
+		sockDir, err := os.MkdirTemp("", "staircase-ipc-")
+		if err != nil {
+			return fmt.Errorf("ipc socket dir: %w", err)
+		}
+		defer func() { _ = os.RemoveAll(sockDir) }()
+		socketPath := filepath.Join(sockDir, fmt.Sprintf("run-%d.sock", run.ID))
+		if len(socketPath) >= maxUnixSocketPath {
+			return fmt.Errorf("ipc socket path %q exceeds the %d-byte OS limit — set TMPDIR to a shorter directory", socketPath, maxUnixSocketPath)
+		}
+		ipcSrv = ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey, opts.AllowShellExec)
+		if err := ipcSrv.Start(ctx); err != nil {
+			return fmt.Errorf("ipc server: %w", err)
+		}
+		fmt.Fprintf(os.Stdout, "   🔌 IPC socket: %s\n", socketPath)
 	}
-	defer func() { _ = os.RemoveAll(sockDir) }()
-	socketPath := filepath.Join(sockDir, fmt.Sprintf("run-%d.sock", run.ID))
-	if len(socketPath) >= maxUnixSocketPath {
-		return fmt.Errorf("ipc socket path %q exceeds the %d-byte OS limit — set TMPDIR to a shorter directory", socketPath, maxUnixSocketPath)
-	}
-
-	ipcSrv := ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey, opts.AllowShellExec)
-	if err := ipcSrv.Start(ctx); err != nil {
-		return fmt.Errorf("ipc server: %w", err)
-	}
-	fmt.Fprintf(os.Stdout, "   🔌 IPC socket: %s\n", socketPath)
 
 	policyEngine, err := policy.LoadEngine(r.wsDir)
 	if err != nil {
@@ -392,7 +399,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		logDir := filepath.Join(r.wsDir, "log")
 		if err := os.MkdirAll(logDir, 0o700); err == nil {
 			logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", run.ID))
-			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil && ipcSrv != nil {
 				ipcSrv.SetDebugWriter(f)
 				defer func() { _ = f.Close() }()
 				fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
@@ -408,76 +415,116 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	renderTicker := time.NewTicker(500 * time.Millisecond)
 	defer renderTicker.Stop()
 
-	// ── PYTHON_BOOT ───────────────────────────────────────────────────────────
+	// ── AGENT_START ───────────────────────────────────────────────────────────
 	r.phase = PhasePythonBoot
-	canonicalScript := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	scriptPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_%d.py", run.ID))
-	if _, err := os.Stat(canonicalScript); os.IsNotExist(err) {
-		return fmt.Errorf("graph_exec script not found — run 'staircase compile %d' first", caseID)
-	}
-	srcBytes, err := os.ReadFile(canonicalScript)
-	if err != nil {
-		return fmt.Errorf("read canonical script: %w", err)
-	}
-	// P1: verify the SHA-256 sidecar written at compile time to detect
-	// tampering between 'staircase compile' and 'staircase run'.
-	// If the sidecar is absent (pre-existing script compiled before this
-	// feature), log a warning and continue for backward compatibility.
-	// If the sidecar is present but does not match, fail hard.
-	hashSidecar := canonicalScript + ".sha256"
-	if storedHex, readErr := os.ReadFile(hashSidecar); readErr == nil {
-		actual := sha256.Sum256(srcBytes)
-		if hex.EncodeToString(actual[:]) != strings.TrimSpace(string(storedHex)) {
-			return fmt.Errorf("graph_exec script integrity check failed — recompile with 'staircase compile %d'", caseID)
+	// The decision loop reads proposals, usage and the agent's end from these,
+	// whether the agent runs in-process or is the Python runtime behind IPC.
+	loopCtx, stopBridges := context.WithCancel(ctx)
+	defer stopBridges()
+	proposals := make(chan proposal)
+	usage := make(chan Usage)
+	var agentDone <-chan error    // the agent's end: its error, nil on success
+	var lost <-chan struct{}      // the Python runtime dropped its IPC connection
+	var stopAgent func()          // ends the agent; returns once it has stopped (bounded)
+	var delivered func() []string // secret values handed to the agent, for scrubbing
+	if opts.Agent != nil {
+		host := &agentHost{store: r.store, runID: run.ID, projectID: caseRec.ProjectID, aesKey: aesKey}
+		delivered = host.deliveredSecrets
+		agentCtx, cancelAgent := context.WithCancel(ctx)
+		defer cancelAgent()
+		stopped := make(chan struct{})
+		done := make(chan error, 1)
+		agentDone = done
+		env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, proposals: proposals, usage: usage, host: host}
+		go func() {
+			defer close(stopped)
+			done <- runAgent(agentCtx, opts.Agent, env)
+		}()
+		stopAgent = func() {
+			cancelAgent()
+			select {
+			case <-stopped:
+			case <-time.After(lostGrace):
+				obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", run.ID)
+			}
 		}
-		// A compiled script embeds its runtime; one from another stAirCase
-		// version could bypass current guarantees (e.g. write outside the worktree).
-		if fp, err := os.ReadFile(canonicalScript + ".tmpl"); err != nil || strings.TrimSpace(string(fp)) != scaffoldtpl.Fingerprint() {
-			return fmt.Errorf("graph_exec script was compiled by a different stAirCase version — run 'staircase compile %d --force'", caseID)
-		}
+		fmt.Fprintln(os.Stdout, "   🤖 Agent: in-process")
 	} else {
-		obs.Log.Warn("graph_exec script has no .sha256 sidecar — skipping integrity check (recompile to enable)")
-	}
-	if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil { // #nosec G703 -- scriptPath is built from internal wsDir, not user input
-		return fmt.Errorf("copy script to run path: %w", err)
-	}
-	// Open the run-specific script as a file descriptor so the runtime can
-	// deliver it to Python via ExtraFiles (fd 3) rather than a file-path arg
-	// (CHECK 5.4.2).
-	scriptFD, err := os.Open(scriptPath)
-	if err != nil {
-		return fmt.Errorf("open script fd: %w", err)
-	}
-	defer func() { _ = scriptFD.Close() }()
+		canonicalScript := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
+		scriptPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_%d.py", run.ID))
+		if _, err := os.Stat(canonicalScript); os.IsNotExist(err) {
+			return fmt.Errorf("graph_exec script not found — run 'staircase compile %d' first", caseID)
+		}
+		srcBytes, err := os.ReadFile(canonicalScript)
+		if err != nil {
+			return fmt.Errorf("read canonical script: %w", err)
+		}
+		// P1: verify the SHA-256 sidecar written at compile time to detect
+		// tampering between 'staircase compile' and 'staircase run'.
+		// If the sidecar is absent (pre-existing script compiled before this
+		// feature), log a warning and continue for backward compatibility.
+		// If the sidecar is present but does not match, fail hard.
+		hashSidecar := canonicalScript + ".sha256"
+		if storedHex, readErr := os.ReadFile(hashSidecar); readErr == nil {
+			actual := sha256.Sum256(srcBytes)
+			if hex.EncodeToString(actual[:]) != strings.TrimSpace(string(storedHex)) {
+				return fmt.Errorf("graph_exec script integrity check failed — recompile with 'staircase compile %d'", caseID)
+			}
+			// A compiled script embeds its runtime; one from another stAirCase
+			// version could bypass current guarantees (e.g. write outside the worktree).
+			if fp, err := os.ReadFile(canonicalScript + ".tmpl"); err != nil || strings.TrimSpace(string(fp)) != scaffoldtpl.Fingerprint() {
+				return fmt.Errorf("graph_exec script was compiled by a different stAirCase version — run 'staircase compile %d --force'", caseID)
+			}
+		} else {
+			obs.Log.Warn("graph_exec script has no .sha256 sidecar — skipping integrity check (recompile to enable)")
+		}
+		if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil { // #nosec G703 -- scriptPath is built from internal wsDir, not user input
+			return fmt.Errorf("copy script to run path: %w", err)
+		}
+		// Open the run-specific script as a file descriptor so the runtime can
+		// deliver it to Python via ExtraFiles (fd 3) rather than a file-path arg
+		// (CHECK 5.4.2).
+		scriptFD, err := os.Open(scriptPath)
+		if err != nil {
+			return fmt.Errorf("open script fd: %w", err)
+		}
+		defer func() { _ = scriptFD.Close() }()
 
-	// W3C traceparent of the run span so the Python runtime can join the trace.
-	traceparent := ""
-	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
-		traceparent = fmt.Sprintf("00-%s-%s-%s", sc.TraceID(), sc.SpanID(), sc.TraceFlags())
-	}
+		// W3C traceparent of the run span so the Python runtime can join the trace.
+		traceparent := ""
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			traceparent = fmt.Sprintf("00-%s-%s-%s", sc.TraceID(), sc.SpanID(), sc.TraceFlags())
+		}
 
-	proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
-		runtime.LaunchPythonOptions{
-			RecordLLM:      opts.RecordLLM,
-			ReplayLLM:      opts.ReplayLLM,
-			AllowShellExec: opts.AllowShellExec,
-			Traceparent:    traceparent,
-			ProjectPath:    worktree,
-			// Redact any delivered secret from Python stderr before it is logged.
-			ScrubStderr: func(line string) string {
-				return string(crypto.ScrubBytes([]byte(line), ipcSrv.DeliveredSecrets()))
-			},
-		})
-	if err != nil {
-		return fmt.Errorf("launch python: %w", err)
+		proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
+			runtime.LaunchPythonOptions{
+				RecordLLM:      opts.RecordLLM,
+				ReplayLLM:      opts.ReplayLLM,
+				AllowShellExec: opts.AllowShellExec,
+				Traceparent:    traceparent,
+				ProjectPath:    worktree,
+				// Redact any delivered secret from Python stderr before it is logged.
+				ScrubStderr: func(line string) string {
+					return string(crypto.ScrubBytes([]byte(line), ipcSrv.DeliveredSecrets()))
+				},
+			})
+		if err != nil {
+			return fmt.Errorf("launch python: %w", err)
+		}
+		delivered = ipcSrv.DeliveredSecrets
+		lost = ipcSrv.Lost()
+		stopAgent = proc.Kill
+		// Read by the loop only: Kill also waits on it, so no other reader may.
+		agentDone = proc.Done
+		go bridgeIPC(loopCtx, ipcSrv, proposals, usage)
+		fmt.Fprintf(os.Stdout, "   🐍 Python PID=%d\n", proc.PID())
 	}
-	processFinished := false
+	agentFinished := false
 	defer func() {
-		if !processFinished {
-			proc.Kill()
+		if !agentFinished {
+			stopAgent()
 		}
 	}()
-	fmt.Fprintf(os.Stdout, "   🐍 Python PID=%d\n", proc.PID())
 
 	// ── AGENT_LOOP ────────────────────────────────────────────────────────────
 	r.phase = PhaseAgentLoop
@@ -489,7 +536,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	var autoApproved, totalYields int
 
 	processExited := func(procErr error) {
-		processFinished = true
+		agentFinished = true
 		if procErr != nil {
 			runErr = fmt.Errorf("agent process: %w", procErr)
 			finalStatus = persistence.RunStatusFailed
@@ -498,34 +545,21 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 	}
 	cancelled := func() {
-		proc.Kill()
-		processFinished = true
+		stopAgent()
+		agentFinished = true
 		finalStatus = persistence.RunStatusKilled
 	}
 
 runLoop:
 	for {
 		select {
-		case emit := <-ipcSrv.StatEmitCh:
-			model := ""
-			inputTok, outputTok := 0, 0
-			if emit.State != nil {
-				if m, ok := emit.State["model"].(string); ok {
-					model = m
-				}
-				if v, ok := emit.State["input_tokens"].(float64); ok {
-					inputTok = int(v)
-				}
-				if v, ok := emit.State["output_tokens"].(float64); ok {
-					outputTok = int(v)
-				}
-			}
-			tracker.Record(emit.ActiveAgent, model, inputTok, outputTok)
-			display.AddActivity(fmt.Sprintf("%-14s step %d", emit.ActiveAgent, tracker.Totals().Steps))
+		case u := <-usage:
+			tracker.Record(u.Agent, u.Model, u.InputTokens, u.OutputTokens)
+			display.AddActivity(fmt.Sprintf("%-14s step %d", u.Agent, tracker.Totals().Steps))
 			if display.BudgetExceeded() {
 				fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
-				proc.Kill()
-				processFinished = true
+				stopAgent()
+				agentFinished = true
 				finalStatus = persistence.RunStatusKilled
 				break runLoop
 			}
@@ -533,11 +567,12 @@ runLoop:
 		case <-renderTicker.C:
 			display.Render()
 
-		case yieldReq := <-ipcSrv.YieldCh:
+		case p := <-proposals:
+			yieldReq := p.req
 			totalYields++
 			// CHECK 4.4.3 / 7.4.2: scrub delivered secret values from all
 			// operator-visible fields before any HITL presentation path.
-			yieldReq = scrubSecrets(yieldReq, ipcSrv.DeliveredSecrets())
+			yieldReq = scrubSecrets(yieldReq, delivered())
 			// Child span of the run: its duration is the yield→decision
 			// latency, i.e. how long the human (or policy) took to decide.
 			_, yieldSpan := obs.Tracer.Start(ctx, "staircase.yield",
@@ -626,10 +661,10 @@ runLoop:
 			}
 			payload, _ := json.Marshal(decided)
 			if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
-				ipcSrv.ResponseCh <- ipc.IpcYieldResponse{Type: "yield_response", Approved: false,
+				p.reply <- ipc.IpcYieldResponse{Type: "yield_response", Approved: false,
 					Feedback: "the orchestrator could not record this decision; the run is stopping"}
-				proc.Kill()
-				processFinished = true
+				stopAgent()
+				agentFinished = true
 				finalStatus = persistence.RunStatusFailed
 				runErr = fmt.Errorf("audit yield_decided: %w", err)
 				break runLoop
@@ -637,9 +672,9 @@ runLoop:
 			if resp.Approved && next != nil {
 				appr.record(next)
 			}
-			ipcSrv.ResponseCh <- resp
+			p.reply <- resp
 
-		case procErr := <-proc.Done:
+		case procErr := <-agentDone:
 			processExited(procErr)
 			break runLoop
 
@@ -647,17 +682,17 @@ runLoop:
 			cancelled()
 			break runLoop
 
-		case <-ipcSrv.Lost():
+		case <-lost:
 			// A finished runtime exits right after closing its connection; a
 			// hung one (no heartbeats, idle deadline hit) is killed after lostGrace.
 			select {
-			case procErr := <-proc.Done:
+			case procErr := <-agentDone:
 				processExited(procErr)
 			case <-ctx.Done():
 				cancelled()
 			case <-time.After(lostGrace):
-				proc.Kill()
-				processFinished = true
+				stopAgent()
+				agentFinished = true
 				finalStatus = persistence.RunStatusFailed
 				runErr = fmt.Errorf("agent runtime lost its IPC connection and did not exit within %s", lostGrace)
 				if _, err := r.store.AppendEventLogChained(run.ID, "runtime_unresponsive",
@@ -699,7 +734,9 @@ runLoop:
 		}
 		if hash != "" {
 			commitHash = hash
-			ipcSrv.SetGitCommitHash(commitHash)
+			if ipcSrv != nil {
+				ipcSrv.SetGitCommitHash(commitHash)
+			}
 		}
 	}
 
@@ -881,4 +918,59 @@ func scrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.IpcYieldRe
 		req.ProposedEdits[i].ReplaceBlock = redact(req.ProposedEdits[i].ReplaceBlock)
 	}
 	return req
+}
+
+// runAgent runs a; a panic becomes the run's error instead of the process's.
+func runAgent(ctx context.Context, a Agent, env *AgentEnv) (err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("agent panicked: %v", p)
+		}
+	}()
+	return a.Run(ctx, env)
+}
+
+// bridgeIPC feeds the Python runtime's IPC traffic into the decision loop's
+// channels. ponytail: exists only until the Python runtime goes (Phase R5).
+func bridgeIPC(ctx context.Context, srv *ipc.Server, proposals chan<- proposal, usage chan<- Usage) {
+	for {
+		select {
+		case req := <-srv.YieldCh:
+			p := proposal{req: req, reply: make(chan ipc.IpcYieldResponse, 1)}
+			var resp ipc.IpcYieldResponse
+			select {
+			case proposals <- p:
+			case <-ctx.Done():
+				return
+			}
+			select {
+			case resp = <-p.reply:
+			case <-ctx.Done():
+				return
+			}
+			select {
+			case srv.ResponseCh <- resp:
+			case <-ctx.Done():
+				return
+			}
+		case emit := <-srv.StatEmitCh:
+			u := Usage{Agent: emit.ActiveAgent}
+			if emit.State != nil {
+				u.Model, _ = emit.State["model"].(string)
+				if v, ok := emit.State["input_tokens"].(float64); ok {
+					u.InputTokens = int(v)
+				}
+				if v, ok := emit.State["output_tokens"].(float64); ok {
+					u.OutputTokens = int(v)
+				}
+			}
+			select {
+			case usage <- u:
+			case <-ctx.Done():
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }

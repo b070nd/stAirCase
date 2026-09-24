@@ -1435,10 +1435,17 @@ func setupApprovalRun(t *testing.T) (s *persistence.Store, wsDir, repoPath strin
 // venv, an auto-approve policy for file_edit (no TUI), and tmp/.
 func prepareRunWorkspace(t *testing.T, wsDir string) {
 	t.Helper()
-	require.NoError(t, os.MkdirAll(wsDir, 0o700))
-	require.NoError(t, crypto.GenerateKey(wsDir))
+	prepareAgentWorkspace(t, wsDir)
 	out, err := exec.Command("python3", "-m", "venv", "--without-pip", filepath.Join(wsDir, "venv")).CombinedOutput()
 	require.NoError(t, err, "create venv: %s", out)
+}
+
+// prepareAgentWorkspace readies wsDir for a run with an in-process agent: the
+// workspace key, a policy auto-approving file_edit, and tmp/.
+func prepareAgentWorkspace(t *testing.T, wsDir string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(wsDir, 0o700))
+	require.NoError(t, crypto.GenerateKey(wsDir))
 	policyJSON := `{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(policyJSON), 0o600))
 	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
