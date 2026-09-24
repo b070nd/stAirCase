@@ -66,7 +66,7 @@ func TestRun_integrity_finalization(t *testing.T) {
 			require.NoError(t, err)
 			const content = "approved content\n"
 			sum := sha256.Sum256([]byte(content))
-			script := contentHashScript(filepath.Join(repo, "target.txt"), hex.EncodeToString(sum[:]), content)
+			script := contentHashScript(hex.EncodeToString(sum[:]), content)
 			wantStatus := persistence.RunStatusSuccess
 			wantCaseStatus := persistence.CaseStatusPending
 			var errorPart string
@@ -74,8 +74,9 @@ func TestRun_integrity_finalization(t *testing.T) {
 			case "no_changes":
 				script = "import json, sys\njson.loads(sys.stdin.readline())\n"
 			case "staging_failure":
-				// Replace the index with a directory so staging fails deterministically.
-				script = strings.Replace(script, "s.close()", fmt.Sprintf("import os\np = %q\nif os.path.exists(p): os.unlink(p)\nos.mkdir(p)\ns.close()", filepath.Join(repo, ".git", "index")), 1)
+				// Replace the run worktree's index with a directory so staging fails
+				// deterministically (a linked worktree's index lives in its gitdir).
+				script = strings.Replace(script, "s.close()", "import os\ngd = open(os.path.join(boot['project_path'], '.git')).read().split(':', 1)[1].strip()\np = os.path.join(gd, 'index')\nif os.path.exists(p): os.unlink(p)\nos.mkdir(p)\ns.close()", 1)
 				errorPart = "stage approved files"
 			case "commit_failure":
 				if os.Geteuid() == 0 {

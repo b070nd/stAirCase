@@ -1,7 +1,9 @@
 package template
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +12,14 @@ import (
 
 //go:embed graph_exec.py.tmpl
 var graphExecTmpl string
+
+// Fingerprint identifies this binary's template. compile records it next to
+// every script and run refuses scripts produced by another template: they
+// carry an outdated runtime (older IPC client, writes outside the worktree).
+func Fingerprint() string {
+	sum := sha256.Sum256([]byte(graphExecTmpl))
+	return hex.EncodeToString(sum[:])
+}
 
 // AgentParams describes one node in the swarm topology.
 type AgentParams struct {
@@ -64,7 +74,6 @@ type WorkerPathMap struct {
 type GraphExecParams struct {
 	RunID          int64
 	CaseID         int64
-	ProjectPath    string
 	PRDContext     string
 	RepoContext    string
 	Agents         []AgentParams

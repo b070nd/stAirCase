@@ -73,7 +73,7 @@ func TestRun_adversarial_path_escape_blocked(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-		orchestrator.RunOptions{Force: true, SkipGates: true})
+		orchestrator.RunOptions{SkipGates: true})
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)

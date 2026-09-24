@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -16,9 +17,8 @@ import (
 // git operations the orchestrator needs without shelling out to the system git
 // binary (CHECK 5.3.1).
 //
-// Exception: git stash push / stash pop have no go-git v5 equivalent (the stash
-// API is read-only). Those two operations are kept as exec.Command calls in
-// handleDirtyTree and the deferred stash-pop in Run().
+// Exception: go-git v5 has no worktree API, so addWorktree/removeWorktree
+// shell out to git.
 type GitRepo struct {
 	r    *gogit.Repository
 	w    *gogit.Worktree
@@ -32,7 +32,10 @@ func OpenGitRepo(path string) (*GitRepo, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no source path configured")
 	}
-	r, err := gogit.PlainOpen(path)
+	// EnableDotGitCommonDir makes go-git follow a linked worktree's commondir to
+	// the shared objects and refs; without it, commits made in a run's worktree
+	// never reach the run branch. It is a no-op for ordinary repositories.
+	r, err := gogit.PlainOpenWithOptions(path, &gogit.PlainOpenOptions{EnableDotGitCommonDir: true})
 	if err != nil {
 		return nil, fmt.Errorf("open git repo %s: %w", path, err)
 	}
@@ -56,6 +59,35 @@ func (g *GitRepo) CurrentBranch() (string, error) {
 	}
 	// Detached HEAD — return the full commit SHA so checkout can restore it.
 	return head.Hash().String(), nil
+}
+
+// HeadSHA returns the commit HEAD points at.
+func (g *GitRepo) HeadSHA() (string, error) {
+	head, err := g.r.Head()
+	if err != nil {
+		return "", fmt.Errorf("git head: %w", err)
+	}
+	return head.Hash().String(), nil
+}
+
+// addWorktree creates branch at base and checks it out in a new linked
+// worktree at path, leaving repo's own checkout untouched. go-git has no
+// worktree API, so this shells out like the other worktree commands.
+func addWorktree(repo, path, branch, base string) error {
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", branch, path, base).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// removeWorktree deletes a run's worktree (its branch is kept).
+func removeWorktree(repo, path string) error {
+	out, err := exec.Command("git", "-C", repo, "worktree", "remove", "--force", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // BranchExists reports whether a local branch with the given name exists.

@@ -19,7 +19,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -34,6 +33,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/b070nd/staircase-core/src/internal/policy"
 	"github.com/b070nd/staircase-core/src/internal/runtime"
+	scaffoldtpl "github.com/b070nd/staircase-core/src/internal/template"
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
@@ -76,9 +76,7 @@ const (
 // RunOptions carries all user-supplied flags for a run.
 type RunOptions struct {
 	DryRun        bool
-	Force         bool
 	SkipGates     bool
-	AutoStash     bool
 	Debug         bool
 	Reconcile     bool // inspect orphan branches / stale runs before proceeding
 	ApprovalPort  int
@@ -167,23 +165,20 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 	}
 
-	// ── Dirty-tree pre-flight ─────────────────────────────────────────────────
-	var autoStashed bool
-	if !opts.Force && project.SourcePath != "" {
-		stashed, err := handleDirtyTree(project.SourcePath, opts.AutoStash)
-		if err != nil {
-			return err
+	// ── Base revision ─────────────────────────────────────────────────────────
+	// The run works in its own git worktree at the current HEAD commit; the
+	// developer's checkout (branch, index, files, stash) is never modified, so
+	// uncommitted changes there are not visible to the agent.
+	baseSHA := ""
+	if gr != nil {
+		if baseSHA, err = gr.HeadSHA(); err != nil {
+			return fmt.Errorf("resolve base commit: %w", err)
 		}
-		autoStashed = stashed
+		if clean, err := gr.IsClean(); err == nil && !clean {
+			fmt.Fprintf(os.Stdout, "   ℹ️  %s has uncommitted changes; the agent works on commit %.12s without them\n",
+				project.SourcePath, baseSHA)
+		}
 	}
-	defer func() {
-		if autoStashed && project.SourcePath != "" {
-			// go-git v5 has no stash pop support; keep as exec.Command.
-			if out, err := exec.Command("git", "-C", project.SourcePath, "stash", "pop").CombinedOutput(); err != nil {
-				obs.Log.Warn("stash pop after run", "output", string(out))
-			}
-		}
-	}()
 
 	// ── Resolve topology ──────────────────────────────────────────────────────
 	topology, err := r.store.GetLatestTopology(project.ID)
@@ -204,10 +199,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 
 	// ── Quality gate pre-flight ───────────────────────────────────────────────
-	if !opts.SkipGates && !opts.DryRun {
+	if !opts.SkipGates {
 		if err := r.runGates(caseID); err != nil {
 			return err
 		}
+	}
+	if opts.DryRun {
+		fmt.Fprintf(os.Stdout, "   [dry-run] case %d would run on a new worktree at %.12s (from %s); nothing was created\n",
+			caseID, baseSHA, gitBranch)
+		return nil
 	}
 
 	// ── Create run record ─────────────────────────────────────────────────────
@@ -222,15 +222,11 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
 
-	if opts.DryRun {
-		fmt.Fprintln(os.Stdout, "   [dry-run] stopping before branch creation, IPC and runtime launch")
-		return r.store.UpdateRunStatus(run.ID, persistence.RunStatusKilled, timePtr(time.Now()), "")
-	}
-
 	// ── BRANCH_CREATE ─────────────────────────────────────────────────────────
 	r.phase = PhaseBranchCreate
 	runBranch := fmt.Sprintf("staircase/run-%d", run.ID)
-	runBranchCreated := false
+	worktree := "" // the run's checkout: the agent's project root, never the developer's
+	var wgr *GitRepo
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
 	var display *monitor.Display
@@ -258,9 +254,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			}
 		}
 		r.phase = PhaseBranchRestore
-		if runBranchCreated && gr != nil && finalStatus != persistence.RunStatusSuccess {
-			if err := gr.CheckoutBranch(gitBranch); err != nil {
-				runErr = errors.Join(runErr, fmt.Errorf("restore branch %q: %w", gitBranch, err))
+		if worktree != "" {
+			if finalStatus == persistence.RunStatusSuccess {
+				// The deliverable is the run branch; the worktree was only scaffolding.
+				if err := removeWorktree(project.SourcePath, worktree); err != nil {
+					obs.Log.Warn("remove run worktree", "path", worktree, "err", err)
+				}
+			} else {
+				fmt.Fprintf(os.Stdout, "   🔎 Worktree kept for inspection: %s\n", worktree)
 			}
 		}
 		if finalStatus != persistence.RunStatusSuccess {
@@ -276,11 +277,24 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if gr.BranchExists(runBranch) {
 			return fmt.Errorf("run branch %q already exists; inspect and preserve it before retrying", runBranch)
 		}
-		if err := gr.CreateBranch(runBranch); err != nil {
-			return fmt.Errorf("create blast-radius branch %q: %w", runBranch, err)
+		wt := filepath.Join(r.wsDir, "worktrees", fmt.Sprintf("run-%d", run.ID))
+		if err := addWorktree(project.SourcePath, wt, runBranch, baseSHA); err != nil {
+			return fmt.Errorf("create run worktree: %w", err)
 		}
-		runBranchCreated = true
-		fmt.Fprintf(os.Stdout, "   🌿 Blast-radius branch: %s\n", runBranch)
+		worktree = wt
+		if wgr, err = OpenGitRepo(worktree); err != nil {
+			return fmt.Errorf("open run worktree: %w", err)
+		}
+		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", runBranch, worktree)
+	}
+	// Provenance: what this run started from, before the agent runs.
+	if payload, err := json.Marshal(map[string]any{
+		"type": "run_bound", "base_sha": baseSHA, "branch": runBranch,
+		"worktree": worktree, "topology_version": topoVersion,
+	}); err == nil {
+		if _, err := r.store.AppendEventLogChained(run.ID, "run_bound", string(payload), ""); err != nil {
+			return fmt.Errorf("audit run_bound: %w", err)
+		}
 	}
 
 	// ── IPC_LISTEN ────────────────────────────────────────────────────────────
@@ -413,6 +427,11 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if hex.EncodeToString(actual[:]) != strings.TrimSpace(string(storedHex)) {
 			return fmt.Errorf("graph_exec script integrity check failed — recompile with 'staircase compile %d'", caseID)
 		}
+		// A compiled script embeds its runtime; one from another stAirCase
+		// version could bypass current guarantees (e.g. write outside the worktree).
+		if fp, err := os.ReadFile(canonicalScript + ".tmpl"); err != nil || strings.TrimSpace(string(fp)) != scaffoldtpl.Fingerprint() {
+			return fmt.Errorf("graph_exec script was compiled by a different stAirCase version — run 'staircase compile %d --force'", caseID)
+		}
 	} else {
 		obs.Log.Warn("graph_exec script has no .sha256 sidecar — skipping integrity check (recompile to enable)")
 	}
@@ -440,6 +459,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			ReplayLLM:      opts.ReplayLLM,
 			AllowShellExec: opts.AllowShellExec,
 			Traceparent:    traceparent,
+			ProjectPath:    worktree,
 			// Redact any delivered secret from Python stderr before it is logged.
 			ScrubStderr: func(line string) string {
 				return string(crypto.ScrubBytes([]byte(line), ipcSrv.DeliveredSecrets()))
@@ -640,32 +660,32 @@ runLoop:
 
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
-	if finalStatus == persistence.RunStatusSuccess && gr != nil {
+	if finalStatus == persistence.RunStatusSuccess && wgr != nil {
 		// Trust-boundary path sandbox: a compromised runtime can bypass the
 		// Python-side path guard and get an out-of-repo edit approved. Reject
 		// any approved path that escapes the project root BEFORE reading it —
 		// otherwise the content-hash check below becomes an arbitrary-file-read
 		// primitive (audit: approval_path_escape).
 		for _, file := range approvedFiles {
-			if !pathWithinRoot(project.SourcePath, file) {
+			if !pathWithinRoot(worktree, file) {
 				if payload, err := json.Marshal(map[string]any{
 					"type": "approval_path_escape", "file": file,
 				}); err == nil {
 					_, _ = r.store.AppendEventLogChained(run.ID, "approval_path_escape", string(payload), "")
 				}
 				obs.Log.Error("approved file path escapes project root — refusing to commit",
-					"file", file, "root", project.SourcePath, "run_id", run.ID)
+					"file", file, "root", worktree, "run_id", run.ID)
 				display.AddActivity(fmt.Sprintf("%-14s ABORT  %s escapes the project root", "finalize", file))
 				finalStatus = persistence.RunStatusFailed
 			}
 		}
 	}
-	if finalStatus == persistence.RunStatusSuccess && gr != nil {
+	if finalStatus == persistence.RunStatusSuccess && wgr != nil {
 		// Approval-content binding: re-hash every file whose edit carried a
 		// content_hash and refuse to commit when the on-disk bytes differ from
 		// what the operator approved (audit: approval_content_mismatch).
 		for file, want := range approvedHashes {
-			data, readErr := os.ReadFile(filepath.Join(project.SourcePath, file))
+			data, readErr := os.ReadFile(filepath.Join(worktree, file))
 			got := ""
 			if readErr == nil {
 				sum := sha256.Sum256(data)
@@ -685,15 +705,15 @@ runLoop:
 			}
 		}
 	}
-	if finalStatus == persistence.RunStatusSuccess && gr != nil && len(approvedFiles) > 0 {
+	if finalStatus == persistence.RunStatusSuccess && wgr != nil && len(approvedFiles) > 0 {
 		// Stage only paths that were explicitly approved via file_edit yields.
 		// AddAll() is intentionally NOT used: it would commit any unrelated
 		// worktree changes (stale edits, leftover tmp files, etc.).
-		if err := gr.AddFiles(approvedFiles); err != nil {
+		if err := wgr.AddFiles(approvedFiles); err != nil {
 			return fmt.Errorf("stage approved files: %w", err)
 		}
 		msg := fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID)
-		if hash, err := gr.Commit(msg); err == nil {
+		if hash, err := wgr.Commit(msg); err == nil {
 			commitHash = hash
 			ipcSrv.SetGitCommitHash(commitHash)
 		} else if !errors.Is(err, gogit.ErrEmptyCommit) {
@@ -757,30 +777,6 @@ func (r *Runner) runGates(caseID int64) error {
 }
 
 // ─── Git helpers ──────────────────────────────────────────────────────────────
-
-func handleDirtyTree(repoPath string, autoStash bool) (stashed bool, err error) {
-	gr, err := OpenGitRepo(repoPath)
-	if err != nil {
-		return false, nil // not a git repo
-	}
-	clean, err := gr.IsClean()
-	if err != nil || clean {
-		return false, nil // clean tree or status error
-	}
-	if !autoStash {
-		return false, fmt.Errorf(
-			"dirty working tree in %s\n  → commit, stash manually, or use --auto-stash / --force",
-			repoPath,
-		)
-	}
-	// go-git v5 has no stash push support; keep as exec.Command.
-	out, stashErr := exec.Command("git", "-C", repoPath, "stash", "push", "-m", "staircase pre-run").CombinedOutput()
-	if stashErr != nil {
-		return false, fmt.Errorf("auto-stash failed: %s", out)
-	}
-	fmt.Fprintf(os.Stdout, "   📦 Auto-stashed dirty tree in %s\n", repoPath)
-	return true, nil
-}
 
 // webhookClient is shared across all webhook calls within a single run.
 var webhookClient = &http.Client{Timeout: 30 * time.Second}

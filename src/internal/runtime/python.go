@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -57,6 +58,10 @@ type BootstrapMessage struct {
 	// span. The Python runtime may use it to join the distributed trace; it
 	// is informational and safe to ignore.
 	Traceparent string `json:"traceparent,omitempty"`
+
+	// ProjectPath is the run's git worktree: the only directory the agent's
+	// file tools may touch. It is never the developer's own checkout.
+	ProjectPath string `json:"project_path,omitempty"`
 }
 
 // PythonProcess wraps a managed Python subprocess.
@@ -132,6 +137,31 @@ type LaunchPythonOptions struct {
 	ScrubStderr func(string) string
 	// Traceparent propagates the orchestrator's trace context (W3C format).
 	Traceparent string
+	// ProjectPath is the run's worktree; it becomes the process working
+	// directory and is sent in the bootstrap message.
+	ProjectPath string
+}
+
+// runtimeEnv is the whole environment the agent runtime gets: enough to run
+// Python and reach model APIs (through a proxy, with custom CAs), nothing
+// else. Secrets reach the runtime only over IPC; operator credentials in the
+// shell (SSH agent socket, tokens, API keys) must never be inherited.
+func runtimeEnv() []string {
+	keep := func(k string) bool {
+		switch k {
+		case "PATH", "HOME", "TMPDIR", "LANG", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+			"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy":
+			return true
+		}
+		return strings.HasPrefix(k, "LC_")
+	}
+	var env []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); keep(k) {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
@@ -148,6 +178,7 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	// Pass the script via /dev/fd/3 (ExtraFiles[0] becomes fd 3 in the child).
 	cmd := exec.CommandContext(procCtx, pythonBin, "/dev/fd/3")
 	cmd.ExtraFiles = []*os.File{scriptFile} // fd 3 = topology script (CHECK 5.4.2)
+	cmd.Env = runtimeEnv()
 
 	// Place the Python process in its own process group so that signals sent
 	// via Kill() (negative PID = group) reach all Python children, not just the
@@ -159,6 +190,7 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 	if len(opts) > 0 {
 		lpo = opts[0]
 	}
+	cmd.Dir = lpo.ProjectPath // "" keeps the caller's directory (no source path)
 
 	// Pipe Python's stderr through a goroutine that prefixes each line with
 	// "[python]" so tracebacks are distinguishable in the orchestrator log
@@ -203,6 +235,7 @@ func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socket
 		RunnerPath:     RunnerInjectDir(venvPath),
 		AllowShellExec: lpo.AllowShellExec,
 		Traceparent:    lpo.Traceparent,
+		ProjectPath:    lpo.ProjectPath,
 	}); err != nil {
 		cancel()
 		_ = cmd.Process.Kill()

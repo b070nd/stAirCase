@@ -60,7 +60,8 @@ elif _record_llm:
     from staircase_runner.recording import RecordingSession as _RecordingSession
     _rec_session = _RecordingSession(_record_llm)
 
-PROJECT_PATH = [[.ProjectPath | pystr]]
+# The run's git worktree — never the developer's checkout (sent at launch).
+PROJECT_PATH: str = _boot.get("project_path", "")
 PRD_CONTEXT  = [[.PRDContext  | pystr]]
 REPO_CONTEXT = [[.RepoContext | pystr]]
 

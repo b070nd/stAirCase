@@ -183,7 +183,6 @@ func minimalParams() tmpl.GraphExecParams {
 	return tmpl.GraphExecParams{
 		RunID:          1,
 		CaseID:         1,
-		ProjectPath:    "/tmp/project",
 		PRDContext:     "Build X",
 		RepoContext:    "src/",
 		SupervisorName: "supervisor",

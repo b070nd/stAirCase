@@ -46,9 +46,12 @@ var runCmd = &cobra.Command{
 
 func init() {
 	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Validate and print the execution plan without running")
-	runCmd.Flags().BoolVar(&runForce, "force", false, "Skip dirty-tree pre-flight check")
+	runCmd.Flags().BoolVar(&runForce, "force", false, "No effect: runs use a separate worktree")
 	runCmd.Flags().BoolVar(&runSkipGate, "skip-gates", false, "Bypass quality gate pre-flight (use with care)")
-	runCmd.Flags().BoolVar(&runAutoStash, "auto-stash", false, "Auto-stash dirty working tree instead of aborting")
+	runCmd.Flags().BoolVar(&runAutoStash, "auto-stash", false, "No effect: runs use a separate worktree")
+	for _, f := range []string{"force", "auto-stash"} {
+		_ = runCmd.Flags().MarkDeprecated(f, "runs execute in a separate git worktree; your checkout is never modified")
+	}
 	runCmd.Flags().BoolVar(&runDebug, "debug", false, "Write all IPC messages to $STAIRCASE_DIR/log/staircase-debug.log")
 	runCmd.Flags().BoolVar(&runReconcile, "reconcile", false,
 		"Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records")
@@ -90,16 +93,19 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Trap SIGINT/SIGTERM so deferred cleanup (branch restore, stash pop) runs.
+	// Trap SIGINT/SIGTERM so the run is stopped and its outcome recorded. The
+	// handler stays registered until the command returns: a second Ctrl-C is
+	// absorbed instead of killing the process mid-cleanup (run left RUNNING).
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
 		select {
 		case <-sigCh:
+			fmt.Fprintln(os.Stderr, "\n⏹  Stopping the run and recording its outcome (further Ctrl-C are ignored)…")
 			cancel()
 		case <-ctx.Done():
 		}
-		signal.Stop(sigCh)
 	}()
 
 	if runMetricsAddr != "" {
@@ -115,9 +121,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
 		DryRun:         runDryRun,
-		Force:          runForce,
 		SkipGates:      runSkipGate,
-		AutoStash:      runAutoStash,
 		Debug:          runDebug,
 		Reconcile:      runReconcile,
 		ApprovalPort:   runApprovalPort,

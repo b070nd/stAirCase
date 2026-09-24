@@ -154,7 +154,6 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	params := scaffoldtpl.GraphExecParams{
 		RunID:          caseID,
 		CaseID:         caseID,
-		ProjectPath:    project.SourcePath,
 		PRDContext:     caseRec.PrdJSON,
 		RepoContext:    repoContext,
 		Agents:         agents,
@@ -192,6 +191,12 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	hashPath := outPath + ".sha256"
 	if err := os.WriteFile(hashPath, []byte(hex.EncodeToString(sum[:])), 0o600); err != nil {
 		return fmt.Errorf("write script hash: %w", err)
+	}
+
+	// Record which template produced the script: run refuses scripts from a
+	// different stAirCase version (their embedded runtime would be outdated).
+	if err := os.WriteFile(outPath+".tmpl", []byte(scaffoldtpl.Fingerprint()), 0o600); err != nil {
+		return fmt.Errorf("write template fingerprint: %w", err)
 	}
 
 	// Write a topology-version sidecar so runtime.script_compiled can detect

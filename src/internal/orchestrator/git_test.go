@@ -278,3 +278,28 @@ func TestGitRepo_AddAll_and_Commit_returns_sha(t *testing.T) {
 	require.NoError(t, gitErr)
 	assert.Equal(t, sha, strings.TrimSpace(string(out)))
 }
+
+// TestOpenGitRepo_linked_worktree: runs execute in a `git worktree`; commits
+// made through GitRepo there must land on the worktree's branch and leave the
+// main checkout's HEAD alone.
+func TestOpenGitRepo_linked_worktree(t *testing.T) {
+	repo := initGitRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", "staircase/run-7", wt, "HEAD").CombinedOutput()
+	require.NoError(t, err, "%s", out)
+
+	gr, err := orchestrator.OpenGitRepo(wt)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "f.txt"), []byte("x\n"), 0o644))
+	require.NoError(t, gr.AddFiles([]string{"f.txt"}))
+	hash, err := gr.Commit("worktree commit")
+	require.NoError(t, err)
+
+	out, err = exec.Command("git", "-C", repo, "rev-parse", "staircase/run-7").CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	assert.Equal(t, hash, strings.TrimSpace(string(out)), "commit must be on the run branch")
+	out, _ = exec.Command("git", "-C", repo, "symbolic-ref", "HEAD").CombinedOutput()
+	assert.Equal(t, "refs/heads/main", strings.TrimSpace(string(out)), "main checkout must not move")
+	out, _ = exec.Command("git", "-C", repo, "status", "--porcelain").CombinedOutput()
+	assert.Empty(t, strings.TrimSpace(string(out)), "main checkout must stay clean")
+}

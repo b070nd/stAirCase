@@ -84,12 +84,11 @@ note "case #$CASE_ID ready"
 say "Preparing the runtime (offline stub agent — no API key needed)"
 python3 -m venv --without-pip "$STAIRCASE_DIR/venv" >/dev/null 2>&1 || python3 -m venv "$STAIRCASE_DIR/venv"
 mkdir -p "$STAIRCASE_DIR/tmp"
-cp "$DEMO_DIR/agent_stub.py" "$STAIRCASE_DIR/tmp/graph_exec_case${CASE_ID}.py"
+# The runtime inherits no environment, so the stub's settings are prepended.
+TAMPER_PY=False; [ "$TAMPER" = "1" ] && TAMPER_PY=True
+{ printf 'SETTINGS = {"target_file": "%s", "tamper": %s}\n' "$TARGET_FILE" "$TAMPER_PY"
+  cat "$DEMO_DIR/agent_stub.py"; } > "$STAIRCASE_DIR/tmp/graph_exec_case${CASE_ID}.py"
 note "stub agent installed as the case's runtime script"
-
-export DEMO_PROJECT_PATH="$TARGET_REPO"
-export DEMO_TARGET_FILE="$TARGET_FILE"
-[ "$TAMPER" = "1" ] && export DEMO_TAMPER=1
 
 # ── run with the inbound approval API enabled ─────────────────────────────────
 if [ "$TAMPER" = "1" ]; then
@@ -102,7 +101,7 @@ RUN_LOG="$WORK/run.log"
 staircase run "$CASE_ID" \
   --approval-port "$APPROVAL_PORT" \
   --approval-token "$APPROVAL_TOKEN" \
-  --force --skip-gates >"$RUN_LOG" 2>&1 &
+  --skip-gates >"$RUN_LOG" 2>&1 &
 RUN_PID=$!
 
 API="http://127.0.0.1:$APPROVAL_PORT/v1/yields"
@@ -158,7 +157,8 @@ if [ "$TAMPER" = "1" ]; then
     echo "✗ a failed run must exit non-zero so CI can detect it (got 0)"; exit 1
   fi
   note "✓ Process exited non-zero ($RUN_EXIT) — CI/automation detects the failure."
-  if git -C "$TARGET_REPO" log --oneline 2>/dev/null | grep -q "staircase: run"; then
+  # Runs commit only on their own branch (never your checkout), so look there.
+  if git -C "$TARGET_REPO" log --oneline staircase/run-1 2>/dev/null | grep -q "staircase: run"; then
     echo "✗ tampered content must NOT be committed"; exit 1
   fi
   note "✓ Nothing committed. Look for the approval_content_mismatch event below."
@@ -172,9 +172,9 @@ else
   elif git -C "$TARGET_REPO" log --oneline -1 2>/dev/null | grep -q staircase; then
     git -C "$TARGET_REPO" log --stat --oneline -1
   fi
-  if [ -f "$TARGET_REPO/$TARGET_FILE" ]; then
-    note "Created file contents:"
-    sed 's/^/    /' "$TARGET_REPO/$TARGET_FILE"
+  if git -C "$TARGET_REPO" cat-file -e "staircase/run-1:$TARGET_FILE" 2>/dev/null; then
+    note "Created file contents (on the run branch; your checkout was not touched):"
+    git -C "$TARGET_REPO" show "staircase/run-1:$TARGET_FILE" | sed 's/^/    /'
   fi
 fi
 

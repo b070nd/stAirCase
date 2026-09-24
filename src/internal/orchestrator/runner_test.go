@@ -357,52 +357,6 @@ func TestGitRepo_open_empty_path_returns_error(t *testing.T) {
 	require.Error(t, err, "empty path must return an error")
 }
 
-// ─── handleDirtyTree ─────────────────────────────────────────────────────────
-
-func TestHandleDirtyTree_non_git_dir_returns_false_nil(t *testing.T) {
-	// A path that is not a git repository must produce (false, nil) so the
-	// caller can continue safely — covers the OpenGitRepo-error branch.
-	dir := t.TempDir() // plain directory, not initialised as git repo
-	stashed, err := orchestrator.ExportedHandleDirtyTree(dir, false)
-	assert.NoError(t, err)
-	assert.False(t, stashed)
-}
-
-func TestHandleDirtyTree_clean_tree_returns_false(t *testing.T) {
-	repoPath := initGitRepo(t)
-	stashed, err := orchestrator.ExportedHandleDirtyTree(repoPath, false)
-	require.NoError(t, err)
-	assert.False(t, stashed)
-}
-
-func TestHandleDirtyTree_dirty_no_autostash_returns_error(t *testing.T) {
-	repoPath := initGitRepo(t)
-	// Create an untracked file to make the tree dirty.
-	require.NoError(t, os.WriteFile(fmt.Sprintf("%s/dirty.txt", repoPath), []byte("x"), 0o600))
-
-	stashed, err := orchestrator.ExportedHandleDirtyTree(repoPath, false)
-	require.Error(t, err, "dirty tree without --auto-stash must return an error")
-	assert.False(t, stashed)
-}
-
-func TestHandleDirtyTree_dirty_with_autostash_stashes_tree(t *testing.T) {
-	repoPath := initGitRepo(t)
-	// Stage a file change so `git stash` has something to stash.
-	filePath := fmt.Sprintf("%s/staged.txt", repoPath)
-	require.NoError(t, os.WriteFile(filePath, []byte("hello"), 0o600))
-	out, err := exec.Command("git", "-C", repoPath, "add", "staged.txt").CombinedOutput()
-	require.NoError(t, err, "git add: %s", out)
-
-	stashed, err := orchestrator.ExportedHandleDirtyTree(repoPath, true)
-	require.NoError(t, err)
-	assert.True(t, stashed, "auto-stash must report stashed=true")
-
-	// Verify the stash was created.
-	out2, err2 := exec.Command("git", "-C", repoPath, "stash", "list").Output()
-	require.NoError(t, err2)
-	assert.Contains(t, string(out2), "staircase pre-run")
-}
-
 // ─── Cleanup chain on panic (CHECK 5.2.3) ─────────────────────────────────────
 
 // TestCleanupChainOnPanic verifies that the orchestrator's defer-based cleanup
@@ -571,46 +525,10 @@ func TestRun_reconcile_option_covers_block(t *testing.T) {
 	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
 		Reconcile: true,
 		SkipGates: true,
-		Force:     true,
 	})
 	// Must fail somewhere after the reconcile block — specifically at LoadKey.
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workspace key")
-}
-
-// TestRun_force_false_dirty_tree_returns_error covers the dirty-tree pre-flight
-// path in Run() when Force=false and the working tree has uncommitted changes.
-func TestRun_force_false_dirty_tree_returns_error(t *testing.T) {
-	s := newTestStore(t)
-	repoPath := initGitRepo(t)
-	// Create an untracked file so the tree is dirty.
-	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "dirty.txt"), []byte("x"), 0o600))
-
-	caseID, _ := scaffoldForRun(t, s, repoPath)
-	r := orchestrator.NewRunner(s, t.TempDir())
-	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		SkipGates: true,
-		Force:     false, // enables dirty-tree check
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dirty working tree")
-}
-
-// TestRun_force_false_clean_tree_sets_autoStash covers the autoStashed assignment
-// in Run() when handleDirtyTree returns stashed=false on a clean tree.
-// The run fails later at crypto.LoadKey (no key), but the dirty-tree path ran.
-func TestRun_force_false_clean_tree_sets_autoStash(t *testing.T) {
-	s := newTestStore(t)
-	repoPath := initGitRepo(t) // clean tree
-	caseID, _ := scaffoldForRun(t, s, repoPath)
-
-	r := orchestrator.NewRunner(s, t.TempDir()) // no key → fail after dirty-tree check
-	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		SkipGates: true,
-		Force:     false, // triggers dirty-tree check; clean tree → autoStashed=false
-	})
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "dirty working tree")
 }
 
 // TestRun_script_not_found_returns_error covers the PhasePythonBoot path in
@@ -630,7 +548,6 @@ func TestRun_script_not_found_returns_error(t *testing.T) {
 
 	r := orchestrator.NewRunner(s, wsDir)
 	runErr := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		Force:     true,
 		SkipGates: true,
 	})
 	require.Error(t, runErr)
@@ -655,7 +572,6 @@ func TestRun_malformed_policy_json_logs_warning_and_continues(t *testing.T) {
 
 	r := orchestrator.NewRunner(s, wsDir)
 	runErr := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		Force:     true,
 		SkipGates: true,
 	})
 	// Run must fail at script-not-found, not at policy load.
@@ -671,7 +587,6 @@ func TestRun_quality_gate_failure_returns_error(t *testing.T) {
 
 	r := orchestrator.NewRunner(s, t.TempDir()) // empty wsDir → gates BLOCK
 	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		Force:     true,
 		SkipGates: false, // do not skip — expect gate failure
 	})
 	require.Error(t, err)
@@ -840,7 +755,6 @@ func TestRun_integration_success(t *testing.T) {
 
 	r := orchestrator.NewRunner(s, wsDir)
 	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{
-		Force:     true,
 		SkipGates: true,
 	})
 	require.NoError(t, runErr)
@@ -891,7 +805,7 @@ func TestRun_integration_script_failure(t *testing.T) {
 	defer cancel()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
 	// A failed run must surface as an error so the CLI exits non-zero.
 	require.Error(t, runErr)
 	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful)
@@ -935,7 +849,7 @@ func TestRun_integration_context_cancelled(t *testing.T) {
 	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	_ = r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	_ = r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -975,7 +889,7 @@ func TestRun_integration_with_git_repo(t *testing.T) {
 	defer cancel()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
 	require.NoError(t, runErr)
 
 	// Verify the blast-radius branch was created (and then restored on success).
@@ -1017,7 +931,6 @@ func TestRun_integration_debug_log(t *testing.T) {
 
 	r := orchestrator.NewRunner(s, wsDir)
 	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{
-		Force:     true,
 		SkipGates: true,
 		Debug:     true, // enables debug log creation
 	}))
@@ -1107,7 +1020,7 @@ sys.exit(0)
 	defer cancel()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true}))
+	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1219,7 +1132,6 @@ sys.exit(0)
 
 	r := orchestrator.NewRunner(s, wsDir)
 	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{
-		Force:         true,
 		SkipGates:     true,
 		ApprovalPort:  approvalPort,
 		ApprovalToken: approvalToken,
@@ -1295,7 +1207,7 @@ sys.exit(0)
 	defer cancel()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true}))
+	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1356,7 +1268,7 @@ sys.exit(0)
 	defer cancel()
 
 	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
 	require.NoError(t, runErr)
 
 	runs, err := s.ListRunsByCase(caseID)
@@ -1392,7 +1304,7 @@ func TestRun_no_topology_returns_error(t *testing.T) {
 	require.NoError(t, err)
 
 	r := orchestrator.NewRunner(s, t.TempDir())
-	runErr := r.Run(context.Background(), c.ID, orchestrator.RunOptions{Force: true, SkipGates: true})
+	runErr := r.Run(context.Background(), c.ID, orchestrator.RunOptions{SkipGates: true})
 	require.Error(t, runErr)
 	assert.Contains(t, runErr.Error(), "topology")
 }
@@ -1400,7 +1312,7 @@ func TestRun_no_topology_returns_error(t *testing.T) {
 // TestRun_dryrun_creates_run_and_returns_nil covers the DryRun short-circuit
 // path: a run record is created, logged, and the function returns nil without
 // launching Python (CHECK 5.1.2 / CHECK 5.5.1).
-func TestRun_dryrun_creates_run_and_returns_nil(t *testing.T) {
+func TestRun_dryrun_creates_nothing(t *testing.T) {
 	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "") // empty sourcePath → skip all git ops
 
@@ -1408,21 +1320,20 @@ func TestRun_dryrun_creates_run_and_returns_nil(t *testing.T) {
 	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
 		DryRun:    true,
 		SkipGates: true,
-		Force:     true, // skip dirty-tree check
 	})
 	require.NoError(t, err)
 
-	// A run record must have been created and then marked KILLED (dry-run cleanup).
+	// A dry run validates and stops: it must not leave a run record behind.
 	runs, listErr := s.ListRunsByCase(caseID)
 	require.NoError(t, listErr)
-	require.Len(t, runs, 1, "exactly one run record must exist after a dry run")
-	assert.Equal(t, persistence.RunStatusKilled, runs[0].Status)
+	assert.Empty(t, runs, "a dry run must not create a run record")
 }
 
 // contentHashScript builds a fake-agent script that yields a file_edit carrying
 // content_hash for approvedContent, then (after approval) writes actualContent
-// to targetPath — letting tests exercise the approval-content binding.
-func contentHashScript(targetPath, approvedHash, actualContent string) string {
+// to target.txt in the run's worktree (bootstrap project_path) — letting tests
+// exercise the approval-content binding.
+func contentHashScript(approvedHash, actualContent string) string {
 	return `import sys, json, socket, time, hashlib
 boot = json.loads(sys.stdin.readline())
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -1448,7 +1359,8 @@ while b"\n" not in buf:
     buf += s.recv(4096)
 resp = json.loads(buf.split(b"\n")[0])
 assert resp.get("approved") == True, resp
-open(` + fmt.Sprintf("%q", targetPath) + `, "w").write(` + fmt.Sprintf("%q", actualContent) + `)
+import os
+open(os.path.join(boot["project_path"], "target.txt"), "w").write(` + fmt.Sprintf("%q", actualContent) + `)
 s.close()
 sys.exit(0)
 `
@@ -1488,12 +1400,12 @@ func prepareRunWorkspace(t *testing.T, wsDir string) {
 // TestRun_integration_long_workspace_path: a STAIRCASE_DIR deeper than the OS
 // unix-socket path limit (104 bytes on macOS) must not break the IPC listener.
 func TestRun_integration_long_workspace_path(t *testing.T) {
-	s, shortWS, repoPath, caseID := setupContentHashRun(t)
+	s, shortWS, _, caseID := setupContentHashRun(t)
 	wsDir := filepath.Join(shortWS, strings.Repeat("w", 120))
 	prepareRunWorkspace(t, wsDir)
 	const content = "long workspace path\n"
 	sum := sha256.Sum256([]byte(content))
-	script := contentHashScript(filepath.Join(repoPath, "target.txt"), hex.EncodeToString(sum[:]), content)
+	script := contentHashScript(hex.EncodeToString(sum[:]), content)
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -1507,14 +1419,14 @@ func TestRun_integration_content_hash_match(t *testing.T) {
 
 	const good = "GOOD CONTENT\n"
 	sum := sha256.Sum256([]byte(good))
-	script := contentHashScript(filepath.Join(repoPath, "target.txt"), hex.EncodeToString(sum[:]), good)
+	script := contentHashScript(hex.EncodeToString(sum[:]), good)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-		orchestrator.RunOptions{Force: true, SkipGates: true}))
+		orchestrator.RunOptions{SkipGates: true}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1525,25 +1437,27 @@ func TestRun_integration_content_hash_match(t *testing.T) {
 	for _, l := range logs {
 		assert.NotEqual(t, "approval_content_mismatch", l.EventType)
 	}
+	out, err := exec.Command("git", "-C", repoPath, "show", fmt.Sprintf("staircase/run-%d:target.txt", runs[0].ID)).CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	assert.Equal(t, good, string(out), "the approved bytes must land on the run branch")
 }
 
 // TestRun_integration_content_hash_mismatch: agent writes content that differs
 // from the approved hash — the run must fail, nothing may be committed, and an
 // approval_content_mismatch event must land in the audit chain.
 func TestRun_integration_content_hash_mismatch(t *testing.T) {
-	s, wsDir, repoPath, caseID := setupContentHashRun(t)
+	s, wsDir, _, caseID := setupContentHashRun(t)
 
 	const good = "GOOD CONTENT\n"
 	sum := sha256.Sum256([]byte(good))
-	script := contentHashScript(filepath.Join(repoPath, "target.txt"),
-		hex.EncodeToString(sum[:]), "EVIL CONTENT — never shown to the operator\n")
+	script := contentHashScript(hex.EncodeToString(sum[:]), "EVIL CONTENT — never shown to the operator\n")
 	require.NoError(t, os.WriteFile(
 		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-		orchestrator.RunOptions{Force: true, SkipGates: true})
+		orchestrator.RunOptions{SkipGates: true})
 	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful, "tampered run must surface as a non-success error")
 
 	runs, err := s.ListRunsByCase(caseID)

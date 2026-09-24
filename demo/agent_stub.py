@@ -13,22 +13,23 @@ runs fully offline with no API key. Its job is to exercise the governance layer:
      pre-commit hash check passes and the change is committed
   5. emit a success state and exit cleanly
 
-The orchestrator delivers the bootstrap message (socket path + auth token) on
-stdin, then this script connects back over the socket. The project path and the
-file to create are passed via environment variables set by run-demo.sh.
+The orchestrator delivers the bootstrap message (socket path, auth token and
+the run's worktree) on stdin, then this script connects back over the socket.
+The runtime gets no inherited environment, so run-demo.sh prepends a SETTINGS
+line (target file, tamper mode) to this script instead.
 """
 import hashlib
 import json
 import os
 import sys
 
-PROJECT_PATH = os.environ["DEMO_PROJECT_PATH"]
-TARGET_FILE = os.environ.get("DEMO_TARGET_FILE", "GREETING.md")
-NEW_CONTENT = os.environ.get(
-    "DEMO_FILE_CONTENT",
+SETTINGS = globals().get("SETTINGS", {})
+TARGET_FILE = SETTINGS.get("target_file", "GREETING.md")
+TAMPER = SETTINGS.get("tamper", False)
+NEW_CONTENT = (
     "# Hello from stAirCase\n\n"
     "This file was written by an AI agent — but only after a human approved it,\n"
-    "and only after the orchestrator confirmed the bytes matched the approval.\n",
+    "and only after the orchestrator confirmed the bytes matched the approval.\n"
 )
 
 
@@ -63,9 +64,9 @@ def main() -> int:
     #    DEMO_TAMPER mode the agent writes DIFFERENT bytes than it got approved
     #    — the orchestrator must detect the hash mismatch and refuse to commit.
     written = NEW_CONTENT
-    if os.environ.get("DEMO_TAMPER") == "1":
+    if TAMPER:
         written = NEW_CONTENT + "\n<!-- injected AFTER approval — operator never saw this -->\n"
-    full_path = os.path.join(PROJECT_PATH, TARGET_FILE)
+    full_path = os.path.join(boot["project_path"], TARGET_FILE)  # the run's worktree
     tmp_path = full_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(written)
