@@ -715,3 +715,18 @@ func TestAudit_Export_anchor_and_verify_checkAnchor(t *testing.T) {
 	require.NoError(t, os.WriteFile(cpPath, tampered, 0o600))
 	assert.Error(t, auditVerifyHandler(nil, []string{cpPath}))
 }
+
+func TestCLIHygiene_compile_rejects_malformed_id(t *testing.T) {
+	e2eWorkspace(t)
+	require.ErrorContains(t, compileCaseHandler(nil, []string{"1abc"}), "invalid case-id")
+}
+
+func TestCLIHygiene_config_set_without_flags_is_an_error(t *testing.T) {
+	e2eWorkspace(t)
+	require.ErrorContains(t, projectConfigSetCmd.RunE(projectConfigSetCmd, []string{"1"}), "nothing to set")
+}
+
+func TestCLIHygiene_doctor_fails_when_checks_fail(t *testing.T) {
+	viper.Set("STAIRCASE_DIR", filepath.Join(t.TempDir(), "missing"))
+	require.Error(t, doctorHandler(nil, nil), "a failed health check must exit non-zero")
+}

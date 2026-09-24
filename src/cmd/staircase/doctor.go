@@ -114,16 +114,19 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 	check(label, gitErr == nil, "install git from https://git-scm.com")
 
 	// ── 6. tmp directory ──────────────────────────────────────────────────────
-	tmpDir := filepath.Join(wsDir, "tmp")
-	_, tmpErr := os.Stat(tmpDir)
-	check("tmp/ directory", tmpErr == nil, "will be created on first run")
+	// tmp/ is created on first run, so its absence is informational only.
+	if _, err := os.Stat(filepath.Join(wsDir, "tmp")); err == nil {
+		fmt.Println("  ✅ tmp/ directory")
+	} else {
+		fmt.Println("  ℹ️  tmp/ directory — created on first run")
+	}
 
 	fmt.Println()
-	if allOK {
-		fmt.Println("✅ All checks passed. Ready to orchestrate.")
-	} else {
+	if !allOK {
 		fmt.Println("❌ Some checks failed. See above for remediation steps.")
+		return fmt.Errorf("doctor: some checks failed")
 	}
+	fmt.Println("✅ All checks passed. Ready to orchestrate.")
 	return nil
 }
 

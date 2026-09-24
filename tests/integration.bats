@@ -57,3 +57,10 @@ sc() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"case"* ]]
 }
+
+@test "runtime errors: printed once, without usage text" {
+  run sc case status 999
+  [ "$status" -ne 0 ]
+  [ "$(grep -c 'case #999 not found' <<<"$output")" -eq 1 ]
+  [[ "$output" != *"Usage:"* ]]
+}

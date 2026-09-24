@@ -31,9 +31,9 @@ func init() {
 }
 
 func compileCaseHandler(_ *cobra.Command, args []string) error {
-	var caseID int64
-	if _, err := fmt.Sscan(args[0], &caseID); err != nil {
-		return fmt.Errorf("invalid case-id %q: %w", args[0], err)
+	caseID, err := parseID("case-id", args[0])
+	if err != nil {
+		return err
 	}
 
 	wsDir := viper.GetString("STAIRCASE_DIR")

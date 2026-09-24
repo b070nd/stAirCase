@@ -60,3 +60,10 @@ func TestStatusIcon_all_branches(t *testing.T) {
 	assert.Contains(t, statusIcon(gate.StatusFail), "❌")
 	assert.NotEmpty(t, statusIcon(gate.Status("unknown"))) // default branch
 }
+
+func TestParseID_rejects_trailing_garbage(t *testing.T) {
+	for _, s := range []string{"1abc", "1 2", "0x1", ""} {
+		_, err := parseID("case", s)
+		assert.Error(t, err, "input %q", s)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/b070nd/staircase-core/src/internal/persistence"
@@ -23,8 +24,8 @@ func openStore() (*persistence.Store, *sql.DB, error) {
 
 // parseID parses a decimal int64, returning a clear error on failure.
 func parseID(label, s string) (int64, error) {
-	var id int64
-	if _, err := fmt.Sscan(s, &id); err != nil {
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
 		return 0, fmt.Errorf("invalid %s %q: expected a numeric ID", label, s)
 	}
 	return id, nil

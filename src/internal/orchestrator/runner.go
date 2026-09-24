@@ -301,10 +301,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 
 	// Per-project HMAC secret for authenticating webhook approvals. When a
 	// webhook is configured without a secret the channel is unauthenticated —
-	// warn loudly so operators know to set one with `staircase project set-webhook --secret`.
+	// warn loudly so operators know to store one under __webhook_hmac_secret__.
 	webhookSecret := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
 	if project.WebhookURL != "" && len(webhookSecret) == 0 {
-		obs.Log.Warn("webhook approvals are UNAUTHENTICATED — set a secret with 'staircase project set-webhook --secret' to prevent forged approvals",
+		obs.Log.Warn(`webhook approvals are UNAUTHENTICATED — store an HMAC secret to prevent forged approvals: printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <id>`,
 			"project_id", caseRec.ProjectID)
 	}
 

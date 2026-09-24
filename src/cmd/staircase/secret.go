@@ -160,7 +160,7 @@ var secretListCmd = &cobra.Command{
 		_ = store // silence unused warning
 
 		if len(secretRows) == 0 {
-			fmt.Println("No secrets stored. Use 'staircase secret set <key> <value>'.")
+			fmt.Println("No secrets stored. Pipe a value in: printf 'value' | staircase secret set <key>")
 			return nil
 		}
 

@@ -140,7 +140,7 @@ var projectSetWebhookCmd = &cobra.Command{
 To authenticate the webhook channel (strongly recommended — otherwise a network
 attacker can forge approvals), store a shared HMAC secret under the reserved key:
 
-    staircase secret set __webhook_hmac_secret__ <secret> --project <project-id>
+    printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <project-id>
 
 When that secret is present, stAirCase HMAC-signs each outbound yield and rejects
 any response that is not validly signed with the same secret. The approver must
@@ -188,6 +188,9 @@ var projectConfigSetCmd = &cobra.Command{
 	Short: "Set default model or budget cap for a project",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if configDefaultModel == "" && !cmd.Flags().Changed("budget-cap") {
+			return fmt.Errorf("nothing to set: pass --default-model and/or --budget-cap")
+		}
 		store, db, err := openStore()
 		if err != nil {
 			return err
