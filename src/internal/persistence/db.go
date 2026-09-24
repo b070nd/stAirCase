@@ -27,7 +27,11 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 	//     `PRAGMA foreign_keys=ON` only covered the single connection it ran on,
 	//     leaving other pooled connections unenforced. Setting it in the DSN
 	//     guarantees every connection enforces referential integrity.
-	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
+	//   _txlock=immediate — transactions take the write lock at BEGIN, where
+	//     busy_timeout applies. A deferred transaction that reads, then writes
+	//     gets SQLITE_BUSY at once if another writer committed in between, so a
+	//     concurrent run could be recorded as failed after succeeding.
+	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_txlock=immediate"
 
 	db, err := sql.Open("sqlite", connStr)
 	if err != nil {

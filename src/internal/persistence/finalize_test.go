@@ -1,6 +1,7 @@
 package persistence_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -139,4 +140,43 @@ func TestAcceptUserStory_is_atomic(t *testing.T) {
 	logs, err := s.ListEventLogs(run.ID)
 	require.NoError(t, err)
 	assert.Empty(t, logs, "no audit entry for an acceptance that did not happen")
+}
+
+// TestFinishRun_concurrent_runs_never_hit_sqlite_busy: runs of different
+// cases finish concurrently (two terminals, one workspace). A deferred
+// transaction that reads and then writes gets SQLITE_BUSY immediately when
+// another writer committed in between — busy_timeout cannot help — so a run
+// that succeeded would be recorded as failed.
+func TestFinishRun_concurrent_runs_never_hit_sqlite_busy(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffold(t, s)
+	_, err := s.CreateSwarmTopology(projectID, "sup", "memory", "langgraph")
+	require.NoError(t, err)
+	const n = 24
+	runs := make([]int64, n)
+	for i := range runs {
+		c, err := s.CreateCase(projectID)
+		require.NoError(t, err)
+		r, err := s.CreateRun(c.ID, 1, "main")
+		require.NoError(t, err)
+		runs[i] = r.ID
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for _, id := range runs {
+		wg.Add(1)
+		go func(id int64) {
+			defer wg.Done()
+			if _, err := s.AppendEventLogChained(id, "state_emit", `{"x":1}`, ""); err != nil {
+				errs <- err
+				return
+			}
+			errs <- s.FinishRun(id, persistence.RunStatusSuccess, time.Now(), "c0ffee")
+		}(id)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }
