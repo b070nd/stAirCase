@@ -15,7 +15,7 @@ var (
 	TopologySupervisorRegisteredGate Gate = &topologySupervisorRegisteredGate{}
 	TopologyEdgesValidGate           Gate = &topologyEdgesValidGate{}
 	TopologyNoOrphanAgentsGate       Gate = &topologyNoOrphanAgentsGate{}
-	SecretAnthropicKeyGate           Gate = &secretAnthropicKeyGate{}
+	SecretProviderKeysGate           Gate = &secretProviderKeysGate{}
 	SecretKeyFileGate                Gate = &secretKeyFileGate{}
 	SecretNoDuplicatesGate           Gate = &secretNoDuplicatesGate{}
 	RuntimeScriptCompiledGate        Gate = &runtimeScriptCompiledGate{}

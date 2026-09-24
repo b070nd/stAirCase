@@ -300,7 +300,7 @@ func TestE2E_Gate_JSONReport(t *testing.T) {
 // ─── Scenario 5: Secret lifecycle ────────────────────────────────────────────
 
 // TestE2E_SecretGate_AnthropicKeyMissingBlocks verifies that the
-// secret.anthropic_key gate blocks when no secret has been registered.
+// secret.provider_keys gate blocks when the model's provider key is missing.
 func TestE2E_SecretGate_AnthropicKeyMissingBlocks(t *testing.T) {
 	wsDir, s := e2eWorkspace(t)
 	caseID, _ := seedFullCase(t, s)
@@ -308,13 +308,13 @@ func TestE2E_SecretGate_AnthropicKeyMissingBlocks(t *testing.T) {
 	report := gate.RunAll(gate.Context{CaseID: caseID, WsDir: wsDir, Store: s})
 
 	for _, r := range report.Gates {
-		if r.Name == "secret.anthropic_key" {
+		if r.Name == "secret.provider_keys" {
 			assert.Equal(t, gate.StatusFail, r.Status)
 			assert.Contains(t, r.Message, "ANTHROPIC_API_KEY")
 			return
 		}
 	}
-	t.Fatal("secret.anthropic_key gate not found in report")
+	t.Fatal("secret.provider_keys gate not found in report")
 }
 
 // TestE2E_SecretGate_AnthropicKeyPresentPasses verifies that after registering
@@ -330,12 +330,12 @@ func TestE2E_SecretGate_AnthropicKeyPresentPasses(t *testing.T) {
 	report := gate.RunAll(gate.Context{CaseID: caseID, WsDir: wsDir, Store: s})
 
 	for _, r := range report.Gates {
-		if r.Name == "secret.anthropic_key" {
+		if r.Name == "secret.provider_keys" {
 			assert.Equal(t, gate.StatusPass, r.Status)
 			return
 		}
 	}
-	t.Fatal("secret.anthropic_key gate not found in report")
+	t.Fatal("secret.provider_keys gate not found in report")
 }
 
 // ─── Scenario 6: Inspect — runs and event log ─────────────────────────────────

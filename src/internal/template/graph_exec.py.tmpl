@@ -252,18 +252,25 @@ _BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file] + ([run_shell]
 
 
 # ── LLM provider dispatcher ───────────────────────────────────────────────────
+#   provider/model    → OpenAI-compatible gateway (default: Vercel AI Gateway)
+#                                          secret: LLM_GATEWAY_API_KEY (+ optional LLM_GATEWAY_URL)
 #   claude-*          → Anthropic          secret: ANTHROPIC_API_KEY
 #   gpt-*, o1-*, o3-* → OpenAI             secret: OPENAI_API_KEY
 #   o4-*              → OpenAI             secret: OPENAI_API_KEY
 #   gemini-*          → Google             secret: GOOGLE_API_KEY
 #   grok-*            → xAI               secret: XAI_API_KEY
+# Mirrored by providerSecret in gate/security.go (secret.provider_keys) — keep in sync.
 
 def _make_llm(model: str, tools: list):
     # Replay mode: return the singleton replay client (ignores model/tools).
     if _replay_client is not None:
         return _replay_client
     # Build the real provider-specific LLM.
-    if model.startswith("claude-"):
+    if "/" in model:
+        from langchain_openai import ChatOpenAI
+        _real = ChatOpenAI(model=model, api_key=_ipc.get_secret("LLM_GATEWAY_API_KEY"),
+                           base_url=_ipc.get_secret("LLM_GATEWAY_URL") or "https://ai-gateway.vercel.sh/v1").bind_tools(tools)
+    elif model.startswith("claude-"):
         from langchain_anthropic import ChatAnthropic
         _real = ChatAnthropic(model=model, api_key=_ipc.get_secret("ANTHROPIC_API_KEY")).bind_tools(tools)
     elif model.startswith(("gpt-", "o1-", "o3-", "o4-")):
@@ -278,7 +285,7 @@ def _make_llm(model: str, tools: list):
     else:
         raise ValueError(
             f"Unknown LLM provider for model {model!r}. "
-            "Supported prefixes: claude-, gpt-, o1-, o3-, o4-, gemini-, grok-"
+            "Supported: claude-, gpt-, o1-, o3-, o4-, gemini-, grok-, or provider/model (LLM gateway)"
         )
     # Recording mode: wrap the real LLM so every exchange is appended to the session.
     if _rec_session is not None:

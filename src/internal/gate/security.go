@@ -4,43 +4,95 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func init() {
-	Register(&secretAnthropicKeyGate{})
+	Register(&secretProviderKeysGate{})
 	Register(&secretKeyFileGate{})
 	Register(&secretNoDuplicatesGate{})
 }
 
-// ─── secret.anthropic_key ─────────────────────────────────────────────────────
+// ─── secret.provider_keys ─────────────────────────────────────────────────────
 
-type secretAnthropicKeyGate struct{}
-
-func (*secretAnthropicKeyGate) Name() string       { return "secret.anthropic_key" }
-func (*secretAnthropicKeyGate) Category() string   { return "security" }
-func (*secretAnthropicKeyGate) Severity() Severity { return SeverityBlock }
-
-func (*secretAnthropicKeyGate) Run(ctx Context) Result {
-	const name = "secret.anthropic_key"
-	c, _ := ctx.Store.GetCase(ctx.CaseID)
-	var projectID *int64
-	if c != nil {
-		projectID = &c.ProjectID
+// providerSecret is the workspace secret the runtime requests for a model. It
+// mirrors _make_llm in template/graph_exec.py.tmpl — keep the two in sync.
+func providerSecret(model string) string {
+	switch {
+	case strings.Contains(model, "/"): // provider/model via an OpenAI-compatible gateway
+		return "LLM_GATEWAY_API_KEY"
+	case strings.HasPrefix(model, "claude-"):
+		return "ANTHROPIC_API_KEY"
+	case strings.HasPrefix(model, "gpt-"), strings.HasPrefix(model, "o1-"),
+		strings.HasPrefix(model, "o3-"), strings.HasPrefix(model, "o4-"):
+		return "OPENAI_API_KEY"
+	case strings.HasPrefix(model, "gemini-"):
+		return "GOOGLE_API_KEY"
+	case strings.HasPrefix(model, "grok-"):
+		return "XAI_API_KEY"
 	}
-	sec, err := ctx.Store.GetSecret("ANTHROPIC_API_KEY", projectID)
+	return ""
+}
+
+type secretProviderKeysGate struct{}
+
+func (*secretProviderKeysGate) Name() string       { return "secret.provider_keys" }
+func (*secretProviderKeysGate) Category() string   { return "security" }
+func (*secretProviderKeysGate) Severity() Severity { return SeverityBlock }
+
+// Run requires, for every model in the case's topology, the provider secret its
+// runtime client will request, so a run cannot die at its first LLM call.
+func (*secretProviderKeysGate) Run(ctx Context) Result {
+	const name = "secret.provider_keys"
+	c, err := ctx.Store.GetCase(ctx.CaseID)
+	if err != nil || c == nil {
+		return fail(name, "security", SeverityBlock, fmt.Sprintf("case %d not found", ctx.CaseID))
+	}
+	topo, err := ctx.Store.GetLatestTopology(c.ProjectID)
 	if err != nil {
 		return fail(name, "security", SeverityBlock, "store error: "+err.Error())
 	}
-	if sec == nil {
-		return fail(name, "security", SeverityBlock,
-			"ANTHROPIC_API_KEY not found — use 'staircase secret set ANTHROPIC_API_KEY <value>'")
+	if topo == nil {
+		return pass(name, "security", SeverityBlock, "no topology yet (see topology.exists)")
 	}
-	scope := "global"
-	if sec.ScopedToProjectID != nil {
-		scope = fmt.Sprintf("project %d", *sec.ScopedToProjectID)
+	nodes, err := ctx.Store.ListAgentNodes(topo.ID)
+	if err != nil {
+		return fail(name, "security", SeverityBlock, "store error: "+err.Error())
 	}
-	return pass(name, "security", SeverityBlock,
-		fmt.Sprintf("ANTHROPIC_API_KEY present (scope: %s)", scope))
+	var problems, present []string
+	checked := map[string]bool{}
+	for _, n := range nodes {
+		model := n.Model
+		if model == "" {
+			model = "claude-sonnet-4-6" // compile's default for agents without a model
+		}
+		key := providerSecret(model)
+		if key == "" {
+			problems = append(problems, fmt.Sprintf("model %q (agent %q) has no known provider: use claude-, gpt-/o1-/o3-/o4-, gemini-, grok- or provider/model (LLM gateway)", model, n.Name))
+			continue
+		}
+		if checked[key] {
+			continue
+		}
+		checked[key] = true
+		sec, err := ctx.Store.GetSecret(key, &c.ProjectID)
+		if err != nil {
+			return fail(name, "security", SeverityBlock, "store error: "+err.Error())
+		}
+		if sec == nil {
+			problems = append(problems, fmt.Sprintf("%s missing — printf 'value' | staircase secret set %s", key, key))
+			continue
+		}
+		scope := "global"
+		if sec.ScopedToProjectID != nil {
+			scope = fmt.Sprintf("project %d", *sec.ScopedToProjectID)
+		}
+		present = append(present, fmt.Sprintf("%s (%s)", key, scope))
+	}
+	if len(problems) > 0 {
+		return fail(name, "security", SeverityBlock, strings.Join(problems, "; "))
+	}
+	return pass(name, "security", SeverityBlock, "present: "+strings.Join(present, ", "))
 }
 
 // ─── secret.key_file ──────────────────────────────────────────────────────────

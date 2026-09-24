@@ -147,7 +147,7 @@ func TestAllGates_metadata_methods(t *testing.T) {
 		gate.TopologyEdgesValidGate,
 		gate.TopologyNoOrphanAgentsGate,
 		gate.TopologyRuntimeValidGate,
-		gate.SecretAnthropicKeyGate,
+		gate.SecretProviderKeysGate,
 		gate.SecretKeyFileGate,
 		gate.SecretNoDuplicatesGate,
 		gate.RuntimeScriptCompiledGate,
@@ -351,31 +351,52 @@ func TestTopologyNoOrphanAgentsGate_all_connected(t *testing.T) {
 
 // ─── Security gates ───────────────────────────────────────────────────────────
 
-func TestSecretAnthropicKeyGate_missing(t *testing.T) {
-	ctx, _ := newGateEnv(t)
-	_, ctx.CaseID = makeCase(t, ctx.Store)
-	r := gate.SecretAnthropicKeyGate.Run(ctx)
-	assert.Equal(t, gate.StatusFail, r.Status)
-	assert.Equal(t, gate.SeverityBlock, r.Severity)
+func topoWithModels(t *testing.T, s *persistence.Store, projectID int64, models ...string) {
+	t.Helper()
+	topo, err := s.CreateSwarmTopology(projectID, "a0", "memory", "langgraph")
+	require.NoError(t, err)
+	for i, m := range models {
+		_, err := s.CreateAgentNode(topo.ID, fmt.Sprintf("a%d", i), "r", m, nil)
+		require.NoError(t, err)
+	}
 }
 
-func TestSecretAnthropicKeyGate_global_present(t *testing.T) {
+func TestSecretProviderKeysGate_no_topology_defers_to_structural_gates(t *testing.T) {
 	ctx, _ := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
-	ctx.Store.CreateSecret("ANTHROPIC_API_KEY", "sk-test", nil)
-	r := gate.SecretAnthropicKeyGate.Run(ctx)
+	r := gate.SecretProviderKeysGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
-	assert.Contains(t, r.Message, "global")
 }
 
-func TestSecretAnthropicKeyGate_project_scoped(t *testing.T) {
+func TestSecretProviderKeysGate_requires_each_models_provider_key(t *testing.T) {
 	ctx, _ := newGateEnv(t)
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
-	ctx.Store.CreateSecret("ANTHROPIC_API_KEY", "sk-proj", &pID)
-	r := gate.SecretAnthropicKeyGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+	topoWithModels(t, ctx.Store, pID, "claude-sonnet-4-6", "gpt-5", "openai/gpt-6-astra")
+	ctx.Store.CreateSecret("ANTHROPIC_API_KEY", "sk-a", nil)
+	r := gate.SecretProviderKeysGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Equal(t, gate.SeverityBlock, r.Severity)
+	assert.Contains(t, r.Message, "OPENAI_API_KEY")
+	assert.Contains(t, r.Message, "LLM_GATEWAY_API_KEY")
+	assert.NotContains(t, r.Message, "ANTHROPIC_API_KEY missing")
+
+	ctx.Store.CreateSecret("OPENAI_API_KEY", "sk-o", &pID)
+	ctx.Store.CreateSecret("LLM_GATEWAY_API_KEY", "vck-g", nil)
+	r = gate.SecretProviderKeysGate.Run(ctx)
+	assert.Equal(t, gate.StatusPass, r.Status, r.Message)
+	assert.Contains(t, r.Message, "global")
 	assert.Contains(t, r.Message, "project")
+}
+
+func TestSecretProviderKeysGate_unknown_model_blocks(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	topoWithModels(t, ctx.Store, pID, "mystery-model")
+	r := gate.SecretProviderKeysGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Contains(t, r.Message, "no known provider")
 }
 
 func TestSecretKeyFileGate_missing(t *testing.T) {

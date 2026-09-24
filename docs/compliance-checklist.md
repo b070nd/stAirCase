@@ -221,7 +221,7 @@
 | Gate | Severity | Status |
 |---|---|---|
 | `secret.key_file` | BLOCK | ✅ Checks existence, size, and mode 0600 |
-| `secret.anthropic_key` | BLOCK | ✅ Global or project-scoped secret required |
+| `secret.provider_keys` | BLOCK | ✅ Each topology model's provider secret (global or project-scoped) required |
 | `secret.no_duplicates` | WARN | ✅ Advisory (DB constraint is the authoritative guard) |
 
 ### Runtime (6)
