@@ -668,8 +668,8 @@ func signedOperator(t *testing.T, secret []byte) *httptest.Server {
 			return
 		}
 		// An honest approver names the request it answers (see webhookauth).
-		respBody := []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"feedback":"signed-approve","request_sha256":%q}`,
-			r.Header.Get(webhookauth.HeaderRequestSHA256)))
+		respBody := []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"feedback":"signed-approve","request_sha256":%q,"yield_id":%q}`,
+			r.Header.Get(webhookauth.HeaderRequestSHA256), yieldIDOf(raw)))
 		ts := strconv.FormatInt(time.Now().Unix(), 10)
 		w.Header().Set(webhookauth.HeaderTimestamp, ts)
 		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, ts, respBody))
@@ -687,34 +687,51 @@ func TestSendWebhookYield_signed_roundtrip_approves(t *testing.T) {
 	assert.Equal(t, "signed-approve", resp.Feedback)
 }
 
+// yieldIDOf returns the yield_id an approver reads from a webhook request body.
+func yieldIDOf(body []byte) string {
+	var in struct {
+		YieldID string `json:"yield_id"`
+	}
+	_ = json.Unmarshal(body, &in)
+	return in.YieldID
+}
+
 // TestSendWebhookYield_replayed_approval_rejected: a validly signed approval
-// captured for one request must not approve another pending request.
+// captured for one request must not approve another pending request — not
+// even a byte-identical one (agents re-propose identical edits).
 func TestSendWebhookYield_replayed_approval_rejected(t *testing.T) {
 	secret := []byte("project-secret")
-	var captured []byte
-	var capturedTS string
-	honest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		captured = []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"request_sha256":%q}`,
-			r.Header.Get(webhookauth.HeaderRequestSHA256)))
-		capturedTS = strconv.FormatInt(time.Now().Unix(), 10)
-		w.Header().Set(webhookauth.HeaderTimestamp, capturedTS)
-		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, capturedTS, captured))
-		_, _ = w.Write(captured)
-	}))
-	defer honest.Close()
 	first := ipc.IpcYieldRequest{Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "approved one"}
-	require.True(t, orchestrator.ExportedSendWebhookYield(honest.URL, secret, first).Approved)
+	for name, second := range map[string]ipc.IpcYieldRequest{
+		"different_request": {Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "something else"},
+		"identical_request": first,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var captured []byte
+			var capturedTS string
+			honest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				raw, _ := io.ReadAll(r.Body)
+				captured = []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"request_sha256":%q,"yield_id":%q}`,
+					r.Header.Get(webhookauth.HeaderRequestSHA256), yieldIDOf(raw)))
+				capturedTS = strconv.FormatInt(time.Now().Unix(), 10)
+				w.Header().Set(webhookauth.HeaderTimestamp, capturedTS)
+				w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, capturedTS, captured))
+				_, _ = w.Write(captured)
+			}))
+			defer honest.Close()
+			require.True(t, orchestrator.ExportedSendWebhookYield(honest.URL, secret, first).Approved)
 
-	replay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set(webhookauth.HeaderTimestamp, capturedTS)
-		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, capturedTS, captured))
-		_, _ = w.Write(captured) // valid signature, but it answers the first request
-	}))
-	defer replay.Close()
-	second := ipc.IpcYieldRequest{Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "something else"}
-	resp := orchestrator.ExportedSendWebhookYield(replay.URL, secret, second)
-	assert.False(t, resp.Approved, "a replayed approval must not approve a different request")
-	assert.Contains(t, resp.Feedback, "request_sha256")
+			replay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set(webhookauth.HeaderTimestamp, capturedTS)
+				w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, capturedTS, captured))
+				_, _ = w.Write(captured) // valid signature, but it answers the first request
+			}))
+			defer replay.Close()
+			resp := orchestrator.ExportedSendWebhookYield(replay.URL, secret, second)
+			assert.False(t, resp.Approved, "a replayed approval must not approve another request")
+			assert.Contains(t, resp.Feedback, "request_sha256")
+		})
+	}
 }
 
 func TestSendWebhookYield_unsigned_response_rejected_when_secret_set(t *testing.T) {
@@ -1359,12 +1376,12 @@ func TestRun_dryrun_creates_nothing(t *testing.T) {
 	assert.Empty(t, runs, "a dry run must not create a run record")
 }
 
-// contentHashScript builds a fake-agent script that proposes creating
+// approveThenWriteScript builds a fake-agent script that proposes creating
 // target.txt with approvedContent (the bytes the operator is shown, which the
 // orchestrator binds the approval to), then after approval writes
 // actualContent into the run's worktree (bootstrap project_path).
-func contentHashScript(approvedContent, actualContent string) string {
-	return `import sys, json, socket, time, hashlib
+func approveThenWriteScript(approvedContent, actualContent string) string {
+	return `import sys, json, socket, time
 boot = json.loads(sys.stdin.readline())
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 for _ in range(30):
@@ -1396,7 +1413,7 @@ sys.exit(0)
 `
 }
 
-func setupContentHashRun(t *testing.T) (s *persistence.Store, wsDir, repoPath string, caseID int64) {
+func setupApprovalRun(t *testing.T) (s *persistence.Store, wsDir, repoPath string, caseID int64) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("integration test — skipped in -short mode")
@@ -1430,24 +1447,24 @@ func prepareRunWorkspace(t *testing.T, wsDir string) {
 // TestRun_integration_long_workspace_path: a STAIRCASE_DIR deeper than the OS
 // unix-socket path limit (104 bytes on macOS) must not break the IPC listener.
 func TestRun_integration_long_workspace_path(t *testing.T) {
-	s, shortWS, _, caseID := setupContentHashRun(t)
+	s, shortWS, _, caseID := setupApprovalRun(t)
 	wsDir := filepath.Join(shortWS, strings.Repeat("w", 120))
 	prepareRunWorkspace(t, wsDir)
 	const content = "long workspace path\n"
-	script := contentHashScript(content, content)
+	script := approveThenWriteScript(content, content)
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
 }
 
-// TestRun_integration_content_hash_match: agent writes exactly the approved
+// TestRun_integration_approved_content_is_committed: agent writes exactly the approved
 // content — run succeeds, no approval_content_mismatch event.
-func TestRun_integration_content_hash_match(t *testing.T) {
-	s, wsDir, repoPath, caseID := setupContentHashRun(t)
+func TestRun_integration_approved_content_is_committed(t *testing.T) {
+	s, wsDir, repoPath, caseID := setupApprovalRun(t)
 
 	const good = "GOOD CONTENT\n"
-	script := contentHashScript(good, good)
+	script := approveThenWriteScript(good, good)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 
@@ -1470,14 +1487,14 @@ func TestRun_integration_content_hash_match(t *testing.T) {
 	assert.Equal(t, good, string(out), "the approved bytes must land on the run branch")
 }
 
-// TestRun_integration_content_hash_mismatch: agent writes content that differs
-// from the approved hash — the run must fail, nothing may be committed, and an
+// TestRun_integration_tampered_content_fails: agent writes content that differs
+// from the approved content — the run must fail, nothing may be committed, and an
 // approval_content_mismatch event must land in the audit chain.
-func TestRun_integration_content_hash_mismatch(t *testing.T) {
-	s, wsDir, _, caseID := setupContentHashRun(t)
+func TestRun_integration_tampered_content_fails(t *testing.T) {
+	s, wsDir, _, caseID := setupApprovalRun(t)
 
 	const good = "GOOD CONTENT\n"
-	script := contentHashScript(good, "EVIL CONTENT — never shown to the operator\n")
+	script := approveThenWriteScript(good, "EVIL CONTENT — never shown to the operator\n")
 	require.NoError(t, os.WriteFile(
 		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 
@@ -1510,7 +1527,7 @@ func TestRun_integration_content_hash_mismatch(t *testing.T) {
 // until the caller's deadline — it is killed after a short grace period, the
 // run FAILS, and the reason is in the audit chain.
 func TestRun_integration_hung_runtime_is_reaped(t *testing.T) {
-	s, wsDir, _, caseID := setupContentHashRun(t)
+	s, wsDir, _, caseID := setupApprovalRun(t)
 	t.Cleanup(orchestrator.SetLostGraceForTest(time.Second))
 	script := `import sys, json, socket, time
 boot = json.loads(sys.stdin.readline())

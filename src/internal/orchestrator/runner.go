@@ -37,7 +37,6 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
-	gogit "github.com/go-git/go-git/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -286,7 +285,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if wgr, err = OpenGitRepo(worktree); err != nil {
 			return fmt.Errorf("open run worktree: %w", err)
 		}
-		if appr, err = newApprovals(worktree, wgr, baseSHA); err != nil {
+		if appr, err = newApprovals(wgr, baseSHA); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", runBranch, worktree)
@@ -556,7 +555,7 @@ runLoop:
 				if n, err := appr.derive(yieldReq.ProposedEdits); err != nil {
 					refusal = err.Error()
 					if errors.Is(err, errBadPath) {
-						payload, _ := json.Marshal(map[string]any{"type": "approval_path_escape", "agent": yieldReq.AgentName, "reason": refusal})
+						payload, _ := json.Marshal(map[string]any{"type": "approval_path_escape", "agent": yieldReq.AgentName, "detail": refusal})
 						_, _ = r.store.AppendEventLogChained(run.ID, "approval_path_escape", string(payload), "")
 					}
 				} else {
@@ -673,31 +672,34 @@ runLoop:
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
 	if finalStatus == persistence.RunStatusSuccess && appr != nil {
-		// The worktree must hold exactly the approved state: approved paths with
-		// their approved bytes, and no other change in the files or the index.
-		changes, err := appr.verify(wgr)
+		// The worktree must hold exactly the approved state on the base commit:
+		// approved paths with their approved bytes, no other change in the files
+		// or the index, and no commits of the agent's own.
+		violations, err := appr.verify()
 		if err != nil {
 			return err
 		}
-		for _, c := range changes {
-			payload, _ := json.Marshal(map[string]any{"type": c.event, "file": c.file, "detail": c.detail})
-			_, _ = r.store.AppendEventLogChained(run.ID, c.event, string(payload), "")
+		for _, v := range violations {
+			event := map[string]any{"type": v.event, "detail": v.detail}
+			if v.file != "" {
+				event["file"] = v.file
+			}
+			payload, _ := json.Marshal(event)
+			_, _ = r.store.AppendEventLogChained(run.ID, v.event, string(payload), "")
 			obs.Log.Error("worktree does not match the approvals — refusing to commit",
-				"event", c.event, "file", c.file, "detail", c.detail, "run_id", run.ID)
-			display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", c.file, c.detail))
+				"event", v.event, "file", v.file, "detail", v.detail, "run_id", run.ID)
+			display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", v.file, v.detail))
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
 	if finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
-		if err := appr.stage(wgr); err != nil {
+		hash, err := appr.commit(runBranch, fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID))
+		if err != nil {
 			return err
 		}
-		msg := fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID)
-		if hash, err := wgr.Commit(msg); err == nil {
+		if hash != "" {
 			commitHash = hash
 			ipcSrv.SetGitCommitHash(commitHash)
-		} else if !errors.Is(err, gogit.ErrEmptyCommit) {
-			return fmt.Errorf("commit approved files: %w", err)
 		}
 	}
 
@@ -786,9 +788,14 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 	reject := func(msg string) ipc.IpcYieldResponse {
 		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: msg}
 	}
-	body, _ := json.Marshal(req)
-	reqSum := sha256.Sum256(body)
-	reqHash := hex.EncodeToString(reqSum[:])
+	// A fresh yield_id makes every request unique, so an approval captured for
+	// one request never matches another — not even an identical re-proposal.
+	yieldID := rand.Text()
+	body, _ := json.Marshal(struct {
+		YieldID string `json:"yield_id"`
+		ipc.IpcYieldRequest
+	}{yieldID, req})
+	reqHash := sha256Hex(body)
 
 	httpReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
@@ -830,6 +837,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 	var yieldResp struct {
 		ipc.IpcYieldResponse
 		RequestSHA256 string `json:"request_sha256"`
+		YieldID       string `json:"yield_id"`
 	}
 	if err := json.Unmarshal(respBody, &yieldResp); err != nil {
 		obs.Log.Warn("webhook response decode failed — auto-rejecting", "err", err)
@@ -837,9 +845,9 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 	}
 	// Authenticated channel: the signed body must name the request it answers,
 	// or a captured approval could be replayed against another pending yield.
-	if len(secret) > 0 && yieldResp.RequestSHA256 != reqHash {
+	if len(secret) > 0 && (yieldResp.RequestSHA256 != reqHash || yieldResp.YieldID != yieldID) {
 		obs.Log.Error("webhook response answers a different request — rejecting (possible replay)")
-		return reject("webhook response request_sha256 does not match this request (possible replay)")
+		return reject("webhook response does not echo this request's yield_id and request_sha256 (possible replay)")
 	}
 	if yieldResp.Type == "" {
 		yieldResp.Type = "yield_response"

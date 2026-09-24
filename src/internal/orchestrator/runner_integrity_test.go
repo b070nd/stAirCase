@@ -57,33 +57,35 @@ func TestRun_integrity_existing_branch_is_preserved(t *testing.T) {
 }
 
 func TestRun_integrity_finalization(t *testing.T) {
-	for _, scenario := range []string{"no_changes", "approved_change", "staging_failure", "commit_failure", "summary_failure", "budget_kill"} {
+	for _, scenario := range []string{"no_changes", "approved_change", "status_failure", "commit_failure", "summary_failure", "budget_kill"} {
 		t.Run(scenario, func(t *testing.T) {
-			s, wsDir, repo, caseID := setupContentHashRun(t)
+			s, wsDir, repo, caseID := setupApprovalRun(t)
 			_, err := s.CreateUserStory(caseID, "Must be independently verified")
 			require.NoError(t, err)
 			const content = "approved content\n"
-			script := contentHashScript(content, content)
+			script := approveThenWriteScript(content, content)
 			wantStatus := persistence.RunStatusSuccess
 			wantCaseStatus := persistence.CaseStatusPending
 			var errorPart string
 			switch scenario {
 			case "no_changes":
 				script = "import json, sys\njson.loads(sys.stdin.readline())\n"
-			case "staging_failure":
-				// Replace the run worktree's index with a directory so staging fails
-				// deterministically (a linked worktree's index lives in its gitdir).
+			case "status_failure":
+				// Replace the run worktree's index with a directory so reading the
+				// worktree status fails deterministically (a linked worktree's index
+				// lives in its gitdir).
 				script = strings.Replace(script, "s.close()", "import os\ngd = open(os.path.join(boot['project_path'], '.git')).read().split(':', 1)[1].strip()\np = os.path.join(gd, 'index')\nif os.path.exists(p): os.unlink(p)\nos.mkdir(p)\ns.close()", 1)
-				errorPart = "stage approved files"
+				errorPart = "read worktree status"
 			case "commit_failure":
 				if os.Geteuid() == 0 {
 					t.Skip("root bypasses read-only reference permissions")
 				}
-				// The index remains writable, but publishing the branch ref cannot succeed.
-				refPath := filepath.Join(repo, ".git", "refs", "heads", "staircase", "run-1")
-				script = strings.Replace(script, "s.close()", fmt.Sprintf("import os\nos.chmod(%q, 0o400)\ns.close()", refPath), 1)
-				t.Cleanup(func() { _ = os.Chmod(refPath, 0o600) })
-				errorPart = "commit approved files"
+				// Objects can be written, but the branch ref cannot be updated: git
+				// cannot create its lock file in a read-only refs directory.
+				refDir := filepath.Join(repo, ".git", "refs", "heads", "staircase")
+				script = strings.Replace(script, "s.close()", fmt.Sprintf("import os\nos.chmod(%q, 0o500)\ns.close()", refDir), 1)
+				t.Cleanup(func() { _ = os.Chmod(refDir, 0o700) })
+				errorPart = "git update-ref"
 			case "summary_failure":
 				require.NoError(t, os.WriteFile(filepath.Join(wsDir, "runs"), []byte("not a directory"), 0o600))
 				errorPart = "summary"
@@ -142,7 +144,7 @@ s.close()`, 1)
 }
 
 func TestRun_integrity_persistence_failure_returns_error(t *testing.T) {
-	_, wsDir, repo, _ := setupContentHashRun(t)
+	_, wsDir, repo, _ := setupApprovalRun(t)
 	db, err := persistence.InitDB(wsDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

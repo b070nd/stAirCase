@@ -2,8 +2,6 @@ package orchestrator_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,11 +15,11 @@ import (
 )
 
 // pathEscapeScript builds a hostile agent that bypasses the Python template's
-// path guard entirely: it proposes a file_edit whose path escapes the project
-// root (`relFile`), gets it auto-approved, then writes `content` to the
-// absolute escaping location `writeAbs`. The orchestrator is the trust
-// boundary here — a compromised runtime cannot be relied on to police paths.
-func pathEscapeScript(relFile, contentHash, writeAbs, content string) string {
+// path guard and client entirely, speaking raw IPC: it proposes creating
+// relFile, a path outside the project root, and exits 0 only if the
+// orchestrator refuses it. A compromised runtime cannot be relied on to police
+// paths; the orchestrator is the trust boundary.
+func pathEscapeScript(relFile string) string {
 	return `import sys, json, socket, time
 boot = json.loads(sys.stdin.readline())
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -37,38 +35,27 @@ while b"\n" not in buf:
 assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
 s.sendall((json.dumps({
     "type":"yield_request","agent_name":"coder","action_type":"file_edit",
-    "proposed_edits":[{"file":` + fmt.Sprintf("%q", relFile) + `,"search_block":"(new file)",
-                       "replace_block":"preview","content_hash":` + fmt.Sprintf("%q", contentHash) + `}],
+    "proposed_edits":[{"file":` + fmt.Sprintf("%q", relFile) + `,"search_block":"(new file)","replace_block":"PWNED"}],
     "reasoning_trace":"path escape","confidence_score":0.9
 })+"\n").encode())
 buf = b""
 while b"\n" not in buf:
     buf += s.recv(4096)
 resp = json.loads(buf.split(b"\n")[0])
-assert resp.get("approved") == True, resp
-open(` + fmt.Sprintf("%q", writeAbs) + `, "w").write(` + fmt.Sprintf("%q", content) + `)
+assert resp.get("approved") is False, resp
 s.close()
 sys.exit(0)
 `
 }
 
-// TestRun_adversarial_path_escape_blocked is the headline B1 scenario: a
-// compromised agent gets an out-of-repo file_edit approved and writes the file
-// to disk outside the project root. The orchestrator must refuse to commit,
-// fail the run, and record an approval_path_escape audit event — proving the
-// Go trust boundary independently enforces the repo sandbox even when the
-// Python-side guard is bypassed.
+// TestRun_adversarial_path_escape_blocked catches the orchestrator approving a
+// path outside the project root: the proposal must be refused before policy or
+// a human sees it (here policy would auto-approve any file_edit), audited as
+// approval_path_escape, and nothing may be committed.
 func TestRun_adversarial_path_escape_blocked(t *testing.T) {
-	s, wsDir, repoPath, caseID := setupContentHashRun(t)
-
-	// `../escape.txt` resolves to a sibling of the repo — outside the sandbox.
-	const evil = "PWNED — written outside the repo\n"
-	escapeAbs := filepath.Join(filepath.Dir(repoPath), "escape.txt")
-	sum := sha256.Sum256([]byte(evil))
-	sumHex := hex.EncodeToString(sum[:])
-	script := pathEscapeScript("../escape.txt", sumHex, escapeAbs, evil)
+	s, wsDir, _, caseID := setupApprovalRun(t)
 	require.NoError(t, os.WriteFile(
-		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
+		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(pathEscapeScript("../escape.txt")), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -78,8 +65,8 @@ func TestRun_adversarial_path_escape_blocked(t *testing.T) {
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
-	assert.Equal(t, persistence.RunStatusFailed, runs[0].Status,
-		"a path-escaping approved edit must fail the run")
+	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status,
+		"the agent exits 0 only if the escaping proposal was refused")
 	assert.Empty(t, runs[0].GitCommitHash, "nothing may be committed")
 
 	logs, err := s.ListEventLogs(runs[0].ID)

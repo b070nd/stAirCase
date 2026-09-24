@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -39,20 +40,20 @@ type approvedFile struct {
 // approvals is the trusted record of what a run's approvals mean, byte for
 // byte. Nothing the runtime claims (content_hash, what it wrote) is trusted:
 // every approved state is derived here from the base commit and exactly the
-// edits the operator was shown, and finalize commits only if the worktree
-// matches it.
+// edits the operator was shown. Finalize checks the worktree against it
+// (verify) and then commits the approved state itself (commit).
 type approvals struct {
-	root  string
+	repo  *GitRepo // the run's worktree
 	base  *object.Commit
 	files map[string]*approvedFile // cleaned slash path → approved state
 }
 
-func newApprovals(root string, gr *GitRepo, baseSHA string) (*approvals, error) {
-	c, err := gr.r.CommitObject(plumbing.NewHash(baseSHA))
+func newApprovals(repo *GitRepo, baseSHA string) (*approvals, error) {
+	c, err := repo.r.CommitObject(plumbing.NewHash(baseSHA))
 	if err != nil {
 		return nil, fmt.Errorf("load base commit %s: %w", baseSHA, err)
 	}
-	return &approvals{root: root, base: c, files: map[string]*approvedFile{}}, nil
+	return &approvals{repo: repo, base: c, files: map[string]*approvedFile{}}, nil
 }
 
 // errBadPath marks a refusal caused by the proposed path itself.
@@ -72,7 +73,7 @@ func (a *approvals) derive(edits []ipc.ProposedEdit) (map[string]*approvedFile, 
 		return a.fromBase(p)
 	}
 	for _, e := range edits {
-		p, err := cleanApprovedPath(a.root, e.File)
+		p, err := cleanApprovedPath(a.repo.path, e.File)
 		if err != nil {
 			return nil, err
 		}
@@ -149,68 +150,129 @@ func (a *approvals) fromBase(p string) (*approvedFile, error) {
 	return &approvedFile{content: []byte(content), mode: mode}, nil
 }
 
-// change is a reason finalize refuses to commit, recorded as an audit event.
-type change struct{ event, file, detail string }
+// violation is a reason finalize refuses to commit, recorded as an audit event.
+type violation struct{ event, file, detail string }
 
-// verify compares the worktree with the approved state: every approved path
-// must hold exactly its approved bytes (or be gone), and nothing else may have
-// changed — in the working tree or the index.
-func (a *approvals) verify(w *GitRepo) ([]change, error) {
-	var out []change
+// verify compares the worktree with the approved state: HEAD is still the
+// base commit (the agent made no commits of its own), every approved path
+// holds exactly its approved bytes (or is gone), and nothing else changed —
+// in the working tree or the index.
+func (a *approvals) verify() ([]violation, error) {
+	var out []violation
+	head, err := a.repo.HeadSHA()
+	if err != nil {
+		head = "unreadable (" + err.Error() + ")"
+	}
+	if head != a.base.Hash.String() {
+		out = append(out, violation{"run_branch_moved", "", fmt.Sprintf("HEAD is %s, not the base commit %s", head, a.base.Hash)})
+	}
 	for p, f := range a.files {
-		if _, err := cleanApprovedPath(a.root, p); err != nil { // swapped for a dir or symlink
-			out = append(out, change{"approval_path_escape", p, err.Error()})
+		if _, err := cleanApprovedPath(a.repo.path, p); err != nil { // swapped for a dir or symlink
+			out = append(out, violation{"approval_path_escape", p, err.Error()})
 			continue
 		}
-		full := filepath.Join(a.root, filepath.FromSlash(p))
+		full := filepath.Join(a.repo.path, filepath.FromSlash(p))
 		info, err := os.Lstat(full)
 		switch {
 		case f.deleted:
 			if err == nil {
-				out = append(out, change{"approval_content_mismatch", p, "deletion was approved but the file exists"})
+				out = append(out, violation{"approval_content_mismatch", p, "deletion was approved but the file exists"})
 			}
 		case err != nil:
-			out = append(out, change{"approval_content_mismatch", p, "approved file is missing"})
+			out = append(out, violation{"approval_content_mismatch", p, "approved file is missing"})
 		case !info.Mode().IsRegular():
-			out = append(out, change{"approval_content_mismatch", p, "approved path is not a regular file"})
+			out = append(out, violation{"approval_content_mismatch", p, "approved path is not a regular file"})
 		default:
 			got, err := os.ReadFile(full)
 			if err != nil || !bytes.Equal(got, f.content) {
-				out = append(out, change{"approval_content_mismatch", p,
+				out = append(out, violation{"approval_content_mismatch", p,
 					fmt.Sprintf("approved sha256 %s, found %s", sha256Hex(f.content), sha256Hex(got))})
 			}
 		}
 	}
-	st, err := w.w.Status()
+	st, err := a.repo.w.Status()
 	if err != nil {
-		return nil, fmt.Errorf("stage approved files: read worktree status: %w", err)
+		return nil, fmt.Errorf("verify approvals: read worktree status: %w", err)
 	}
 	for p, s := range st {
 		if s.Staging == gogit.Unmodified && s.Worktree == gogit.Unmodified {
 			continue
 		}
 		if _, ok := a.files[p]; !ok {
-			out = append(out, change{"unapproved_worktree_change", p, fmt.Sprintf("index %q, worktree %q", s.Staging, s.Worktree)})
+			out = append(out, violation{"unapproved_worktree_change", p, fmt.Sprintf("index %q, worktree %q", s.Staging, s.Worktree)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].file < out[j].file })
 	return out, nil
 }
 
-// stage puts exactly the approved state in the index, with approved modes
-// (the runtime's temp-file writes leave 0600, dropping an exec bit).
-func (a *approvals) stage(w *GitRepo) error {
-	for p, f := range a.files {
-		if !f.deleted {
-			if err := os.Chmod(filepath.Join(a.root, filepath.FromSlash(p)), f.mode); err != nil {
-				return fmt.Errorf("stage approved files: %w", err)
-			}
+// commit records the approved state as one commit on branch, built from the
+// base tree and the approved bytes held in memory. Nothing is read back from
+// the worktree or its index, so a change made after verify cannot reach the
+// commit, and the branch moves only if it still points at the base commit.
+// Returns "" when the approved state equals the base.
+func (a *approvals) commit(branch, msg string) (string, error) {
+	tmp, err := os.MkdirTemp("", "staircase-commit-")
+	if err != nil {
+		return "", fmt.Errorf("commit approvals: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	name, email := a.repo.identity()
+	env := append(os.Environ(), "GIT_INDEX_FILE="+filepath.Join(tmp, "index"), // private index
+		"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
+		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
+	git := func(stdin []byte, args ...string) (string, error) {
+		// No hooks: a hook written by the agent must not run as the orchestrator.
+		cmd := exec.Command("git", append([]string{"-C", a.repo.path, "-c", "core.hooksPath=/dev/null"}, args...)...)
+		var stderr bytes.Buffer
+		cmd.Env, cmd.Stdin, cmd.Stderr = env, bytes.NewReader(stdin), &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("commit approvals: git %s: %w: %s", args[0], err, bytes.TrimSpace(stderr.Bytes()))
 		}
-		if _, err := w.w.Add(p); err != nil { // a missing path stages its deletion
-			return fmt.Errorf("stage approved files: git add %q: %w", p, err)
+		return strings.TrimSpace(string(out)), nil
+	}
+	base := a.base.Hash.String()
+	if _, err := git(nil, "read-tree", base); err != nil {
+		return "", err
+	}
+	paths := make([]string, 0, len(a.files))
+	for p := range a.files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	for _, p := range paths {
+		f := a.files[p]
+		if f.deleted {
+			if _, err := git(nil, "update-index", "--force-remove", "--", p); err != nil {
+				return "", err
+			}
+			continue
+		}
+		blob, err := git(f.content, "hash-object", "-w", "--stdin")
+		if err != nil {
+			return "", err
+		}
+		mode := "100644"
+		if f.mode&0o111 != 0 {
+			mode = "100755"
+		}
+		if _, err := git(nil, "update-index", "--add", "--cacheinfo", mode, blob, p); err != nil {
+			return "", err
 		}
 	}
-	return nil
+	tree, err := git(nil, "write-tree")
+	if err != nil || tree == a.base.TreeHash.String() {
+		return "", err
+	}
+	c, err := git([]byte(msg), "commit-tree", "--no-gpg-sign", tree, "-p", base)
+	if err != nil {
+		return "", err
+	}
+	if _, err := git(nil, "update-ref", "-m", "staircase: approved changes", "refs/heads/"+branch, c, base); err != nil {
+		return "", err
+	}
+	return c, nil
 }
 
 // digest summarizes approved states for the audit record.

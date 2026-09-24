@@ -2,6 +2,9 @@ package ipc
 
 import "time"
 
+// ReadBufferSizeForTest is the line limit the Python client must mirror.
+const ReadBufferSizeForTest = readBufferSize
+
 // SetAuthTimeoutForTest overrides the auth handshake deadline.
 // Call in a test with t.Cleanup to restore the original value.
 func SetAuthTimeoutForTest(d time.Duration) (restore func()) {

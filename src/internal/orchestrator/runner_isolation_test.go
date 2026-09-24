@@ -204,9 +204,9 @@ func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 // runtime, so one produced by another stAirCase version (older IPC client,
 // writes outside the worktree) must be refused, not run.
 func TestRun_refuses_scripts_from_another_template(t *testing.T) {
-	s, wsDir, _, caseID := setupContentHashRun(t)
+	s, wsDir, _, caseID := setupApprovalRun(t)
 	const content = "fingerprinted\n"
-	script := []byte(contentHashScript(content, content))
+	script := []byte(approveThenWriteScript(content, content))
 	path := filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID))
 	require.NoError(t, os.WriteFile(path, script, 0o600))
 	scriptSum := sha256.Sum256(script)

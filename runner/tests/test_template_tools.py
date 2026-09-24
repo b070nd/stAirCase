@@ -7,6 +7,9 @@ testing the exact code agents run, without LangGraph.
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -25,11 +28,12 @@ class FakeIPC:
 
 
 def load_tools(project: Path, ipc: FakeIPC):
-    src = TEMPLATE.read_text()
+    src = TEMPLATE.read_text(encoding="utf-8")
     section = src[src.index("@tool\ndef read_file"):src.index("_BUILTIN_TOOLS =")]
     assert "[[" not in section, "tools section must stay free of template directives"
     module_file = Path(tempfile.mkdtemp()) / "shipped_tools.py"
-    module_file.write_text("import hashlib, os, subprocess, tempfile\n\ndef tool(f):\n    return f\n\n" + section)
+    module_file.write_text("import hashlib, os, subprocess, tempfile\n\ndef tool(f):\n    return f\n\n" + section,
+                           encoding="utf-8")
     spec = importlib.util.spec_from_file_location("shipped_tools", module_file)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -88,3 +92,23 @@ def test_edit_normalizes_newlines_like_the_orchestrator(tmp_path):
     tools = load_tools(tmp_path, FakeIPC())
     assert tools.request_edit("f.txt", "b\n", "B\n", "r") == "applied"
     assert (tmp_path / "f.txt").read_bytes() == b"a\nB\n"
+
+
+def test_file_tools_write_utf8_whatever_the_locale(tmp_path):
+    # The orchestrator derives UTF-8 bytes; tools using the locale's encoding
+    # write other bytes (or fail) under a non-UTF-8 locale, which LANG/LC_*
+    # pass through to the runtime. C with UTF-8 mode off is ASCII everywhere.
+    (tmp_path / "f.txt").write_bytes("café\n".encode())
+    script = (
+        "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1])\n"
+        "from test_template_tools import FakeIPC, load_tools\n"
+        "tools = load_tools(Path(sys.argv[2]), FakeIPC())\n"
+        "print(tools.create_file('new.txt', 'é\\n', 'r'))\n"
+        "print(tools.request_edit('f.txt', 'café', 'crème', 'r'))\n"
+    )
+    env = {**os.environ, "LC_ALL": "C", "LANG": "C", "PYTHONUTF8": "0"}
+    out = subprocess.run([sys.executable, "-c", script, str(Path(__file__).parent), str(tmp_path)],
+                         env=env, capture_output=True, text=True, check=True).stdout.split("\n")
+    assert out[:2] == ["created new.txt", "applied"], out
+    assert (tmp_path / "new.txt").read_bytes() == "é\n".encode()
+    assert (tmp_path / "f.txt").read_bytes() == "crème\n".encode()

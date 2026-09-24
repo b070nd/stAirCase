@@ -193,90 +193,26 @@ func TestGitRepo_ListBranches_empty_when_no_match(t *testing.T) {
 
 // ─── Commit — default author fallback ────────────────────────────────────────
 
-func TestGitRepo_Commit_falls_back_to_default_author_when_no_global_config(t *testing.T) {
-	// Point HOME at an empty directory so go-git finds no ~/.gitconfig.
-	// ConfigScoped(GlobalScope) returns an empty config, triggering the
-	// "staircase" / "staircase@local" fallback inside Commit.
-	emptyHome := t.TempDir()
-	t.Setenv("HOME", emptyHome)
-
-	dir := t.TempDir()
-	// Initialize repo using per-command -c flags so there is no user config in
-	// either the local repo config or the (now-empty) global config.
-	cmds := [][]string{
-		{"git", "-C", dir, "init", "-b", "main"},
-		{"git", "-C", dir, "-c", "user.name=tmp", "-c", "user.email=tmp@tmp", "commit", "--allow-empty", "-m", "init"},
-	}
-	for _, args := range cmds {
-		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+func TestApprovedCommit_falls_back_to_default_author_when_no_global_config(t *testing.T) {
+	// Point HOME at an empty directory and give the repo no local user, so no
+	// config names one: the author falls back to "staircase" <staircase@local>.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"-C", repo, "init", "-q", "-b", "main"},
+		{"-C", repo, "-c", "user.name=tmp", "-c", "user.email=tmp@tmp", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		out, err := exec.Command("git", args...).CombinedOutput()
 		require.NoError(t, err, "git setup: %s", out)
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0o644))
 
-	gr, err := orchestrator.OpenGitRepo(dir)
+	sha, err := orchestrator.CommitApprovedForTest(repo, "file.txt", "data", func() {})
 	require.NoError(t, err)
-	require.NoError(t, gr.AddAll())
-
-	// With no global git config, name and email should fall back to "staircase".
-	sha, err := gr.Commit("fallback author test")
-	require.NoError(t, err)
-	assert.Len(t, sha, 40, "commit must succeed with default author")
-}
-
-// ─── AddFiles ────────────────────────────────────────────────────────────────
-
-// TestGitRepo_AddFiles_stages_only_specified_paths verifies that AddFiles
-// stages only the listed paths and leaves unlisted changes unstaged.
-func TestGitRepo_AddFiles_stages_only_specified_paths(t *testing.T) {
-	repoPath := initGitRepo(t)
-	gr, err := orchestrator.OpenGitRepo(repoPath)
-	require.NoError(t, err)
-
-	// Create two files; only stage the first via AddFiles.
-	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "approved.txt"), []byte("ok"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "unrelated.txt"), []byte("nope"), 0o644))
-
-	require.NoError(t, gr.AddFiles([]string{"approved.txt"}))
-
-	sha, err := gr.Commit("test: only approved.txt")
-	require.NoError(t, err)
-	assert.Len(t, sha, 40)
-
-	// approved.txt must be in the commit; unrelated.txt must not.
-	out, gitErr := exec.Command("git", "-C", repoPath, "show", "--name-only", "--format=", "HEAD").Output()
-	require.NoError(t, gitErr)
-	names := strings.TrimSpace(string(out))
-	assert.Contains(t, names, "approved.txt")
-	assert.NotContains(t, names, "unrelated.txt")
-}
-
-// TestGitRepo_AddFiles_empty_slice_is_noop verifies that an empty path list
-// does not stage anything (no panic, no error).
-func TestGitRepo_AddFiles_empty_slice_is_noop(t *testing.T) {
-	repoPath := initGitRepo(t)
-	gr, err := orchestrator.OpenGitRepo(repoPath)
-	require.NoError(t, err)
-	assert.NoError(t, gr.AddFiles(nil))
-	assert.NoError(t, gr.AddFiles([]string{}))
-}
-
-// ─── AddAll / Commit ─────────────────────────────────────────────────────────
-
-func TestGitRepo_AddAll_and_Commit_returns_sha(t *testing.T) {
-	repoPath := initGitRepo(t)
-	gr, err := orchestrator.OpenGitRepo(repoPath)
-	require.NoError(t, err)
-
-	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "new.txt"), []byte("hello"), 0o644))
-	require.NoError(t, gr.AddAll())
-	sha, err := gr.Commit("test: add new.txt")
-	require.NoError(t, err)
-	assert.Len(t, sha, 40, "commit SHA must be 40 hex chars")
-
-	// Verify the commit is visible via system git.
-	out, gitErr := exec.Command("git", "-C", repoPath, "rev-parse", "HEAD").Output()
-	require.NoError(t, gitErr)
-	assert.Equal(t, sha, strings.TrimSpace(string(out)))
+	require.Len(t, sha, 40, "commit must succeed with the default author")
+	out, err := exec.Command("git", "-C", repo, "log", "-1", "--format=%an <%ae>|%cn <%ce>", sha).CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	assert.Equal(t, "staircase <staircase@local>|staircase <staircase@local>", strings.TrimSpace(string(out)))
 }
 
 // TestOpenGitRepo_linked_worktree: runs execute in a `git worktree`; commits
@@ -288,11 +224,7 @@ func TestOpenGitRepo_linked_worktree(t *testing.T) {
 	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", "staircase/run-7", wt, "HEAD").CombinedOutput()
 	require.NoError(t, err, "%s", out)
 
-	gr, err := orchestrator.OpenGitRepo(wt)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(wt, "f.txt"), []byte("x\n"), 0o644))
-	require.NoError(t, gr.AddFiles([]string{"f.txt"}))
-	hash, err := gr.Commit("worktree commit")
+	hash, err := orchestrator.CommitApprovedForTest(wt, "f.txt", "x\n", func() {})
 	require.NoError(t, err)
 
 	out, err = exec.Command("git", "-C", repo, "rev-parse", "staircase/run-7").CombinedOutput()

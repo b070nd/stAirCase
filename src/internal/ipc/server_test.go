@@ -1617,3 +1617,12 @@ func TestServer_schema_accepts_valid_yield_request(t *testing.T) {
 	require.NoError(t, json.Unmarshal(sc.Bytes(), &resp))
 	assert.Equal(t, true, resp["approved"], "valid yield_request must not be rejected by schema")
 }
+
+// TestLineLimit_is_mirrored_by_the_python_client catches the client's copy of
+// the line limit drifting: it would send lines the server drops (ending the
+// run) or refuse proposals the server would accept.
+func TestLineLimit_is_mirrored_by_the_python_client(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "runtime", "ipc_embed.py"))
+	require.NoError(t, err)
+	assert.Contains(t, string(src), fmt.Sprintf("MAX_LINE_BYTES = %d * 1024", ipc.ReadBufferSizeForTest/1024))
+}

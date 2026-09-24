@@ -123,6 +123,11 @@ func gitShow(t *testing.T, repo, rev string) (string, error) {
 	return string(out), err
 }
 
+// TestApproval_orchestrator_binds_the_exact_bytes catches any way for bytes
+// nobody approved to reach the run branch: trusting an agent-supplied hash, the
+// runtime writing something other than what was shown, unapproved files or
+// index entries, the agent's own commits, bad paths, oversized proposals, and
+// approvals released before they are on the audit chain.
 func TestApproval_orchestrator_binds_the_exact_bytes(t *testing.T) {
 	t.Run("create_without_agent_hash", func(t *testing.T) {
 		_, repo, run, res, _ := runApprovalScenario(t, nil, `
@@ -176,6 +181,24 @@ subprocess.run(["git", "-C", root, "add", "sneaky.txt"], check=True)`, nil)
 		assert.Equal(t, persistence.RunStatusFailed, run.Status)
 		assert.Empty(t, run.GitCommitHash)
 		assert.Contains(t, ev, "unapproved_worktree_change")
+	})
+
+	t.Run("agent_commit_on_the_run_branch_fails", func(t *testing.T) {
+		// A commit made in the worktree hides its changes from a status check
+		// (they are no longer "changes"), so the branch itself must be checked.
+		_, repo, run, _, ev := runApprovalScenario(t, nil, `
+ask(("a.txt", "(new file)", "a\n"))
+write("a.txt", "a\n")
+write("sneaky.txt", "committed behind the orchestrator's back\n")
+subprocess.run(["git", "-C", root, "add", "-A"], check=True)
+subprocess.run(["git", "-C", root, "-c", "user.name=a", "-c", "user.email=a@a", "commit", "-qm", "sneaky"], check=True)`, nil)
+		if run.Status == persistence.RunStatusSuccess {
+			_, err := gitShow(t, repo, fmt.Sprintf("staircase/run-%d:sneaky.txt", run.ID))
+			assert.Error(t, err, "a successful run's branch carries a file nobody approved")
+		}
+		assert.Equal(t, persistence.RunStatusFailed, run.Status)
+		assert.Empty(t, run.GitCommitHash)
+		assert.Contains(t, ev, "run_branch_moved")
 	})
 
 	t.Run("unapproved_deletion_fails", func(t *testing.T) {
@@ -254,5 +277,40 @@ ask(("a.txt", "(new file)", "a\n"))`, func(db *sql.DB) {
 		require.Len(t, res, 1)
 		assert.False(t, res[0].Approved, "an approval that could not be audited must not reach the agent")
 		assert.Equal(t, persistence.RunStatusFailed, run.Status)
+	})
+}
+
+// TestApproval_runtime_mirrors_the_create_cap catches the runtime's copy of the
+// create cap drifting from the orchestrator's: create_file would then send
+// what the orchestrator refuses, or refuse what it would accept.
+func TestApproval_runtime_mirrors_the_create_cap(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "template", "graph_exec.py.tmpl"))
+	require.NoError(t, err)
+	assert.Contains(t, string(src), fmt.Sprintf("_MAX_APPROVAL_BYTES = %d * 1024", orchestrator.MaxApprovedFileBytesForTest/1024))
+}
+
+// TestApproval_commit_is_built_from_the_approvals catches finalize committing
+// whatever is on disk (or on the branch) at commit time rather than what was
+// approved: a process still running after verify — started by an approved
+// shell command, say — must not be able to change the commit.
+func TestApproval_commit_is_built_from_the_approvals(t *testing.T) {
+	t.Run("file_swapped_after_verify", func(t *testing.T) {
+		repo := initGitRepo(t)
+		hash, err := orchestrator.CommitApprovedForTest(repo, "a.txt", "approved\n", func() {
+			require.NoError(t, os.WriteFile(filepath.Join(repo, "a.txt"), []byte("swapped after verify\n"), 0o644))
+		})
+		require.NoError(t, err)
+		got, err := gitShow(t, repo, hash+":a.txt")
+		require.NoError(t, err)
+		assert.Equal(t, "approved\n", got)
+	})
+	t.Run("branch_moved_after_verify", func(t *testing.T) {
+		repo := initGitRepo(t)
+		hash, err := orchestrator.CommitApprovedForTest(repo, "a.txt", "approved\n", func() {
+			out, err := exec.Command("git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "moved").CombinedOutput()
+			require.NoError(t, err, "%s", out)
+		})
+		assert.Error(t, err, "the branch moved under finalize; committing on top would carry that commit along")
+		assert.Empty(t, hash)
 	})
 }

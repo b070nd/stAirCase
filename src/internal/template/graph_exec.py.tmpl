@@ -102,6 +102,23 @@ def read_file(path: str) -> str:
     except Exception as _e:
         return f"error reading {path}: {_e}"
 
+def _write_atomic(full_path: str, text: str) -> None:
+    """Write text as UTF-8 without newline translation (the bytes the
+    orchestrator derives), via a temp file so no reader sees half a file."""
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(full_path))
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as _f:
+            _f.write(text)
+        os.replace(tmp, full_path)
+    except Exception:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise
+
 @tool
 def request_edit(file: str, search_block: str, replace_block: str, reasoning: str) -> str:
     """Propose an exact search-and-replace edit inside an existing file. No diffs or line numbers."""
@@ -140,18 +157,9 @@ def request_edit(file: str, search_block: str, replace_block: str, reasoning: st
         return f"error reopening {file}: {_e}"
     if cur != src_n:
         return f"error: {file} changed between approval request and apply — re-propose the edit"
-    tmp = None
     try:
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(full_path))
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as _f:
-            _f.write(new_src)
-        os.replace(tmp, full_path)
+        _write_atomic(full_path, new_src)
     except Exception as _e:
-        if tmp:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
         return f"error writing {file}: {_e}"
     return "applied"
 
@@ -180,19 +188,10 @@ def create_file(path: str, content: str, reasoning: str) -> str:
     )
     if not resp.get("approved"):
         return f"rejected: {resp.get('feedback', 'no feedback')}"
-    tmp = None
     try:
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(full_path))
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as _f:
-            _f.write(content)
-        os.replace(tmp, full_path)
+        _write_atomic(full_path, content)
     except Exception as _e:
-        if tmp:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
         return f"error creating {path}: {_e}"
     return f"created {path}"
 

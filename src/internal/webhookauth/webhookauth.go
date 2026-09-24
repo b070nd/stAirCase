@@ -10,12 +10,14 @@
 // The orchestrator signs the outbound yield request and verifies the signature
 // on the approver's response. A matching secret on both sides proves the
 // response came from the configured approver and was not tampered with; the
-// timestamp bounds replay. The request also carries
+// timestamp bounds replay. The request body carries a fresh "yield_id" and the
+// request carries
 //
 //	X-Staircase-Request-SHA256: <hex SHA-256 of the request body>
 //
-// and the approver must echo it as "request_sha256" in its signed response
-// body, so a captured approval cannot be replayed against another request.
+// and the approver must echo both, as "yield_id" and "request_sha256", in its
+// signed response body, so a captured approval cannot be replayed against
+// another request — not even an identical one.
 package webhookauth
 
 import (

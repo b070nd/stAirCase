@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
@@ -131,43 +129,19 @@ func (g *GitRepo) DeleteBranch(name string) error {
 	return g.r.Storer.RemoveReference(plumbing.NewBranchReferenceName(name))
 }
 
-// AddAll stages all changes (tracked modifications, deletions, and new files)
-// in the worktree. Equivalent to `git add .` / `git add -A`.
-func (g *GitRepo) AddAll() error {
-	return g.w.AddWithOptions(&gogit.AddOptions{All: true})
-}
-
-// AddFiles stages only the named paths. Paths should be relative to the
-// repository root. An empty slice is a no-op. Returns the first error
-// encountered; remaining paths are not staged when an error occurs.
-func (g *GitRepo) AddFiles(paths []string) error {
-	for _, p := range paths {
-		if _, err := g.w.Add(p); err != nil {
-			return fmt.Errorf("git add %q: %w", p, err)
-		}
+// identity is the author of staircase's commits: the global git user, else
+// "staircase" <staircase@local>.
+func (g *GitRepo) identity() (name, email string) {
+	if cfg, err := g.r.ConfigScoped(config.GlobalScope); err == nil {
+		name, email = cfg.User.Name, cfg.User.Email
 	}
-	return nil
-}
-
-// Commit creates a new commit with the given message. The author name and email
-// are read from the global git config; if absent "staircase" / "staircase@local"
-// are used as fallbacks. Returns the new commit's full SHA.
-func (g *GitRepo) Commit(msg string) (string, error) {
-	cfg, _ := g.r.ConfigScoped(config.GlobalScope)
-	name, email := cfg.User.Name, cfg.User.Email
 	if name == "" {
 		name = "staircase"
 	}
 	if email == "" {
 		email = "staircase@local"
 	}
-	hash, err := g.w.Commit(msg, &gogit.CommitOptions{
-		Author: &object.Signature{Name: name, Email: email, When: time.Now()},
-	})
-	if err != nil {
-		return "", err
-	}
-	return hash.String(), nil
+	return name, email
 }
 
 // IsClean reports whether the worktree has no uncommitted changes.

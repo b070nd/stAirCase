@@ -2,6 +2,9 @@
 package orchestrator
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/ipc"
@@ -28,6 +31,9 @@ func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID)
 // ExportedWriteSummary exposes writeSummary for unit testing (CHECK 10.4.1).
 func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummary(wsDir, s) }
 
+// MaxApprovedFileBytesForTest is the create cap the runtime must mirror.
+const MaxApprovedFileBytesForTest = maxApprovedFileBytes
+
 // CleanApprovedPathForTest exposes cleanApprovedPath for trust-boundary tests.
 func CleanApprovedPathForTest(root, rel string) (string, error) { return cleanApprovedPath(root, rel) }
 
@@ -37,4 +43,40 @@ func SetLostGraceForTest(d time.Duration) (restore func()) {
 	orig := lostGrace
 	lostGrace = d
 	return func() { lostGrace = orig }
+}
+
+// CommitApprovedForTest drives finalize's commit step on repoPath's current
+// branch: it approves creating file with content through the real derivation,
+// writes it like an honest agent, checks it with verify, then runs tamper — a
+// process still alive after verify — before committing the approvals.
+func CommitApprovedForTest(repoPath, file, content string, tamper func()) (string, error) {
+	gr, err := OpenGitRepo(repoPath)
+	if err != nil {
+		return "", err
+	}
+	base, err := gr.HeadSHA()
+	if err != nil {
+		return "", err
+	}
+	branch, err := gr.CurrentBranch()
+	if err != nil {
+		return "", err
+	}
+	a, err := newApprovals(gr, base)
+	if err != nil {
+		return "", err
+	}
+	next, err := a.derive([]ipc.ProposedEdit{{File: file, SearchBlock: markerNewFile, ReplaceBlock: content}})
+	if err != nil {
+		return "", err
+	}
+	a.record(next)
+	if err := os.WriteFile(filepath.Join(repoPath, file), []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	if v, err := a.verify(); err != nil || len(v) > 0 {
+		return "", fmt.Errorf("verify: %v %v", v, err)
+	}
+	tamper()
+	return a.commit(branch, "test")
 }

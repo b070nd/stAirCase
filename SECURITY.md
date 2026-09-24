@@ -27,15 +27,28 @@ See [Project Use and Current Safety Boundary](docs/project-use.md).
   authenticated IPC protocol over a `0600` Unix domain socket with a per-run
   token. Go checks protocol requests, but the socket does not restrict direct
   filesystem or process access by the runtime.
-- **Content-bound approval.** A `file_edit` approval is bound to a SHA-256 of the
-  agent-supplied post-edit content. When a hash is supplied, the orchestrator
-  re-hashes the file before commit and refuses to commit on mismatch (recording
-  `approval_content_mismatch`). Hashes are currently optional and are not derived
-  independently from the displayed proposal; this is not protection against
-  dishonest proposals or direct index manipulation.
-- **Repository path sandbox.** Approved file paths that are absolute or escape the
-  project root are rejected at the commit boundary (recording
-  `approval_path_escape`) — even if the agent bypasses the runtime's own checks.
+- **Content-bound approval.** The orchestrator derives the exact bytes each
+  `file_edit` approval produces — from the run's base commit and precisely the
+  edits the operator is shown — and never trusts the runtime's own claims
+  (`content_hash` is advisory). A proposal that cannot be applied as shown (bad
+  path, search text not found, file over 200 KiB) is refused before policy or a
+  human sees it. Each decision, with the approved file digests, is on the audit
+  chain before the runtime receives it. At finalize the worktree must hold
+  exactly the approved state on the base commit — no other change in the files
+  or the index, no commits of the agent's own — or the run fails
+  (`approval_content_mismatch`, `unapproved_worktree_change`, `run_branch_moved`).
+  The commit is built from the approved bytes, never read back from disk, and
+  the run branch moves only if it still points at the base commit.
+- **Repository path sandbox.** Approved paths must be plain files inside the
+  run's worktree: absolute paths, `..`, any `.git` component, directories and
+  paths through symlinks are refused at approval and checked again at finalize
+  (recording `approval_path_escape`) — even if the agent bypasses the runtime's
+  own checks.
+- **Webhook approvals.** With a project webhook secret, requests and responses
+  are HMAC-signed within a 5-minute window, and a response must echo the
+  request's fresh `yield_id` and `request_sha256`, so a captured approval cannot
+  be replayed onto another request. Without a secret the channel is
+  unauthenticated.
 - **Tamper-evident audit chain.** Every run event is hash-chained and
   Ed25519-signed. Checkpoints can be anchored in a public Rekor transparency log
   (`audit export --anchor`) and re-verified (`audit verify --check-anchor`) for an
@@ -58,8 +71,10 @@ These are documented, not hidden:
 - All Python runs, not only `--allow-shell-exec` runs, execute as the orchestrator
   OS user **without** an OS-level sandbox. Use a restricted container or VM for
   untrusted workloads; do not expose the primary checkout or unrelated secrets.
-- Runs currently operate in the supplied repository's working tree. A dedicated
-  branch is not a separate checkout or a permission boundary.
+- Each run works in its own git worktree on its own branch, so the developer's
+  checkout is never touched — but a worktree is not a permission boundary:
+  without an OS sandbox the agent can reach the rest of the filesystem as the
+  orchestrator's user.
 - The audit chain uses raw Ed25519 over canonical JSON, not yet DSSE envelopes;
   Rekor anchoring proves log inclusion and content match but not (yet) full Merkle
   inclusion-proof verification.
