@@ -63,18 +63,25 @@ func TestRun_integrity_finalization(t *testing.T) {
 			_, err := s.CreateUserStory(caseID, "Must be independently verified")
 			require.NoError(t, err)
 			const content = "approved content\n"
-			script := approveThenWriteScript(content, content)
+			agent := approveThenWrite(content, content)
+			then := func(*orchestrator.AgentEnv) {} // after the approved write
 			wantStatus := persistence.RunStatusSuccess
 			wantCaseStatus := persistence.CaseStatusPending
 			var errorPart string
 			switch scenario {
 			case "no_changes":
-				script = "import json, sys\njson.loads(sys.stdin.readline())\n"
+				agent = idle
 			case "status_failure":
 				// Replace the run worktree's index with a directory so reading the
 				// worktree status fails deterministically (a linked worktree's index
 				// lives in its gitdir).
-				script = strings.Replace(script, "s.close()", "import os\ngd = open(os.path.join(boot['project_path'], '.git')).read().split(':', 1)[1].strip()\np = os.path.join(gd, 'index')\nif os.path.exists(p): os.unlink(p)\nos.mkdir(p)\ns.close()", 1)
+				then = func(env *orchestrator.AgentEnv) {
+					b, err := os.ReadFile(filepath.Join(env.Worktree, ".git"))
+					assert.NoError(t, err)
+					gd := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+					_ = os.Remove(filepath.Join(gd, "index"))
+					assert.NoError(t, os.Mkdir(filepath.Join(gd, "index"), 0o755))
+				}
 				errorPart = "read worktree status"
 			case "commit_failure":
 				if os.Geteuid() == 0 {
@@ -83,7 +90,7 @@ func TestRun_integrity_finalization(t *testing.T) {
 				// Objects can be written, but the branch ref cannot be updated: git
 				// cannot create its lock file in a read-only refs directory.
 				refDir := filepath.Join(repo, ".git", "refs", "heads", "staircase")
-				script = strings.Replace(script, "s.close()", fmt.Sprintf("import os\nos.chmod(%q, 0o500)\ns.close()", refDir), 1)
+				then = func(*orchestrator.AgentEnv) { assert.NoError(t, os.Chmod(refDir, 0o500)) }
 				t.Cleanup(func() { _ = os.Chmod(refDir, 0o700) })
 				errorPart = "git update-ref"
 			case "summary_failure":
@@ -93,9 +100,11 @@ func TestRun_integrity_finalization(t *testing.T) {
 				c, err := s.GetCase(caseID)
 				require.NoError(t, err)
 				require.NoError(t, s.SetProjectBudgetCap(c.ProjectID, 0.00001))
-				script = strings.Replace(script, "s.close()", `s.sendall((json.dumps({"type":"state_emit","active_agent":"coder","state":{"model":"claude-sonnet-4-6","input_tokens":100000,"output_tokens":100000}})+"\n").encode())
-time.sleep(20)
-s.close()`, 1)
+				agent = func(ctx context.Context, env *orchestrator.AgentEnv) error {
+					env.Emit(ctx, orchestrator.Usage{Agent: "coder", Model: "claude-sonnet-4-6", InputTokens: 100000, OutputTokens: 100000})
+					<-ctx.Done()
+					return ctx.Err()
+				}
 				errorPart = "KILLED"
 			}
 			if errorPart != "" {
@@ -105,12 +114,17 @@ s.close()`, 1)
 			if scenario == "budget_kill" {
 				wantStatus = persistence.RunStatusKilled
 			}
-			require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			started := time.Now()
-			runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-				orchestrator.RunOptions{SkipGates: true})
+			runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true,
+				Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+					if err := agent(ctx, env); err != nil {
+						return err
+					}
+					then(env)
+					return nil
+				})})
 			if scenario == "budget_kill" {
 				assert.Less(t, time.Since(started), 5*time.Second, "budget termination must not wait for the caller deadline")
 			}
@@ -153,11 +167,9 @@ func TestRun_integrity_persistence_failure_returns_error(t *testing.T) {
 	// RUNNING and FAILED remain writable, but committing success is rejected.
 	_, err = db.Exec(`CREATE TRIGGER reject_success BEFORE UPDATE ON cases WHEN NEW.status = 'COMPLETED' BEGIN SELECT RAISE(ABORT, 'injected terminal failure'); END`)
 	require.NoError(t, err)
-	script := "import json, sys\njson.loads(sys.stdin.readline())\n"
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	err = orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
+	err = orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true, Agent: idle})
 	require.ErrorContains(t, err, "injected terminal failure")
 	assert.ErrorIs(t, err, orchestrator.ErrRunNotSuccessful)
 	runs, err := s.ListRunsByCase(caseID)

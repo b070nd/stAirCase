@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -756,106 +756,66 @@ func TestSendWebhookYield_wrong_secret_rejected(t *testing.T) {
 
 // ─── Run() integration — full lifecycle ──────────────────────────────────────
 
-// TestRun_integration_success exercises the complete Run() lifecycle with a
-// real Python process: the script reads the bootstrap message from stdin and
-// exits 0, which the orchestrator records as RunStatusSuccess.
-//
-// This test requires python3 in PATH and is skipped in -short mode so it does
-// not run in unit-only CI jobs.
-func TestRun_integration_success(t *testing.T) {
+// agentWorkspace is a workspace for an in-process run: its key (and tmp/).
+func agentWorkspace(t *testing.T) string {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("integration test — skipped in -short mode")
 	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	// Use os.MkdirTemp with a short prefix so the UDS socket path stays under
-	// the 104-character macOS limit (t.TempDir() can produce paths > 100 chars).
-	wsDir, err := os.MkdirTemp("", "strc-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
-	s := newTestStore(t)
-
-	// Workspace key required by crypto.LoadKey inside Run().
+	wsDir := t.TempDir()
 	require.NoError(t, crypto.GenerateKey(wsDir))
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
+	return wsDir
+}
 
-	// Minimal Python venv (no pip needed — we only need the interpreter).
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
+// idle is an agent that finishes at once without proposing anything.
+var idle = orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error { return nil })
 
-	// DB records: vendor → project (no git) → topology → case.
+// proposeEdit is an agent that proposes one edit and fails unless approved.
+var proposeEdit = orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+	ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
+		ProposedEdits:  []ipc.ProposedEdit{{File: "x.go", SearchBlock: "a", ReplaceBlock: "b"}},
+		ReasoningTrace: "test", ConfidenceScore: 0.9})
+	if !ap.Approved {
+		return fmt.Errorf("not approved: %s", ap.Feedback)
+	}
+	return nil
+})
+
+// TestRun_integration_success exercises the complete Run() lifecycle: an agent
+// that finishes cleanly is recorded as SUCCESS, with a summary on disk.
+func TestRun_integration_success(t *testing.T) {
+	wsDir := agentWorkspace(t)
+	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "")
-
-	// Canonical graph_exec script: reads bootstrap from stdin, exits 0.
-	// When launched via ExtraFiles (fd 3), Python executes this source from
-	// /dev/fd/3 and reads the IPC bootstrap message from stdin.
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-	script := "import sys, json\njson.loads(sys.stdin.readline())\nsys.exit(0)\n"
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true, Agent: idle}))
 
-	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{
-		SkipGates: true,
-	})
-	require.NoError(t, runErr)
-
-	// The run record must show SUCCESS and a summary must be on disk.
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
-
-	summaryPath := filepath.Join(wsDir, "runs", fmt.Sprintf("%d", runs[0].ID), "summary.json")
-	data, err := os.ReadFile(summaryPath)
+	data, err := os.ReadFile(filepath.Join(wsDir, "runs", fmt.Sprintf("%d", runs[0].ID), "summary.json"))
 	require.NoError(t, err, "summary.json must be written after a successful run")
 	assert.Contains(t, string(data), `"final_status":"SUCCESS"`)
 }
 
-// TestRun_integration_script_failure records RunStatusFailed when the Python
-// script exits non-zero.
-func TestRun_integration_script_failure(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir2, err := os.MkdirTemp("", "strc-f-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir2) })
-	wsDir := wsDir2
+// TestRun_integration_agent_failure records FAILED when the agent fails, and
+// surfaces it so the CLI exits non-zero.
+func TestRun_integration_agent_failure(t *testing.T) {
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err2 := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err2, "create venv: %s", out)
-
 	caseID, _ := scaffoldForRun(t, s, "")
-
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-	// Script exits 1 → orchestrator records FAILED.
-	script := "import sys, json\njson.loads(sys.stdin.readline())\nsys.exit(1)\n"
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
-	// A failed run must surface as an error so the CLI exits non-zero.
+	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true,
+		Agent: orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error { return errors.New("model unavailable") })})
 	require.Error(t, runErr)
 	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful)
+	assert.ErrorContains(t, runErr, "model unavailable")
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -864,39 +824,16 @@ func TestRun_integration_script_failure(t *testing.T) {
 }
 
 // TestRun_integration_context_cancelled verifies that cancelling the run
-// context terminates the Python process and records RunStatusKilled.
+// context stops the agent and records KILLED.
 func TestRun_integration_context_cancelled(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir, err := os.MkdirTemp("", "strc-k-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
 	caseID, _ := scaffoldForRun(t, s, "")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-	// Script sleeps indefinitely — we cancel the context to kill it.
-	script := "import sys, json, time\njson.loads(sys.stdin.readline())\ntime.sleep(60)\n"
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	// Cancel after a short delay so the loop enters at least one iteration.
 	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
-
-	r := orchestrator.NewRunner(s, wsDir)
-	_ = r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
+	_ = orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true,
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, _ *orchestrator.AgentEnv) error { <-ctx.Done(); return ctx.Err() })})
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -904,120 +841,56 @@ func TestRun_integration_context_cancelled(t *testing.T) {
 	assert.Equal(t, persistence.RunStatusKilled, runs[0].Status)
 }
 
-// TestRun_integration_with_git_repo exercises the branch-create path in Run().
+// TestRun_integration_with_git_repo exercises the worktree path in Run().
 func TestRun_integration_with_git_repo(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir, err := os.MkdirTemp("", "strc-g-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
-	repoPath := initGitRepo(t) // real git repo for branch ops
-	caseID, _ := scaffoldForRun(t, s, repoPath)
-
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-	script := "import sys, json\njson.loads(sys.stdin.readline())\nsys.exit(0)\n"
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
+	caseID, _ := scaffoldForRun(t, s, initGitRepo(t))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true, Agent: idle}))
 
-	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
-	require.NoError(t, runErr)
-
-	// Verify the blast-radius branch was created (and then restored on success).
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
 }
 
-// TestRun_integration_debug_log verifies that the debug log file is created
-// when opts.Debug is true (covers the debug-log setup path in Run()).
+// TestRun_integration_debug_log verifies that --debug logs the agent's
+// messages to the run's debug log.
 func TestRun_integration_debug_log(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir, err := os.MkdirTemp("", "strc-d-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
 	caseID, _ := scaffoldForRun(t, s, "")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-	script := "import sys, json\njson.loads(sys.stdin.readline())\nsys.exit(0)\n"
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true, Debug: true,
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			env.Emit(ctx, orchestrator.Usage{Agent: "planner", Model: "claude-sonnet-4-6", InputTokens: 7})
+			return nil
+		})}))
 
-	r := orchestrator.NewRunner(s, wsDir)
-	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{
-		SkipGates: true,
-		Debug:     true, // enables debug log creation
-	}))
-
-	// Verify the debug log file was created.
-	logDir := filepath.Join(wsDir, "log")
-	entries, err := os.ReadDir(logDir)
+	entries, err := os.ReadDir(filepath.Join(wsDir, "log"))
 	require.NoError(t, err)
-	assert.NotEmpty(t, entries, "debug log file must be created when opts.Debug=true")
+	require.Len(t, entries, 1, "one debug log per run")
+	data, err := os.ReadFile(filepath.Join(wsDir, "log", entries[0].Name()))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `state_emit {"active_agent":"planner"`)
 }
 
-// TestRun_integration_yield_webhook exercises the YieldCh path in the agent
-// loop: Python sends a yield_request; the orchestrator forwards it to the
-// project's webhook URL and relays the approved response.
+// TestRun_integration_yield_webhook exercises the webhook decision path: the
+// proposal goes to the project's webhook and its approval reaches the agent.
 func TestRun_integration_yield_webhook(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	// Webhook server that auto-approves everything.
 	webhookSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"type":"yield_response","approved":true,"feedback":"auto"}`)
 	}))
 	defer webhookSrv.Close()
 
-	wsDir, err := os.MkdirTemp("", "strc-w-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
-	// Create project with webhook URL so the yield goes to our httptest server.
 	v, err := s.CreateVendor("VW")
 	require.NoError(t, err)
 	p, err := s.CreateProject(v.ID, "PW", "")
@@ -1027,120 +900,30 @@ func TestRun_integration_yield_webhook(t *testing.T) {
 	require.NoError(t, err)
 	c, err := s.CreateCase(p.ID)
 	require.NoError(t, err)
-	caseID := c.ID
-
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-
-	// Python script: auth → send yield_request → read yield_response → exit.
-	script := `import sys, json, socket, time
-boot = json.loads(sys.stdin.readline())
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-for _ in range(30):
-    try:
-        s.connect(boot["socket_path"])
-        break
-    except OSError:
-        time.sleep(0.05)
-s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
-s.sendall((json.dumps({
-    "type":"yield_request","agent_name":"coder","action_type":"file_edit",
-    "proposed_edits":[{"file":"x.go","search_block":"a","replace_block":"b"}],
-    "reasoning_trace":"test","confidence_score":0.9
-})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-resp = json.loads(buf.split(b"\n")[0])
-assert resp.get("approved") == True, resp
-s.close()
-sys.exit(0)
-`
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, c.ID, orchestrator.RunOptions{SkipGates: true, Agent: proposeEdit}))
 
-	r := orchestrator.NewRunner(s, wsDir)
-	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
-
-	runs, err := s.ListRunsByCase(caseID)
+	runs, err := s.ListRunsByCase(c.ID)
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
 }
 
-// TestRun_integration_approval_port exercises the opts.ApprovalPort > 0 code
-// path in Run(): the approval HTTP server starts on a known port, and a
-// background goroutine approves the yield via the REST API (covers
-// the approvalSrv block and the `case approvalSrv != nil` yield handler branch).
+// TestRun_integration_approval_port exercises the HTTP approval server: a
+// background operator approves the pending proposal through the REST API.
 func TestRun_integration_approval_port(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir, err := os.MkdirTemp("", "strc-ap-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
 	caseID, _ := scaffoldForRun(t, s, "")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-
-	// Python: connect via IPC, send yield_request, wait for approval, exit 0.
-	script := `import sys, json, socket, time
-boot = json.loads(sys.stdin.readline())
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-for _ in range(30):
-    try:
-        s.connect(boot["socket_path"])
-        break
-    except OSError:
-        time.sleep(0.05)
-s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
-s.sendall((json.dumps({
-    "type":"yield_request","agent_name":"coder","action_type":"file_edit",
-    "proposed_edits":[{"file":"x.go","search_block":"a","replace_block":"b"}],
-    "reasoning_trace":"test","confidence_score":0.9
-})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-resp = json.loads(buf.split(b"\n")[0])
-assert resp.get("approved") == True, resp
-s.close()
-sys.exit(0)
-`
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	const approvalToken = "test-approval-bearer-xyz"
 	const approvalPort = 19834 // fixed test port; unlikely to conflict in CI
 
-	// Background goroutine: poll the approval API and approve the pending yield.
 	go func() {
 		client := &http.Client{Timeout: 10 * time.Second}
 		base := fmt.Sprintf("http://127.0.0.1:%d/v1/yields", approvalPort)
-
-		// Poll until a pending yield appears (list endpoint returns a JSON array).
 		var pendingID string
 		for i := 0; i < 80 && pendingID == ""; i++ {
 			time.Sleep(100 * time.Millisecond)
@@ -1153,7 +936,6 @@ sys.exit(0)
 				}
 				continue
 			}
-			// Response is a JSON array: [{"id":"...","request":{...},...}]
 			var items []map[string]any
 			_ = json.NewDecoder(resp.Body).Decode(&items)
 			resp.Body.Close()
@@ -1164,25 +946,17 @@ sys.exit(0)
 		if pendingID == "" {
 			return
 		}
-		// Approve the yield.
-		req, _ := http.NewRequest(http.MethodPost,
-			fmt.Sprintf("%s/%s/approve", base, pendingID), nil)
+		req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/%s/approve", base, pendingID), nil)
 		req.Header.Set("Authorization", "Bearer "+approvalToken)
-		resp, _ := client.Do(req)
-		if resp != nil {
+		if resp, _ := client.Do(req); resp != nil {
 			resp.Body.Close()
 		}
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	r := orchestrator.NewRunner(s, wsDir)
-	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{
-		SkipGates:     true,
-		ApprovalPort:  approvalPort,
-		ApprovalToken: approvalToken,
-	}))
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{
+		SkipGates: true, ApprovalPort: approvalPort, ApprovalToken: approvalToken, Agent: proposeEdit}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1190,71 +964,18 @@ sys.exit(0)
 	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
 }
 
-// TestRun_integration_policy_autoapproval verifies the policy auto-approval path
-// inside the agent loop: when policyEngine.Evaluate matches, the orchestrator
-// approves the yield automatically without waiting for operator input.
+// TestRun_integration_policy_autoapproval verifies the policy path: a matching
+// rule approves the proposal without an operator.
 func TestRun_integration_policy_autoapproval(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir, err := os.MkdirTemp("", "strc-p-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
-	// Write a policy.json that auto-approves all file_edit yields.
-	policyJSON := `{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(policyJSON), 0o600))
-
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"),
+		[]byte(`{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`), 0o600))
 	caseID, _ := scaffoldForRun(t, s, "")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-
-	// Python script: connect → auth → send yield_request → wait for auto-approval → exit.
-	script := `import sys, json, socket, time
-boot = json.loads(sys.stdin.readline())
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-for _ in range(30):
-    try:
-        s.connect(boot["socket_path"])
-        break
-    except OSError:
-        time.sleep(0.05)
-s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
-s.sendall((json.dumps({
-    "type":"yield_request","agent_name":"coder","action_type":"file_edit",
-    "proposed_edits":[{"file":"x.go","search_block":"a","replace_block":"b"}],
-    "reasoning_trace":"auto","confidence_score":0.9
-})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-resp = json.loads(buf.split(b"\n")[0])
-assert resp.get("approved") == True, resp
-s.close()
-sys.exit(0)
-`
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	r := orchestrator.NewRunner(s, wsDir)
-	require.NoError(t, r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true, Agent: proposeEdit}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1262,61 +983,21 @@ sys.exit(0)
 	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
 }
 
-// TestRun_integration_state_emit exercises the StatEmitCh path in the agent
-// loop: a Python script connects to the IPC socket, authenticates, sends a
-// state_emit, then exits cleanly.
+// TestRun_integration_state_emit exercises the usage path: a step's usage is
+// recorded and the live display keeps rendering while the agent works.
 func TestRun_integration_state_emit(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-
-	wsDir, err := os.MkdirTemp("", "strc-e-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-
 	caseID, _ := scaffoldForRun(t, s, "")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o700))
-
-	// Python script: connect to IPC socket, authenticate, send state_emit, exit.
-	script := `import sys, json, socket, time
-boot = json.loads(sys.stdin.readline())
-sock_path = boot["socket_path"]
-token = boot["token"]
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-# Wait briefly for the IPC server to start listening.
-for _ in range(20):
-    try:
-        s.connect(sock_path)
-        break
-    except OSError:
-        time.sleep(0.05)
-s.sendall((json.dumps({"type":"auth","token":token})+"\n").encode())
-resp = json.loads(s.makefile().readline())
-assert resp.get("type") == "auth_ok", resp
-s.sendall((json.dumps({"type":"state_emit","active_agent":"planner","state":{"step":1}})+"\n").encode())
-time.sleep(0.6)  # let the render ticker (500 ms) fire at least once
-s.close()
-sys.exit(0)
-`
-	canonicalPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(canonicalPath, []byte(script), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
-	require.NoError(t, runErr)
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true,
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			env.Emit(ctx, orchestrator.Usage{Agent: "planner", Model: "claude-sonnet-4-6", InputTokens: 10, OutputTokens: 5})
+			time.Sleep(600 * time.Millisecond) // let the render ticker (500 ms) fire at least once
+			return nil
+		})}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1376,41 +1057,20 @@ func TestRun_dryrun_creates_nothing(t *testing.T) {
 	assert.Empty(t, runs, "a dry run must not create a run record")
 }
 
-// approveThenWriteScript builds a fake-agent script that proposes creating
-// target.txt with approvedContent (the bytes the operator is shown, which the
-// orchestrator binds the approval to), then after approval writes
-// actualContent into the run's worktree (bootstrap project_path).
-func approveThenWriteScript(approvedContent, actualContent string) string {
-	return `import sys, json, socket, time
-boot = json.loads(sys.stdin.readline())
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-for _ in range(30):
-    try:
-        s.connect(boot["socket_path"])
-        break
-    except OSError:
-        time.sleep(0.05)
-s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-assert json.loads(buf.split(b"\n")[0]).get("type") == "auth_ok"
-s.sendall((json.dumps({
-    "type":"yield_request","agent_name":"coder","action_type":"file_edit",
-    "proposed_edits":[{"file":"target.txt","search_block":"(new file)",
-                       "replace_block":` + fmt.Sprintf("%q", approvedContent) + `}],
-    "reasoning_trace":"binding test","confidence_score":0.9
-})+"\n").encode())
-buf = b""
-while b"\n" not in buf:
-    buf += s.recv(4096)
-resp = json.loads(buf.split(b"\n")[0])
-assert resp.get("approved") == True, resp
-import os
-open(os.path.join(boot["project_path"], "target.txt"), "w").write(` + fmt.Sprintf("%q", actualContent) + `)
-s.close()
-sys.exit(0)
-`
+// approveThenWrite is an agent that proposes creating target.txt with
+// approvedContent (the bytes the operator is shown, which the orchestrator
+// binds the approval to) and, once approved, writes actualContent there itself
+// — like a compromised runtime or an approved shell command could.
+func approveThenWrite(approvedContent, actualContent string) orchestrator.AgentFunc {
+	return func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
+			ProposedEdits:  []ipc.ProposedEdit{{File: "target.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: approvedContent}},
+			ReasoningTrace: "binding test", ConfidenceScore: 0.9})
+		if !ap.Approved {
+			return fmt.Errorf("not approved: %s", ap.Feedback)
+		}
+		return os.WriteFile(filepath.Join(env.Worktree, "target.txt"), []byte(actualContent), 0o644)
+	}
 }
 
 func setupApprovalRun(t *testing.T) (s *persistence.Store, wsDir, repoPath string, caseID int64) {
@@ -1418,26 +1078,12 @@ func setupApprovalRun(t *testing.T) (s *persistence.Store, wsDir, repoPath strin
 	if testing.Short() {
 		t.Skip("integration test — skipped in -short mode")
 	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	wsDir, err := os.MkdirTemp("", "strc-ch-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir = t.TempDir()
 	s = newTestStore(t)
-	prepareRunWorkspace(t, wsDir)
+	prepareAgentWorkspace(t, wsDir)
 	repoPath = initGitRepo(t)
 	caseID, _ = scaffoldForRun(t, s, repoPath)
 	return s, wsDir, repoPath, caseID
-}
-
-// prepareRunWorkspace gives wsDir what a subprocess run needs: key, a pip-less
-// venv, an auto-approve policy for file_edit (no TUI), and tmp/.
-func prepareRunWorkspace(t *testing.T, wsDir string) {
-	t.Helper()
-	prepareAgentWorkspace(t, wsDir)
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", filepath.Join(wsDir, "venv")).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
 }
 
 // prepareAgentWorkspace readies wsDir for a run with an in-process agent: the
@@ -1451,34 +1097,16 @@ func prepareAgentWorkspace(t *testing.T, wsDir string) {
 	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
 }
 
-// TestRun_integration_long_workspace_path: a STAIRCASE_DIR deeper than the OS
-// unix-socket path limit (104 bytes on macOS) must not break the IPC listener.
-func TestRun_integration_long_workspace_path(t *testing.T) {
-	s, shortWS, _, caseID := setupApprovalRun(t)
-	wsDir := filepath.Join(shortWS, strings.Repeat("w", 120))
-	prepareRunWorkspace(t, wsDir)
-	const content = "long workspace path\n"
-	script := approveThenWriteScript(content, content)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
-}
-
 // TestRun_integration_approved_content_is_committed: agent writes exactly the approved
 // content — run succeeds, no approval_content_mismatch event.
 func TestRun_integration_approved_content_is_committed(t *testing.T) {
 	s, wsDir, repoPath, caseID := setupApprovalRun(t)
 
 	const good = "GOOD CONTENT\n"
-	script := approveThenWriteScript(good, good)
-	require.NoError(t, os.WriteFile(
-		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-		orchestrator.RunOptions{SkipGates: true}))
+		orchestrator.RunOptions{SkipGates: true, Agent: approveThenWrite(good, good)}))
 
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
@@ -1501,14 +1129,10 @@ func TestRun_integration_tampered_content_fails(t *testing.T) {
 	s, wsDir, _, caseID := setupApprovalRun(t)
 
 	const good = "GOOD CONTENT\n"
-	script := approveThenWriteScript(good, "EVIL CONTENT — never shown to the operator\n")
-	require.NoError(t, os.WriteFile(
-		filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-		orchestrator.RunOptions{SkipGates: true})
+		orchestrator.RunOptions{SkipGates: true, Agent: approveThenWrite(good, "EVIL CONTENT — never shown to the operator\n")})
 	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful, "tampered run must surface as a non-success error")
 
 	runs, err := s.ListRunsByCase(caseID)
@@ -1529,39 +1153,30 @@ func TestRun_integration_tampered_content_fails(t *testing.T) {
 	assert.True(t, found, "approval_content_mismatch audit event expected")
 }
 
-// TestRun_integration_hung_runtime_is_reaped: a runtime that drops its IPC
-// connection but keeps running (hung, no heartbeats) must not stall the run
-// until the caller's deadline — it is killed after a short grace period, the
-// run FAILS, and the reason is in the audit chain.
-func TestRun_integration_hung_runtime_is_reaped(t *testing.T) {
+// TestRun_stuck_agent_is_abandoned catches a run that hangs forever because
+// its agent ignores cancellation: after a short grace the run ends anyway,
+// KILLED, with the stuck agent on the audit chain.
+func TestRun_stuck_agent_is_abandoned(t *testing.T) {
 	s, wsDir, _, caseID := setupApprovalRun(t)
 	t.Cleanup(orchestrator.SetLostGraceForTest(time.Second))
-	script := `import sys, json, socket, time
-boot = json.loads(sys.stdin.readline())
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.connect(boot["socket_path"])
-s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
-s.recv(4096)
-s.close()
-time.sleep(60)
-`
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
 	started := time.Now()
-	err := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
+	err := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true,
+		Agent: orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error { <-release; return nil })})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "lost its IPC connection")
-	assert.Less(t, time.Since(started), 15*time.Second, "must not wait for the caller deadline")
+	assert.Less(t, time.Since(started), 10*time.Second, "must not wait for the agent forever")
 	runs, err := s.ListRunsByCase(caseID)
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
-	assert.Equal(t, persistence.RunStatusFailed, runs[0].Status)
+	assert.Equal(t, persistence.RunStatusKilled, runs[0].Status)
 	logs, err := s.ListEventLogs(runs[0].ID)
 	require.NoError(t, err)
 	var types []string
 	for _, l := range logs {
 		types = append(types, l.EventType)
 	}
-	assert.Contains(t, types, "runtime_unresponsive")
+	assert.Contains(t, types, "agent_unresponsive")
 }

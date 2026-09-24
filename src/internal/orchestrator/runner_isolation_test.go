@@ -5,8 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -19,9 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/b070nd/staircase-core/src/internal/ipc"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
-	scaffoldtpl "github.com/b070nd/staircase-core/src/internal/template"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,45 +98,44 @@ func checkoutSnapshot(t *testing.T, repo string) string {
 	return strings.Join(append(lines, files...), "\n")
 }
 
-// isolationAgent uses the real embedded IPC client, dumps its environment
-// keys to envOut, and (unless hanging) proposes and writes target.txt into the
-// project path it is given — the worktree, not the developer checkout.
-func isolationAgent(mode, content, envOut, fallbackProject string) string {
-	return fmt.Sprintf(`import hashlib, json, os, sys, time
-boot = json.loads(sys.stdin.readline())
-json.dump(sorted(os.environ), open(%q, "w"))
-sys.path.insert(0, boot["runner_path"])
-from staircase_runner.ipc import IPCClient
-project = boot.get("project_path") or %q
-ipc = IPCClient(boot["socket_path"], boot["token"])
-if %q == "hang":
-    time.sleep(60)
-content = %q
-r = ipc.yield_request("coder", "file_edit", [{"file": "target.txt", "search_block": "(new file)",
-    "replace_block": content, "content_hash": hashlib.sha256(content.encode()).hexdigest()}], "isolation")
-assert r.get("approved"), r
-with open(os.path.join(project, "target.txt"), "w") as f:
-    f.write(content)
-ipc.close()
-sys.exit(1 if %q == "fail" else 0)
-`, envOut, fallbackProject, mode, content, mode)
+// isolationAgent proposes target.txt and writes it into the worktree it is
+// given — or, were none given, into the developer checkout (repo), which the
+// checkout snapshot would catch. "hang" waits until the run is cancelled and
+// "fail" fails after writing.
+func isolationAgent(mode, content, repo string) orchestrator.AgentFunc {
+	return func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		if mode == "hang" {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
+			ProposedEdits:  []ipc.ProposedEdit{{File: "target.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: content}},
+			ReasoningTrace: "isolation", ConfidenceScore: 0.9})
+		if !ap.Approved {
+			return fmt.Errorf("not approved: %s", ap.Feedback)
+		}
+		root := env.Worktree
+		if root == "" {
+			root = repo
+		}
+		if err := os.WriteFile(filepath.Join(root, "target.txt"), []byte(content), 0o644); err != nil {
+			return err
+		}
+		if mode == "fail" {
+			return errors.New("agent failed")
+		}
+		return nil
+	}
 }
 
 func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test — skipped in -short mode")
 	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	t.Setenv("STAIRCASE_TEST_SENTINEL", "must-not-reach-the-agent")
-
 	for _, mode := range []string{"success", "fail", "hang", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
-			wsDir, err := os.MkdirTemp("", "strc-iso-")
-			require.NoError(t, err)
-			t.Cleanup(func() { os.RemoveAll(wsDir) })
-			prepareRunWorkspace(t, wsDir)
+			wsDir := t.TempDir()
+			prepareAgentWorkspace(t, wsDir)
 			s := newTestStore(t)
 			repo := extractFixtureRepo(t, "dirty-worktree") // HEAD on main + a staged, uncommitted DIRTY.md
 			caseA, projectID := scaffoldForRun(t, s, repo)
@@ -150,11 +148,6 @@ func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 			agentMode := mode
 			if mode == "concurrent" {
 				agentMode = "success"
-			}
-			envOut := filepath.Join(t.TempDir(), "env.json")
-			for i, c := range cases {
-				script := isolationAgent(agentMode, fmt.Sprintf("content from case %d\n", i), envOut, repo)
-				require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", c)), []byte(script), 0o600))
 			}
 			before := checkoutSnapshot(t, repo)
 
@@ -169,7 +162,8 @@ func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 				wg.Add(1)
 				go func(i int, c int64) {
 					defer wg.Done()
-					errs[i] = orchestrator.NewRunner(s, wsDir).Run(ctx, c, orchestrator.RunOptions{SkipGates: true})
+					errs[i] = orchestrator.NewRunner(s, wsDir).Run(ctx, c, orchestrator.RunOptions{SkipGates: true,
+						Agent: isolationAgent(agentMode, fmt.Sprintf("content from case %d\n", i), repo)})
 				}(i, c)
 			}
 			wg.Wait()
@@ -189,35 +183,6 @@ func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 					assert.Equal(t, fmt.Sprintf("content from case %d\n", i), string(out))
 				}
 			}
-
-			var env []string
-			b, err := os.ReadFile(envOut)
-			require.NoError(t, err, "agent must have started")
-			require.NoError(t, json.Unmarshal(b, &env))
-			assert.NotContains(t, env, "STAIRCASE_TEST_SENTINEL", "the agent must not inherit the operator's environment")
-			assert.Contains(t, env, "PATH")
 		})
 	}
-}
-
-// TestRun_refuses_scripts_from_another_template: a compiled script embeds its
-// runtime, so one produced by another stAirCase version (older IPC client,
-// writes outside the worktree) must be refused, not run.
-func TestRun_refuses_scripts_from_another_template(t *testing.T) {
-	s, wsDir, _, caseID := setupApprovalRun(t)
-	const content = "fingerprinted\n"
-	script := []byte(approveThenWriteScript(content, content))
-	path := filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID))
-	require.NoError(t, os.WriteFile(path, script, 0o600))
-	scriptSum := sha256.Sum256(script)
-	require.NoError(t, os.WriteFile(path+".sha256", []byte(hex.EncodeToString(scriptSum[:])), 0o600))
-
-	require.NoError(t, os.WriteFile(path+".tmpl", []byte("fingerprint-of-an-older-release"), 0o600))
-	err := orchestrator.NewRunner(s, wsDir).Run(context.Background(), caseID, orchestrator.RunOptions{SkipGates: true})
-	require.ErrorContains(t, err, "compiled by a different stAirCase version")
-
-	require.NoError(t, os.WriteFile(path+".tmpl", []byte(scaffoldtpl.Fingerprint()), 0o600))
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
 }

@@ -3,7 +3,6 @@ package orchestrator_test
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,37 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// approvalAgent wraps a scenario body with the real IPC client and helpers:
-// ask() proposes edits (tuples of file, search, replace) and returns the
-// response; write() writes like the generated runtime (temp file + rename,
-// which leaves mode 0600); results is dumped for the test to inspect.
-func approvalAgent(resultsPath, body string) string {
-	return fmt.Sprintf(`import json, os, subprocess, sys, tempfile
-boot = json.loads(sys.stdin.readline())
-sys.path.insert(0, boot["runner_path"])
-from staircase_runner.ipc import IPCClient
-ipc = IPCClient(boot["socket_path"], boot["token"])
-root = boot["project_path"]
-results = []
-def ask(*edits):
-    r = ipc.yield_request("coder", "file_edit",
-        [dict(file=f, search_block=s, replace_block=r) for f, s, r in edits], "approval test")
-    results.append({"approved": r.get("approved"), "feedback": r.get("feedback", "")})
-    json.dump(results, open(%q, "w"))  # record at once: the run may stop the agent next
-    return r
-def write(path, data):
-    full = os.path.join(root, path)
-    os.makedirs(os.path.dirname(full), exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(full))
-    with os.fdopen(fd, "w", newline="") as f:
-        f.write(data)
-    os.replace(tmp, full)
-%s
-json.dump(results, open(%q, "w"))
-ipc.close()
-`, resultsPath, body, resultsPath)
-}
 
 type baseFile struct {
 	content string
@@ -107,25 +75,17 @@ func (a *scriptedAgent) git(args ...string) {
 	assert.NoError(a.t, err, "git %v: %s", args, out)
 }
 
-// runApprovalScenario commits baseFiles to a fresh repo and runs the scenario
-// with file_edit auto-approved by policy: on the Python runtime when py is set,
-// else in-process with agent.
-func runApprovalScenario(t *testing.T, baseFiles map[string]baseFile, py string, agent func(context.Context, *scriptedAgent), prepare func(*testing.T, *sql.DB)) scenarioResult {
+// runApprovalScenario commits baseFiles to a fresh repo and runs agent
+// in-process with file_edit auto-approved by policy.
+func runApprovalScenario(t *testing.T, baseFiles map[string]baseFile, agent func(context.Context, *scriptedAgent), prepare func(*testing.T, *sql.DB)) scenarioResult {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("integration test — skipped in -short mode")
 	}
-	if _, err := exec.LookPath("python3"); py != "" && err != nil {
-		t.Skip("python3 not available")
-	}
 	wsDir, err := os.MkdirTemp("", "strc-ap-")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(wsDir) })
-	if py != "" {
-		prepareRunWorkspace(t, wsDir)
-	} else {
-		prepareAgentWorkspace(t, wsDir)
-	}
+	prepareAgentWorkspace(t, wsDir)
 	repo := initGitRepo(t)
 	for name, f := range baseFiles {
 		p := filepath.Join(repo, name)
@@ -146,19 +106,12 @@ func runApprovalScenario(t *testing.T, baseFiles map[string]baseFile, py string,
 		prepare(t, db)
 	}
 	caseID, _ := scaffoldForRun(t, s, repo)
-	opts := orchestrator.RunOptions{SkipGates: true}
-	resultsPath := filepath.Join(t.TempDir(), "results.json")
 	sa := &scriptedAgent{t: t}
-	if py != "" {
-		require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)),
-			[]byte(approvalAgent(resultsPath, py)), 0o600))
-	} else {
-		opts.Agent = orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
-			sa.env = env
-			agent(ctx, sa)
-			return nil
-		})
-	}
+	opts := orchestrator.RunOptions{SkipGates: true, Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		sa.env = env
+		agent(ctx, sa)
+		return nil
+	})}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -168,11 +121,6 @@ func runApprovalScenario(t *testing.T, baseFiles map[string]baseFile, py string,
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	r := scenarioResult{repo: repo, run: runs[0], results: sa.results}
-	if py != "" {
-		if b, err := os.ReadFile(resultsPath); err == nil {
-			require.NoError(t, json.Unmarshal(b, &r.results))
-		}
-	}
 	logs, err := s.ListEventLogs(r.run.ID)
 	require.NoError(t, err)
 	for _, l := range logs {
@@ -188,14 +136,11 @@ func gitShow(t *testing.T, repo, rev string) (string, error) {
 	return string(out), err
 }
 
-// approvalScenario runs through both runtimes until the Python one goes
-// (Phase R5): py is its Python-runtime agent, agent the in-process one (nil
-// for a case that exists only because of the Python transport).
+// approvalScenario is an agent's moves against a base repo, and what must follow.
 type approvalScenario struct {
 	name    string
 	base    map[string]baseFile
 	prepare func(*testing.T, *sql.DB)
-	py      string
 	agent   func(ctx context.Context, a *scriptedAgent)
 	check   func(t *testing.T, r scenarioResult)
 }
@@ -215,9 +160,6 @@ func failedWith(event string) func(*testing.T, scenarioResult) {
 func approvalScenarios() []approvalScenario {
 	return []approvalScenario{{
 		name: "create_without_agent_hash",
-		py: `
-ask(("new.txt", "(new file)", "hello\n"))
-write("new.txt", "hello\n")`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"new.txt", "(new file)", "hello\n"})
 			a.write("new.txt", "hello\n")
@@ -231,13 +173,8 @@ write("new.txt", "hello\n")`,
 			assert.Equal(t, "hello\n", got)
 		},
 	}, {
-		name: "edits_chain_and_mirror_python_newlines",
+		name: "edits_chain_with_universal_newlines",
 		base: map[string]baseFile{"f.txt": {"a\r\nb\r\n", 0o644}},
-		py: `
-ask(("f.txt", "b\n", "B\n"))
-write("f.txt", "a\nB\n")
-ask(("f.txt", "a\n", "A\n"))
-write("f.txt", "A\nB\n")`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"f.txt", "b\n", "B\n"})
 			a.write("f.txt", "a\nB\n")
@@ -252,9 +189,6 @@ write("f.txt", "A\nB\n")`,
 		},
 	}, {
 		name: "post_approval_tamper_fails",
-		py: `
-ask(("x.txt", "(new file)", "approved\n"))
-write("x.txt", "something else\n")`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"x.txt", "(new file)", "approved\n"})
 			a.write("x.txt", "something else\n")
@@ -262,10 +196,6 @@ write("x.txt", "something else\n")`,
 		check: failedWith("approval_content_mismatch"),
 	}, {
 		name: "unapproved_extra_file_fails",
-		py: `
-ask(("a.txt", "(new file)", "a\n"))
-write("a.txt", "a\n")
-write("extra.txt", "never approved\n")`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"a.txt", "(new file)", "a\n"})
 			a.write("a.txt", "a\n")
@@ -274,11 +204,6 @@ write("extra.txt", "never approved\n")`,
 		check: failedWith("unapproved_worktree_change"),
 	}, {
 		name: "direct_index_write_fails",
-		py: `
-ask(("a.txt", "(new file)", "a\n"))
-write("a.txt", "a\n")
-write("sneaky.txt", "staged behind the orchestrator's back\n")
-subprocess.run(["git", "-C", root, "add", "sneaky.txt"], check=True)`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"a.txt", "(new file)", "a\n"})
 			a.write("a.txt", "a\n")
@@ -290,12 +215,6 @@ subprocess.run(["git", "-C", root, "add", "sneaky.txt"], check=True)`,
 		// A commit made in the worktree hides its changes from a status check
 		// (they are no longer "changes"), so the branch itself must be checked.
 		name: "agent_commit_on_the_run_branch_fails",
-		py: `
-ask(("a.txt", "(new file)", "a\n"))
-write("a.txt", "a\n")
-write("sneaky.txt", "committed behind the orchestrator's back\n")
-subprocess.run(["git", "-C", root, "add", "-A"], check=True)
-subprocess.run(["git", "-C", root, "-c", "user.name=a", "-c", "user.email=a@a", "commit", "-qm", "sneaky"], check=True)`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"a.txt", "(new file)", "a\n"})
 			a.write("a.txt", "a\n")
@@ -313,8 +232,6 @@ subprocess.run(["git", "-C", root, "-c", "user.name=a", "-c", "user.email=a@a", 
 	}, {
 		name: "unapproved_deletion_fails",
 		base: map[string]baseFile{"old.txt": {"keep me\n", 0o644}},
-		py: `
-os.remove(os.path.join(root, "old.txt"))`,
 		agent: func(_ context.Context, a *scriptedAgent) {
 			assert.NoError(a.t, os.Remove(filepath.Join(a.env.Worktree, "old.txt")))
 		},
@@ -322,9 +239,6 @@ os.remove(os.path.join(root, "old.txt"))`,
 	}, {
 		name: "approved_deletion_is_committed",
 		base: map[string]baseFile{"old.txt": {"bye\n", 0o644}, "keep.txt": {"k\n", 0o644}},
-		py: `
-ask(("old.txt", "(delete file)", ""))
-os.remove(os.path.join(root, "old.txt"))`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"old.txt", "(delete file)", ""})
 			assert.NoError(a.t, os.Remove(filepath.Join(a.env.Worktree, "old.txt")))
@@ -337,9 +251,6 @@ os.remove(os.path.join(root, "old.txt"))`,
 	}, {
 		name: "exec_bit_preserved",
 		base: map[string]baseFile{"run.sh": {"echo a\n", 0o755}},
-		py: `
-ask(("run.sh", "echo a", "echo b"))
-write("run.sh", "echo b\n")`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"run.sh", "echo a", "echo b"})
 			a.write("run.sh", "echo b\n")
@@ -353,12 +264,6 @@ write("run.sh", "echo b\n")`,
 	}, {
 		name: "invalid_proposals_are_refused_before_anyone_sees_them",
 		base: map[string]baseFile{"sub/keep.txt": {"k\n", 0o644}, "f.txt": {"hello\n", 0o644}},
-		py: `
-for p in [".", "sub", ".git/config", "SUB/../.GIT/hooks/pre-commit", "../escape.txt", "/etc/passwd", ""]:
-    ask((p, "(new file)", "x"))
-ask(("f.txt", "not in the file", "x"))
-ask(("missing.txt", "a", "b"))
-ask(("big.txt", "(new file)", "a" * (201 * 1024)))`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			for _, p := range []string{".", "sub", ".git/config", "SUB/../.GIT/hooks/pre-commit", "../escape.txt", "/etc/passwd", ""} {
 				a.ask(ctx, [3]string{p, "(new file)", "x"})
@@ -378,23 +283,7 @@ ask(("big.txt", "(new file)", "a" * (201 * 1024)))`,
 			assert.Contains(t, r.events, "approval_path_escape")
 		},
 	}, {
-		// 120,000 bytes as UTF-8 (under the create cap) but 360,000 once
-		// JSON-escaped: the Python client must refuse it rather than overflow
-		// the orchestrator's 256 KiB line limit and lose the connection.
-		name: "proposal_over_the_line_limit_is_refused_not_fatal",
-		py: `
-ask(("wide.txt", "(new file)", "é" * 60000))`,
-		check: func(t *testing.T, r scenarioResult) {
-			require.Len(t, r.results, 1)
-			assert.False(t, r.results[0].Approved)
-			assert.Contains(t, r.results[0].Feedback, "split it")
-			assert.Equal(t, persistence.RunStatusSuccess, r.run.Status)
-		},
-	}, {
 		name: "symlinked_path_is_refused",
-		py: `
-os.symlink("/tmp", os.path.join(root, "link"))
-ask(("link/x.txt", "(new file)", "x"))`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			assert.NoError(a.t, os.Symlink("/tmp", filepath.Join(a.env.Worktree, "link")))
 			a.ask(ctx, [3]string{"link/x.txt", "(new file)", "x"})
@@ -411,10 +300,6 @@ ask(("link/x.txt", "(new file)", "x"))`,
 				WHEN NEW.event_type = 'yield_decided' BEGIN SELECT RAISE(ABORT, 'injected audit failure'); END`)
 			require.NoError(t, err)
 		},
-		py: `
-import signal
-signal.signal(signal.SIGTERM, signal.SIG_IGN)  # outlive the stop long enough to record the answer
-ask(("a.txt", "(new file)", "a\n"))`,
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"a.txt", "(new file)", "a\n"})
 		},
@@ -430,19 +315,11 @@ ask(("a.txt", "(new file)", "a\n"))`,
 // nobody approved to reach the run branch: trusting an agent-supplied hash, the
 // runtime writing something other than what was shown, unapproved files or
 // index entries, the agent's own commits, bad paths, oversized proposals, and
-// approvals released before they are on the audit chain — for the Python
-// runtime and for an in-process agent alike.
+// approvals released before they are on the audit chain.
 func TestApproval_orchestrator_binds_the_exact_bytes(t *testing.T) {
 	for _, sc := range approvalScenarios() {
 		t.Run(sc.name, func(t *testing.T) {
-			t.Run("python", func(t *testing.T) {
-				sc.check(t, runApprovalScenario(t, sc.base, sc.py, nil, sc.prepare))
-			})
-			if sc.agent != nil {
-				t.Run("in_process", func(t *testing.T) {
-					sc.check(t, runApprovalScenario(t, sc.base, "", sc.agent, sc.prepare))
-				})
-			}
+			sc.check(t, runApprovalScenario(t, sc.base, sc.agent, sc.prepare))
 		})
 	}
 }

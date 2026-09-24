@@ -449,7 +449,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			select {
 			case <-stopped:
 			case <-time.After(lostGrace):
+				// Nothing more can be done in-process; the run ends without it.
 				obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", run.ID)
+				_, _ = r.store.AppendEventLogChained(run.ID, "agent_unresponsive",
+					fmt.Sprintf(`{"type":"agent_unresponsive","grace_seconds":%g}`, lostGrace.Seconds()), "")
 			}
 		}
 		fmt.Fprintln(os.Stdout, "   🤖 Agent: in-process")

@@ -37,8 +37,8 @@ const MaxApprovedFileBytesForTest = maxApprovedFileBytes
 // CleanApprovedPathForTest exposes cleanApprovedPath for trust-boundary tests.
 func CleanApprovedPathForTest(root, rel string) (string, error) { return cleanApprovedPath(root, rel) }
 
-// SetLostGraceForTest shortens how long a run waits for a runtime that dropped
-// its IPC connection to exit before killing it. Restore with the returned func.
+// SetLostGraceForTest shortens how long a run waits for an agent to stop after
+// cancellation before it gives up on it. Restore with the returned func.
 func SetLostGraceForTest(d time.Duration) (restore func()) {
 	orig := lostGrace
 	lostGrace = d
