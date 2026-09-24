@@ -22,11 +22,12 @@ var (
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Remove tmp files and orphan IPC sockets",
-	Long: `staircase clean removes graph_exec scripts and stale IPC sockets from tmp/.
+	Short: "Remove leftovers of older staircase versions from tmp/",
+	Long: `staircase clean removes what older staircase versions left in tmp/: compiled
+Python scripts (graph_exec_*) and stale IPC sockets. Compiled plans are kept.
 
---aggressive also prunes the Python venv and orphaned staircase/run-*
-git branches older than 30 days.
+--aggressive also removes the Python venv older versions installed and
+orphaned staircase/run-* git branches older than 30 days.
 
 --keep-failed preserves branches and logs for FAILED runs (forensic mode).
 
@@ -35,7 +36,7 @@ git branches older than 30 days.
 }
 
 func init() {
-	cleanCmd.Flags().BoolVar(&cleanAggressive, "aggressive", false, "Also prune venv and stale git branches")
+	cleanCmd.Flags().BoolVar(&cleanAggressive, "aggressive", false, "Also remove the old Python venv and stale git branches")
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Print targets without deleting")
 	cleanCmd.Flags().BoolVar(&cleanKeepFailed, "keep-failed", false, "Preserve branches/logs for FAILED runs")
 	rootCmd.AddCommand(cleanCmd)
@@ -49,9 +50,9 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 		fmt.Println("🔍 Dry-run mode — nothing will be deleted.")
 	}
 
-	// ── 1. Tmp: graph_exec scripts + IPC sockets ──────────────────────────────
+	// ── 1. Tmp: Python-era scripts and their sidecars, IPC sockets ────────────
 	removed := 0
-	for _, pat := range []string{"*.py", "*.sock"} {
+	for _, pat := range []string{"graph_exec_*", "*.sock"} {
 		matches, _ := filepath.Glob(filepath.Join(tmpDir, pat))
 		for _, m := range matches {
 			removeTarget(m)
@@ -83,7 +84,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// ── 3. Prune stale venv ────────────────────────────────────────────────────
+	// ── 3. Remove the Python venv older versions installed ───────────────────
 	venvPath := filepath.Join(wsDir, "venv")
 	if info, err := os.Lstat(venvPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {

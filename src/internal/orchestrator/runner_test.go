@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
@@ -88,8 +88,7 @@ func TestRunPhase_constants_are_defined(t *testing.T) {
 	phases := []orchestrator.RunPhase{
 		orchestrator.PhasePreFlight,
 		orchestrator.PhaseBranchCreate,
-		orchestrator.PhaseIPCListen,
-		orchestrator.PhasePythonBoot,
+		orchestrator.PhaseAgentStart,
 		orchestrator.PhaseAgentLoop,
 		orchestrator.PhaseFinalize,
 		orchestrator.PhaseBranchRestore,
@@ -389,9 +388,9 @@ func TestCleanupChainOnPanic(t *testing.T) {
 // TestScrubSecrets_empty_active_values_returns_unchanged verifies the early-return
 // path when the active-values slice is nil or empty (no replacement occurs).
 func TestScrubSecrets_empty_active_values_returns_unchanged(t *testing.T) {
-	req := ipc.IpcYieldRequest{
+	req := domain.YieldRequest{
 		ActionType: "file_edit",
-		ProposedEdits: []ipc.ProposedEdit{
+		ProposedEdits: []domain.ProposedEdit{
 			{File: "/repo/important.go"},
 		},
 	}
@@ -403,9 +402,9 @@ func TestScrubSecrets_empty_active_values_returns_unchanged(t *testing.T) {
 // TestScrubSecrets_skips_empty_active_value verifies that an empty string in
 // activeValues is treated as a skip-sentinel (CHECK 4.4.3).
 func TestScrubSecrets_skips_empty_active_value(t *testing.T) {
-	req := ipc.IpcYieldRequest{
+	req := domain.YieldRequest{
 		ActionType: "file_edit",
-		ProposedEdits: []ipc.ProposedEdit{
+		ProposedEdits: []domain.ProposedEdit{
 			{File: "/repo/config.go"},
 		},
 	}
@@ -418,9 +417,9 @@ func TestScrubSecrets_skips_empty_active_value(t *testing.T) {
 // TestScrubSecrets_redacts_active_values verifies that scrubSecrets replaces
 // matching secret values in proposed edit paths (CHECK 4.4.3).
 func TestScrubSecrets_redacts_active_values(t *testing.T) {
-	req := ipc.IpcYieldRequest{
+	req := domain.YieldRequest{
 		ActionType: "file_edit",
-		ProposedEdits: []ipc.ProposedEdit{
+		ProposedEdits: []domain.ProposedEdit{
 			{File: "/repo/service_sk-secret123_config.go"},
 			{File: "/repo/normal_file.go"},
 		},
@@ -434,10 +433,10 @@ func TestScrubSecrets_redacts_active_values(t *testing.T) {
 // covers all operator-visible fields (CHECK 4.4.3 / 7.4.2).
 func TestScrubSecrets_redacts_search_replace_and_reasoning(t *testing.T) {
 	secret := "sk-super-secret-key"
-	req := ipc.IpcYieldRequest{
+	req := domain.YieldRequest{
 		ActionType:     "file_edit",
 		ReasoningTrace: "Using " + secret + " to authenticate",
-		ProposedEdits: []ipc.ProposedEdit{
+		ProposedEdits: []domain.ProposedEdit{
 			{
 				File:         "/repo/config.go",
 				SearchBlock:  "apiKey = " + secret,
@@ -529,52 +528,30 @@ func TestRun_reconcile_option_covers_block(t *testing.T) {
 	assert.Contains(t, err.Error(), "workspace key")
 }
 
-// TestRun_script_not_found_returns_error covers the PhasePythonBoot path in
-// Run() where the canonical graph_exec script is absent.
-// The test sets up a full workspace key so execution reaches the script check.
-func TestRun_script_not_found_returns_error(t *testing.T) {
+// TestRun_without_an_agent_returns_error covers the AGENT_START guard: a run
+// has nothing to execute without an agent (staircase run passes the plan's).
+func TestRun_without_an_agent_returns_error(t *testing.T) {
 	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "")
-
-	// Short prefix avoids the 104-char macOS UDS socket path limit.
-	wsDir, err := os.MkdirTemp("", "strc-snf-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
+	wsDir := t.TempDir()
 	require.NoError(t, crypto.GenerateKey(wsDir))
-	// Ensure the tmp dir exists so MkdirAll succeeds; canonical script is absent.
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
 
-	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		SkipGates: true,
-	})
+	runErr := orchestrator.NewRunner(s, wsDir).Run(context.Background(), caseID, orchestrator.RunOptions{SkipGates: true})
 	require.Error(t, runErr)
-	assert.Contains(t, runErr.Error(), "graph_exec script not found")
+	assert.Contains(t, runErr.Error(), "no agent to run")
 }
 
-// TestRun_malformed_policy_json_logs_warning_and_continues verifies that a
-// broken policy.json emits a warning and falls back to an empty engine rather
-// than aborting the run.  The run fails at the script-not-found check, but the
-// policy-load error branch must have been reached first.
+// TestRun_malformed_policy_json_logs_warning_and_continues pins today's
+// behaviour: a broken policy.json logs a warning and the run continues with no
+// auto-approval rules. (Phase 5 makes this fail closed — F19.)
 func TestRun_malformed_policy_json_logs_warning_and_continues(t *testing.T) {
+	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "")
-
-	wsDir, err := os.MkdirTemp("", "strc-mpj-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
-	require.NoError(t, crypto.GenerateKey(wsDir))
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
-	// Write broken JSON so LoadEngine returns an error.
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte("not-json{"), 0o600))
 
-	r := orchestrator.NewRunner(s, wsDir)
-	runErr := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		SkipGates: true,
-	})
-	// Run must fail at script-not-found, not at policy load.
-	require.Error(t, runErr)
-	assert.Contains(t, runErr.Error(), "graph_exec script not found")
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(context.Background(), caseID,
+		orchestrator.RunOptions{SkipGates: true, Agent: idle}))
 }
 
 // TestRun_quality_gate_failure_returns_error covers the pre-flight gate path
@@ -609,7 +586,7 @@ func TestSendWebhookYield_successful_approval(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req := ipc.IpcYieldRequest{
+	req := domain.YieldRequest{
 		Type:            "yield_request",
 		AgentName:       "planner",
 		ActionType:      "file_edit",
@@ -622,7 +599,7 @@ func TestSendWebhookYield_successful_approval(t *testing.T) {
 }
 
 func TestSendWebhookYield_network_error_auto_rejects(t *testing.T) {
-	resp := orchestrator.ExportedSendWebhookYield("http://127.0.0.1:1", nil, ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield("http://127.0.0.1:1", nil, domain.YieldRequest{})
 	assert.False(t, resp.Approved)
 	assert.Contains(t, resp.Feedback, "webhook error")
 }
@@ -636,7 +613,7 @@ func TestSendWebhookYield_fills_missing_type_field(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, domain.YieldRequest{})
 	assert.Equal(t, "yield_response", resp.Type)
 	assert.True(t, resp.Approved)
 }
@@ -647,7 +624,7 @@ func TestSendWebhookYield_bad_json_response_auto_rejects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, nil, domain.YieldRequest{})
 	assert.False(t, resp.Approved)
 	assert.Contains(t, resp.Feedback, "webhook decode error")
 }
@@ -682,7 +659,7 @@ func signedOperator(t *testing.T, secret []byte) *httptest.Server {
 func TestSendWebhookYield_signed_roundtrip_approves(t *testing.T) {
 	secret := []byte("project-secret")
 	srv := signedOperator(t, secret)
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, secret, ipc.IpcYieldRequest{Type: "yield_request"})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, secret, domain.YieldRequest{Type: "yield_request"})
 	assert.True(t, resp.Approved)
 	assert.Equal(t, "signed-approve", resp.Feedback)
 }
@@ -701,8 +678,8 @@ func yieldIDOf(body []byte) string {
 // even a byte-identical one (agents re-propose identical edits).
 func TestSendWebhookYield_replayed_approval_rejected(t *testing.T) {
 	secret := []byte("project-secret")
-	first := ipc.IpcYieldRequest{Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "approved one"}
-	for name, second := range map[string]ipc.IpcYieldRequest{
+	first := domain.YieldRequest{Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "approved one"}
+	for name, second := range map[string]domain.YieldRequest{
 		"different_request": {Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "something else"},
 		"identical_request": first,
 	} {
@@ -742,14 +719,14 @@ func TestSendWebhookYield_unsigned_response_rejected_when_secret_set(t *testing.
 	}))
 	defer srv.Close()
 
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, []byte("project-secret"), ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, []byte("project-secret"), domain.YieldRequest{})
 	assert.False(t, resp.Approved, "unsigned response must not be honoured")
 	assert.Contains(t, resp.Feedback, "signature verification")
 }
 
 func TestSendWebhookYield_wrong_secret_rejected(t *testing.T) {
 	srv := signedOperator(t, []byte("operator-secret"))
-	resp := orchestrator.ExportedSendWebhookYield(srv.URL, []byte("attacker-secret"), ipc.IpcYieldRequest{})
+	resp := orchestrator.ExportedSendWebhookYield(srv.URL, []byte("attacker-secret"), domain.YieldRequest{})
 	// The operator rejects the mis-signed request (401) → invalid body → rejection.
 	assert.False(t, resp.Approved)
 }
@@ -773,8 +750,8 @@ var idle = orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) 
 
 // proposeEdit is an agent that proposes one edit and fails unless approved.
 var proposeEdit = orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
-	ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
-		ProposedEdits:  []ipc.ProposedEdit{{File: "x.go", SearchBlock: "a", ReplaceBlock: "b"}},
+	ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+		ProposedEdits:  []domain.ProposedEdit{{File: "x.go", SearchBlock: "a", ReplaceBlock: "b"}},
 		ReasoningTrace: "test", ConfidenceScore: 0.9})
 	if !ap.Approved {
 		return fmt.Errorf("not approved: %s", ap.Feedback)
@@ -1039,7 +1016,7 @@ func TestRun_no_topology_returns_error(t *testing.T) {
 
 // TestRun_dryrun_creates_run_and_returns_nil covers the DryRun short-circuit
 // path: a run record is created, logged, and the function returns nil without
-// launching Python (CHECK 5.1.2 / CHECK 5.5.1).
+// starting an agent (CHECK 5.1.2 / CHECK 5.5.1).
 func TestRun_dryrun_creates_nothing(t *testing.T) {
 	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "") // empty sourcePath → skip all git ops
@@ -1063,8 +1040,8 @@ func TestRun_dryrun_creates_nothing(t *testing.T) {
 // — like a compromised runtime or an approved shell command could.
 func approveThenWrite(approvedContent, actualContent string) orchestrator.AgentFunc {
 	return func(ctx context.Context, env *orchestrator.AgentEnv) error {
-		ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
-			ProposedEdits:  []ipc.ProposedEdit{{File: "target.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: approvedContent}},
+		ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+			ProposedEdits:  []domain.ProposedEdit{{File: "target.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: approvedContent}},
 			ReasoningTrace: "binding test", ConfidenceScore: 0.9})
 		if !ap.Approved {
 			return fmt.Errorf("not approved: %s", ap.Feedback)

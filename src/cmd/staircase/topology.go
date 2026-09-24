@@ -242,7 +242,7 @@ var topoShowCmd = &cobra.Command{
 
 func init() {
 	topoRegisterCmd.Flags().StringVar(&topoCheckpoint, "checkpoint", "memory", "Checkpoint type (memory or sqlite)")
-	topoRegisterCmd.Flags().StringVar(&topoRuntime, "runtime", "langgraph", "Agent runtime (langgraph, crewai, autogen)")
+	topoRegisterCmd.Flags().StringVar(&topoRuntime, "runtime", "langgraph", "Kept for compatibility: staircase runs every topology with its built-in runtime")
 	agentAddCmd.Flags().StringVar(&agentModel, "model", "", "LLM model identifier (default: claude-sonnet-4-6)")
 	edgeAddCmd.Flags().StringVar(&edgeCondition, "condition", "", "Conditional routing expression")
 	toolAddCmd.Flags().StringVar(&toolConfig, "config", "", "JSON tool configuration")

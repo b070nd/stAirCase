@@ -14,8 +14,6 @@ import (
 
 func init() {
 	Register(&runtimePlanCompiledGate{})
-	Register(&runtimeVenvReadyGate{})
-	Register(&runtimeVenvBrokenGate{})
 	Register(&runtimeSourcePathGate{})
 	Register(&runtimeNoConcurrentRunGate{})
 	Register(&runtimeGitAvailableGate{})
@@ -50,48 +48,6 @@ func (*runtimePlanCompiledGate) Run(ctx Context) Result {
 		}
 	}
 	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan for topology v%d, %d agents", p.TopologyVersion, len(p.Agents)))
-}
-
-// ─── runtime.venv_ready ───────────────────────────────────────────────────────
-
-type runtimeVenvReadyGate struct{}
-
-func (*runtimeVenvReadyGate) Name() string       { return "runtime.venv_ready" }
-func (*runtimeVenvReadyGate) Category() string   { return "runtime" }
-func (*runtimeVenvReadyGate) Severity() Severity { return SeverityBlock }
-
-func (*runtimeVenvReadyGate) Run(ctx Context) Result {
-	const name = "runtime.venv_ready"
-	python := filepath.Join(ctx.WsDir, "venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		return fail(name, "runtime", SeverityBlock,
-			"venv not found — run 'staircase init'")
-	}
-	hashFile := filepath.Join(ctx.WsDir, "venv", ".requirements_hash")
-	if _, err := os.Stat(hashFile); err != nil {
-		// Venv predates hash tracking; advisory only.
-		return warn(name, "runtime",
-			"venv exists but has no requirements hash — run 'staircase init' to re-validate packages")
-	}
-	return pass(name, "runtime", SeverityBlock, "venv present, requirements hash verified")
-}
-
-// ─── runtime.venv_broken ─────────────────────────────────────────────────────
-
-type runtimeVenvBrokenGate struct{}
-
-func (*runtimeVenvBrokenGate) Name() string       { return "runtime.venv_broken" }
-func (*runtimeVenvBrokenGate) Category() string   { return "runtime" }
-func (*runtimeVenvBrokenGate) Severity() Severity { return SeverityBlock }
-
-func (*runtimeVenvBrokenGate) Run(ctx Context) Result {
-	const name = "runtime.venv_broken"
-	sentinel := filepath.Join(ctx.WsDir, "venv", ".requirements_hash.broken")
-	if _, err := os.Stat(sentinel); err == nil {
-		return fail(name, "runtime", SeverityBlock,
-			"venv is in a broken state — run 'staircase doctor --fix-venv' to repair")
-	}
-	return pass(name, "runtime", SeverityBlock, "venv broken sentinel absent")
 }
 
 // ─── runtime.source_path ─────────────────────────────────────────────────────

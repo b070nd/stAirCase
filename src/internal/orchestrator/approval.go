@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
@@ -61,7 +61,7 @@ var errBadPath = errors.New("invalid path")
 
 // derive computes the state that approving edits would produce, without
 // recording it. An error means the proposal cannot be approved as shown.
-func (a *approvals) derive(edits []ipc.ProposedEdit) (map[string]*approvedFile, error) {
+func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFile, error) {
 	next := map[string]*approvedFile{}
 	current := func(p string) (*approvedFile, error) {
 		if f, ok := next[p]; ok {
@@ -106,8 +106,8 @@ func (a *approvals) derive(edits []ipc.ProposedEdit) (map[string]*approvedFile, 
 			if f == nil || f.deleted {
 				return nil, fmt.Errorf("%s: cannot edit a file that does not exist", p)
 			}
-			// The runtime reads files in Python text mode (universal newlines)
-			// and normalizes only \r\n in the blocks; derive it the same way.
+			// Edits apply to the file's text with universal newlines (\r\n and a
+			// lone \r read as \n); only \r\n is normalized in the blocks.
 			src := universalNewlines(f.content)
 			search := []byte(strings.ReplaceAll(e.SearchBlock, "\r\n", "\n"))
 			if !bytes.Contains(src, search) {

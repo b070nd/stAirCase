@@ -8,19 +8,19 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 )
 
 // RunYieldTUI blocks until the operator approves or rejects the proposed edits.
 // It renders the yield request in a full-screen Bubbletea TUI with glamour
 // Markdown rendering for the reasoning trace.
-func RunYieldTUI(req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
+func RunYieldTUI(req domain.YieldRequest) domain.YieldResponse {
 	m := newYieldModel(req)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	result, err := p.Run()
 	if err != nil {
 		// Fallback to rejection on TUI failure.
-		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "TUI error: " + err.Error()}
+		return domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "TUI error: " + err.Error()}
 	}
 	return result.(yieldModel).resp
 }
@@ -36,16 +36,16 @@ const (
 )
 
 type yieldModel struct {
-	req      ipc.IpcYieldRequest
+	req      domain.YieldRequest
 	state    yieldState
 	feedback strings.Builder
-	resp     ipc.IpcYieldResponse
+	resp     domain.YieldResponse
 	width    int
 	height   int
 	rendered string // glamour-rendered reasoning trace
 }
 
-func newYieldModel(req ipc.IpcYieldRequest) yieldModel {
+func newYieldModel(req domain.YieldRequest) yieldModel {
 	rendered, _ := glamour.Render(req.ReasoningTrace, "dark")
 	return yieldModel{req: req, rendered: rendered, width: 120, height: 40}
 }
@@ -79,7 +79,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case stateReviewing:
 			switch msg.String() {
 			case "y", "Y":
-				m.resp = ipc.IpcYieldResponse{Type: "yield_response", Approved: true}
+				m.resp = domain.YieldResponse{Type: "yield_response", Approved: true}
 				m.state = stateDone
 				return m, tea.Quit
 			case "n", "N", "q", "esc":
@@ -89,7 +89,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case stateFeedback:
 			switch msg.Type {
 			case tea.KeyEnter:
-				m.resp = ipc.IpcYieldResponse{
+				m.resp = domain.YieldResponse{
 					Type:     "yield_response",
 					Approved: false,
 					Feedback: m.feedback.String(),

@@ -151,7 +151,8 @@ type ProposedEdit struct {
 	ContentHash string `json:"content_hash,omitempty"`
 }
 
-// YieldRequest is sent by Python over the IPC socket to request HITL approval.
+// YieldRequest is an agent's proposal (an edit or a shell command) awaiting a
+// decision: refusal, policy, or a human.
 type YieldRequest struct {
 	Type            string         `json:"type"` // "yield_request"
 	AgentName       string         `json:"agent_name"`
@@ -168,7 +169,7 @@ type YieldRequest struct {
 	BatchID string `json:"batch_id,omitempty"`
 }
 
-// YieldResponse is sent by Go back to Python with the operator's decision.
+// YieldResponse is the decision on a YieldRequest, returned to the agent.
 type YieldResponse struct {
 	Type     string `json:"type"` // "yield_response"
 	Approved bool   `json:"approved"`

@@ -1,9 +1,0 @@
-# Source of requirements.txt (the hash-pinned lock embedded in the binary).
-# Regenerate: uv pip compile requirements.in --universal --generate-hashes --python-version 3.12 -o requirements.txt
-langgraph
-langchain-core
-langchain-anthropic
-langchain-openai
-langchain-google-genai
-langchain-xai
-pydantic

@@ -153,8 +153,6 @@ func TestAllGates_metadata_methods(t *testing.T) {
 		gate.SecretKeyFileGate,
 		gate.SecretNoDuplicatesGate,
 		gate.RuntimePlanCompiledGate,
-		gate.RuntimeVenvReadyGate,
-		gate.RuntimeVenvBrokenGate,
 		gate.RuntimeSourcePathGate,
 		gate.RuntimeNoConcurrentRunGate,
 		gate.RuntimeGitAvailableGate,
@@ -522,32 +520,6 @@ func TestRuntimePlanCompiledGate_blocks_a_plan_that_would_not_run_as_compiled(t 
 	assert.Contains(t, r.Message, fmt.Sprintf("compiled for case #%d", caseID+1))
 }
 
-func TestRuntimeVenvReadyGate_no_venv(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	r := gate.RuntimeVenvReadyGate.Run(ctx)
-	assert.Equal(t, gate.StatusFail, r.Status)
-}
-
-func TestRuntimeVenvReadyGate_venv_no_hash_warns(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0o755))
-	r := gate.RuntimeVenvReadyGate.Run(ctx)
-	assert.Equal(t, gate.StatusWarn, r.Status)
-}
-
-func TestRuntimeVenvReadyGate_fully_ready(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc"), 0o644))
-	r := gate.RuntimeVenvReadyGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
-}
-
 func TestRuntimeSourcePathGate_no_source_path_passes(t *testing.T) {
 	ctx, _ := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
@@ -728,26 +700,6 @@ func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
 	r := gate.CaseProjectExistsGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "deleted")
-}
-
-// ─── runtime.venv_broken gate ─────────────────────────────────────────────────
-
-func TestRuntimeVenvBrokenGate_no_sentinel_passes(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	r := gate.RuntimeVenvBrokenGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
-}
-
-func TestRuntimeVenvBrokenGate_sentinel_present_fails(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv"), 0o755))
-	sentinel := filepath.Join(wsDir, "venv", ".requirements_hash.broken")
-	require.NoError(t, os.WriteFile(sentinel, []byte("broken"), 0o644))
-	r := gate.RuntimeVenvBrokenGate.Run(ctx)
-	assert.Equal(t, gate.StatusFail, r.Status)
-	assert.Contains(t, r.Message, "broken")
 }
 
 // ─── deps.deps_completed — upstream has no topology ───────────────────────────

@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
@@ -108,8 +108,8 @@ func isolationAgent(mode, content, repo string) orchestrator.AgentFunc {
 			<-ctx.Done()
 			return ctx.Err()
 		}
-		ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
-			ProposedEdits:  []ipc.ProposedEdit{{File: "target.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: content}},
+		ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+			ProposedEdits:  []domain.ProposedEdit{{File: "target.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: content}},
 			ReasoningTrace: "isolation", ConfidenceScore: 0.9})
 		if !ap.Approved {
 			return fmt.Errorf("not approved: %s", ap.Feedback)

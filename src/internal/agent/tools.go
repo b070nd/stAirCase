@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 )
 
@@ -49,11 +49,11 @@ const (
 // bytes and the tool applies exactly those.
 func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 	root := env.Worktree
-	propose := func(ctx context.Context, action string, e ipc.ProposedEdit, reasoning string) orchestrator.Approval {
-		return env.Propose(ctx, ipc.IpcYieldRequest{AgentName: agent, ActionType: action,
-			ProposedEdits: []ipc.ProposedEdit{e}, ReasoningTrace: reasoning, ConfidenceScore: 0.9})
+	propose := func(ctx context.Context, action string, e domain.ProposedEdit, reasoning string) orchestrator.Approval {
+		return env.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: action,
+			ProposedEdits: []domain.ProposedEdit{e}, ReasoningTrace: reasoning, ConfidenceScore: 0.9})
 	}
-	edit := func(ctx context.Context, e ipc.ProposedEdit, reasoning, done string) string {
+	edit := func(ctx context.Context, e domain.ProposedEdit, reasoning, done string) string {
 		ap := propose(ctx, "file_edit", e, reasoning)
 		if !ap.Approved {
 			return "rejected: " + orDefault(ap.Feedback, "no feedback")
@@ -81,7 +81,7 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				ReplaceBlock string `json:"replace_block"`
 				Reasoning    string `json:"reasoning"`
 			}) string {
-				return edit(ctx, ipc.ProposedEdit{File: a.File, SearchBlock: a.SearchBlock, ReplaceBlock: a.ReplaceBlock}, a.Reasoning, "applied")
+				return edit(ctx, domain.ProposedEdit{File: a.File, SearchBlock: a.SearchBlock, ReplaceBlock: a.ReplaceBlock}, a.Reasoning, "applied")
 			}),
 		newTool("create_file", "Create a new file inside the project root (or overwrite if it already exists). Requires approval; the operator sees the full content. At most 200 KiB.",
 			`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"reasoning":{"type":"string"}},"required":["path","content","reasoning"]}`,
@@ -90,7 +90,7 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				Content   string `json:"content"`
 				Reasoning string `json:"reasoning"`
 			}) string {
-				return edit(ctx, ipc.ProposedEdit{File: a.Path, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: a.Content}, a.Reasoning, "created "+a.Path)
+				return edit(ctx, domain.ProposedEdit{File: a.Path, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: a.Content}, a.Reasoning, "created "+a.Path)
 			}),
 		newTool("delete_file", "Delete an existing file inside the project root. Requires approval.",
 			`{"type":"object","properties":{"path":{"type":"string"},"reasoning":{"type":"string"}},"required":["path","reasoning"]}`,
@@ -98,7 +98,7 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				Path      string `json:"path"`
 				Reasoning string `json:"reasoning"`
 			}) string {
-				return edit(ctx, ipc.ProposedEdit{File: a.Path, SearchBlock: orchestrator.MarkerDeleteFile}, a.Reasoning, "deleted "+a.Path)
+				return edit(ctx, domain.ProposedEdit{File: a.Path, SearchBlock: orchestrator.MarkerDeleteFile}, a.Reasoning, "deleted "+a.Path)
 			}),
 	}
 	if env.AllowShell {
@@ -111,7 +111,7 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				Reasoning  string `json:"reasoning"`
 				WorkingDir string `json:"working_dir"`
 			}) string {
-				ap := propose(ctx, "shell_exec", ipc.ProposedEdit{File: orDefault(a.WorkingDir, "."), SearchBlock: "(shell)", ReplaceBlock: a.Command}, a.Reasoning)
+				ap := propose(ctx, "shell_exec", domain.ProposedEdit{File: orDefault(a.WorkingDir, "."), SearchBlock: "(shell)", ReplaceBlock: a.Command}, a.Reasoning)
 				if !ap.Approved {
 					return "rejected: " + orDefault(ap.Feedback, "no feedback")
 				}

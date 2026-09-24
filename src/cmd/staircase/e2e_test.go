@@ -75,19 +75,12 @@ func seedFullCase(t *testing.T, s *persistence.Store) (caseID int64, topoVersion
 }
 
 // fakeRuntimeEnv creates the minimal on-disk state that makes runtime BLOCK
-// gates pass without an actual Python venv or pip install:
+// gates pass:
 //   - wsDir/.key                    → secret.key_file gate
-//   - wsDir/venv/bin/python         → runtime.venv_ready gate
-//   - wsDir/venv/.requirements_hash → runtime.venv_ready gate
 //   - wsDir/tmp/plan_caseN.json    → runtime.plan_compiled gate (topoVersion → staleness)
 func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 	t.Helper()
 	require.NoError(t, crypto.GenerateKey(wsDir))
-
-	venvBin := filepath.Join(wsDir, "venv", "bin")
-	require.NoError(t, os.MkdirAll(venvBin, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(venvBin, "python"), []byte("#!/bin/sh\n"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc123"), 0o644))
 
 	tmpDir := filepath.Join(wsDir, "tmp")
 	require.NoError(t, os.MkdirAll(tmpDir, 0o755))

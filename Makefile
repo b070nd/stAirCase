@@ -1,27 +1,20 @@
-.PHONY: check test test-conformance test-integration test-e2e test-ci race build lint coverage vuln demo
+.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
-# Full tests (no -short: includes the subprocess runner tests), race, Python,
-# CLI smoke tests, the offline demo, formatting, tidy, and schema-copy drift.
+# Full tests (no -short: includes the run integration tests), race, CLI smoke
+# tests, the offline demo, formatting, tidy and the Windows build.
 check: lint
-	@test -z "$$(gofmt -l src tests)" || { gofmt -l src tests; echo "✗ gofmt needed"; exit 1; }
+	@test -z "$$(gofmt -l src tests demo)" || { gofmt -l src tests demo; echo "✗ gofmt needed"; exit 1; }
 	go mod tidy -diff
 	GOOS=windows go build ./...
-	cmp proto/ipc.v1.schema.json src/internal/ipc/ipc.v1.schema.json
 	go test ./... -count=1 -timeout=600s
 	$(MAKE) race
-	cd runner && python3 -m pytest tests -q
 	bats tests/integration.bats
 	$(MAKE) demo
 
 # ─── Core unit tests ──────────────────────────────────────────────────────────
 test:
 	go test ./src/internal/... -count=1 -short
-
-# ─── L1 conformance (Go + Python) ─────────────────────────────────────────────
-test-conformance:
-	go test ./tests/conformance/... -run TestConformance -v -count=1
-	cd runner && python3 -m pytest tests/test_conformance.py -v
 
 # ─── L3 integration ───────────────────────────────────────────────────────────
 test-integration:
@@ -31,8 +24,8 @@ test-integration:
 test-e2e:
 	go test ./src/internal/orchestrator/ -run "TestRun_integration" -v -count=1 -timeout=120s
 
-# ─── Full CI: unit + conformance + audit-named checks ─────────────────────────
-test-ci: test test-conformance
+# ─── Full CI: unit + audit-named checks ───────────────────────────────────────
+test-ci: test
 	go test ./src/internal/persistence/ -run "TestSecretRoundTrip|TestAtUseAuditCounts" -v -count=1
 	go test ./src/internal/crypto/ -run "TestPlaintextRedaction" -v -count=1
 	go test ./src/internal/orchestrator/ -run "TestCrashInjection|TestKillAtPhase|TestCleanupChainOnPanic" -v -count=1 -short

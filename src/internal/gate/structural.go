@@ -235,10 +235,9 @@ func (*topologyEdgesValidGate) Run(ctx Context) Result {
 
 var implementedRuntimes = map[string]bool{"langgraph": true}
 
-// recognisedRuntimes are accepted by the schema CHECK constraint and will be
-// implemented in a future release, but the Python harness currently raises
-// NotImplementedError for them. Allowing them silently would be a false
-// affordance — we emit a WARN instead so the operator sees it before running.
+// recognisedRuntimes are accepted by the schema CHECK constraint, but staircase
+// runs every topology with its built-in agent runtime. Allowing them silently
+// would be a false affordance — we emit a WARN so the operator sees it first.
 var recognisedRuntimes = map[string]bool{"crewai": true, "autogen": true}
 
 type topologyRuntimeValidGate struct{}

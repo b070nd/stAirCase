@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 )
@@ -56,14 +56,14 @@ type Usage struct {
 
 // proposal is a yield waiting for the decision loop.
 type proposal struct {
-	req   ipc.IpcYieldRequest
+	req   domain.YieldRequest
 	reply chan decision
 }
 
 // decision is the loop's answer, with the approved state of every proposed
 // path (file_edit approvals only).
 type decision struct {
-	resp  ipc.IpcYieldResponse
+	resp  domain.YieldResponse
 	files map[string]*approvedFile
 }
 
@@ -129,7 +129,7 @@ func writeAtomic(full string, content []byte, mode os.FileMode) error {
 
 // Propose submits a yield and blocks until the orchestrator decides. When the
 // run ends first, the answer is a rejection.
-func (e *AgentEnv) Propose(ctx context.Context, req ipc.IpcYieldRequest) Approval {
+func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approval {
 	req.Type = "yield_request"
 	reject := func(why string) Approval { return Approval{Feedback: why} }
 	if req.ActionType == "shell_exec" && !e.AllowShell {

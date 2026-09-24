@@ -8,7 +8,6 @@ import (
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
-	"github.com/b070nd/staircase-core/src/internal/runtime"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,25 +21,13 @@ var doctorCmd = &cobra.Command{
 var doctorFixVenv bool
 
 func init() {
-	doctorCmd.Flags().BoolVar(&doctorFixVenv, "fix-venv", false, "Delete and rebuild the Python virtual environment")
+	doctorCmd.Flags().BoolVar(&doctorFixVenv, "fix-venv", false, "No effect: there is no Python environment")
+	_ = doctorCmd.Flags().MarkDeprecated("fix-venv", "the agent runtime is built into staircase; there is no venv to fix")
 	rootCmd.AddCommand(doctorCmd)
 }
 
 func doctorHandler(_ *cobra.Command, _ []string) error {
 	wsDir := viper.GetString("STAIRCASE_DIR")
-
-	if doctorFixVenv {
-		venvPath := filepath.Join(wsDir, "venv")
-		fmt.Printf("🔧 --fix-venv: removing %s...\n", venvPath)
-		if err := os.RemoveAll(venvPath); err != nil {
-			return fmt.Errorf("remove venv: %w", err)
-		}
-		if err := runtime.BootstrapVenv(wsDir, ""); err != nil {
-			return fmt.Errorf("rebuild venv: %w", err)
-		}
-		fmt.Println("✅ Venv rebuilt successfully.")
-		return nil
-	}
 
 	fmt.Printf("🩺 stAirCase Doctor — workspace: %s\n\n", wsDir)
 
@@ -78,22 +65,9 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// ── 4. Python venv ────────────────────────────────────────────────────────
-	pythonBin := filepath.Join(wsDir, "venv", "bin", "python")
-	_, venvErr := os.Stat(pythonBin)
-	check("Python venv exists", venvErr == nil, "run 'staircase init'")
-
-	if venvErr == nil {
-		// Check Python version against what the runtime lock supports.
-		v, err := runtime.CheckPythonVersion(pythonBin)
-		check(fmt.Sprintf("Python %s (runtime needs ≥ 3.12)", v), err == nil, fmt.Sprint(err))
-
-		// Check critical packages.
-		for _, pkg := range []string{"langgraph", "pydantic", "langchain_anthropic", "langchain_openai", "langchain_google_genai", "langchain_xai"} {
-			err := exec.Command(pythonBin, "-c", fmt.Sprintf("import %s", pkg)).Run()
-			check(fmt.Sprintf("Python package %q", pkg), err == nil,
-				fmt.Sprintf("run 'staircase init' or pip install %s", pkg))
-		}
+	// ── 4. Leftovers of the Python runtime ────────────────────────────────────
+	if _, err := os.Stat(filepath.Join(wsDir, "venv")); err == nil {
+		fmt.Println("  ℹ️  venv/ is from an older staircase and no longer used — you can delete it")
 	}
 
 	// ── 5. Git ────────────────────────────────────────────────────────────────

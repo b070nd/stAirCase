@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
@@ -47,11 +47,11 @@ type scriptedAgent struct {
 
 // ask proposes edits given as {file, search, replace} and records the answer.
 func (a *scriptedAgent) ask(ctx context.Context, edits ...[3]string) {
-	pe := make([]ipc.ProposedEdit, len(edits))
+	pe := make([]domain.ProposedEdit, len(edits))
 	for i, e := range edits {
-		pe[i] = ipc.ProposedEdit{File: e[0], SearchBlock: e[1], ReplaceBlock: e[2]}
+		pe[i] = domain.ProposedEdit{File: e[0], SearchBlock: e[1], ReplaceBlock: e[2]}
 	}
-	r := a.env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
+	r := a.env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
 		ProposedEdits: pe, ReasoningTrace: "approval test", ConfidenceScore: 0.9})
 	a.results = append(a.results, approvalResult{Approved: r.Approved, Feedback: r.Feedback})
 }
@@ -322,15 +322,6 @@ func TestApproval_orchestrator_binds_the_exact_bytes(t *testing.T) {
 			sc.check(t, runApprovalScenario(t, sc.base, sc.agent, sc.prepare))
 		})
 	}
-}
-
-// TestApproval_runtime_mirrors_the_create_cap catches the runtime's copy of the
-// create cap drifting from the orchestrator's: create_file would then send
-// what the orchestrator refuses, or refuse what it would accept.
-func TestApproval_runtime_mirrors_the_create_cap(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "template", "graph_exec.py.tmpl"))
-	require.NoError(t, err)
-	assert.Contains(t, string(src), fmt.Sprintf("_MAX_APPROVAL_BYTES = %d * 1024", orchestrator.MaxApprovedFileBytesForTest/1024))
 }
 
 // TestApproval_commit_is_built_from_the_approvals catches finalize committing

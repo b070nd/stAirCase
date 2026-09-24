@@ -46,10 +46,12 @@ sc() {
   [[ "$output" == *"unknown command"* ]]
 }
 
-@test "init --help: exposes offline wheel option" {
-  run sc init --help
+@test "init: no Python to install; old flags still accepted" {
+  run sc init --skip-venv
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--offline-wheels"* ]]
+  [[ "$output" == *"Ready to orchestrate"* ]]
+  [[ "$output" != *"venv"*"bootstrap"* ]]
+  [ ! -e "$STAIRCASE_DIR/venv" ]
 }
 
 @test "gate --help: documents case execution" {

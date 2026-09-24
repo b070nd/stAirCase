@@ -9,7 +9,6 @@ import (
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/ipc"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator/runtest"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
@@ -46,8 +45,8 @@ func TestAgentEnv_secret_delivery(t *testing.T) {
 		got, _ = env.Secret("OPENAI_API_KEY")
 		_, reservedErr = env.Secret("__webhook_hmac_secret__")
 		_, missingErr = env.Secret("NOPE")
-		env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
-			ProposedEdits: []ipc.ProposedEdit{{File: "leak.txt", SearchBlock: "(new file)", ReplaceBlock: "key=" + got + "\n"}}})
+		env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+			ProposedEdits: []domain.ProposedEdit{{File: "leak.txt", SearchBlock: "(new file)", ReplaceBlock: "key=" + got + "\n"}}})
 		return os.WriteFile(env.Worktree+"/leak.txt", []byte("key="+got+"\n"), 0o644)
 	})
 	assert.Equal(t, secret, got)
@@ -97,8 +96,8 @@ func TestAgentEnv_budget_overrun_stops_the_agent(t *testing.T) {
 func TestAgentEnv_shell_exec_needs_allow_shell(t *testing.T) {
 	var resp orchestrator.Approval
 	_, run, logs, _ := runInProcess(t, nil, func(ctx context.Context, env *orchestrator.AgentEnv) error {
-		resp = env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "shell_exec",
-			ProposedEdits: []ipc.ProposedEdit{{File: ".", SearchBlock: "(shell)", ReplaceBlock: "rm -rf /"}}})
+		resp = env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "shell_exec",
+			ProposedEdits: []domain.ProposedEdit{{File: ".", SearchBlock: "(shell)", ReplaceBlock: "rm -rf /"}}})
 		return nil
 	})
 	assert.False(t, resp.Approved)

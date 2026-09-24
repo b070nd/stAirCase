@@ -1,8 +1,8 @@
 // Package orchestrator implements the stAirCase run lifecycle state machine.
 //
 // The orchestrator is the single authoritative coordinator of a run:
-// it sequences pre-flight checks, git branch management, IPC server startup,
-// Python process launch, the HITL event loop, and teardown — each labelled
+// it sequences pre-flight checks, the run's git worktree, the in-process agent,
+// the decision (HITL) loop, finalize and teardown — each labelled
 // by a [RunPhase] constant so that crash recovery and tests can reason about
 // where execution stopped.
 package orchestrator
@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,14 +25,12 @@ import (
 
 	"github.com/b070nd/staircase-core/src/internal/approvalhttp"
 	"github.com/b070nd/staircase-core/src/internal/crypto"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/gate"
-	"github.com/b070nd/staircase-core/src/internal/ipc"
 	"github.com/b070nd/staircase-core/src/internal/monitor"
 	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/b070nd/staircase-core/src/internal/policy"
-	"github.com/b070nd/staircase-core/src/internal/runtime"
-	scaffoldtpl "github.com/b070nd/staircase-core/src/internal/template"
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
 	"github.com/b070nd/staircase-core/src/internal/wslock"
@@ -48,13 +45,8 @@ import (
 // agent run as success.
 var ErrRunNotSuccessful = errors.New("run did not complete successfully")
 
-// maxUnixSocketPath is sizeof(sockaddr_un.sun_path) on macOS, the smaller of
-// the supported platforms (Linux allows 108); the path must leave room for NUL.
-const maxUnixSocketPath = 104
-
-// lostGrace is how long a run waits for a runtime that dropped its IPC
-// connection to exit on its own before killing it. The runtime never
-// reconnects, so a dropped connection means it finished or is hung.
+// lostGrace is how long a run waits for its agent to stop after cancellation
+// before it ends without it (recording agent_unresponsive).
 var lostGrace = 10 * time.Second
 
 // RunPhase labels each boundary of the orchestration state machine.
@@ -65,8 +57,7 @@ type RunPhase string
 const (
 	PhasePreFlight     RunPhase = "PRE_FLIGHT"
 	PhaseBranchCreate  RunPhase = "BRANCH_CREATE"
-	PhaseIPCListen     RunPhase = "IPC_LISTEN"
-	PhasePythonBoot    RunPhase = "PYTHON_BOOT"
+	PhaseAgentStart    RunPhase = "AGENT_START"
 	PhaseAgentLoop     RunPhase = "AGENT_LOOP"
 	PhaseFinalize      RunPhase = "FINALIZE"
 	PhaseBranchRestore RunPhase = "BRANCH_RESTORE"
@@ -80,15 +71,9 @@ type RunOptions struct {
 	Reconcile     bool // inspect orphan branches / stale runs before proceeding
 	ApprovalPort  int
 	ApprovalToken string
-	// Agent, when set, runs in-process in place of the compiled Python runtime
-	// (no script, venv or IPC). Phase R makes the Go LLM runtime the default.
+	// Agent runs in-process in the run's worktree: the compiled plan's agent
+	// graph (staircase run), or a scripted agent in tests. Required.
 	Agent Agent
-	// RecordLLM, when non-empty, is a file path where the Python harness records
-	// every LLM exchange for later deterministic replay (--record-llm flag).
-	RecordLLM string
-	// ReplayLLM, when non-empty, is a file path from which the Python harness
-	// replays LLM exchanges instead of calling the real API (--replay-llm flag).
-	ReplayLLM string
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
 	// Defaults to false — operators must explicitly pass --allow-shell-exec.
 	AllowShellExec bool
@@ -113,8 +98,8 @@ func (r *Runner) Phase() RunPhase { return r.phase }
 
 // Run executes the full orchestration lifecycle for the given case.
 //
-// Phases executed in order: PRE_FLIGHT → BRANCH_CREATE → IPC_LISTEN →
-// PYTHON_BOOT → AGENT_LOOP → FINALIZE → BRANCH_RESTORE (on non-success).
+// Phases executed in order: PRE_FLIGHT → BRANCH_CREATE → AGENT_START →
+// AGENT_LOOP → FINALIZE → BRANCH_RESTORE.
 func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -303,9 +288,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 	}
 
-	// ── IPC_LISTEN ────────────────────────────────────────────────────────────
-	r.phase = PhaseIPCListen
-
+	// ── RUN SETUP ─────────────────────────────────────────────────────────────
 	// Acquire a shared advisory flock on the key file for the duration of this
 	// run so that 'staircase secret rotate' (which holds an exclusive lock)
 	// cannot replace the key while decryption is in progress (CHECK 4.3.3).
@@ -336,33 +319,6 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	// The Python runtime talks to the orchestrator over a unix socket; an
-	// in-process agent (RunOptions.Agent) needs none of this.
-	var ipcSrv *ipc.Server
-	var token string
-	if opts.Agent == nil {
-		if token, err = runtime.BootstrapToken(); err != nil {
-			return fmt.Errorf("generate token: %w", err)
-		}
-		// The socket lives in a short per-run temp dir, not under STAIRCASE_DIR: unix
-		// socket paths are capped at 104 bytes on macOS (108 on Linux), which a deep
-		// workspace path exceeds. MkdirTemp creates it 0700 with an unpredictable name.
-		sockDir, err := os.MkdirTemp("", "staircase-ipc-")
-		if err != nil {
-			return fmt.Errorf("ipc socket dir: %w", err)
-		}
-		defer func() { _ = os.RemoveAll(sockDir) }()
-		socketPath := filepath.Join(sockDir, fmt.Sprintf("run-%d.sock", run.ID))
-		if len(socketPath) >= maxUnixSocketPath {
-			return fmt.Errorf("ipc socket path %q exceeds the %d-byte OS limit — set TMPDIR to a shorter directory", socketPath, maxUnixSocketPath)
-		}
-		ipcSrv = ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey, opts.AllowShellExec)
-		if err := ipcSrv.Start(ctx); err != nil {
-			return fmt.Errorf("ipc server: %w", err)
-		}
-		fmt.Fprintf(os.Stdout, "   🔌 IPC socket: %s\n", socketPath)
-	}
-
 	policyEngine, err := policy.LoadEngine(r.wsDir)
 	if err != nil {
 		obs.Log.Warn("load policy — proceeding without auto-approval", "err", err)
@@ -402,9 +358,6 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", run.ID))
 			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 				debugLog = f
-				if ipcSrv != nil {
-					ipcSrv.SetDebugWriter(f)
-				}
 				defer func() { _ = f.Close() }()
 				fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
 			}
@@ -420,111 +373,36 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	defer renderTicker.Stop()
 
 	// ── AGENT_START ───────────────────────────────────────────────────────────
-	r.phase = PhasePythonBoot
-	// The decision loop reads proposals, usage and the agent's end from these,
-	// whether the agent runs in-process or is the Python runtime behind IPC.
-	loopCtx, stopBridges := context.WithCancel(ctx)
-	defer stopBridges()
+	r.phase = PhaseAgentStart
+	if opts.Agent == nil {
+		return errors.New("no agent to run")
+	}
+	// The decision loop reads proposals, usage and the agent's end from these.
 	proposals := make(chan proposal)
 	usage := make(chan Usage)
-	var agentDone <-chan error    // the agent's end: its error, nil on success
-	var lost <-chan struct{}      // the Python runtime dropped its IPC connection
-	var stopAgent func()          // ends the agent; returns once it has stopped (bounded)
-	var delivered func() []string // secret values handed to the agent, for scrubbing
-	if opts.Agent != nil {
-		host := &agentHost{store: r.store, runID: run.ID, projectID: caseRec.ProjectID, aesKey: aesKey, debug: debugLog}
-		delivered = host.deliveredSecrets
-		agentCtx, cancelAgent := context.WithCancel(ctx)
-		defer cancelAgent()
-		stopped := make(chan struct{})
-		done := make(chan error, 1)
-		agentDone = done
-		env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, proposals: proposals, usage: usage, host: host}
-		go func() {
-			defer close(stopped)
-			done <- runAgent(agentCtx, opts.Agent, env)
-		}()
-		stopAgent = func() {
-			cancelAgent()
-			select {
-			case <-stopped:
-			case <-time.After(lostGrace):
-				// Nothing more can be done in-process; the run ends without it.
-				obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", run.ID)
-				_, _ = r.store.AppendEventLogChained(run.ID, "agent_unresponsive",
-					fmt.Sprintf(`{"type":"agent_unresponsive","grace_seconds":%g}`, lostGrace.Seconds()), "")
-			}
+	done := make(chan error, 1)
+	var agentDone <-chan error = done
+	host := &agentHost{store: r.store, runID: run.ID, projectID: caseRec.ProjectID, aesKey: aesKey, debug: debugLog}
+	delivered := host.deliveredSecrets // secret values handed to the agent, for scrubbing
+	agentCtx, cancelAgent := context.WithCancel(ctx)
+	defer cancelAgent()
+	stopped := make(chan struct{})
+	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, proposals: proposals, usage: usage, host: host}
+	go func() {
+		defer close(stopped)
+		done <- runAgent(agentCtx, opts.Agent, env)
+	}()
+	// stopAgent ends the agent and returns once it has stopped (bounded).
+	stopAgent := func() {
+		cancelAgent()
+		select {
+		case <-stopped:
+		case <-time.After(lostGrace):
+			// Nothing more can be done in-process; the run ends without it.
+			obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", run.ID)
+			_, _ = r.store.AppendEventLogChained(run.ID, "agent_unresponsive",
+				fmt.Sprintf(`{"type":"agent_unresponsive","grace_seconds":%g}`, lostGrace.Seconds()), "")
 		}
-		fmt.Fprintln(os.Stdout, "   🤖 Agent: in-process")
-	} else {
-		canonicalScript := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-		scriptPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_%d.py", run.ID))
-		if _, err := os.Stat(canonicalScript); os.IsNotExist(err) {
-			return fmt.Errorf("graph_exec script not found — run 'staircase compile %d' first", caseID)
-		}
-		srcBytes, err := os.ReadFile(canonicalScript)
-		if err != nil {
-			return fmt.Errorf("read canonical script: %w", err)
-		}
-		// P1: verify the SHA-256 sidecar written at compile time to detect
-		// tampering between 'staircase compile' and 'staircase run'.
-		// If the sidecar is absent (pre-existing script compiled before this
-		// feature), log a warning and continue for backward compatibility.
-		// If the sidecar is present but does not match, fail hard.
-		hashSidecar := canonicalScript + ".sha256"
-		if storedHex, readErr := os.ReadFile(hashSidecar); readErr == nil {
-			actual := sha256.Sum256(srcBytes)
-			if hex.EncodeToString(actual[:]) != strings.TrimSpace(string(storedHex)) {
-				return fmt.Errorf("graph_exec script integrity check failed — recompile with 'staircase compile %d'", caseID)
-			}
-			// A compiled script embeds its runtime; one from another stAirCase
-			// version could bypass current guarantees (e.g. write outside the worktree).
-			if fp, err := os.ReadFile(canonicalScript + ".tmpl"); err != nil || strings.TrimSpace(string(fp)) != scaffoldtpl.Fingerprint() {
-				return fmt.Errorf("graph_exec script was compiled by a different stAirCase version — run 'staircase compile %d --force'", caseID)
-			}
-		} else {
-			obs.Log.Warn("graph_exec script has no .sha256 sidecar — skipping integrity check (recompile to enable)")
-		}
-		if err := os.WriteFile(scriptPath, srcBytes, 0o600); err != nil { // #nosec G703 -- scriptPath is built from internal wsDir, not user input
-			return fmt.Errorf("copy script to run path: %w", err)
-		}
-		// Open the run-specific script as a file descriptor so the runtime can
-		// deliver it to Python via ExtraFiles (fd 3) rather than a file-path arg
-		// (CHECK 5.4.2).
-		scriptFD, err := os.Open(scriptPath)
-		if err != nil {
-			return fmt.Errorf("open script fd: %w", err)
-		}
-		defer func() { _ = scriptFD.Close() }()
-
-		// W3C traceparent of the run span so the Python runtime can join the trace.
-		traceparent := ""
-		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
-			traceparent = fmt.Sprintf("00-%s-%s-%s", sc.TraceID(), sc.SpanID(), sc.TraceFlags())
-		}
-
-		proc, err := runtime.LaunchPython(ctx, r.wsDir, scriptFD, ipcSrv.ListenAddr(), token,
-			runtime.LaunchPythonOptions{
-				RecordLLM:      opts.RecordLLM,
-				ReplayLLM:      opts.ReplayLLM,
-				AllowShellExec: opts.AllowShellExec,
-				Traceparent:    traceparent,
-				ProjectPath:    worktree,
-				// Redact any delivered secret from Python stderr before it is logged.
-				ScrubStderr: func(line string) string {
-					return string(crypto.ScrubBytes([]byte(line), ipcSrv.DeliveredSecrets()))
-				},
-			})
-		if err != nil {
-			return fmt.Errorf("launch python: %w", err)
-		}
-		delivered = ipcSrv.DeliveredSecrets
-		lost = ipcSrv.Lost()
-		stopAgent = proc.Kill
-		// Read by the loop only: Kill also waits on it, so no other reader may.
-		agentDone = proc.Done
-		go bridgeIPC(loopCtx, ipcSrv, proposals, usage)
-		fmt.Fprintf(os.Stdout, "   🐍 Python PID=%d\n", proc.PID())
 	}
 	agentFinished := false
 	defer func() {
@@ -545,7 +423,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	processExited := func(procErr error) {
 		agentFinished = true
 		if procErr != nil {
-			runErr = fmt.Errorf("agent process: %w", procErr)
+			runErr = fmt.Errorf("agent: %w", procErr)
 			finalStatus = persistence.RunStatusFailed
 		} else {
 			finalStatus = persistence.RunStatusSuccess
@@ -586,7 +464,7 @@ runLoop:
 				trace.WithAttributes(
 					attribute.String("staircase.agent", yieldReq.AgentName),
 					attribute.String("staircase.action_type", yieldReq.ActionType)))
-			var resp ipc.IpcYieldResponse
+			var resp domain.YieldResponse
 			source := "operator"
 			// The orchestrator derives exactly what approving this proposal would
 			// commit. A proposal that cannot be applied as shown (bad path, search
@@ -605,7 +483,7 @@ runLoop:
 				}
 			}
 			if refusal != "" {
-				resp = ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: "refused by the orchestrator: " + refusal}
+				resp = domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "refused by the orchestrator: " + refusal}
 				source = "orchestrator"
 				display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", yieldReq.AgentName, yieldReq.ActionType, refusal))
 			} else if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit {
@@ -625,7 +503,7 @@ runLoop:
 				display.Resume()
 				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
 			} else if dec := policyEngine.Evaluate(yieldReq); dec.Matched {
-				resp = ipc.IpcYieldResponse{Type: "yield_response", Approved: dec.Approved, Feedback: dec.Reason}
+				resp = domain.YieldResponse{Type: "yield_response", Approved: dec.Approved, Feedback: dec.Reason}
 				if dec.Approved {
 					autoApproved++
 				}
@@ -668,7 +546,7 @@ runLoop:
 			}
 			payload, _ := json.Marshal(decided)
 			if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
-				p.reply <- decision{resp: ipc.IpcYieldResponse{Type: "yield_response", Approved: false,
+				p.reply <- decision{resp: domain.YieldResponse{Type: "yield_response", Approved: false,
 					Feedback: "the orchestrator could not record this decision; the run is stopping"}}
 				stopAgent()
 				agentFinished = true
@@ -691,25 +569,6 @@ runLoop:
 			cancelled()
 			break runLoop
 
-		case <-lost:
-			// A finished runtime exits right after closing its connection; a
-			// hung one (no heartbeats, idle deadline hit) is killed after lostGrace.
-			select {
-			case procErr := <-agentDone:
-				processExited(procErr)
-			case <-ctx.Done():
-				cancelled()
-			case <-time.After(lostGrace):
-				stopAgent()
-				agentFinished = true
-				finalStatus = persistence.RunStatusFailed
-				runErr = fmt.Errorf("agent runtime lost its IPC connection and did not exit within %s", lostGrace)
-				if _, err := r.store.AppendEventLogChained(run.ID, "runtime_unresponsive",
-					fmt.Sprintf(`{"type":"runtime_unresponsive","grace_seconds":%g}`, lostGrace.Seconds()), ""); err != nil {
-					runErr = errors.Join(runErr, fmt.Errorf("audit runtime_unresponsive: %w", err))
-				}
-			}
-			break runLoop
 		}
 	}
 
@@ -743,9 +602,6 @@ runLoop:
 		}
 		if hash != "" {
 			commitHash = hash
-			if ipcSrv != nil {
-				ipcSrv.SetGitCommitHash(commitHash)
-			}
 		}
 	}
 
@@ -830,16 +686,16 @@ func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
 // the response signature is verified; an unsigned, mis-signed, stale, or
 // otherwise unverifiable response is treated as a rejection so a network
 // attacker cannot forge an approval.
-func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
-	reject := func(msg string) ipc.IpcYieldResponse {
-		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: msg}
+func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
+	reject := func(msg string) domain.YieldResponse {
+		return domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: msg}
 	}
 	// A fresh yield_id makes every request unique, so an approval captured for
 	// one request never matches another — not even an identical re-proposal.
 	yieldID := rand.Text()
 	body, _ := json.Marshal(struct {
 		YieldID string `json:"yield_id"`
-		ipc.IpcYieldRequest
+		domain.YieldRequest
 	}{yieldID, req})
 	reqHash := sha256Hex(body)
 
@@ -881,7 +737,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 	}
 
 	var yieldResp struct {
-		ipc.IpcYieldResponse
+		domain.YieldResponse
 		RequestSHA256 string `json:"request_sha256"`
 		YieldID       string `json:"yield_id"`
 	}
@@ -898,7 +754,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 	if yieldResp.Type == "" {
 		yieldResp.Type = "yield_response"
 	}
-	return yieldResp.IpcYieldResponse
+	return yieldResp.YieldResponse
 }
 
 func timePtr(t time.Time) *time.Time { return &t }
@@ -908,7 +764,7 @@ func timePtr(t time.Time) *time.Time { return &t }
 // is presented via TUI, webhook, or HTTP approval server (CHECK 4.4.3 / 7.4.2).
 // Scrubbing covers: ReasoningTrace, and every proposed edit's File, SearchBlock,
 // and ReplaceBlock — agents can embed plaintext secrets in any of these.
-func scrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.IpcYieldRequest {
+func scrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRequest {
 	if len(activeValues) == 0 {
 		return req
 	}
@@ -937,49 +793,4 @@ func runAgent(ctx context.Context, a Agent, env *AgentEnv) (err error) {
 		}
 	}()
 	return a.Run(ctx, env)
-}
-
-// bridgeIPC feeds the Python runtime's IPC traffic into the decision loop's
-// channels. ponytail: exists only until the Python runtime goes (Phase R5).
-func bridgeIPC(ctx context.Context, srv *ipc.Server, proposals chan<- proposal, usage chan<- Usage) {
-	for {
-		select {
-		case req := <-srv.YieldCh:
-			p := proposal{req: req, reply: make(chan decision, 1)}
-			var d decision
-			select {
-			case proposals <- p:
-			case <-ctx.Done():
-				return
-			}
-			select {
-			case d = <-p.reply:
-			case <-ctx.Done():
-				return
-			}
-			select {
-			case srv.ResponseCh <- d.resp:
-			case <-ctx.Done():
-				return
-			}
-		case emit := <-srv.StatEmitCh:
-			u := Usage{Agent: emit.ActiveAgent}
-			if emit.State != nil {
-				u.Model, _ = emit.State["model"].(string)
-				if v, ok := emit.State["input_tokens"].(float64); ok {
-					u.InputTokens = int(v)
-				}
-				if v, ok := emit.State["output_tokens"].(float64); ok {
-					u.OutputTokens = int(v)
-				}
-			}
-			select {
-			case usage <- u:
-			case <-ctx.Done():
-				return
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
 }

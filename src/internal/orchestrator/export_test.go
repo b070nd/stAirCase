@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 )
 
 // ExportedTimePtr wraps the unexported timePtr helper.
@@ -15,12 +15,12 @@ func ExportedTimePtr(t time.Time) *time.Time { return timePtr(t) }
 
 // ExportedSendWebhookYield wraps sendWebhookYield for round-trip testing.
 // secret may be nil for the unauthenticated path.
-func ExportedSendWebhookYield(url string, secret []byte, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
+func ExportedSendWebhookYield(url string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
 	return sendWebhookYield(url, secret, req)
 }
 
 // ExportedScrubSecrets exposes scrubSecrets for whitebox tests (CHECK 4.4.3).
-func ExportedScrubSecrets(req ipc.IpcYieldRequest, activeValues []string) ipc.IpcYieldRequest {
+func ExportedScrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRequest {
 	return scrubSecrets(req, activeValues)
 }
 
@@ -30,9 +30,6 @@ func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID)
 
 // ExportedWriteSummary exposes writeSummary for unit testing (CHECK 10.4.1).
 func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummary(wsDir, s) }
-
-// MaxApprovedFileBytesForTest is the create cap the runtime must mirror.
-const MaxApprovedFileBytesForTest = maxApprovedFileBytes
 
 // CleanApprovedPathForTest exposes cleanApprovedPath for trust-boundary tests.
 func CleanApprovedPathForTest(root, rel string) (string, error) { return cleanApprovedPath(root, rel) }
@@ -66,7 +63,7 @@ func CommitApprovedForTest(repoPath, file, content string, tamper func()) (strin
 	if err != nil {
 		return "", err
 	}
-	next, err := a.derive([]ipc.ProposedEdit{{File: file, SearchBlock: MarkerNewFile, ReplaceBlock: content}})
+	next, err := a.derive([]domain.ProposedEdit{{File: file, SearchBlock: MarkerNewFile, ReplaceBlock: content}})
 	if err != nil {
 		return "", err
 	}

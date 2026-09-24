@@ -8,7 +8,6 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/go-git/go-git/v5 v5.19.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.11.1
@@ -17,7 +16,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.opentelemetry.io/proto/otlp v1.10.0
-	go.uber.org/goleak v1.3.0
 	golang.org/x/term v0.43.0
 	google.golang.org/grpc v1.81.1
 	modernc.org/sqlite v1.47.0

@@ -2,7 +2,7 @@
 // Exposes unexported symbols to the black-box test package (package tui_test).
 package tui
 
-import "github.com/b070nd/staircase-core/src/internal/ipc"
+import "github.com/b070nd/staircase-core/src/internal/domain"
 
 // NewYieldModel exposes the unexported constructor for white-box testing.
 var NewYieldModel = newYieldModel
@@ -11,7 +11,7 @@ var NewYieldModel = newYieldModel
 type YieldModel = yieldModel
 
 // RespOf extracts the IpcYieldResponse from a yieldModel returned by Update.
-func RespOf(m interface{}) ipc.IpcYieldResponse {
+func RespOf(m interface{}) domain.YieldResponse {
 	return m.(yieldModel).resp
 }
 

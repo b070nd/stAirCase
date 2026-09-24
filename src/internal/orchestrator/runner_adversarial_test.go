@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/ipc"
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
@@ -20,8 +20,8 @@ import (
 // orchestrator is the trust boundary — no agent can be relied on to police paths.
 func pathEscapeAgent(relFile string) orchestrator.AgentFunc {
 	return func(ctx context.Context, env *orchestrator.AgentEnv) error {
-		ap := env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "file_edit",
-			ProposedEdits:  []ipc.ProposedEdit{{File: relFile, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "PWNED"}},
+		ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+			ProposedEdits:  []domain.ProposedEdit{{File: relFile, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "PWNED"}},
 			ReasoningTrace: "path escape", ConfidenceScore: 0.9})
 		if ap.Approved {
 			return errors.New("an escaping proposal was approved")
