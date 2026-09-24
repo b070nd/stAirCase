@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -103,7 +104,7 @@ is skipped and the PR URL is printed for manual use.`,
 		owner, repo, isGitHub := parseGitHubOwnerRepo(remoteURL)
 		pushToken := token
 		if !isGitHub && pushToken != "" {
-			fmt.Printf("   ⚠️  Remote %q is not github.com — pushing without the GitHub token\n", remoteURL)
+			fmt.Printf("   ⚠️  Remote %q is not github.com — pushing without the GitHub token\n", redactRemote(remoteURL))
 			pushToken = ""
 		}
 
@@ -115,7 +116,7 @@ is skipped and the PR URL is printed for manual use.`,
 
 		// ── GitHub PR creation ────────────────────────────────────────────────
 		if !isGitHub {
-			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL — create the PR manually:\n", remoteURL)
+			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL — create the PR manually:\n", redactRemote(remoteURL))
 			fmt.Printf("   %s\n", manualPRURL(remoteURL, runBranch, run.GitBranch))
 			return nil
 		}
@@ -156,7 +157,7 @@ is skipped and the PR URL is printed for manual use.`,
 // Anchored (^) so a malicious URL embedding "github.com" in its path
 // (e.g. https://evil.example/https://github.com/o/r) is never treated as
 // a GitHub remote — that decision also gates token attachment on push.
-var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://github\.com/([^/]+)/([^/.]+)`)
+var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://(?:[^@/]+@)?github\.com/([^/]+)/([^/.]+)`)
 var reGitHubSSH = regexp.MustCompile(`^(?i)git@github\.com:([^/]+)/([^/.]+)`)
 
 func parseGitHubOwnerRepo(remoteURL string) (owner, repo string, ok bool) {
@@ -168,8 +169,21 @@ func parseGitHubOwnerRepo(remoteURL string) (owner, repo string, ok bool) {
 	return "", "", false
 }
 
+// redactRemote strips userinfo (user, password or token) from a URL-style
+// remote so it is safe to print; scp-style and path remotes carry no
+// credentials and are returned unchanged.
+func redactRemote(remote string) string {
+	u, err := url.Parse(remote)
+	if err != nil || u.Scheme == "" || u.User == nil {
+		return remote
+	}
+	u.User = nil
+	return u.String()
+}
+
 // manualPRURL returns a best-effort PR comparison URL for non-GitHub remotes.
 func manualPRURL(remoteURL, head, base string) string {
+	remoteURL = redactRemote(remoteURL)
 	// GitLab: https://gitlab.com/owner/repo/-/merge_requests/new?...
 	if strings.Contains(remoteURL, "gitlab.com") {
 		u := strings.TrimSuffix(remoteURL, ".git")
