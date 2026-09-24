@@ -2,6 +2,7 @@ package gate
 
 import (
 	"fmt"
+	"github.com/b070nd/staircase-core/src/internal/llm"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,25 +15,6 @@ func init() {
 }
 
 // ─── secret.provider_keys ─────────────────────────────────────────────────────
-
-// providerSecret is the workspace secret the runtime requests for a model. It
-// mirrors _make_llm in template/graph_exec.py.tmpl — keep the two in sync.
-func providerSecret(model string) string {
-	switch {
-	case strings.Contains(model, "/"): // provider/model via an OpenAI-compatible gateway
-		return "LLM_GATEWAY_API_KEY"
-	case strings.HasPrefix(model, "claude-"):
-		return "ANTHROPIC_API_KEY"
-	case strings.HasPrefix(model, "gpt-"), strings.HasPrefix(model, "o1-"),
-		strings.HasPrefix(model, "o3-"), strings.HasPrefix(model, "o4-"):
-		return "OPENAI_API_KEY"
-	case strings.HasPrefix(model, "gemini-"):
-		return "GOOGLE_API_KEY"
-	case strings.HasPrefix(model, "grok-"):
-		return "XAI_API_KEY"
-	}
-	return ""
-}
 
 type secretProviderKeysGate struct{}
 
@@ -66,7 +48,7 @@ func (*secretProviderKeysGate) Run(ctx Context) Result {
 		if model == "" {
 			model = "claude-sonnet-4-6" // compile's default for agents without a model
 		}
-		key := providerSecret(model)
+		key := llm.SecretFor(model)
 		if key == "" {
 			problems = append(problems, fmt.Sprintf("model %q (agent %q) has no known provider: use claude-, gpt-/o1-/o3-/o4-, gemini-, grok- or provider/model (LLM gateway)", model, n.Name))
 			continue

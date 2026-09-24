@@ -284,7 +284,7 @@ _BUILTIN_TOOLS = [read_file, list_dir, request_edit, create_file, delete_file] +
 #   o4-*              → OpenAI             secret: OPENAI_API_KEY
 #   gemini-*          → Google             secret: GOOGLE_API_KEY
 #   grok-*            → xAI               secret: XAI_API_KEY
-# Mirrored by providerSecret in gate/security.go (secret.provider_keys) — keep in sync.
+# Mirrors llm.SecretFor (src/internal/llm), which the secret.provider_keys gate uses.
 
 def _make_llm(model: str, tools: list):
     # Replay mode: return the singleton replay client (ignores model/tools).
