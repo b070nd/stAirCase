@@ -144,7 +144,9 @@ attacker can forge approvals), store a shared HMAC secret under the reserved key
 
 When that secret is present, stAirCase HMAC-signs each outbound yield and rejects
 any response that is not validly signed with the same secret. The approver must
-verify the X-Staircase-Signature request header and sign its response the same way.`,
+verify the X-Staircase-Signature request header, sign its response the same way,
+and echo the X-Staircase-Request-SHA256 header value as "request_sha256" in the
+signed response body (so an approval cannot be replayed for another request).`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()

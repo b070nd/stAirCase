@@ -669,7 +669,9 @@ func signedOperator(t *testing.T, secret []byte) *httptest.Server {
 			http.Error(w, "bad signature", http.StatusUnauthorized)
 			return
 		}
-		respBody := []byte(`{"type":"yield_response","approved":true,"feedback":"signed-approve"}`)
+		// An honest approver names the request it answers (see webhookauth).
+		respBody := []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"feedback":"signed-approve","request_sha256":%q}`,
+			r.Header.Get(webhookauth.HeaderRequestSHA256)))
 		ts := strconv.FormatInt(time.Now().Unix(), 10)
 		w.Header().Set(webhookauth.HeaderTimestamp, ts)
 		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, ts, respBody))
@@ -685,6 +687,36 @@ func TestSendWebhookYield_signed_roundtrip_approves(t *testing.T) {
 	resp := orchestrator.ExportedSendWebhookYield(srv.URL, secret, ipc.IpcYieldRequest{Type: "yield_request"})
 	assert.True(t, resp.Approved)
 	assert.Equal(t, "signed-approve", resp.Feedback)
+}
+
+// TestSendWebhookYield_replayed_approval_rejected: a validly signed approval
+// captured for one request must not approve another pending request.
+func TestSendWebhookYield_replayed_approval_rejected(t *testing.T) {
+	secret := []byte("project-secret")
+	var captured []byte
+	var capturedTS string
+	honest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"request_sha256":%q}`,
+			r.Header.Get(webhookauth.HeaderRequestSHA256)))
+		capturedTS = strconv.FormatInt(time.Now().Unix(), 10)
+		w.Header().Set(webhookauth.HeaderTimestamp, capturedTS)
+		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, capturedTS, captured))
+		_, _ = w.Write(captured)
+	}))
+	defer honest.Close()
+	first := ipc.IpcYieldRequest{Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "approved one"}
+	require.True(t, orchestrator.ExportedSendWebhookYield(honest.URL, secret, first).Approved)
+
+	replay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(webhookauth.HeaderTimestamp, capturedTS)
+		w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, capturedTS, captured))
+		_, _ = w.Write(captured) // valid signature, but it answers the first request
+	}))
+	defer replay.Close()
+	second := ipc.IpcYieldRequest{Type: "yield_request", AgentName: "a", ActionType: "file_edit", ReasoningTrace: "something else"}
+	resp := orchestrator.ExportedSendWebhookYield(replay.URL, secret, second)
+	assert.False(t, resp.Approved, "a replayed approval must not approve a different request")
+	assert.Contains(t, resp.Feedback, "request_sha256")
 }
 
 func TestSendWebhookYield_unsigned_response_rejected_when_secret_set(t *testing.T) {

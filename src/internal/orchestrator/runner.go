@@ -807,6 +807,8 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: msg}
 	}
 	body, _ := json.Marshal(req)
+	reqSum := sha256.Sum256(body)
+	reqHash := hex.EncodeToString(reqSum[:])
 
 	httpReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
@@ -814,6 +816,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 		return reject("webhook error: " + err.Error())
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(webhookauth.HeaderRequestSHA256, reqHash)
 	if len(secret) > 0 {
 		ts := strconv.FormatInt(time.Now().Unix(), 10)
 		httpReq.Header.Set(webhookauth.HeaderTimestamp, ts)
@@ -844,15 +847,24 @@ func sendWebhookYield(webhookURL string, secret []byte, req ipc.IpcYieldRequest)
 		}
 	}
 
-	var yieldResp ipc.IpcYieldResponse
+	var yieldResp struct {
+		ipc.IpcYieldResponse
+		RequestSHA256 string `json:"request_sha256"`
+	}
 	if err := json.Unmarshal(respBody, &yieldResp); err != nil {
 		obs.Log.Warn("webhook response decode failed — auto-rejecting", "err", err)
 		return reject("webhook decode error: " + err.Error())
 	}
+	// Authenticated channel: the signed body must name the request it answers,
+	// or a captured approval could be replayed against another pending yield.
+	if len(secret) > 0 && yieldResp.RequestSHA256 != reqHash {
+		obs.Log.Error("webhook response answers a different request — rejecting (possible replay)")
+		return reject("webhook response request_sha256 does not match this request (possible replay)")
+	}
 	if yieldResp.Type == "" {
 		yieldResp.Type = "yield_response"
 	}
-	return yieldResp
+	return yieldResp.IpcYieldResponse
 }
 
 func timePtr(t time.Time) *time.Time { return &t }

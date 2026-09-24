@@ -10,7 +10,12 @@
 // The orchestrator signs the outbound yield request and verifies the signature
 // on the approver's response. A matching secret on both sides proves the
 // response came from the configured approver and was not tampered with; the
-// timestamp bounds replay.
+// timestamp bounds replay. The request also carries
+//
+//	X-Staircase-Request-SHA256: <hex SHA-256 of the request body>
+//
+// and the approver must echo it as "request_sha256" in its signed response
+// body, so a captured approval cannot be replayed against another request.
 package webhookauth
 
 import (
@@ -28,6 +33,9 @@ const (
 	HeaderTimestamp = "X-Staircase-Timestamp"
 	// HeaderSignature carries "sha256=<hex>".
 	HeaderSignature = "X-Staircase-Signature"
+	// HeaderRequestSHA256 carries the hex SHA-256 of the request body, which
+	// the approver echoes as "request_sha256" in its signed response.
+	HeaderRequestSHA256 = "X-Staircase-Request-SHA256"
 	// SecretKeyName is the reserved, project-scoped secret key under which the
 	// per-project webhook HMAC secret is stored in the encrypted secret store.
 	SecretKeyName = "__webhook_hmac_secret__"
