@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1465,17 +1466,38 @@ func setupContentHashRun(t *testing.T) (s *persistence.Store, wsDir, repoPath st
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(wsDir) })
 	s = newTestStore(t)
-	require.NoError(t, crypto.GenerateKey(wsDir))
-	venvPath := filepath.Join(wsDir, "venv")
-	out, err := exec.Command("python3", "-m", "venv", "--without-pip", venvPath).CombinedOutput()
-	require.NoError(t, err, "create venv: %s", out)
-	// Auto-approve file_edit so no TUI is needed.
-	policyJSON := `{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(policyJSON), 0o600))
+	prepareRunWorkspace(t, wsDir)
 	repoPath = initGitRepo(t)
 	caseID, _ = scaffoldForRun(t, s, repoPath)
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
 	return s, wsDir, repoPath, caseID
+}
+
+// prepareRunWorkspace gives wsDir what a subprocess run needs: key, a pip-less
+// venv, an auto-approve policy for file_edit (no TUI), and tmp/.
+func prepareRunWorkspace(t *testing.T, wsDir string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(wsDir, 0o700))
+	require.NoError(t, crypto.GenerateKey(wsDir))
+	out, err := exec.Command("python3", "-m", "venv", "--without-pip", filepath.Join(wsDir, "venv")).CombinedOutput()
+	require.NoError(t, err, "create venv: %s", out)
+	policyJSON := `{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(policyJSON), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o700))
+}
+
+// TestRun_integration_long_workspace_path: a STAIRCASE_DIR deeper than the OS
+// unix-socket path limit (104 bytes on macOS) must not break the IPC listener.
+func TestRun_integration_long_workspace_path(t *testing.T) {
+	s, shortWS, repoPath, caseID := setupContentHashRun(t)
+	wsDir := filepath.Join(shortWS, strings.Repeat("w", 120))
+	prepareRunWorkspace(t, wsDir)
+	const content = "long workspace path\n"
+	sum := sha256.Sum256([]byte(content))
+	script := contentHashScript(filepath.Join(repoPath, "target.txt"), hex.EncodeToString(sum[:]), content)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true}))
 }
 
 // TestRun_integration_content_hash_match: agent writes exactly the approved

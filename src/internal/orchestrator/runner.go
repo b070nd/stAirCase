@@ -49,6 +49,10 @@ import (
 // agent run as success.
 var ErrRunNotSuccessful = errors.New("run did not complete successfully")
 
+// maxUnixSocketPath is sizeof(sockaddr_un.sun_path) on macOS, the smaller of
+// the supported platforms (Linux allows 108); the path must leave room for NUL.
+const maxUnixSocketPath = 104
+
 // RunPhase labels each boundary of the orchestration state machine.
 // A crashed run leaves its [Runner.Phase] at the last phase it entered,
 // which [Reconcile] uses to decide what cleanup is needed.
@@ -214,8 +218,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
 
 	if opts.DryRun {
-		fmt.Fprintf(os.Stdout, "   [dry-run] socket would be: %s\n",
-			filepath.Join(r.wsDir, "tmp", fmt.Sprintf("run-%d.sock", run.ID)))
+		fmt.Fprintln(os.Stdout, "   [dry-run] stopping before branch creation, IPC and runtime launch")
 		return r.store.UpdateRunStatus(run.ID, persistence.RunStatusKilled, timePtr(time.Now()), "")
 	}
 
@@ -312,7 +315,18 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	socketPath := filepath.Join(tmpDir, fmt.Sprintf("run-%d.sock", run.ID))
+	// The socket lives in a short per-run temp dir, not under STAIRCASE_DIR: unix
+	// socket paths are capped at 104 bytes on macOS (108 on Linux), which a deep
+	// workspace path exceeds. MkdirTemp creates it 0700 with an unpredictable name.
+	sockDir, err := os.MkdirTemp("", "staircase-ipc-")
+	if err != nil {
+		return fmt.Errorf("ipc socket dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(sockDir) }()
+	socketPath := filepath.Join(sockDir, fmt.Sprintf("run-%d.sock", run.ID))
+	if len(socketPath) >= maxUnixSocketPath {
+		return fmt.Errorf("ipc socket path %q exceeds the %d-byte OS limit — set TMPDIR to a shorter directory", socketPath, maxUnixSocketPath)
+	}
 
 	ipcSrv := ipc.NewServer(socketPath, run.ID, caseRec.ProjectID, token, r.store, aesKey, opts.AllowShellExec)
 	if err := ipcSrv.Start(ctx); err != nil {
