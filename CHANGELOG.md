@@ -4,6 +4,39 @@ All notable changes to stAirCase are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The Go rewrite (versioned 0.x, starting over from the Bash 1.x line). Highlights
+since the first Go commits:
+
+### Changed (breaking)
+
+- **No Python.** Agents run in-process in the `staircase` binary: a supervisor and
+  its agents call models over HTTPS (Anthropic, OpenAI, Gemini, xAI, or any model
+  through an OpenAI-compatible LLM gateway). The generated LangGraph script, the
+  venv and its dependency lock, and the IPC socket are gone. `init --skip-venv`,
+  `init --offline-wheels` and `doctor --fix-venv` are accepted but do nothing.
+- **`compile` writes a plan** (`tmp/plan_case<N>.json` + sha256), not a script;
+  `run` refuses a plan that was edited, is for another case or is of another
+  version. Unknown extra tools and models without a provider fail at compile.
+- **Routing:** the supervisor starts; each agent ends its turn with
+  `ROUTE: <next>` (the supervisor may say `END`); runs stop after 25 agent steps
+  or 100 model calls. Documented topologies now finish instead of looping.
+- **Every run gets its own git worktree**; the developer's checkout is never
+  touched. `run --auto-stash` and `--force` do nothing.
+- **Approvals are bound to bytes the orchestrator derives**, decisions are
+  audited before the agent sees them, and the commit is built from the approved
+  bytes; unapproved changes, index edits or agent commits fail the run.
+- **Webhook approvals** must echo the request's fresh `yield_id` and
+  `request_sha256` when a secret is set.
+
+### Added
+
+- `--record-llm` / `--replay-llm` record every model exchange of a run and replay
+  it offline, failing loudly on any request not in the recording.
+- `story accept` records acceptance on the audit chain and completes the case.
+- A stuck agent no longer hangs a run (`agent_unresponsive` is audited).
+
 ## [1.2.0] — 2026-03-12
 
 ### Core model shift

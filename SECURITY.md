@@ -16,17 +16,18 @@ coordinate a fix and disclosure timeline with you.
 
 ## Security model
 
-The intended design must handle a potentially compromised runtime, but the
-current implementation does **not** provide OS-enforced containment. Go is the
-authority for the supported IPC protocol. Python runs as the same OS user and
-can bypass that protocol to access host files, Git metadata, or credentials.
-Disabling the provided shell tool does not remove those process privileges.
-See [Project Use and Current Safety Boundary](docs/project-use.md).
+The model is the untrusted party. Agents run inside the `staircase` process and
+act only through its tools: reads are confined to the run's worktree, and every
+change is a proposal the orchestrator decides and audits — the file tools can
+write nothing but the bytes it derived and approved. The remaining uncontained
+path is an **approved shell command**, which runs as your OS user without an OS
+sandbox. See [Project Use and Current Safety Boundary](docs/project-use.md).
 
-- **Trust boundary at the orchestrator.** The Python/LangGraph runtime speaks an
-  authenticated IPC protocol over a `0600` Unix domain socket with a per-run
-  token. Go checks protocol requests, but the socket does not restrict direct
-  filesystem or process access by the runtime.
+- **Trust boundary at the orchestrator.** Model output never executes directly:
+  tool calls become proposals (edits, or shell commands with
+  `--allow-shell-exec`), refused, decided by policy or by a human, and recorded
+  before the agent learns the answer. Finalize independently checks the worktree
+  and builds the commit, so even a tool bug cannot commit unapproved bytes.
 - **Content-bound approval.** The orchestrator derives the exact bytes each
   `file_edit` approval produces — from the run's base commit and precisely the
   edits the operator is shown — and never trusts the runtime's own claims
@@ -42,8 +43,7 @@ See [Project Use and Current Safety Boundary](docs/project-use.md).
 - **Repository path sandbox.** Approved paths must be plain files inside the
   run's worktree: absolute paths, `..`, any `.git` component, directories and
   paths through symlinks are refused at approval and checked again at finalize
-  (recording `approval_path_escape`) — even if the agent bypasses the runtime's
-  own checks.
+  (recording `approval_path_escape`).
 - **Webhook approvals.** With a project webhook secret, requests and responses
   are HMAC-signed within a 5-minute window, and a response must echo the
   request's fresh `yield_id` and `request_sha256`, so a captured approval cannot
@@ -53,14 +53,18 @@ See [Project Use and Current Safety Boundary](docs/project-use.md).
   Ed25519-signed. Checkpoints can be anchored in a public Rekor transparency log
   (`audit export --anchor`) and re-verified (`audit verify --check-anchor`) for an
   external, append-only witness independent of the workspace key.
-- **Secret isolation.** Secrets are stored AES-256-encrypted; they are decrypted
-  in Go and delivered over IPC only on request. The AES key never crosses into the
-  agent runtime, cross-project requests are rejected, reserved (`__`-prefixed) keys
-  are never deliverable to agents, and delivered plaintext is scrubbed from every
-  log, audit, and stderr line.
-- **Shell execution off by default.** `run_shell` is unavailable unless a run is
-  started with `--allow-shell-exec`, enforced independently at the template, IPC,
-  and policy layers; rejected attempts are audited.
+- **Secret handling.** Secrets are stored AES-256-encrypted and decrypted only
+  when a run needs them — model API keys, to call the provider; they are never
+  put in front of the model. Every access is logged, secrets of other projects
+  and reserved (`__`-prefixed) keys are refused, and delivered values are
+  scrubbed from every log and audit record. Approved shell commands run with a
+  minimal environment (no SSH agent, cloud or model keys).
+- **Shell execution off by default.** `run_shell` is not offered unless a run is
+  started with `--allow-shell-exec`, a shell proposal is refused without it, and
+  policy never auto-approves one; rejected attempts are audited.
+- **Data leaving the machine.** A real run sends the PRD, the repository map and
+  the files agents read to the configured model provider. The offline demo and
+  `--replay-llm` runs send nothing.
 - **Supply chain.** Releases ship an SBOM and a cosign (keyless, Sigstore OIDC)
   signature over the checksums; GitHub Actions are SHA-pinned.
 
@@ -68,18 +72,21 @@ See [Project Use and Current Safety Boundary](docs/project-use.md).
 
 These are documented, not hidden:
 
-- All Python runs, not only `--allow-shell-exec` runs, execute as the orchestrator
-  OS user **without** an OS-level sandbox. Use a restricted container or VM for
-  untrusted workloads; do not expose the primary checkout or unrelated secrets.
+- Approved shell commands (`--allow-shell-exec`) run as the orchestrator's OS user
+  **without** an OS-level sandbox: they can read and change anything that user
+  can. Files they change inside the worktree fail the run unless proposed as
+  edits, but effects elsewhere are not contained. Use a restricted container or
+  VM for untrusted workloads.
 - Each run works in its own git worktree on its own branch, so the developer's
-  checkout is never touched — but a worktree is not a permission boundary:
-  without an OS sandbox the agent can reach the rest of the filesystem as the
-  orchestrator's user.
+  checkout is never touched — but a worktree is not a permission boundary for
+  shell commands.
+- The agent runtime runs in the orchestrator's process: its tools are part of
+  the trusted code, tested but not isolated.
 - The audit chain uses raw Ed25519 over canonical JSON, not yet DSSE envelopes;
   Rekor anchoring proves log inclusion and content match but not (yet) full Merkle
   inclusion-proof verification.
-- A single per-run token authenticates the agent; per-agent-persona identity and
-  per-tool credential scoping are on the roadmap.
+- Agents are named in audit records but not separately authenticated;
+  per-agent identity and per-tool credential scoping are on the roadmap.
 
 ## Supported versions
 

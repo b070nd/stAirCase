@@ -1,5 +1,11 @@
 # stAirCase — Comprehensive Functional Test Plan
 
+> **Written for the earlier Python/LangGraph runtime.** Agents now run in-process
+> in the `staircase` binary: there is no Python process, venv, IPC socket or
+> generated script, and sections about them describe code that no longer exists.
+> The current boundary: [SECURITY.md](../SECURITY.md) and
+> [project-use.md](project-use.md). A full revision is planned before 1.0.
+
 **Scope:** Beyond unit tests. This plan covers everything needed to claim stAirCase works end-to-end, under adversity, in the hands of users who are not the authors.
 
 **Audience:** engineer implementing tests, release manager deciding whether to ship, security reviewer deciding whether to sign off.

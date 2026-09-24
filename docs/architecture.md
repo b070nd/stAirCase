@@ -1,5 +1,11 @@
 # stAirCase — Technical Review Document
 
+> **Written for the earlier Python/LangGraph runtime.** Agents now run in-process
+> in the `staircase` binary: there is no Python process, venv, IPC socket or
+> generated script, and sections about them describe code that no longer exists.
+> The current boundary: [SECURITY.md](../SECURITY.md) and
+> [project-use.md](project-use.md). A full revision is planned before 1.0.
+
 **Version:** post-phase-4 (branch `feature/SAC-5`)
 **Module:** `github.com/b070nd/staircase-core`
 **Go version:** 1.26.1

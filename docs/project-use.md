@@ -1,18 +1,21 @@
 # Project Use and Current Safety Boundary
 
-stAirCase is pre-1.0. Use a disposable clone of a project for evaluation, not your
-only working copy or a checkout containing valuable uncommitted work. Keep
-`STAIRCASE_DIR` outside that clone. The agent currently runs as your OS user;
-a Python virtual environment is not a security sandbox. Use a separately
-restricted container or VM for untrusted runtime code, without mounting your
-primary checkout, home directory, or unrelated credentials.
+stAirCase is pre-1.0. Runs work in their own git worktree, so your checkout is
+never touched; still, evaluate on a project you can afford to experiment with, and
+keep `STAIRCASE_DIR` outside it. Agents act only through proposals the control
+plane decides, but approved shell commands (`--allow-shell-exec`) run as your OS
+user without a sandbox — use a restricted container or VM for untrusted work,
+without mounting your home directory or unrelated credentials.
 
 ## Verified Run Semantics
 
-- `SUCCESS` means the runtime exited successfully and orchestrator finalization
-  succeeded. If approved edits changed the index, their commit must succeed.
-  A no-op can succeed without creating a commit.
-- Setup, staging, commit, and summary-write failures return a nonzero exit and
+- `SUCCESS` means the agents finished and finalization succeeded: the worktree
+  held exactly the approved state, and the commit on `staircase/run-N` was built
+  from the approved bytes. A run with no approved changes succeeds without one.
+- A run fails if its worktree holds anything that was not approved (including
+  changes made by approved shell commands), if its branch moved, or if an agent
+  fails; the reason is on the audit chain. The worktree is kept for inspection.
+- Setup, verify, commit, and summary-write failures return a nonzero exit and
   attempt to record `FAILED`. Run and case terminal states are updated together
   in a SQLite transaction. If the database is unavailable, the command still
   fails; its last persisted state may require later recovery.
@@ -31,19 +34,13 @@ primary checkout, home directory, or unrelated credentials.
 
 ## Still Required Before Trusted Project Use
 
-- An external execution checkout that does not switch or modify the developer's
-  active checkout, plus explicit delivery and concurrent-run ownership rules.
-- A sandbox if protection against a compromised runtime is required. IPC checks
-  cannot prevent same-user Python code from accessing files directly.
-- Approval content derived and verified by the control plane. Current hashes come
-  from the agent, are optional, and do not independently prove that the displayed
-  search/replace proposal describes all committed bytes. Git-index and symlink
-  handling also require hardening.
+- An OS sandbox for approved shell commands, which today run as your user.
 - Immutable, independently versioned blueprints with pinned project bindings;
   a mutable SQLite topology version is not that artifact.
-- End-to-end acceptance tests of the generated LangGraph runtime against a real
-  project. The offline stub demo verifies selected protocol paths, not model
-  quality or complete project acceptance.
+- Drift supervision: story scope and run limits enforced during a run.
+- Acceptance runs against real models and projects. The offline demo exercises
+  the real runtime with a stand-in model; it says nothing about model quality or
+  complete project acceptance.
 
 No enterprise-readiness or compromised-runtime containment claim should be
 inferred from the current test suite.

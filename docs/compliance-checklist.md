@@ -1,5 +1,11 @@
 # stAirCase — Implementation Protocol Checklist
 
+> **Written for the earlier Python/LangGraph runtime.** Agents now run in-process
+> in the `staircase` binary: there is no Python process, venv, IPC socket or
+> generated script, and sections about them describe code that no longer exists.
+> The current boundary: [SECURITY.md](../SECURITY.md) and
+> [project-use.md](project-use.md). A full revision is planned before 1.0.
+
 **Module:** `github.com/b070nd/staircase-core`
 **Manifesto sources:** `.tasks/2026-03-19-isolation.md`, `.tasks/2026-03-18-enterprise.md`, `.tasks/2026-03-18-enterptise-context.md`
 **Last audited:** 2026-05-21 (post Sprint 1/2 security remediation + audit FAIL fixes)

@@ -18,16 +18,16 @@ AI coding agents are useful and increasingly autonomous. The risk isn't that the
 write code — it's that they write code **you never saw, approved, or can prove
 the provenance of afterward**. stAirCase is the control layer that sits between an
 agent's plan and its execution: the agent proposes, a human approves, and every
-decision is recorded for audit. The current gate governs the supported agent
-protocol; it is not an OS security boundary against a compromised runtime.
+decision is recorded for audit. It is not an OS sandbox: the agent's tools and
+approved shell commands run as your user (see the safety boundary).
 
 **Before using a project:** read [Project Use and Current Safety Boundary](docs/project-use.md).
-Evaluate in a disposable clone. External checkout isolation and independently
-versioned blueprints are still readiness work, not implemented guarantees.
+Runs work in their own git worktree, so your checkout is never touched;
+independently versioned blueprints are still readiness work.
 
-It is **not** an agent framework. It is the governed boundary *around* agents —
-self-hosted. Real model calls can send project context to the configured provider;
-the offline stub demo does not make those calls.
+It is a single Go binary with a small built-in agent runtime, and the governed
+boundary *around* it — self-hosted. Real model calls send project context to the
+configured provider; the offline demo uses a stand-in model and makes none.
 
 ```
         plan ─▶ ┌───────────── stAirCase control plane (Go) ─────────────┐
@@ -35,9 +35,9 @@ the offline stub demo does not make those calls.
                 │           every decision → signed audit chain          │
                 └───────────────────────────────────────────────────────┘ ─▶ governed change
                                           ▲
-                                 agent runtime (Python/LangGraph)
-                                  speaks an authenticated IPC protocol;
-                                  is never trusted — the gate is
+                              agents (built in, in-process)
+                         every edit or command is a proposal the
+                         control plane decides — the gate is the boundary
 ```
 
 ## See it in 60 seconds (no API key, fully offline)
@@ -48,17 +48,17 @@ cd stAirCase
 make demo
 ```
 
-`make demo` runs the whole governance loop against the real control plane using a
-stub agent that speaks the genuine IPC protocol — so it's deterministic and needs
-no API key or network. You'll watch an agent propose a change, block for human
-approval, get committed only after the orchestrator confirms the bytes match what
-was approved, and finish with a **verified** signed audit chain. Then:
+`make demo` runs the whole governance loop — the real control plane and agent
+runtime — against a stand-in model, so it's deterministic and needs no API key
+or network. You'll watch a supervisor hand work to a coder, the coder propose a
+file and block for human approval, the approved bytes committed on the run's
+own branch, and a **verified** signed audit chain. Then:
 
 ```bash
-./demo/run-demo.sh --tamper   # the agent writes different bytes AFTER approval
+./demo/run-demo.sh --tamper   # an approved shell command changes the file AFTER its approval
 ```
 
-The run fails, nothing is committed, and the attempt is recorded as an
+The run fails, nothing is committed, and the refusal is recorded as an
 `approval_content_mismatch` event. That's the headline guarantee, demonstrated
 failing closed.
 
@@ -66,19 +66,18 @@ failing closed.
 
 - **Human-in-the-loop approval** — agents *yield* before any file edit, branch
   commit, or shell command; a human (or an explicit policy rule) decides.
-- **Content-hash checks** — when an edit supplies a SHA-256, finalization compares
-  it with the written file. This detects post-approval changes relative to that
-  hash, but the agent still supplies the hash; see the current safety boundary.
+- **Approval bound to bytes** — the control plane derives exactly what each
+  approved edit produces and commits only that: the commit is built from the
+  approved bytes, and a run whose worktree holds anything else fails.
 - **Signed, tamper-evident audit chain** — every event is hash-chained and
   Ed25519-signed; checkpoints can be anchored in a public
   [Rekor](https://docs.sigstore.dev/logging/overview/) transparency log for an
   external witness.
-- **Dedicated run branches** — agent work happens on a dedicated
-  `staircase/run-N` branch; only operator-approved files are staged, never a
-  blanket `git add`.
-- **Secret isolation** — secrets are decrypted in Go and delivered over the IPC
-  boundary on request; the AES key never crosses into the agent runtime, and
-  delivered values are scrubbed from every log and audit record.
+- **Separate worktree per run** — each run works in its own git worktree on a
+  `staircase/run-N` branch; your checkout is never touched.
+- **Secret handling** — secrets are encrypted at rest; model API keys are
+  decrypted only to call the model, are never shown to it, and are scrubbed from
+  every log and audit record. Shell commands get a minimal environment.
 - **Shell execution off by default** — `run_shell` is disabled unless you pass
   `--allow-shell-exec`, enforced at three independent layers.
 - **Quality gates** — pluggable pre-run checks (signed `gates.json` manifests)
@@ -86,31 +85,32 @@ failing closed.
 
 ## Architecture
 
-A Go CLI **control plane** is the single source of authority. It generates a
-Python/[LangGraph](https://langchain-ai.github.io/langgraph/) **runtime** for each
-run and talks to it over an authenticated Unix-domain-socket IPC protocol. The
-protocol authority is the Go side: approval, secret delivery, and audit handling
-are coordinated there. The runtime nevertheless shares the host OS identity,
-so protocol checks alone cannot contain a compromised Python process.
+One Go binary. `staircase compile` turns a case (PRD, stories, agent topology)
+into a checksummed plan; `staircase run` executes it with the built-in agent
+runtime — a supervisor and its agents calling models over HTTPS (Anthropic,
+OpenAI, Gemini, xAI, or any model through an OpenAI-compatible LLM gateway).
+The agents' tools cannot change the repository themselves: every edit is a
+proposal the control plane decides and audits, and tools write only the bytes it
+derived. There is no Python and no separate runtime process.
 
 State (runs, cases, topologies, encrypted secrets, the audit chain) lives in a
 local SQLite workspace, separate from the repositories being changed — so agent
 exhaust never pollutes your product repos.
 
-Full design: [`docs/architecture.md`](docs/architecture.md). IPC wire protocol:
-[`proto/ipc.v1.schema.json`](proto/ipc.v1.schema.json).
+Design review: [`docs/architecture.md`](docs/architecture.md) (written for the
+earlier Python runtime; see its banner).
 
 ## Install
 
-Pre-built, signed binaries are published per release (Linux/macOS/Windows; SBOM +
-cosign signature over the checksums — see [QUICKSTART](QUICKSTART.md#verifying-release-artifacts)).
-Or build from source:
+Releases will ship signed binaries (SBOM + cosign signature over the checksums —
+see [QUICKSTART](QUICKSTART.md#verifying-release-artifacts)); none is cut yet.
+Build from source:
 
 ```bash
 CGO_ENABLED=0 go build -o staircase ./src/cmd/staircase/
 ```
 
-A single static binary, no CGo, pure-Go SQLite — no shared libraries required.
+A single static binary, no CGo, pure-Go SQLite — no shared libraries, no Python.
 The full walkthrough (workspace setup, a real run, HITL, evidence export) is in
 **[QUICKSTART.md](QUICKSTART.md)**.
 
@@ -118,21 +118,22 @@ The full walkthrough (workspace setup, a real run, HITL, evidence export) is in
 
 stAirCase is a security tool; its threat model and guarantees are documented in
 **[SECURITY.md](SECURITY.md)**, including how to report a vulnerability. In short:
-Go governs the supported IPC protocol, audit checkpoints are signed and externally
-anchorable, and the provided shell tool is off by default. Same-user runtime
-isolation and independently verified approval content remain limitations.
+only bytes a human (or an explicit policy rule) approved can be committed, every
+decision is on a signed and externally anchorable audit chain, and the shell tool
+is off by default. Without an OS sandbox, approved shell commands still run as
+your user — that is the main limitation.
 
 ## Status & roadmap
 
-Pre-1.0 and under active development. The control plane, HITL flow, audit chain,
-and offline demo have automated tests (including race, IPC fuzz, and adversarial
-checks), but those tests do not establish enterprise readiness. On the roadmap:
+Pre-1.0 and under active development. The control plane, agent runtime, HITL
+flow, audit chain and offline demo have automated tests (including race and
+adversarial checks), but those tests do not establish enterprise readiness. On
+the roadmap:
 
-- **External execution workspaces and immutable blueprints** — preserve the active
-  checkout and independently version the automation applied to each project.
-- **Trusted approval-content derivation** — bind the displayed proposal to the
-  delivered change without relying on an agent-supplied hash.
-
+- **Immutable blueprints** — independently versioned automation applied to each
+  project, pinned by content hash and recorded on every run.
+- **Drift supervision** — story scope, limits and an audited automated reviewer,
+  so agents cannot wander off the plan unnoticed.
 - **DSSE audit envelopes** — adopt the Sigstore/in-toto envelope format so the
   audit chain interoperates with the broader supply-chain ecosystem.
 - **Per-agent identity** — distinct identity per agent persona with per-tool

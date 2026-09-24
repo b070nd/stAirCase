@@ -102,8 +102,7 @@ See [`plugins/gates/`](../plugins/gates/) in this repository for:
 
 - Plugin scripts receive `ws_dir` (the workspace path) via JSON stdin so they
   can inspect project state. They do **not** receive secrets, API keys, or
-  database credentials — the sandbox blocks environment inheritance and the IPC
-  socket is not available to plugins.
+  database credentials — plugins do not inherit the orchestrator's environment.
 - `ws_dir` is intentionally shared so gates can read topology/config files; treat
   any world-readable workspace content as accessible to gate scripts.
 - Scripts are executed with the OS user that ran `staircase gate`. Ensure
