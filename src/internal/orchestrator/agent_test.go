@@ -11,6 +11,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/ipc"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
+	"github.com/b070nd/staircase-core/src/internal/orchestrator/runtest"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,31 +21,8 @@ import (
 // or limits to the case's project first.
 func runInProcess(t *testing.T, setup func(s *persistence.Store, wsDir string, projectID int64), agent orchestrator.AgentFunc) (*persistence.Store, persistence.Run, []domain.RunEventLog, error) {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
-	}
-	wsDir, err := os.MkdirTemp("", "strc-ag-")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(wsDir) })
-	prepareAgentWorkspace(t, wsDir)
-	db, err := persistence.InitDB(t.TempDir())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	s := persistence.NewStore(db)
-	caseID, projectID := scaffoldForRun(t, s, initGitRepo(t))
-	if setup != nil {
-		setup(s, wsDir, projectID)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true, Agent: agent})
-	runs, err := s.ListRunsByCase(caseID)
-	require.NoError(t, err)
-	require.Len(t, runs, 1)
-	logs, err := s.ListEventLogs(runs[0].ID)
-	require.NoError(t, err)
-	require.NoError(t, s.VerifyChain(runs[0].ID))
-	return s, runs[0], logs, runErr
+	r := runtest.Run(t, runtest.Options{Setup: setup, Agent: agent})
+	return r.Store, r.Run, r.Events, r.Err
 }
 
 // TestAgentEnv_secret_delivery catches a secret leaking out of the run: the
@@ -117,7 +95,7 @@ func TestAgentEnv_budget_overrun_stops_the_agent(t *testing.T) {
 // TestAgentEnv_shell_exec_needs_allow_shell catches a shell command reaching a
 // decision in a run started without --allow-shell-exec.
 func TestAgentEnv_shell_exec_needs_allow_shell(t *testing.T) {
-	var resp ipc.IpcYieldResponse
+	var resp orchestrator.Approval
 	_, run, logs, _ := runInProcess(t, nil, func(ctx context.Context, env *orchestrator.AgentEnv) error {
 		resp = env.Propose(ctx, ipc.IpcYieldRequest{AgentName: "coder", ActionType: "shell_exec",
 			ProposedEdits: []ipc.ProposedEdit{{File: ".", SearchBlock: "(shell)", ReplaceBlock: "rm -rf /"}}})

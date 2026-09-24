@@ -66,7 +66,7 @@ func CommitApprovedForTest(repoPath, file, content string, tamper func()) (strin
 	if err != nil {
 		return "", err
 	}
-	next, err := a.derive([]ipc.ProposedEdit{{File: file, SearchBlock: markerNewFile, ReplaceBlock: content}})
+	next, err := a.derive([]ipc.ProposedEdit{{File: file, SearchBlock: MarkerNewFile, ReplaceBlock: content}})
 	if err != nil {
 		return "", err
 	}

@@ -33,6 +33,7 @@ type LaunchPythonOptions struct {
 	AllowShellExec bool
 	ScrubStderr    func(string) string
 	Traceparent    string
+	ProjectPath    string
 }
 
 // PythonProcess mirrors the non-Windows definition.

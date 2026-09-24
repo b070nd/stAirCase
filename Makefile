@@ -6,6 +6,7 @@
 check: lint
 	@test -z "$$(gofmt -l src tests)" || { gofmt -l src tests; echo "✗ gofmt needed"; exit 1; }
 	go mod tidy -diff
+	GOOS=windows go build ./...
 	cmp proto/ipc.v1.schema.json src/internal/ipc/ipc.v1.schema.json
 	go test ./... -count=1 -timeout=600s
 	$(MAKE) race

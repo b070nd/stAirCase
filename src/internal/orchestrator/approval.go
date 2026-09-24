@@ -24,10 +24,10 @@ import (
 // IPC line limit (256 KiB) and stay reviewable by a human.
 const maxApprovedFileBytes = 200 << 10
 
-// search_block markers the runtime uses for whole-file operations.
+// search_block markers for whole-file operations.
 const (
-	markerNewFile    = "(new file)"
-	markerDeleteFile = "(delete file)"
+	MarkerNewFile    = "(new file)"    // replace_block is the complete new content
+	MarkerDeleteFile = "(delete file)" // the file is removed
 )
 
 // approvedFile is what the operator approved for one path.
@@ -78,7 +78,7 @@ func (a *approvals) derive(edits []ipc.ProposedEdit) (map[string]*approvedFile, 
 			return nil, err
 		}
 		switch e.SearchBlock {
-		case markerNewFile:
+		case MarkerNewFile:
 			if len(e.ReplaceBlock) > maxApprovedFileBytes {
 				return nil, fmt.Errorf("%s: new file is %d bytes; at most %d can be approved at once", p, len(e.ReplaceBlock), maxApprovedFileBytes)
 			}
@@ -89,7 +89,7 @@ func (a *approvals) derive(edits []ipc.ProposedEdit) (map[string]*approvedFile, 
 				mode = f.mode // overwriting keeps the file's mode
 			}
 			next[p] = &approvedFile{content: []byte(e.ReplaceBlock), mode: mode}
-		case markerDeleteFile:
+		case MarkerDeleteFile:
 			f, err := current(p)
 			if err != nil {
 				return nil, err

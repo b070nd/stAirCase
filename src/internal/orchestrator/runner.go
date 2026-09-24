@@ -661,18 +661,20 @@ runLoop:
 			}
 			payload, _ := json.Marshal(decided)
 			if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
-				p.reply <- ipc.IpcYieldResponse{Type: "yield_response", Approved: false,
-					Feedback: "the orchestrator could not record this decision; the run is stopping"}
+				p.reply <- decision{resp: ipc.IpcYieldResponse{Type: "yield_response", Approved: false,
+					Feedback: "the orchestrator could not record this decision; the run is stopping"}}
 				stopAgent()
 				agentFinished = true
 				finalStatus = persistence.RunStatusFailed
 				runErr = fmt.Errorf("audit yield_decided: %w", err)
 				break runLoop
 			}
+			d := decision{resp: resp}
 			if resp.Approved && next != nil {
 				appr.record(next)
+				d.files = next
 			}
-			p.reply <- resp
+			p.reply <- d
 
 		case procErr := <-agentDone:
 			processExited(procErr)
@@ -936,20 +938,20 @@ func bridgeIPC(ctx context.Context, srv *ipc.Server, proposals chan<- proposal, 
 	for {
 		select {
 		case req := <-srv.YieldCh:
-			p := proposal{req: req, reply: make(chan ipc.IpcYieldResponse, 1)}
-			var resp ipc.IpcYieldResponse
+			p := proposal{req: req, reply: make(chan decision, 1)}
+			var d decision
 			select {
 			case proposals <- p:
 			case <-ctx.Done():
 				return
 			}
 			select {
-			case resp = <-p.reply:
+			case d = <-p.reply:
 			case <-ctx.Done():
 				return
 			}
 			select {
-			case srv.ResponseCh <- resp:
+			case srv.ResponseCh <- d.resp:
 			case <-ctx.Done():
 				return
 			}

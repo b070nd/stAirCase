@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -51,30 +55,95 @@ type Usage struct {
 // proposal is a yield waiting for the decision loop.
 type proposal struct {
 	req   ipc.IpcYieldRequest
-	reply chan ipc.IpcYieldResponse
+	reply chan decision
+}
+
+// decision is the loop's answer, with the approved state of every proposed
+// path (file_edit approvals only).
+type decision struct {
+	resp  ipc.IpcYieldResponse
+	files map[string]*approvedFile
+}
+
+// Approval is the orchestrator's answer to a proposal.
+type Approval struct {
+	Approved bool
+	Feedback string
+	files    map[string]*approvedFile
+}
+
+// Apply makes the worktree hold what was approved for the proposed paths: the
+// bytes and modes the orchestrator derived, each written atomically, and
+// approved deletions removed. Tools call it rather than computing content, so
+// what they write is by construction what finalize verifies and commits.
+func (a Approval) Apply(worktree string) error {
+	if !a.Approved {
+		return errors.New("not approved")
+	}
+	paths := make([]string, 0, len(a.files))
+	for p := range a.files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	for _, p := range paths {
+		if _, err := cleanApprovedPath(worktree, p); err != nil { // a symlink may have appeared since
+			return err
+		}
+		full, f := filepath.Join(worktree, filepath.FromSlash(p)), a.files[p]
+		if f.deleted {
+			if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			continue
+		}
+		if err := writeAtomic(full, f.content, f.mode); err != nil {
+			return fmt.Errorf("write %s: %w", p, err)
+		}
+	}
+	return nil
+}
+
+func writeAtomic(full string, content []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(full), ".staircase-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }() // gone after a successful rename
+	_, err = tmp.Write(content)
+	if err == nil {
+		err = tmp.Chmod(mode)
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), full)
 }
 
 // Propose submits a yield and blocks until the orchestrator decides. When the
 // run ends first, the answer is a rejection.
-func (e *AgentEnv) Propose(ctx context.Context, req ipc.IpcYieldRequest) ipc.IpcYieldResponse {
+func (e *AgentEnv) Propose(ctx context.Context, req ipc.IpcYieldRequest) Approval {
 	req.Type = "yield_request"
-	reject := func(why string) ipc.IpcYieldResponse {
-		return ipc.IpcYieldResponse{Type: "yield_response", Approved: false, Feedback: why}
-	}
+	reject := func(why string) Approval { return Approval{Feedback: why} }
 	if req.ActionType == "shell_exec" && !e.AllowShell {
 		e.host.audit("shell_exec_rejected", req)
 		return reject("shell_exec disabled — restart with --allow-shell-exec to enable")
 	}
 	e.host.audit("yield_request", req)
-	p := proposal{req: req, reply: make(chan ipc.IpcYieldResponse, 1)}
+	p := proposal{req: req, reply: make(chan decision, 1)}
 	select {
 	case e.proposals <- p:
 	case <-ctx.Done():
 		return reject("the run ended before this proposal was decided")
 	}
 	select {
-	case r := <-p.reply:
-		return r
+	case d := <-p.reply:
+		return Approval{Approved: d.resp.Approved, Feedback: d.resp.Feedback, files: d.files}
 	case <-ctx.Done():
 		return reject("the run ended before this proposal was decided")
 	}
