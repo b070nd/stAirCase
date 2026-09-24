@@ -1563,3 +1563,40 @@ func TestRun_integration_content_hash_mismatch(t *testing.T) {
 	}
 	assert.True(t, found, "approval_content_mismatch audit event expected")
 }
+
+// TestRun_integration_hung_runtime_is_reaped: a runtime that drops its IPC
+// connection but keeps running (hung, no heartbeats) must not stall the run
+// until the caller's deadline — it is killed after a short grace period, the
+// run FAILS, and the reason is in the audit chain.
+func TestRun_integration_hung_runtime_is_reaped(t *testing.T) {
+	s, wsDir, _, caseID := setupContentHashRun(t)
+	t.Cleanup(orchestrator.SetLostGraceForTest(time.Second))
+	script := `import sys, json, socket, time
+boot = json.loads(sys.stdin.readline())
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(boot["socket_path"])
+s.sendall((json.dumps({"type":"auth","token":boot["token"]})+"\n").encode())
+s.recv(4096)
+s.close()
+time.sleep(60)
+`
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", caseID)), []byte(script), 0o600))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	started := time.Now()
+	err := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID, orchestrator.RunOptions{SkipGates: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lost its IPC connection")
+	assert.Less(t, time.Since(started), 15*time.Second, "must not wait for the caller deadline")
+	runs, err := s.ListRunsByCase(caseID)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, persistence.RunStatusFailed, runs[0].Status)
+	logs, err := s.ListEventLogs(runs[0].ID)
+	require.NoError(t, err)
+	var types []string
+	for _, l := range logs {
+		types = append(types, l.EventType)
+	}
+	assert.Contains(t, types, "runtime_unresponsive")
+}

@@ -34,3 +34,11 @@ func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummar
 
 // PathWithinRootForTest exposes pathWithinRoot for sandbox-predicate unit tests.
 func PathWithinRootForTest(root, rel string) bool { return pathWithinRoot(root, rel) }
+
+// SetLostGraceForTest shortens how long a run waits for a runtime that dropped
+// its IPC connection to exit before killing it. Restore with the returned func.
+func SetLostGraceForTest(d time.Duration) (restore func()) {
+	orig := lostGrace
+	lostGrace = d
+	return func() { lostGrace = orig }
+}

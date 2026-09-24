@@ -193,10 +193,17 @@ type Server struct {
 	// Set by NewServer; defaults to false (safe default).
 	allowShellExec bool
 
+	// lost is signaled when an authenticated connection ends (EOF, error or
+	// idle deadline). The runtime never reconnects, so it has finished or hung.
+	lost chan struct{}
+
 	gitCommitHash string
 	mu            sync.Mutex
 	debugLog      *log.Logger
 }
+
+// Lost is signaled when an authenticated runtime connection ends.
+func (s *Server) Lost() <-chan struct{} { return s.lost }
 
 // DeliveredSecrets returns a snapshot of all plaintext secret values that have
 // been decrypted and delivered to Python during this run. The runner uses this
@@ -227,6 +234,7 @@ func NewServer(socketPath string, runID, projectID int64, token string, store *p
 		YieldCh:        make(chan IpcYieldRequest, 1),
 		ResponseCh:     make(chan IpcYieldResponse, 1),
 		StatEmitCh:     make(chan IpcStateEmit, 32),
+		lost:           make(chan struct{}, 1),
 	}
 }
 
@@ -362,6 +370,12 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, authTO, hb
 		return
 	}
 	_ = enc.Encode(map[string]string{"type": "auth_ok"})
+	defer func() {
+		select {
+		case s.lost <- struct{}{}:
+		default:
+		}
+	}()
 
 	rl := newConnRateLimiter()
 

@@ -53,6 +53,11 @@ var ErrRunNotSuccessful = errors.New("run did not complete successfully")
 // the supported platforms (Linux allows 108); the path must leave room for NUL.
 const maxUnixSocketPath = 104
 
+// lostGrace is how long a run waits for a runtime that dropped its IPC
+// connection to exit on its own before killing it. The runtime never
+// reconnects, so a dropped connection means it finished or is hung.
+var lostGrace = 10 * time.Second
+
 // RunPhase labels each boundary of the orchestration state machine.
 // A crashed run leaves its [Runner.Phase] at the last phase it entered,
 // which [Reconcile] uses to decide what cleanup is needed.
@@ -468,6 +473,21 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	// an agent cannot apply different content than what was approved.
 	approvedHashes := map[string]string{}
 
+	processExited := func(procErr error) {
+		processFinished = true
+		if procErr != nil {
+			runErr = fmt.Errorf("agent process: %w", procErr)
+			finalStatus = persistence.RunStatusFailed
+		} else {
+			finalStatus = persistence.RunStatusSuccess
+		}
+	}
+	cancelled := func() {
+		proc.Kill()
+		processFinished = true
+		finalStatus = persistence.RunStatusKilled
+	}
+
 runLoop:
 	for {
 		select {
@@ -589,19 +609,31 @@ runLoop:
 			}
 
 		case procErr := <-proc.Done:
-			processFinished = true
-			if procErr != nil {
-				runErr = fmt.Errorf("agent process: %w", procErr)
-				finalStatus = persistence.RunStatusFailed
-			} else {
-				finalStatus = persistence.RunStatusSuccess
-			}
+			processExited(procErr)
 			break runLoop
 
 		case <-ctx.Done():
-			proc.Kill()
-			processFinished = true
-			finalStatus = persistence.RunStatusKilled
+			cancelled()
+			break runLoop
+
+		case <-ipcSrv.Lost():
+			// A finished runtime exits right after closing its connection; a
+			// hung one (no heartbeats, idle deadline hit) is killed after lostGrace.
+			select {
+			case procErr := <-proc.Done:
+				processExited(procErr)
+			case <-ctx.Done():
+				cancelled()
+			case <-time.After(lostGrace):
+				proc.Kill()
+				processFinished = true
+				finalStatus = persistence.RunStatusFailed
+				runErr = fmt.Errorf("agent runtime lost its IPC connection and did not exit within %s", lostGrace)
+				if _, err := r.store.AppendEventLogChained(run.ID, "runtime_unresponsive",
+					fmt.Sprintf(`{"type":"runtime_unresponsive","grace_seconds":%g}`, lostGrace.Seconds()), ""); err != nil {
+					runErr = errors.Join(runErr, fmt.Errorf("audit runtime_unresponsive: %w", err))
+				}
+			}
 			break runLoop
 		}
 	}
