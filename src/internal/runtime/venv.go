@@ -15,12 +15,16 @@ import (
 //go:embed requirements.txt
 var embeddedRequirements []byte
 
-// embeddedRecording is the source of runner/staircase_runner/recording.py, copied
-// here so it can be embedded in the binary and injected into the workspace venv.
-// Keep in sync with runner/staircase_runner/recording.py.
+// embeddedRecording and embeddedIPC are the staircase_runner package the
+// runtime imports (recording.py, ipc.py). They are written into the venv at
+// every launch so the runtime always matches this binary; runner/tests import
+// these same files (see runner/tests/conftest.py).
 //
 //go:embed recording_embed.py
 var embeddedRecording []byte
+
+//go:embed ipc_embed.py
+var embeddedIPC []byte
 
 // BootstrapVenv ensures a strictly isolated Python environment exists in $STAIRCASE_DIR.
 // On each call it compares a SHA-256 hash of the embedded requirements.txt against a
@@ -112,6 +116,7 @@ func BootstrapVenv(workspaceDir string, offlineWheelsDir string) error {
 // Python sees: <RunnerInjectDir>/staircase_runner/__init__.py
 //
 //	<RunnerInjectDir>/staircase_runner/recording.py
+//	<RunnerInjectDir>/staircase_runner/ipc.py
 func RunnerInjectDir(venvPath string) string {
 	return filepath.Join(venvPath, "runner_inject")
 }
@@ -127,7 +132,10 @@ func writeRunnerInject(venvPath string) error {
 	if err := os.WriteFile(filepath.Join(pkgDir, "__init__.py"), []byte(""), 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(pkgDir, "recording.py"), embeddedRecording, 0o644)
+	if err := os.WriteFile(filepath.Join(pkgDir, "recording.py"), embeddedRecording, 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(pkgDir, "ipc.py"), embeddedIPC, 0o644)
 }
 
 // pipInstallArgs builds the `python -m pip install` argument list.

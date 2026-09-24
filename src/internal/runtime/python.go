@@ -46,7 +46,7 @@ type BootstrapMessage struct {
 
 	// RunnerPath, when non-empty, is a directory that must be prepended to
 	// sys.path so that `import staircase_runner` resolves to the embedded
-	// package written by BootstrapVenv into the workspace venv.
+	// package LaunchPython writes into the workspace venv at every launch.
 	RunnerPath string `json:"runner_path,omitempty"`
 
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
@@ -137,6 +137,12 @@ type LaunchPythonOptions struct {
 func LaunchPython(ctx context.Context, wsDir string, scriptFile *os.File, socketPath, token string, opts ...LaunchPythonOptions) (*PythonProcess, error) {
 	venvPath := filepath.Join(wsDir, "venv")
 	pythonBin := venvPythonBin(venvPath)
+	// Refresh the embedded staircase_runner package on every launch so the
+	// runtime's IPC client always matches this binary (also covers venvs
+	// provisioned with 'init --skip-venv').
+	if err := writeRunnerInject(venvPath); err != nil {
+		return nil, fmt.Errorf("write runtime package: %w", err)
+	}
 
 	procCtx, cancel := context.WithCancel(ctx)
 	// Pass the script via /dev/fd/3 (ExtraFiles[0] becomes fd 3 in the child).

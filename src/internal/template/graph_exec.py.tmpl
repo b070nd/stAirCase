@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # graph_exec_[[.RunID]].py  —  stAirCase run #[[.RunID]] / case #[[.CaseID]]
 # DO NOT EDIT  —  regenerate: staircase compile [[.CaseID]]
-import hashlib, json, os, re as _re, socket, subprocess, sys, tempfile, threading
+import hashlib, json, os, re as _re, subprocess, sys, tempfile, threading
 from typing import Annotated
 [[if eq .RuntimeType "langgraph"]]
 from langgraph.graph import StateGraph, END
@@ -19,73 +19,6 @@ from langchain_core.tools import tool
 from langgraph.graph.message import add_messages
 
 
-# ── IPC client ────────────────────────────────────────────────────────────────
-
-class _IPC:
-    def __init__(self, sock_path: str, token: str):
-        self._lock = threading.Lock()
-        if ":" in sock_path and not sock_path.startswith("/"):
-            host, port = sock_path.rsplit(":", 1)
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._sock.connect((host, int(port)))
-        else:
-            self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self._sock.connect(sock_path)
-        self._buf = b""
-        self._raw_send({"type": "auth", "token": token})
-        resp = self._raw_recv()
-        if resp.get("type") != "auth_ok":
-            raise RuntimeError(f"IPC auth rejected: {resp}")
-
-    def _raw_send(self, msg: dict) -> None:
-        self._sock.sendall((json.dumps(msg) + "\n").encode())
-
-    def _raw_recv(self, timeout: float = 30.0) -> dict:
-        self._sock.settimeout(timeout)  # CHECK 6.4.2 — every recv has timeout=
-        while b"\n" not in self._buf:
-            chunk = self._sock.recv(65536)
-            if not chunk:
-                raise ConnectionError("IPC socket closed unexpectedly")
-            self._buf += chunk
-        line, self._buf = self._buf.split(b"\n", 1)
-        return json.loads(line)
-
-    def emit_state(self, agent: str, state: dict) -> None:
-        with self._lock:
-            self._raw_send({"type": "state_emit", "active_agent": agent, "state": state})
-
-    def yield_request(self, agent: str, action: str, edits: list,
-                      reasoning: str, confidence: float = 0.9,
-                      batch_id: str = "") -> dict:
-        msg: dict = {
-            "type": "yield_request", "agent_name": agent,
-            "action_type": action, "proposed_edits": edits,
-            "reasoning_trace": reasoning, "confidence_score": confidence,
-        }
-        if batch_id:
-            msg["batch_id"] = batch_id
-        with self._lock:
-            self._raw_send(msg)
-            return self._raw_recv()
-
-    def get_secret(self, key: str, project_id: int | None = None) -> str | None:
-        with self._lock:
-            msg: dict = {"type": "secret_request", "key_name": key}
-            if project_id is not None:
-                msg["project_id"] = project_id
-            self._raw_send(msg)
-            resp = self._raw_recv()
-        return resp.get("plaintext_value")
-
-    def heartbeat(self) -> None:
-        with self._lock:
-            self._raw_send({"type": "heartbeat"})
-            self._raw_recv()
-
-    def close(self) -> None:
-        self._sock.close()
-
-
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 # 30-second stdin timeout so Python does not block if Go crashes pre-write.
 try:
@@ -101,13 +34,15 @@ except (AttributeError, OSError):
 
 _boot = json.loads(sys.stdin.readline())
 assert _boot["type"] == "bootstrap", f"unexpected: {_boot}"
-_ipc = _IPC(_boot["socket_path"], _boot["token"])
-_record_llm: str = _boot.get("record_llm", "")
-_replay_llm:  str = _boot.get("replay_llm", "")
-# Prepend the embedded staircase_runner package path so recording/replay imports work.
+# The orchestrator writes the staircase_runner package (IPC client, LLM
+# recording) into the venv at every launch; it must be importable first.
 _runner_path: str = _boot.get("runner_path", "")
 if _runner_path and _runner_path not in sys.path:
     sys.path.insert(0, _runner_path)
+from staircase_runner.ipc import IPCClient as _IPCClient
+_ipc = _IPCClient(_boot["socket_path"], _boot["token"])
+_record_llm: str = _boot.get("record_llm", "")
+_replay_llm:  str = _boot.get("replay_llm", "")
 # W3C trace context of the orchestrator's run span — exported so any OTel
 # instrumentation inside the runtime can join the distributed trace.
 _traceparent: str = _boot.get("traceparent", "")
