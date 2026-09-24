@@ -84,13 +84,9 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 	check("Python venv exists", venvErr == nil, "run 'staircase init'")
 
 	if venvErr == nil {
-		// Check Python version.
-		out, err := exec.Command(pythonBin, "--version").Output()
-		if err == nil {
-			check(fmt.Sprintf("Python (%s)", trimNL(out)), true, "")
-		} else {
-			check("Python interpreter responsive", false, err.Error())
-		}
+		// Check Python version against what the runtime lock supports.
+		v, err := runtime.CheckPythonVersion(pythonBin)
+		check(fmt.Sprintf("Python %s (runtime needs ≥ 3.12)", v), err == nil, fmt.Sprint(err))
 
 		// Check critical packages.
 		for _, pkg := range []string{"langgraph", "pydantic", "langchain_anthropic", "langchain_openai", "langchain_google_genai", "langchain_xai"} {

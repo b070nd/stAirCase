@@ -392,8 +392,8 @@ func TestBootstrapVenv_requirements_changed_pip_fails(t *testing.T) {
 	hashFile := filepath.Join(venvPath, ".requirements_hash")
 
 	require.NoError(t, os.MkdirAll(filepath.Dir(pythonBin), 0o755))
-	// Fake python: exits non-zero so pip install "fails".
-	require.NoError(t, os.WriteFile(pythonBin, []byte("#!/bin/sh\nexit 1\n"), 0o755))
+	// Fake python: answers the version query, then pip install "fails".
+	require.NoError(t, os.WriteFile(pythonBin, []byte("#!/bin/sh\n"+pyVersionReply+"exit 1\n"), 0o755))
 	// Write a deliberately wrong hash so the requirements-changed branch fires.
 	require.NoError(t, os.WriteFile(hashFile, []byte("wronghash"), 0o644))
 
@@ -416,8 +416,8 @@ func TestBootstrapVenv_requirements_changed_pip_succeeds(t *testing.T) {
 	hashFile := filepath.Join(venvPath, ".requirements_hash")
 
 	require.NoError(t, os.MkdirAll(filepath.Dir(pythonBin), 0o755))
-	// Fake python: exits 0 — pretends pip install succeeded.
-	require.NoError(t, os.WriteFile(pythonBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	// Fake python: answers the version query, then pretends pip succeeded.
+	require.NoError(t, os.WriteFile(pythonBin, []byte("#!/bin/sh\n"+pyVersionReply+"exit 0\n"), 0o755))
 	// Write a deliberately wrong hash so the requirements-changed branch fires.
 	require.NoError(t, os.WriteFile(hashFile, []byte("wronghash"), 0o644))
 
@@ -447,7 +447,7 @@ func TestBootstrapVenv_full_creation_success(t *testing.T) {
 if [ "$2" = "venv" ]; then
     venvDir="$3"
     mkdir -p "$venvDir/bin"
-    printf '#!/bin/sh\nexit 0\n' > "$venvDir/bin/python"
+    printf '#!/bin/sh\n[ "$1" = -c ] && { echo 3.13; exit 0; }\nexit 0\n' > "$venvDir/bin/python"
     chmod +x "$venvDir/bin/python"
     exit 0
 fi
@@ -480,7 +480,7 @@ func TestBootstrapVenv_pip_network_error(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(pythonBin), 0o755))
 	// Fake python: outputs CERTIFICATE_VERIFY_FAILED to stderr, exits 1.
 	require.NoError(t, os.WriteFile(pythonBin,
-		[]byte("#!/bin/sh\necho 'CERTIFICATE_VERIFY_FAILED: ssl error' >&2\nexit 1\n"),
+		[]byte("#!/bin/sh\n"+pyVersionReply+"echo 'CERTIFICATE_VERIFY_FAILED: ssl error' >&2\nexit 1\n"),
 		0o755))
 	require.NoError(t, os.WriteFile(hashFile, []byte("wronghash"), 0o644))
 
@@ -533,4 +533,23 @@ sys.exit(0)
 	}
 
 	assert.Positive(t, pp.PID(), "PID must be a positive integer while process was running")
+}
+
+// pyVersionReply makes a fake interpreter answer CheckPythonVersion's
+// '-c' query like a real Python 3.13 before simulating pip.
+const pyVersionReply = "[ \"$1\" = -c ] && { echo 3.13; exit 0; }\n"
+
+func TestCheckPythonVersion_enforces_the_lock_minimum(t *testing.T) {
+	fake := func(version string) string {
+		p := filepath.Join(t.TempDir(), "python")
+		require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\necho "+version+"\n"), 0o755))
+		return p
+	}
+	_, err := runtime.CheckPythonVersion(fake("3.11"))
+	require.ErrorContains(t, err, "3.12")
+	v, err := runtime.CheckPythonVersion(fake("3.14"))
+	require.NoError(t, err)
+	assert.Equal(t, "3.14", v)
+	_, err = runtime.CheckPythonVersion(fake("garbage"))
+	require.Error(t, err)
 }

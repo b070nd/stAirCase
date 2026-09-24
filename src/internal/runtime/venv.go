@@ -156,8 +156,30 @@ func pipInstallArgs(reqPath, offlineWheelsDir string, requirements []byte) []str
 	return args
 }
 
+// CheckPythonVersion returns the interpreter's major.minor version and an
+// error when it is older than the embedded lock supports (requirements.in is
+// compiled with --python-version 3.12).
+func CheckPythonVersion(pythonExec string) (string, error) {
+	out, err := exec.Command(pythonExec, "-c", "import sys; print('%d.%d' % sys.version_info[:2])").Output()
+	if err != nil {
+		return "", fmt.Errorf("run %s: %w", pythonExec, err)
+	}
+	v := strings.TrimSpace(string(out))
+	var major, minor int
+	if _, err := fmt.Sscanf(v, "%d.%d", &major, &minor); err != nil {
+		return v, fmt.Errorf("unexpected Python version output %q", v)
+	}
+	if major < 3 || (major == 3 && minor < 12) {
+		return v, fmt.Errorf("python %s is too old: the agent runtime needs Python 3.12 or newer", v)
+	}
+	return v, nil
+}
+
 // runPipInstall writes the embedded requirements.txt to tmp/ and runs pip install.
 func runPipInstall(pythonExec, workspaceDir, offlineWheelsDir string) error {
+	if _, err := CheckPythonVersion(pythonExec); err != nil {
+		return err
+	}
 	reqPath := filepath.Join(workspaceDir, "tmp", "requirements.txt")
 	_ = os.MkdirAll(filepath.Dir(reqPath), 0o755)
 	if err := os.WriteFile(reqPath, embeddedRequirements, 0o644); err != nil {
