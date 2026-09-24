@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os/user"
 
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/spf13/cobra"
@@ -80,7 +81,7 @@ var storyListCmd = &cobra.Command{
 
 var storyInvalidateCmd = &cobra.Command{
 	Use:   "invalidate <story-id>",
-	Short: "Mark a User Story as INVALIDATED (forces AI re-evaluation on next run)",
+	Short: "Mark a User Story as INVALIDATED (it must be re-verified and accepted again)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()
@@ -96,7 +97,7 @@ var storyInvalidateCmd = &cobra.Command{
 		if err := store.UpdateUserStoryStatus(storyID, persistence.StoryStatusInvalidated); err != nil {
 			return fmt.Errorf("invalidate story: %w", err)
 		}
-		fmt.Printf("✅ Story #%d marked INVALIDATED — it will be re-evaluated on the next run.\n", storyID)
+		fmt.Printf("✅ Story #%d marked INVALIDATED — verify the work again, then run 'staircase story accept %d'.\n", storyID, storyID)
 		return nil
 	},
 }
@@ -115,10 +116,15 @@ var storyAcceptCmd = &cobra.Command{
 			return err
 		}
 		defer func() { _ = db.Close() }()
-		if err := store.UpdateUserStoryStatus(storyID, persistence.StoryStatusImplemented); err != nil {
+		actor := "unknown"
+		if u, err := user.Current(); err == nil {
+			actor = u.Username
+		}
+		runID, caseStatus, err := store.AcceptUserStory(storyID, actor)
+		if err != nil {
 			return fmt.Errorf("accept story: %w", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Story #%d accepted by operator and marked IMPLEMENTED.\n", storyID)
+		fmt.Fprintf(cmd.OutOrStdout(), "Story #%d accepted by %s (audit: run #%d). Case status: %s.\n", storyID, actor, runID, caseStatus)
 		return nil
 	},
 }

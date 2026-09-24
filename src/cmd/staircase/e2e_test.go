@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/audit"
 	"github.com/b070nd/staircase-core/src/internal/crypto"
@@ -99,15 +100,28 @@ func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 
 func TestStoryAccept_requires_explicit_existing_story(t *testing.T) {
 	_, s := e2eWorkspace(t)
-	caseID, _ := seedFullCase(t, s)
+	caseID, topoVersion := seedFullCase(t, s)
 	stories, err := s.ListUserStoriesByCase(caseID)
 	require.NoError(t, err)
 	require.Len(t, stories, 1)
 	assert.Equal(t, persistence.StoryStatusPending, stories[0].Status)
-	require.NoError(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{strconv.FormatInt(stories[0].ID, 10)}))
+	id := strconv.FormatInt(stories[0].ID, 10)
+	require.ErrorContains(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{id}), "no successful run")
+
+	run, err := s.CreateRun(caseID, topoVersion, "main")
+	require.NoError(t, err)
+	require.NoError(t, s.FinishRun(run.ID, persistence.RunStatusSuccess, time.Now(), ""))
+	c, err := s.GetCase(caseID)
+	require.NoError(t, err)
+	require.Equal(t, persistence.CaseStatusPending, c.Status, "execution alone does not accept stories")
+
+	require.NoError(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{id}))
 	stories, err = s.ListUserStoriesByCase(caseID)
 	require.NoError(t, err)
 	assert.Equal(t, persistence.StoryStatusImplemented, stories[0].Status)
+	c, err = s.GetCase(caseID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.CaseStatusCompleted, c.Status, "accepting the last story completes the case")
 	require.ErrorContains(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{"999999"}), "not found")
 	require.Error(t, storyAcceptCmd.RunE(storyAcceptCmd, []string{"invalid"}))
 }

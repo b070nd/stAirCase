@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -891,16 +893,9 @@ func (s *Store) FinishRun(runID int64, status string, endTime time.Time, commitH
 	if err := tx.QueryRow(`SELECT case_id FROM runs WHERE id = ?`, runID).Scan(&caseID); err != nil {
 		return fmt.Errorf("finish run: load case: %w", err)
 	}
-	caseStatus := CaseStatusFailed
-	if status == RunStatusSuccess {
-		var remaining int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM user_stories WHERE case_id = ? AND status != 'IMPLEMENTED'`, caseID).Scan(&remaining); err != nil {
-			return fmt.Errorf("finish run: inspect stories: %w", err)
-		}
-		caseStatus = CaseStatusCompleted
-		if remaining > 0 {
-			caseStatus = CaseStatusPending
-		}
+	caseStatus, err := caseStatusAfter(tx, caseID, status)
+	if err != nil {
+		return fmt.Errorf("finish run: %w", err)
 	}
 	if _, err := tx.Exec(`UPDATE runs SET status = ?, end_time = ?, git_commit_hash = ? WHERE id = ?`, status, endTime, commitHash, runID); err != nil {
 		return fmt.Errorf("finish run: update run: %w", err)
@@ -912,6 +907,80 @@ func (s *Store) FinishRun(runID int64, status string, endTime time.Time, commitH
 		return fmt.Errorf("finish run: commit: %w", err)
 	}
 	return nil
+}
+
+// caseStatusAfter is the single rule for a case's status after a terminal run:
+// success completes the case only once every story is operator-accepted
+// (IMPLEMENTED); otherwise it stays pending. Any other run outcome fails it.
+func caseStatusAfter(tx *sql.Tx, caseID int64, runStatus string) (string, error) {
+	if runStatus != RunStatusSuccess {
+		return CaseStatusFailed, nil
+	}
+	var remaining int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM user_stories WHERE case_id = ? AND status != 'IMPLEMENTED'`, caseID).Scan(&remaining); err != nil {
+		return "", fmt.Errorf("inspect stories: %w", err)
+	}
+	if remaining > 0 {
+		return CaseStatusPending, nil
+	}
+	return CaseStatusCompleted, nil
+}
+
+// AcceptUserStory records an operator's acceptance of a story after they have
+// verified delivered work. It requires a successful run of the story's case and,
+// in one transaction, marks the story IMPLEMENTED, appends a story_accepted
+// entry to that run's audit chain (bound to the run's commit), and recomputes
+// the case status. Returns the run the acceptance was recorded against and the
+// resulting case status.
+func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseStatus string, err error) {
+	s.appendMu.Lock() // same serialization as AppendEventLogChained: no chain forks
+	defer s.appendMu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, "", fmt.Errorf("accept story: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var caseID int64
+	if err := tx.QueryRow(`SELECT case_id FROM user_stories WHERE id = ?`, storyID).Scan(&caseID); errors.Is(err, sql.ErrNoRows) {
+		return 0, "", fmt.Errorf("story %d not found", storyID)
+	} else if err != nil {
+		return 0, "", fmt.Errorf("accept story: load story: %w", err)
+	}
+	var commit string
+	err = tx.QueryRow(`SELECT id, COALESCE(git_commit_hash,'') FROM runs WHERE case_id = ? AND status = ? ORDER BY id DESC LIMIT 1`,
+		caseID, RunStatusSuccess).Scan(&runID, &commit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", fmt.Errorf("case %d has no successful run — accept stories only after verifying delivered work", caseID)
+	} else if err != nil {
+		return 0, "", fmt.Errorf("accept story: load run: %w", err)
+	}
+	var prevHash string
+	if err := tx.QueryRow(`SELECT event_hash FROM run_event_logs WHERE run_id = ? ORDER BY id DESC LIMIT 1`, runID).Scan(&prevHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, "", fmt.Errorf("accept story: read last event hash: %w", err)
+	}
+	payload, err := json.Marshal(map[string]any{"type": "story_accepted", "story_id": storyID, "actor": actor})
+	if err != nil {
+		return 0, "", fmt.Errorf("accept story: %w", err)
+	}
+	now := time.Now()
+	if _, err := tx.Exec(`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash) VALUES (?, ?, ?, ?, ?, ?)`,
+		runID, "story_accepted", string(payload), now, ComputeEventHash(string(payload), prevHash, commit), commit); err != nil {
+		return 0, "", fmt.Errorf("accept story: audit: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, StoryStatusImplemented, storyID); err != nil {
+		return 0, "", fmt.Errorf("accept story: update story: %w", err)
+	}
+	if caseStatus, err = caseStatusAfter(tx, caseID, RunStatusSuccess); err != nil {
+		return 0, "", fmt.Errorf("accept story: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE cases SET status = ?, last_modified = ? WHERE id = ?`, caseStatus, now, caseID); err != nil {
+		return 0, "", fmt.Errorf("accept story: update case: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, "", fmt.Errorf("accept story: commit: %w", err)
+	}
+	return runID, caseStatus, nil
 }
 
 func (s *Store) ListRunsByCase(caseID int64) ([]domain.Run, error) {

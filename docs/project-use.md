@@ -22,8 +22,9 @@ primary checkout, home directory, or unrelated credentials.
   stories are not automatically marked implemented; their case remains pending.
 - After reviewing the actual changes and running the project's own checks, use
   `staircase story accept <story-id>` to record acceptance. This is an operator
-  declaration, not an automatic validator. Use the existing
-  `staircase case status <case-id> COMPLETED` command after accepting the case.
+  declaration, not an automatic validator. It requires a successful run of the
+  case, is appended to that run's audit chain (bound to its commit), and marks
+  the case COMPLETED once every story is accepted.
 - Existing `staircase/run-N` branches are never overwritten by a new run.
   `run --reconcile` reports inactive branches for inspection but no longer deletes
   them, even when the associated run failed or its record is missing.
