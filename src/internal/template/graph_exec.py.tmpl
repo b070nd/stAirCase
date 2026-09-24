@@ -5,7 +5,7 @@ import hashlib, json, os, re as _re, subprocess, sys, tempfile, threading
 from typing import Annotated
 [[if eq .RuntimeType "langgraph"]]
 from langgraph.graph import StateGraph, END
-from langgraph.constants import Send
+from langgraph.types import Send
 from langgraph.prebuilt import ToolNode
 [[if eq .CheckpointType "memory"]]
 from langgraph.checkpoint.memory import MemorySaver
