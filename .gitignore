@@ -21,6 +21,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
 
 # Built Go binaries under src/ (CHECK 2.2.3)
 src/staircase
@@ -29,3 +30,7 @@ src/staircase
 # git repository snapshots required by the orchestrator integration tests).
 # They are exempt from CHECK 2.2.3 because they are not build outputs —
 # they cannot be regenerated without the original repo history.
+
+# Local development ledger and delete-candidate quarantine (not part of the product)
+/PROTOCOL.md
+/.quarantine/
