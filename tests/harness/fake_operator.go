@@ -62,7 +62,7 @@ type FakeOperator struct {
 	// Strategy == Slow.  Defaults to ApproveAll.
 	BaseStrategy DecisionStrategy
 
-	mu       sync.Mutex
+	mu        sync.Mutex
 	scriptIdx int
 	// Received holds the raw yield payloads for assertion in tests.
 	Received []map[string]any

@@ -142,7 +142,7 @@ checks), but those tests do not establish enterprise readiness. On the roadmap:
 ## Contributing
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for build/test
-conventions (`make test-ci`, `make race`, `make demo`) and the project norms.
+conventions (`make check` is the gate) and the project norms.
 
 ## License
 

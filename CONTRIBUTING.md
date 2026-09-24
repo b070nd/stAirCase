@@ -16,20 +16,12 @@ make demo               # the offline HITL + audit walkthrough (no API key)
 
 ## Before you open a PR
 
-Run the same checks CI runs:
+Run the same gate CI runs (needs `golangci-lint`, `bats`, and `python3` with
+`pytest` + `jsonschema`):
 
 ```bash
-make test-ci                 # unit + conformance + audit checks
-make race                    # race detector (Linux/macOS)
-GOOS=windows go build ./...  # the Windows build must stay green
-gofmt -l src/                # formatting (should print nothing for files you touched)
-go vet ./...
-```
-
-For a change that touches the demo or runtime end to end:
-
-```bash
-make demo                    # must exit 0
+make check                   # lint, gofmt, tidy, full + race tests, pytest, bats, demo
+GOOS=windows go build ./...  # the Windows build must keep compiling
 ```
 
 ## Project norms

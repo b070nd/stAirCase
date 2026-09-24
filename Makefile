@@ -1,4 +1,17 @@
-.PHONY: test test-conformance test-integration test-e2e test-ci race build lint coverage vuln demo
+.PHONY: check test test-conformance test-integration test-e2e test-ci race build lint coverage vuln demo
+
+# ─── The gate: every change must pass this locally and in CI ─────────────────
+# Full tests (no -short: includes the subprocess runner tests), race, Python,
+# CLI smoke tests, the offline demo, formatting, tidy, and schema-copy drift.
+check: lint
+	@test -z "$$(gofmt -l src tests)" || { gofmt -l src tests; echo "✗ gofmt needed"; exit 1; }
+	go mod tidy -diff
+	cmp proto/ipc.v1.schema.json src/internal/ipc/ipc.v1.schema.json
+	go test ./... -count=1 -timeout=600s
+	$(MAKE) race
+	cd runner && python3 -m pytest tests -q
+	bats tests/integration.bats
+	$(MAKE) demo
 
 # ─── Core unit tests ──────────────────────────────────────────────────────────
 test:
@@ -45,9 +58,11 @@ vuln:
 	govulncheck ./...
 
 # ─── Static analysis ──────────────────────────────────────────────────────────
+# golangci-lint runs govet, staticcheck, errcheck, ineffassign and unused with
+# .golangci.yaml. Missing or failing linter fails the target: a silently
+# skipped linter is not a gate.
 lint:
-	go vet ./...
-	@which staticcheck >/dev/null 2>&1 && staticcheck ./... || true
+	golangci-lint run ./...
 
 # ─── Offline demo (no API key) ────────────────────────────────────────────────
 # Runs the full HITL + approval-content-binding + audit-chain walkthrough with a
