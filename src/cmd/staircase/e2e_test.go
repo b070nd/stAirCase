@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -729,4 +730,49 @@ func TestCLIHygiene_config_set_without_flags_is_an_error(t *testing.T) {
 func TestCLIHygiene_doctor_fails_when_checks_fail(t *testing.T) {
 	viper.Set("STAIRCASE_DIR", filepath.Join(t.TempDir(), "missing"))
 	require.Error(t, doctorHandler(nil, nil), "a failed health check must exit non-zero")
+}
+
+func TestCaseRollback_discards_the_run_but_keeps_history_truthful(t *testing.T) {
+	wsDir, s := e2eWorkspace(t)
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "init"}} {
+		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		require.NoError(t, err, "%s", out)
+	}
+	v, err := s.CreateVendor("rb")
+	require.NoError(t, err)
+	p, err := s.CreateProject(v.ID, "rb", repo)
+	require.NoError(t, err)
+	c, err := s.CreateCase(p.ID)
+	require.NoError(t, err)
+	_, err = s.CreateSwarmTopology(p.ID, "sup", "memory", "langgraph")
+	require.NoError(t, err)
+	run, err := s.CreateRun(c.ID, 1, "main")
+	require.NoError(t, err)
+	branch := fmt.Sprintf("staircase/run-%d", run.ID)
+	wt := filepath.Join(wsDir, "worktrees", fmt.Sprintf("run-%d", run.ID))
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-q", "-b", branch, wt, "HEAD").CombinedOutput()
+	require.NoError(t, err, "%s", out)
+
+	require.ErrorContains(t, caseRollbackCmd.RunE(caseRollbackCmd, []string{strconv.FormatInt(c.ID, 10)}), "RUNNING",
+		"a run still in progress (maybe in another terminal) cannot be rolled back")
+
+	require.NoError(t, s.FinishRun(run.ID, persistence.RunStatusSuccess, time.Now(), "c0ffee"))
+	require.NoError(t, caseRollbackCmd.RunE(caseRollbackCmd, []string{strconv.FormatInt(c.ID, 10)}))
+
+	_, err = exec.Command("git", "-C", repo, "rev-parse", "--verify", branch).Output()
+	assert.Error(t, err, "run branch must be deleted")
+	_, err = os.Stat(wt)
+	assert.True(t, os.IsNotExist(err), "run worktree must be removed")
+	got, err := s.GetRun(run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.RunStatusSuccess, got.Status, "history stays truthful: the run did succeed")
+	logs, err := s.ListEventLogs(run.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, logs)
+	assert.Equal(t, "rolled_back", logs[len(logs)-1].EventType)
+	require.NoError(t, s.VerifyChain(run.ID))
+	cs, err := s.GetCase(c.ID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.CaseStatusPending, cs.Status, "discarded work leaves the case to be run again")
 }

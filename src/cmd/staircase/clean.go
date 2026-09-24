@@ -124,7 +124,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 
 	cutoff := time.Now().AddDate(0, 0, -30)
 	for _, repoPath := range sourcePaths {
-		if err := pruneRepoBranches(repoPath, cutoff, preservedRunIDs); err != nil {
+		if err := pruneRepoBranches(repoPath, wsDir, cutoff, preservedRunIDs); err != nil {
 			fmt.Printf("   ⚠️  %s: %v\n", repoPath, err)
 		}
 	}
@@ -148,8 +148,9 @@ func collectSourcePaths(store *persistence.Store) ([]string, error) {
 }
 
 // pruneRepoBranches deletes staircase/run-* branches in repoPath that are
-// older than cutoff and not in the preserve set.
-func pruneRepoBranches(repoPath string, cutoff time.Time, preserve map[int64]bool) error {
+// older than cutoff and not in the preserve set, removing a run's kept
+// worktree first (git refuses to delete a branch checked out in a worktree).
+func pruneRepoBranches(repoPath, wsDir string, cutoff time.Time, preserve map[int64]bool) error {
 	out, err := exec.Command(
 		"git", "-C", repoPath,
 		"for-each-ref", "--format=%(refname:short) %(creatordate:iso)", "refs/heads/staircase/run-*",
@@ -181,15 +182,30 @@ func pruneRepoBranches(repoPath string, cutoff time.Time, preserve map[int64]boo
 			continue
 		}
 
+		wt := filepath.Join(wsDir, "worktrees", "run-"+suffix)
+		_, wtErr := os.Stat(wt)
 		if cleanDryRun {
+			if wtErr == nil {
+				fmt.Printf("   [dry-run] would remove worktree: %s\n", wt)
+			}
 			fmt.Printf("   [dry-run] would delete: %s in %s\n", branch, repoPath)
 			continue
+		}
+		if wtErr == nil {
+			if out, err := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", wt).CombinedOutput(); err != nil {
+				fmt.Printf("   ⚠️  Remove worktree %s: %v: %s\n", wt, err, strings.TrimSpace(string(out)))
+				continue
+			}
+			fmt.Printf("   🗑  Removed worktree: %s\n", wt)
 		}
 		if err := exec.Command("git", "-C", repoPath, "branch", "-D", branch).Run(); err != nil {
 			fmt.Printf("   ⚠️  Delete %s: %v\n", branch, err)
 		} else {
 			fmt.Printf("   🗑  Deleted branch: %s\n", branch)
 		}
+	}
+	if !cleanDryRun {
+		_ = exec.Command("git", "-C", repoPath, "worktree", "prune").Run() // drop metadata of vanished worktrees
 	}
 	return nil
 }

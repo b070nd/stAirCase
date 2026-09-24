@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"time"
+	"os/user"
+	"path/filepath"
 
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var caseCmd = &cobra.Command{
@@ -178,15 +181,14 @@ var caseDeleteCmd = &cobra.Command{
 	},
 }
 
-var caseRollbackForce bool
-
 var caseRollbackCmd = &cobra.Command{
 	Use:   "rollback <case-id>",
-	Short: "Roll back the last run for a case — deletes the staircase branch and restores the working tree",
-	Long: `Deletes the staircase/run-N blast-radius branch for the most recent run of a case
-and restores the repository to the branch it was on before the run.
-
-Use --force to roll back a currently RUNNING case (kills the run first).`,
+	Short: "Discard the latest run of a case: remove its worktree and delete its branch",
+	Long: `Discards the most recent run of a case: removes its worktree (kept after a
+failed run) and deletes its staircase/run-N branch. Your checkout is not
+touched — runs never modify it. The run record and its audit chain are kept;
+a rolled_back event records who discarded it, and the case returns to PENDING
+so it can be run again. A RUNNING run must be stopped first.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()
@@ -199,12 +201,10 @@ Use --force to roll back a currently RUNNING case (kills the run first).`,
 		if err != nil {
 			return err
 		}
-
 		caseRec, err := store.GetCase(caseID)
 		if err != nil || caseRec == nil {
 			return fmt.Errorf("case #%d not found", caseID)
 		}
-
 		runs, err := store.ListRunsByCase(caseID)
 		if err != nil {
 			return fmt.Errorf("list runs: %w", err)
@@ -212,66 +212,54 @@ Use --force to roll back a currently RUNNING case (kills the run first).`,
 		if len(runs) == 0 {
 			return fmt.Errorf("case #%d has no runs to roll back", caseID)
 		}
-
-		// Most recent run is first (ListRunsByCase orders by id DESC).
-		lastRun := runs[0]
-
-		if lastRun.Status == persistence.RunStatusRunning && !caseRollbackForce {
-			return fmt.Errorf(
-				"run #%d is still RUNNING — use --force to kill it and roll back",
-				lastRun.ID,
-			)
+		lastRun := runs[0] // ListRunsByCase orders by id DESC
+		if lastRun.Status == persistence.RunStatusRunning {
+			return fmt.Errorf("run #%d is still RUNNING — stop it first (Ctrl-C in its terminal); "+
+				"stale records are reaped by 'staircase run --reconcile'", lastRun.ID)
 		}
-
 		project, err := store.GetProject(caseRec.ProjectID)
 		if err != nil || project == nil {
 			return fmt.Errorf("project #%d not found", caseRec.ProjectID)
 		}
-
 		if project.SourcePath == "" {
 			return fmt.Errorf("project #%d has no source_path configured — nothing to roll back", project.ID)
 		}
 
-		stairBranch := fmt.Sprintf("staircase/run-%d", lastRun.ID)
-		originalBranch := lastRun.GitBranch
-
-		// Check if the branch exists at all.
-		if _, err := gitOutput(project.SourcePath, "rev-parse", "--verify", stairBranch); err != nil {
-			return fmt.Errorf("blast-radius branch %q does not exist — already rolled back?", stairBranch)
-		}
-
-		// If currently on the staircase branch, restore the original.
-		currentBranch, _ := gitOutput(project.SourcePath, "rev-parse", "--abbrev-ref", "HEAD")
-		if currentBranch == stairBranch {
-			if _, err := gitOutput(project.SourcePath, "checkout", originalBranch); err != nil {
-				return fmt.Errorf("restore branch %q: %w", originalBranch, err)
+		wt := filepath.Join(viper.GetString("STAIRCASE_DIR"), "worktrees", fmt.Sprintf("run-%d", lastRun.ID))
+		if _, err := os.Stat(wt); err == nil {
+			// The worktree holds the run branch; it must go before the branch can.
+			if out, err := gitOutput(project.SourcePath, "worktree", "remove", "--force", wt); err != nil {
+				return fmt.Errorf("remove run worktree %s: %w: %s", wt, err, out)
 			}
-			fmt.Printf("   🔀 Restored branch: %s\n", originalBranch)
+			fmt.Printf("   🗑  Removed worktree: %s\n", wt)
+		}
+		branch := fmt.Sprintf("staircase/run-%d", lastRun.ID)
+		if _, err := gitOutput(project.SourcePath, "rev-parse", "--verify", branch); err == nil {
+			if out, err := gitOutput(project.SourcePath, "branch", "-D", branch); err != nil {
+				return fmt.Errorf("delete run branch %q: %w: %s", branch, err, out)
+			}
+			fmt.Printf("   🗑  Deleted branch: %s\n", branch)
 		}
 
-		// Delete the staircase branch.
-		if _, err := gitOutput(project.SourcePath, "branch", "-D", stairBranch); err != nil {
-			return fmt.Errorf("delete blast-radius branch %q: %w", stairBranch, err)
+		actor := "unknown"
+		if u, err := user.Current(); err == nil {
+			actor = u.Username
 		}
-		fmt.Printf("   🗑  Deleted branch: %s\n", stairBranch)
-
-		// Mark the run as KILLED in the DB.
-		now := time.Now()
-		if err := store.UpdateRunStatus(lastRun.ID, persistence.RunStatusKilled, &now, ""); err != nil {
-			return fmt.Errorf("update run status: %w", err)
+		payload, _ := json.Marshal(map[string]any{"type": "rolled_back", "actor": actor, "branch": branch})
+		if _, err := store.AppendEventLogChained(lastRun.ID, "rolled_back", string(payload), ""); err != nil {
+			return fmt.Errorf("audit rollback: %w", err)
 		}
-		if err := store.UpdateCaseStatus(caseID, persistence.CaseStatusFailed); err != nil {
+		if err := store.UpdateCaseStatus(caseID, persistence.CaseStatusPending); err != nil {
 			return fmt.Errorf("update case status: %w", err)
 		}
-
-		fmt.Printf("✅ Case #%d rolled back — run #%d marked KILLED.\n", caseID, lastRun.ID)
+		fmt.Printf("✅ Case #%d rolled back: run #%d (%s) discarded by %s; case is PENDING again.\n",
+			caseID, lastRun.ID, lastRun.Status, actor)
 		return nil
 	},
 }
 
 func init() {
 	caseCmd.AddCommand(caseNewCmd, caseSetPRDCmd, caseListCmd, caseStatusCmd, caseDeleteCmd)
-	caseRollbackCmd.Flags().BoolVar(&caseRollbackForce, "force", false, "Kill a RUNNING run and roll back")
 	caseCmd.AddCommand(caseRollbackCmd)
 	rootCmd.AddCommand(caseCmd)
 }
