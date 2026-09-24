@@ -1,4 +1,6 @@
-package agent
+// Package plan is what compile produces and run executes: a case's topology,
+// prompts and context as canonical JSON, checked before every run.
+package plan
 
 import (
 	"bytes"
@@ -13,25 +15,25 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/llm"
 )
 
-// PlanVersion changes whenever a plan's meaning changes; run refuses plans of
+// Version changes whenever a plan's meaning changes; run refuses plans of
 // another version instead of running them with different semantics.
-const PlanVersion = 1
+const Version = 1
 
 // Plan is everything a compiled case runs: its topology, prompts and context.
 // compile writes it as canonical JSON with a sha256 sidecar.
 type Plan struct {
-	Version         int         `json:"version"`
-	CaseID          int64       `json:"case_id"`
-	TopologyVersion int         `json:"topology_version"`
-	Supervisor      string      `json:"supervisor"`
-	Agents          []AgentSpec `json:"agents"`
-	Edges           []Edge      `json:"edges"`
-	PRD             string      `json:"prd"`
-	RepoContext     string      `json:"repo_context"`
+	Version         int     `json:"version"`
+	CaseID          int64   `json:"case_id"`
+	TopologyVersion int     `json:"topology_version"`
+	Supervisor      string  `json:"supervisor"`
+	Agents          []Agent `json:"agents"`
+	Edges           []Edge  `json:"edges"`
+	PRD             string  `json:"prd"`
+	RepoContext     string  `json:"repo_context"`
 }
 
-// AgentSpec is one agent of the topology.
-type AgentSpec struct {
+// Agent is one agent of the topology.
+type Agent struct {
 	Name  string   `json:"name"`
 	Role  string   `json:"role"` // its system prompt
 	Model string   `json:"model"`
@@ -46,7 +48,8 @@ type Edge struct {
 	Condition string `json:"condition,omitempty"`
 }
 
-func isEnd(node string) bool { return node == "END" || node == "__end__" }
+// IsEnd reports whether node is the END sentinel.
+func IsEnd(node string) bool { return node == "END" || node == "__end__" }
 
 // builtinTools every agent has; naming one as an extra tool changes nothing.
 var builtinTools = map[string]bool{"read_file": true, "list_dir": true, "request_edit": true,
@@ -74,16 +77,16 @@ func (p Plan) Validate() error {
 		if !known[e.From] {
 			errs = append(errs, fmt.Errorf("edge %s → %s: unknown agent %q", e.From, e.To, e.From))
 		}
-		if !known[e.To] && !isEnd(e.To) {
+		if !known[e.To] && !IsEnd(e.To) {
 			errs = append(errs, fmt.Errorf("edge %s → %s: unknown agent %q", e.From, e.To, e.To))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// WritePlan validates p and writes it to path with a sha256 sidecar.
-func WritePlan(path string, p Plan) error {
-	p.Version = PlanVersion
+// Write validates p and writes it to path with a sha256 sidecar.
+func Write(path string, p Plan) error {
+	p.Version = Version
 	if err := p.Validate(); err != nil {
 		return err
 	}
@@ -99,9 +102,9 @@ func WritePlan(path string, p Plan) error {
 	return os.WriteFile(path+".sha256", []byte(hex.EncodeToString(sum[:])), 0o600)
 }
 
-// LoadPlan reads a plan written by WritePlan, refusing one that was changed
+// Load reads a plan written by Write, refusing one that was changed
 // after compile, written by another plan version, or no longer valid.
-func LoadPlan(path string) (Plan, error) {
+func Load(path string) (Plan, error) {
 	var p Plan
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -119,8 +122,8 @@ func LoadPlan(path string) (Plan, error) {
 	if err := dec.Decode(&p); err != nil {
 		return p, fmt.Errorf("read plan: %w", err)
 	}
-	if p.Version != PlanVersion {
-		return p, fmt.Errorf("plan version %d, this staircase runs version %d — recompile", p.Version, PlanVersion)
+	if p.Version != Version {
+		return p, fmt.Errorf("plan version %d, this staircase runs version %d — recompile", p.Version, Version)
 	}
 	return p, p.Validate()
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/b070nd/staircase-core/src/internal/llm"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 // the supervisor, and the supervisor ends the run. All agents share one
 // conversation, which starts with the PRD and the repository context.
 type Graph struct {
-	Plan   Plan
+	Plan   plan.Plan
 	Model  llm.Model // tests set it; nil means the providers
 	Record string    // when set, every model exchange is recorded to this file
 	Replay string    // when set, models are answered from this recording, offline
@@ -56,7 +57,7 @@ func (g *Graph) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 			}
 		}
 	}
-	agents := map[string]AgentSpec{}
+	agents := map[string]plan.Agent{}
 	for _, a := range g.Plan.Agents {
 		agents[a.Name] = a
 	}
@@ -132,12 +133,12 @@ func (g *Graph) routes(agent string) []route {
 			continue
 		}
 		r := route{label: e.Condition, target: e.To}
-		if isEnd(e.To) {
+		if plan.IsEnd(e.To) {
 			r.target = ""
 		}
 		if r.label == "" {
 			r.label = e.To
-			if isEnd(e.To) {
+			if plan.IsEnd(e.To) {
 				r.label = "END"
 			}
 		}

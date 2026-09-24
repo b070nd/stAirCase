@@ -1,10 +1,8 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"github.com/b070nd/staircase-core/src/internal/agent"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +10,6 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/engine"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
-	scaffoldtpl "github.com/b070nd/staircase-core/src/internal/template"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,13 +18,13 @@ var compileForce bool
 
 var compileCmd = &cobra.Command{
 	Use:   "compile <case-id>",
-	Short: "Compile a Case into a graph_exec.py script ready for staircase run",
+	Short: "Compile a Case into the plan staircase run executes",
 	Args:  cobra.ExactArgs(1),
 	RunE:  compileCaseHandler,
 }
 
 func init() {
-	compileCmd.Flags().BoolVar(&compileForce, "force", false, "Overwrite an existing graph_exec script")
+	compileCmd.Flags().BoolVar(&compileForce, "force", false, "Overwrite an existing plan")
 	rootCmd.AddCommand(compileCmd)
 }
 
@@ -123,8 +120,9 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("load edges: %w", err)
 	}
 
-	// ── 7. Build template params ───────────────────────────────────────────────
-	agents := make([]scaffoldtpl.AgentParams, 0, len(agentNodes))
+	// ── 7. Build the plan ─────────────────────────────────────────────────────
+	pl := plan.Plan{CaseID: caseID, TopologyVersion: topology.Version, Supervisor: topology.SupervisorName,
+		PRD: caseRec.PrdJSON, RepoContext: repoContext}
 	for _, n := range agentNodes {
 		tools, _ := store.ListAgentTools(n.ID)
 		toolNames := make([]string, len(tools))
@@ -135,88 +133,24 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 		if model == "" {
 			model = "claude-sonnet-4-6"
 		}
-		agents = append(agents, scaffoldtpl.AgentParams{
-			Name:  n.Name,
-			Role:  n.Role,
-			Model: model,
-			Tools: toolNames,
-		})
+		pl.Agents = append(pl.Agents, plan.Agent{Name: n.Name, Role: n.Role, Model: model, Tools: toolNames})
 	}
-
-	edgeParams := make([]scaffoldtpl.EdgeParams, 0, len(edges))
 	for _, e := range edges {
-		edgeParams = append(edgeParams, scaffoldtpl.EdgeParams{
-			From:      e.FromNode,
-			To:        e.ToNode,
-			Condition: e.Condition,
-		})
+		pl.Edges = append(pl.Edges, plan.Edge{From: e.FromNode, To: e.ToNode, Condition: e.Condition})
 	}
 
-	params := scaffoldtpl.GraphExecParams{
-		RunID:          caseID,
-		CaseID:         caseID,
-		PRDContext:     caseRec.PrdJSON,
-		RepoContext:    repoContext,
-		Agents:         agents,
-		Edges:          edgeParams,
-		SupervisorName: topology.SupervisorName,
-		CheckpointType: topology.CheckpointType,
-		RuntimeType:    topology.RuntimeType,
-	}
-
-	// ── 8. Write canonical graph_exec script ──────────────────────────────────
+	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────
 	tmpDir := filepath.Join(wsDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-
-	// Written as graph_exec_case{N}.py; staircase run copies it to graph_exec_{RunID}.py.
-	outPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
+	outPath := filepath.Join(tmpDir, fmt.Sprintf("plan_case%d.json", caseID))
 	if !compileForce {
 		if _, err := os.Stat(outPath); err == nil {
-			return fmt.Errorf("script already exists: %s\n  → use --force to overwrite", outPath)
+			return fmt.Errorf("plan already exists: %s\n  → use --force to overwrite", outPath)
 		}
 	}
-
-	if err := scaffoldtpl.GenerateGraphExec(outPath, params); err != nil {
-		return fmt.Errorf("generate script: %w", err)
-	}
-
-	// Write a SHA-256 sidecar so the runner can detect tampering between
-	// compile and run (P1: sign/hash tmp generated scripts).
-	scriptBytes, err := os.ReadFile(outPath)
-	if err != nil {
-		return fmt.Errorf("read script for hash: %w", err)
-	}
-	sum := sha256.Sum256(scriptBytes)
-	hashPath := outPath + ".sha256"
-	if err := os.WriteFile(hashPath, []byte(hex.EncodeToString(sum[:])), 0o600); err != nil {
-		return fmt.Errorf("write script hash: %w", err)
-	}
-
-	// Record which template produced the script: run refuses scripts from a
-	// different stAirCase version (their embedded runtime would be outdated).
-	if err := os.WriteFile(outPath+".tmpl", []byte(scaffoldtpl.Fingerprint()), 0o600); err != nil {
-		return fmt.Errorf("write template fingerprint: %w", err)
-	}
-
-	// Write a topology-version sidecar so runtime.script_compiled can detect
-	// stale scripts (compiled against an older topology version).
-	topoPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	if err := os.WriteFile(topoPath, []byte(fmt.Sprintf("%d", topology.Version)), 0o644); err != nil {
-		return fmt.Errorf("write topo sidecar: %w", err)
-	}
-
-	// The plan the Go runtime runs (Phase R); it replaces the script above.
-	plan := agent.Plan{CaseID: caseID, TopologyVersion: topology.Version, Supervisor: topology.SupervisorName,
-		PRD: caseRec.PrdJSON, RepoContext: repoContext}
-	for _, a := range agents {
-		plan.Agents = append(plan.Agents, agent.AgentSpec{Name: a.Name, Role: a.Role, Model: a.Model, Tools: a.Tools})
-	}
-	for _, e := range edgeParams {
-		plan.Edges = append(plan.Edges, agent.Edge{From: e.From, To: e.To, Condition: e.Condition})
-	}
-	if err := agent.WritePlan(filepath.Join(tmpDir, fmt.Sprintf("plan_case%d.json", caseID)), plan); err != nil {
+	if err := plan.Write(outPath, pl); err != nil {
 		return fmt.Errorf("compile plan: %w", err)
 	}
 

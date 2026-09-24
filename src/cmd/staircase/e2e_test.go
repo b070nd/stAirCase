@@ -20,7 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/b070nd/staircase-core/src/internal/agent"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,8 +79,7 @@ func seedFullCase(t *testing.T, s *persistence.Store) (caseID int64, topoVersion
 //   - wsDir/.key                    → secret.key_file gate
 //   - wsDir/venv/bin/python         → runtime.venv_ready gate
 //   - wsDir/venv/.requirements_hash → runtime.venv_ready gate
-//   - wsDir/tmp/graph_exec_caseN.py → runtime.script_compiled gate
-//   - wsDir/tmp/graph_exec_caseN.topo (topoVersion) → staleness check
+//   - wsDir/tmp/plan_caseN.json    → runtime.plan_compiled gate (topoVersion → staleness)
 func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 	t.Helper()
 	require.NoError(t, crypto.GenerateKey(wsDir))
@@ -92,10 +91,9 @@ func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 
 	tmpDir := filepath.Join(wsDir, "tmp")
 	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# placeholder"), 0o644))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoVersion)), 0o644))
+	require.NoError(t, plan.Write(filepath.Join(tmpDir, fmt.Sprintf("plan_case%d.json", caseID)), plan.Plan{
+		CaseID: caseID, TopologyVersion: topoVersion, Supervisor: "sup",
+		Agents: []plan.Agent{{Name: "sup", Role: "r", Model: "claude-sonnet-4-6"}}}))
 }
 
 // ─── Scenario 1: Workspace bootstrap ─────────────────────────────────────────
@@ -177,7 +175,7 @@ func TestE2E_WorkspaceBootstrap_Idempotent(t *testing.T) {
 // TestE2E_Compile_GeneratesScriptAndTopoSidecar exercises the full compile
 // handler: it sets up a complete topology, calls compileCaseHandler, and
 // verifies that both the Python script and the .topo version sidecar exist.
-func TestE2E_Compile_GeneratesScriptAndTopoSidecar(t *testing.T) {
+func TestE2E_Compile_GeneratesPlan(t *testing.T) {
 	wsDir, s := e2eWorkspace(t)
 
 	v, _ := s.CreateVendor("AcmeCorp")
@@ -192,21 +190,12 @@ func TestE2E_Compile_GeneratesScriptAndTopoSidecar(t *testing.T) {
 	err := compileCaseHandler(nil, []string{fmt.Sprintf("%d", c.ID)})
 	require.NoError(t, err)
 
-	script := filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", c.ID))
-	sidecar := filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.topo", c.ID))
-
-	info, err := os.Stat(script)
-	require.NoError(t, err, "compiled script must exist after compile")
-	assert.Greater(t, info.Size(), int64(0), "script must be non-empty")
-
-	raw, err := os.ReadFile(sidecar)
-	require.NoError(t, err, ".topo sidecar must exist")
-	assert.Equal(t, fmt.Sprintf("%d", topo.Version), strings.TrimSpace(string(raw)),
-		".topo sidecar must contain the topology version")
-	plan, err := agent.LoadPlan(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", c.ID)))
+	_, err = os.Stat(filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", c.ID)))
+	assert.True(t, os.IsNotExist(err), "no Python script any more")
+	pl, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", c.ID)))
 	require.NoError(t, err, "compile writes a plan the Go runtime can load")
-	assert.Equal(t, topo.Version, plan.TopologyVersion)
-	assert.Equal(t, []agent.AgentSpec{{Name: "supervisor", Role: "Routes tasks", Model: "claude-sonnet-4-5"}}, plan.Agents)
+	assert.Equal(t, topo.Version, pl.TopologyVersion)
+	assert.Equal(t, []plan.Agent{{Name: "supervisor", Role: "Routes tasks", Model: "claude-sonnet-4-5"}}, pl.Agents)
 }
 
 // ─── Scenario 3: Gate — incomplete setup blocks ───────────────────────────────
@@ -441,9 +430,8 @@ func TestE2E_FullWorkflow_SetupCompileGate(t *testing.T) {
 	compileForce = true
 	require.NoError(t, compileCaseHandler(nil, []string{fmt.Sprintf("%d", c.ID)}))
 
-	script := filepath.Join(wsDir, "tmp", fmt.Sprintf("graph_exec_case%d.py", c.ID))
-	_, err := os.Stat(script)
-	require.NoError(t, err, "script must exist after compile")
+	_, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", c.ID)))
+	require.NoError(t, err, "plan must exist after compile")
 
 	// 4. Fake runtime env so runtime gates don't block, then gate check.
 	fakeRuntimeEnv(t, wsDir, c.ID, topo.Version)

@@ -1,18 +1,19 @@
 package gate
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 )
 
 func init() {
-	Register(&runtimeScriptCompiledGate{})
+	Register(&runtimePlanCompiledGate{})
 	Register(&runtimeVenvReadyGate{})
 	Register(&runtimeVenvBrokenGate{})
 	Register(&runtimeSourcePathGate{})
@@ -20,47 +21,35 @@ func init() {
 	Register(&runtimeGitAvailableGate{})
 }
 
-// ─── runtime.script_compiled ─────────────────────────────────────────────────
+// ─── runtime.plan_compiled ───────────────────────────────────────────────────
 
-type runtimeScriptCompiledGate struct{}
+type runtimePlanCompiledGate struct{}
 
-func (*runtimeScriptCompiledGate) Name() string       { return "runtime.script_compiled" }
-func (*runtimeScriptCompiledGate) Category() string   { return "runtime" }
-func (*runtimeScriptCompiledGate) Severity() Severity { return SeverityBlock }
+func (*runtimePlanCompiledGate) Name() string       { return "runtime.plan_compiled" }
+func (*runtimePlanCompiledGate) Category() string   { return "runtime" }
+func (*runtimePlanCompiledGate) Severity() Severity { return SeverityBlock }
 
-func (*runtimeScriptCompiledGate) Run(ctx Context) Result {
-	const name = "runtime.script_compiled"
-	script := filepath.Join(ctx.WsDir, "tmp",
-		fmt.Sprintf("graph_exec_case%d.py", ctx.CaseID))
-	info, err := os.Stat(script)
-	if err != nil {
-		return fail(name, "runtime", SeverityBlock,
-			fmt.Sprintf("compiled script not found — run 'staircase compile %d'", ctx.CaseID))
+// Run checks that the case has a plan that will run as compiled: present,
+// unmodified, of this staircase's plan version, valid, for this case — and
+// warns when the topology changed after compile.
+func (*runtimePlanCompiledGate) Run(ctx Context) Result {
+	const name = "runtime.plan_compiled"
+	p, err := plan.Load(filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID)))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("no compiled plan — run 'staircase compile %d'", ctx.CaseID))
+	case err != nil:
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan cannot run: %v — run 'staircase compile %d --force'", err, ctx.CaseID))
+	case p.CaseID != ctx.CaseID:
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was compiled for case #%d — run 'staircase compile %d --force'", p.CaseID, ctx.CaseID))
 	}
-
-	// Check whether the script was compiled against the current topology version.
-	// The sidecar file graph_exec_case{N}.topo is written by `staircase compile`
-	// and contains the topology version number at compile time.
-	topoSidecar := filepath.Join(ctx.WsDir, "tmp",
-		fmt.Sprintf("graph_exec_case%d.topo", ctx.CaseID))
-	if raw, err := os.ReadFile(topoSidecar); err == nil {
-		compiledVersion, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
-		if parseErr == nil {
-			c, _ := ctx.Store.GetCase(ctx.CaseID)
-			if c != nil {
-				currentTopo, _ := ctx.Store.GetLatestTopology(c.ProjectID)
-				if currentTopo != nil && compiledVersion < currentTopo.Version {
-					return warn(name, "runtime",
-						fmt.Sprintf("script was compiled for topology v%d but current topology is v%d — re-run 'staircase compile %d --force'",
-							compiledVersion, currentTopo.Version, ctx.CaseID))
-				}
-			}
+	if c, _ := ctx.Store.GetCase(ctx.CaseID); c != nil {
+		if cur, _ := ctx.Store.GetLatestTopology(c.ProjectID); cur != nil && p.TopologyVersion < cur.Version {
+			return warn(name, "runtime", fmt.Sprintf("plan was compiled for topology v%d but current topology is v%d — re-run 'staircase compile %d --force'",
+				p.TopologyVersion, cur.Version, ctx.CaseID))
 		}
 	}
-	// Sidecar absent → script was compiled before this feature existed; pass through.
-
-	return pass(name, "runtime", SeverityBlock,
-		fmt.Sprintf("%s (%d bytes)", filepath.Base(script), info.Size()))
+	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan for topology v%d, %d agents", p.TopologyVersion, len(p.Agents)))
 }
 
 // ─── runtime.venv_ready ───────────────────────────────────────────────────────

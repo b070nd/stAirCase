@@ -1,31 +1,23 @@
 #!/usr/bin/env bash
-# record-replay.sh — OPTIONAL upgrade path: capture a real LLM conversation once,
-# then replay it deterministically and offline forever after.
+# record-replay.sh — record a real-model run once, then replay it offline.
 #
-# The offline demo (run-demo.sh) uses a stub agent so it needs no API key. If you
-# want the demo to drive a *real* model through the generated LangGraph runtime,
-# run this once with a key to produce demo/replay.json, then:
+# Recording talks to the real model and costs money. Store the provider key as
+# a workspace secret first, e.g. for the LLM gateway (provider/model names):
+#     printf %s "$AI_GATEWAY_API_KEY" | staircase secret set LLM_GATEWAY_API_KEY
+# or ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY / XAI_API_KEY.
 #
-#     staircase run <case> --replay-llm demo/replay.json
-#
-# replay matches recorded responses by a hash of the exact prompt, so the replay
-# run makes zero API calls and is fully reproducible.
-#
-# Requirements: ANTHROPIC_API_KEY in the environment, plus a working Python
-# runtime (run `staircase init` WITHOUT --skip-venv so the LangGraph stack is
-# installed). This script is a scaffold — it documents the flow and checks
-# prerequisites; wire it to your own case/topology as needed.
+# A replay answers every model call from the recording, offline and for free.
+# It matches each request exactly, so a change to the plan, the prompts or the
+# files the agents read makes it fail loudly instead of answering wrongly.
+# Approvals are not recorded: you (or your approval server) decide again.
 set -euo pipefail
 
-: "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY to record a real conversation}"
-CASE_ID="${1:?Usage: record-replay.sh <case-id>}"
-OUT="${2:-demo/replay.json}"
+CASE_ID="${1:?Usage: record-replay.sh <case-id> [recording]}"
+OUT="${2:-llm-case${CASE_ID}.jsonl}"
 
-echo "Recording LLM exchanges for case #$CASE_ID → $OUT"
-echo "(this performs REAL API calls and will incur cost)"
+echo "Recording model exchanges for case #$CASE_ID → $OUT (real API calls)"
 staircase run "$CASE_ID" --record-llm "$OUT"
 
 echo
-echo "✅ Recorded $OUT"
-echo "Replay it offline with:"
+echo "✅ Recorded $OUT — replay it offline with:"
 echo "    staircase run $CASE_ID --replay-llm $OUT"

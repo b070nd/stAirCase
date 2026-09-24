@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/ipc"
@@ -172,6 +174,8 @@ type agentHost struct {
 	projectID int64
 	aesKey    []byte
 
+	debug io.Writer // --debug: every audited message, scrubbed, one per line
+
 	mu        sync.Mutex
 	delivered []string // secret values (and JSON-escaped forms) handed to the agent
 }
@@ -186,6 +190,9 @@ func (h *agentHost) audit(event string, v any) {
 	payload := string(crypto.ScrubBytes(b, h.deliveredSecrets()))
 	if len(payload) > maxAuditPayload {
 		payload = payload[:maxAuditPayload]
+	}
+	if h.debug != nil {
+		_, _ = fmt.Fprintf(h.debug, "%s %s %s\n", time.Now().UTC().Format(time.RFC3339Nano), event, payload)
 	}
 	if _, err := h.store.AppendEventLogChained(h.runID, event, payload, ""); err != nil {
 		obs.Log.Warn("append audit event", "event", event, "err", err)

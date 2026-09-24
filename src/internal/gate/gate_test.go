@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/b070nd/staircase-core/src/internal/gate"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -150,7 +152,7 @@ func TestAllGates_metadata_methods(t *testing.T) {
 		gate.SecretProviderKeysGate,
 		gate.SecretKeyFileGate,
 		gate.SecretNoDuplicatesGate,
-		gate.RuntimeScriptCompiledGate,
+		gate.RuntimePlanCompiledGate,
 		gate.RuntimeVenvReadyGate,
 		gate.RuntimeVenvBrokenGate,
 		gate.RuntimeSourcePathGate,
@@ -451,62 +453,73 @@ func TestSecretNoDuplicatesGate_no_duplicates(t *testing.T) {
 
 // ─── Runtime gates ────────────────────────────────────────────────────────────
 
-func TestRuntimeScriptCompiledGate_missing(t *testing.T) {
+func TestRuntimePlanCompiledGate_missing(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	ctx.WsDir = wsDir
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Equal(t, gate.SeverityBlock, r.Severity)
 }
 
-func TestRuntimeScriptCompiledGate_present(t *testing.T) {
-	// Script exists, no .topo sidecar (pre-feature scripts) → backward-compat pass.
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	_, ctx.CaseID = makeCase(t, ctx.Store)
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", ctx.CaseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+// writePlan compiles a minimal plan for caseID against topology version topo.
+func writePlan(t *testing.T, wsDir string, caseID int64, topo int) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o755))
+	path := filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID))
+	require.NoError(t, plan.Write(path, plan.Plan{CaseID: caseID, TopologyVersion: topo, Supervisor: "sup",
+		Agents: []plan.Agent{{Name: "sup", Role: "r", Model: "claude-sonnet-4-6"}}}))
+	return path
 }
 
-func TestRuntimeScriptCompiledGate_current_topology_passes(t *testing.T) {
-	// Script compiled for the same topology version as the current one → pass.
+func TestRuntimePlanCompiledGate_current_topology_passes(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
 	topo, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topo.Version)), 0o644))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+	writePlan(t, wsDir, caseID, topo.Version)
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
+	assert.Equal(t, gate.StatusPass, r.Status, r.Message)
 }
 
-func TestRuntimeScriptCompiledGate_stale_topology_warns(t *testing.T) {
-	// Script compiled for v1 but topology is now v2 → warn.
+func TestRuntimePlanCompiledGate_stale_topology_warns(t *testing.T) {
+	// Plan compiled for v1 but topology is now v2 → warn.
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
 	topoV1, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph") // v1
 	ctx.Store.CreateSwarmTopology(pID, "sup2", "memory", "langgraph")             // v2
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoV1.Version)), 0o644))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
+	writePlan(t, wsDir, caseID, topoV1.Version)
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status)
 	assert.Contains(t, r.Message, "--force")
+}
+
+// TestRuntimePlanCompiledGate_blocks_a_plan_that_would_not_run_as_compiled
+// catches a plan edited after compile, or one compiled for another case,
+// passing the pre-flight.
+func TestRuntimePlanCompiledGate_blocks_a_plan_that_would_not_run_as_compiled(t *testing.T) {
+	ctx, wsDir := newGateEnv(t)
+	ctx.WsDir = wsDir
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	topo, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
+	path := writePlan(t, wsDir, caseID, topo.Version)
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(b), `"role": "r"`, `"role": "x"`, 1)), 0o600))
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Contains(t, r.Message, "modified after compile")
+
+	other := writePlan(t, wsDir, caseID+1, topo.Version)
+	require.NoError(t, os.Rename(other, path))
+	require.NoError(t, os.Rename(other+".sha256", path+".sha256"))
+	r = gate.RuntimePlanCompiledGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Contains(t, r.Message, fmt.Sprintf("compiled for case #%d", caseID+1))
 }
 
 func TestRuntimeVenvReadyGate_no_venv(t *testing.T) {
@@ -735,27 +748,6 @@ func TestRuntimeVenvBrokenGate_sentinel_present_fails(t *testing.T) {
 	r := gate.RuntimeVenvBrokenGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "broken")
-}
-
-// ─── runtime.script_compiled — corrupt sidecar backward-compat ───────────────
-
-func TestRuntimeScriptCompiledGate_corrupt_sidecar_passes(t *testing.T) {
-	// A sidecar with non-numeric content (e.g. truncated write) must not crash
-	// or block the run — the gate falls through to pass, treating the sidecar
-	// as absent (same behaviour as pre-sidecar scripts).
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	pID, caseID := makeCase(t, ctx.Store)
-	ctx.CaseID = caseID
-	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0o600))
-	require.NoError(t, os.WriteFile(sidecar, []byte("not-a-number"), 0o644))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status, "corrupt sidecar must fall through to pass")
 }
 
 // ─── deps.deps_completed — upstream has no topology ───────────────────────────

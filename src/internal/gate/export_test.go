@@ -18,7 +18,7 @@ var (
 	SecretProviderKeysGate           Gate = &secretProviderKeysGate{}
 	SecretKeyFileGate                Gate = &secretKeyFileGate{}
 	SecretNoDuplicatesGate           Gate = &secretNoDuplicatesGate{}
-	RuntimeScriptCompiledGate        Gate = &runtimeScriptCompiledGate{}
+	RuntimePlanCompiledGate          Gate = &runtimePlanCompiledGate{}
 	RuntimeVenvReadyGate             Gate = &runtimeVenvReadyGate{}
 	RuntimeVenvBrokenGate            Gate = &runtimeVenvBrokenGate{}
 	RuntimeSourcePathGate            Gate = &runtimeSourcePathGate{}

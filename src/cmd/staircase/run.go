@@ -2,10 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/b070nd/staircase-core/src/internal/agent"
+	"github.com/b070nd/staircase-core/src/internal/plan"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/b070nd/staircase-core/src/internal/obs"
@@ -52,7 +57,7 @@ func init() {
 	for _, f := range []string{"force", "auto-stash"} {
 		_ = runCmd.Flags().MarkDeprecated(f, "runs execute in a separate git worktree; your checkout is never modified")
 	}
-	runCmd.Flags().BoolVar(&runDebug, "debug", false, "Write all IPC messages to $STAIRCASE_DIR/log/staircase-debug.log")
+	runCmd.Flags().BoolVar(&runDebug, "debug", false, "Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/")
 	runCmd.Flags().BoolVar(&runReconcile, "reconcile", false,
 		"Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records")
 	runCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
@@ -66,7 +71,7 @@ func init() {
 	runCmd.Flags().StringVar(&runOTelEndpoint, "otel-endpoint", "",
 		"OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled (CHECK 10.3.1).")
 	runCmd.Flags().StringVar(&runRecordLLM, "record-llm", "",
-		"File path to record all LLM exchanges for deterministic replay in future test runs.")
+		"Record every model exchange of this run to this file (JSON lines) for offline replay.")
 	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",
 		"File path to replay recorded LLM exchanges instead of calling the real API.")
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
@@ -118,6 +123,17 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	otelShutdown := obs.InitOTel(runOTelEndpoint)
 	defer otelShutdown()
 
+	// The case runs exactly as compiled: its plan, checked against its checksum.
+	pl, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID)))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("case #%d is not compiled — run 'staircase compile %d' first", caseID, caseID)
+	case err != nil:
+		return fmt.Errorf("plan for case #%d: %w", caseID, err)
+	case pl.CaseID != caseID:
+		return fmt.Errorf("the plan was compiled for case #%d — run 'staircase compile %d --force'", pl.CaseID, caseID)
+	}
+
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
 		DryRun:         runDryRun,
@@ -126,8 +142,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		Reconcile:      runReconcile,
 		ApprovalPort:   runApprovalPort,
 		ApprovalToken:  runApprovalToken,
-		RecordLLM:      runRecordLLM,
-		ReplayLLM:      runReplayLLM,
 		AllowShellExec: runAllowShellExec,
+		Agent:          &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM},
 	})
 }

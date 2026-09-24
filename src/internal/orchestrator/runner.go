@@ -395,12 +395,16 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", approvalToken)
 	}
 
+	var debugLog io.Writer
 	if opts.Debug {
 		logDir := filepath.Join(r.wsDir, "log")
 		if err := os.MkdirAll(logDir, 0o700); err == nil {
 			logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", run.ID))
-			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil && ipcSrv != nil {
-				ipcSrv.SetDebugWriter(f)
+			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+				debugLog = f
+				if ipcSrv != nil {
+					ipcSrv.SetDebugWriter(f)
+				}
 				defer func() { _ = f.Close() }()
 				fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
 			}
@@ -428,7 +432,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	var stopAgent func()          // ends the agent; returns once it has stopped (bounded)
 	var delivered func() []string // secret values handed to the agent, for scrubbing
 	if opts.Agent != nil {
-		host := &agentHost{store: r.store, runID: run.ID, projectID: caseRec.ProjectID, aesKey: aesKey}
+		host := &agentHost{store: r.store, runID: run.ID, projectID: caseRec.ProjectID, aesKey: aesKey, debug: debugLog}
 		delivered = host.deliveredSecrets
 		agentCtx, cancelAgent := context.WithCancel(ctx)
 		defer cancelAgent()

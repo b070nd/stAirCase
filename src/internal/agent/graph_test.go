@@ -18,6 +18,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator/runtest"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,11 +72,11 @@ func use(tool string, args map[string]string) llm.Response {
 
 // quickstart is the topology QUICKSTART.md documents: a supervisor and a coder
 // handing work back and forth.
-func quickstart() agent.Plan {
-	return agent.Plan{Supervisor: "supervisor", PRD: "Add hello.txt.",
-		Agents: []agent.AgentSpec{{Name: "supervisor", Role: "Route tasks.", Model: "claude-sonnet-4-6"},
+func quickstart() plan.Plan {
+	return plan.Plan{Supervisor: "supervisor", PRD: "Add hello.txt.",
+		Agents: []plan.Agent{{Name: "supervisor", Role: "Route tasks.", Model: "claude-sonnet-4-6"},
 			{Name: "coder", Role: "You write code.", Model: "claude-sonnet-4-6"}},
-		Edges: []agent.Edge{{From: "supervisor", To: "coder"}, {From: "coder", To: "supervisor"}}}
+		Edges: []plan.Edge{{From: "supervisor", To: "coder"}, {From: "coder", To: "supervisor"}}}
 }
 
 func runGraph(t *testing.T, g *agent.Graph, setup func(*persistence.Store, string, int64)) runtest.Result {
@@ -114,16 +115,16 @@ func TestGraph_supervisor_delegates_and_ends(t *testing.T) {
 // TestGraph_condition_labels_pick_the_route catches a label routed to the
 // wrong agent, and END reached through a conditional edge.
 func TestGraph_condition_labels_pick_the_route(t *testing.T) {
-	plan := agent.Plan{Supervisor: "sup", PRD: "p",
-		Agents: []agent.AgentSpec{{Name: "sup", Role: "S.", Model: "gpt-5"}, {Name: "coder", Role: "C.", Model: "gpt-5"}, {Name: "reviewer", Role: "R.", Model: "gpt-5"}},
-		Edges: []agent.Edge{{From: "sup", To: "coder"}, {From: "coder", To: "reviewer", Condition: "review"},
+	p := plan.Plan{Supervisor: "sup", PRD: "p",
+		Agents: []plan.Agent{{Name: "sup", Role: "S.", Model: "gpt-5"}, {Name: "coder", Role: "C.", Model: "gpt-5"}, {Name: "reviewer", Role: "R.", Model: "gpt-5"}},
+		Edges: []plan.Edge{{From: "sup", To: "coder"}, {From: "coder", To: "reviewer", Condition: "review"},
 			{From: "coder", To: "END", Condition: "ship"}, {From: "reviewer", To: "sup"}}}
 	m := &scriptModel{replies: map[string][]llm.Response{
 		"S.": {say("ROUTE: coder"), say("again\nROUTE: coder")},
 		"C.": {say("first draft\nROUTE: review"), say("fixed. ROUTE: `ship`.")},
 		"R.": {say("needs a fix")},
 	}}
-	r := runGraph(t, &agent.Graph{Plan: plan, Model: m}, nil)
+	r := runGraph(t, &agent.Graph{Plan: p, Model: m}, nil)
 	require.Equal(t, persistence.RunStatusSuccess, r.Run.Status, "%v", r.Err)
 	assert.Equal(t, []string{"S.", "C.", "R.", "S.", "C."}, m.agentsCalled("S.", "C.", "R."))
 	assert.Contains(t, m.calls[1].System, "one of: review, ship.")
@@ -192,16 +193,16 @@ func fakeGateway(t *testing.T, m *scriptModel) *httptest.Server {
 // the same run again: the first run talks to a gateway (through the real
 // router, client and workspace secrets) and records; the second runs offline.
 func TestGraph_record_then_replay_offline(t *testing.T) {
-	plan := quickstart()
-	for i := range plan.Agents {
-		plan.Agents[i].Model = "test/model" // a gateway model
+	p := quickstart()
+	for i := range p.Agents {
+		p.Agents[i].Model = "test/model" // a gateway model
 	}
 	gw := fakeGateway(t, &scriptModel{replies: map[string][]llm.Response{
 		"Route tasks.":    {say("ROUTE: coder"), say("ROUTE: END")},
 		"You write code.": {use("create_file", map[string]string{"path": "hello.txt", "content": "hi\n", "reasoning": "PRD"}), say("Created.")},
 	}})
 	rec := filepath.Join(t.TempDir(), "llm.jsonl")
-	first := runGraph(t, &agent.Graph{Plan: plan, Record: rec}, func(s *persistence.Store, wsDir string, projectID int64) {
+	first := runGraph(t, &agent.Graph{Plan: p, Record: rec}, func(s *persistence.Store, wsDir string, projectID int64) {
 		key, err := crypto.LoadKey(wsDir)
 		require.NoError(t, err)
 		for name, v := range map[string]string{"LLM_GATEWAY_API_KEY": "gk", "LLM_GATEWAY_URL": gw.URL} {
@@ -214,7 +215,7 @@ func TestGraph_record_then_replay_offline(t *testing.T) {
 	require.Equal(t, persistence.RunStatusSuccess, first.Run.Status, "%v", first.Err)
 
 	gw.Close() // the replay must not need it
-	second := runGraph(t, &agent.Graph{Plan: plan, Replay: rec}, nil)
+	second := runGraph(t, &agent.Graph{Plan: p, Replay: rec}, nil)
 	require.Equal(t, persistence.RunStatusSuccess, second.Run.Status, "%v", second.Err)
 	got, err := second.OnBranch("hello.txt")
 	require.NoError(t, err)
