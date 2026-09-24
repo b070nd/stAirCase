@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -175,4 +176,32 @@ func excerpt(b []byte) string {
 		s = s[:500] + "…"
 	}
 	return s
+}
+
+// Router sends each request to the client for its model, creating clients on
+// first use, so one Model (and one recording) serves every agent of a run.
+type Router struct {
+	Secret func(name string) (string, error)
+
+	mu      sync.Mutex
+	clients map[string]Model
+}
+
+// Chat implements Model.
+func (r *Router) Chat(ctx context.Context, req Request) (Response, error) {
+	r.mu.Lock()
+	m, ok := r.clients[req.Model]
+	if !ok {
+		var err error
+		if m, err = New(req.Model, r.Secret); err != nil {
+			r.mu.Unlock()
+			return Response{}, err
+		}
+		if r.clients == nil {
+			r.clients = map[string]Model{}
+		}
+		r.clients[req.Model] = m
+	}
+	r.mu.Unlock()
+	return m.Chat(ctx, req)
 }

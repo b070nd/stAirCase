@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/b070nd/staircase-core/src/internal/agent"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,6 +205,19 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	topoPath := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
 	if err := os.WriteFile(topoPath, []byte(fmt.Sprintf("%d", topology.Version)), 0o644); err != nil {
 		return fmt.Errorf("write topo sidecar: %w", err)
+	}
+
+	// The plan the Go runtime runs (Phase R); it replaces the script above.
+	plan := agent.Plan{CaseID: caseID, TopologyVersion: topology.Version, Supervisor: topology.SupervisorName,
+		PRD: caseRec.PrdJSON, RepoContext: repoContext}
+	for _, a := range agents {
+		plan.Agents = append(plan.Agents, agent.AgentSpec{Name: a.Name, Role: a.Role, Model: a.Model, Tools: a.Tools})
+	}
+	for _, e := range edgeParams {
+		plan.Edges = append(plan.Edges, agent.Edge{From: e.From, To: e.To, Condition: e.Condition})
+	}
+	if err := agent.WritePlan(filepath.Join(tmpDir, fmt.Sprintf("plan_case%d.json", caseID)), plan); err != nil {
+		return fmt.Errorf("compile plan: %w", err)
 	}
 
 	fmt.Printf("   ✅ Generated: %s\n", outPath)

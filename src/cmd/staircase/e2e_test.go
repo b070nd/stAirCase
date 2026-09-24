@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/staircase-core/src/internal/agent"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -202,6 +203,10 @@ func TestE2E_Compile_GeneratesScriptAndTopoSidecar(t *testing.T) {
 	require.NoError(t, err, ".topo sidecar must exist")
 	assert.Equal(t, fmt.Sprintf("%d", topo.Version), strings.TrimSpace(string(raw)),
 		".topo sidecar must contain the topology version")
+	plan, err := agent.LoadPlan(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", c.ID)))
+	require.NoError(t, err, "compile writes a plan the Go runtime can load")
+	assert.Equal(t, topo.Version, plan.TopologyVersion)
+	assert.Equal(t, []agent.AgentSpec{{Name: "supervisor", Role: "Routes tasks", Model: "claude-sonnet-4-5"}}, plan.Agents)
 }
 
 // ─── Scenario 3: Gate — incomplete setup blocks ───────────────────────────────
