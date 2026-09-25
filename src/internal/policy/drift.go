@@ -26,7 +26,7 @@ type DriftReport struct {
 	InScope    []string `json:"in_scope,omitempty"`     // approved files inside the scope
 	OutOfScope []string `json:"out_of_scope,omitempty"` // approved outside it: human overrides
 	Violations int      `json:"scope_violations"`       // proposals reaching outside the scope
-	Overrides  int      `json:"overrides"`              // drift proposals a human approved
+	Overrides  int      `json:"overrides"`              // out-of-scope proposals a human approved
 	Auto       int      `json:"auto_decided"`
 	Human      int      `json:"human_decided"`
 	Halted     string   `json:"halted,omitempty"`
@@ -80,7 +80,7 @@ func (s *Supervisor) Check(files []string) (reason string, halt bool) {
 		}
 	}
 	if s.limits.CheckpointEvery > 0 && s.yields%s.limits.CheckpointEvery == 0 {
-		why = append(why, fmt.Sprintf("checkpoint: every %s proposal is reviewed", ordinal(s.limits.CheckpointEvery)))
+		why = append(why, checkpointNote(s.limits.CheckpointEvery))
 	}
 	return strings.Join(why, "; "), false
 }
@@ -95,8 +95,11 @@ func (s *Supervisor) Decided(files []string, approved, byHuman bool, drift strin
 	if !approved {
 		return
 	}
-	if drift != "" {
-		s.report.Overrides++
+	for _, f := range files {
+		if !s.inScope(f) {
+			s.report.Overrides++ // a human approved a change outside the scope
+			break
+		}
 	}
 	for _, f := range files {
 		if s.files[f] {
@@ -127,16 +130,11 @@ func (s *Supervisor) Report() DriftReport {
 	return r
 }
 
-func ordinal(n int) string {
-	switch n {
-	case 1:
-		return "single"
-	case 2:
-		return "2nd"
-	case 3:
-		return "3rd"
+func checkpointNote(n int) string {
+	if n == 1 {
+		return "checkpoint: every proposal is reviewed"
 	}
-	return fmt.Sprintf("%dth", n)
+	return fmt.Sprintf("checkpoint: one in every %d proposals is reviewed", n)
 }
 
 // Tighter combines two sets of limits, keeping the stricter of each (zero =

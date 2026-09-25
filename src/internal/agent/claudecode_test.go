@@ -119,6 +119,7 @@ func TestClaudeCode_every_tool_call_is_governed(t *testing.T) {
 		{Tool: "Edit", Input: map[string]any{"file_path": abs("f.txt"), "old_string": "b", "new_string": "c", "replace_all": true}},
 		{Tool: "Read", Input: map[string]any{"file_path": abs("f.txt")}},
 		{Tool: "Read", Input: map[string]any{"file_path": "/etc/hosts"}},
+		{Tool: "Glob", Input: map[string]any{"pattern": "/etc/*"}},
 		{Tool: "Write", Input: map[string]any{"file_path": abs("../escape.txt"), "content": "x"}},
 		{Tool: "Bash", Input: map[string]any{"command": "touch shell.txt"}},
 		{Tool: "WebFetch", Input: map[string]any{"url": "https://example.com"}},
@@ -139,12 +140,12 @@ func TestClaudeCode_every_tool_call_is_governed(t *testing.T) {
 	log, err := os.ReadFile(logFile)
 	require.NoError(t, err)
 	decisions := strings.Split(strings.TrimSpace(string(log)), "\n")
-	want := []string{"Write allow", "Edit allow", "Edit deny", "Edit deny", "Read allow", "Read deny", "Write deny", "Bash deny", "WebFetch deny"}
+	want := []string{"Write allow", "Edit allow", "Edit deny", "Edit deny", "Read allow", "Read deny", "Glob deny", "Write deny", "Bash deny", "WebFetch deny"}
 	require.Len(t, decisions, len(want), string(log))
 	for i, w := range want {
 		assert.True(t, strings.HasPrefix(decisions[i], w), "call %d: %s", i, decisions[i])
 	}
-	assert.Contains(t, decisions[7], "--allow-shell-exec")
+	assert.Contains(t, decisions[8], "--allow-shell-exec")
 
 	got, err := r.OnBranch("new.txt")
 	require.NoError(t, err)

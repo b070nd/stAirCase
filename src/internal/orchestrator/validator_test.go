@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/llm"
@@ -129,4 +130,23 @@ func TestValidator_hands_over_to_a_human(t *testing.T) {
 	assert.Contains(t, reviews[3], "sampled for human review")
 	assert.Equal(t, "", reviews[4], "the last is the final review")
 	assert.Equal(t, "final_review", op.seen[4].ActionType)
+}
+
+// TestValidator_tokens_count_against_the_budget: the validator's own model
+// use can exceed the budget cap and kill the run, like the agents'.
+func TestValidator_tokens_count_against_the_budget(t *testing.T) {
+	started := time.Now()
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+			scoped(&operator{approve: true}, `{"rules":[]}`)(s, wsDir, projectID)
+			require.NoError(t, s.SetProjectBudgetCap(projectID, 0.0001))
+		},
+		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Model: "review/model", Chat: &reviewer{}}},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			create(ctx, env, "GREETING.md")
+			<-ctx.Done()
+			return ctx.Err()
+		})})
+	assert.Equal(t, persistence.RunStatusKilled, r.Run.Status)
+	assert.Less(t, time.Since(started), 10*time.Second, "killed by the budget, not the test deadline")
 }

@@ -182,6 +182,7 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		NewString  string `json:"new_string"`
 		ReplaceAll bool   `json:"replace_all"`
 		Command    string `json:"command"`
+		Pattern    string `json:"pattern"`
 	}
 	if err := json.Unmarshal(in.Input, &a); err != nil {
 		return "staircase: unreadable tool input"
@@ -190,7 +191,14 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 	case "TodoWrite":
 		return ""
 	case "Read", "Glob", "Grep", "LS":
-		if p := orDefault(a.FilePath, a.Path); p != "" {
+		paths := []string{orDefault(a.FilePath, a.Path)}
+		if in.Tool == "Glob" && filepath.IsAbs(a.Pattern) { // an absolute pattern names its own root
+			paths = append(paths, a.Pattern[:strings.IndexAny(a.Pattern+"*", "*?[{")])
+		}
+		for _, p := range paths {
+			if p == "" {
+				continue
+			}
 			if _, err := h.rel(p); err != nil {
 				return "staircase: only files inside the project can be read"
 			}

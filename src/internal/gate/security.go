@@ -2,10 +2,11 @@ package gate
 
 import (
 	"fmt"
-	"github.com/b070nd/staircase-core/src/internal/llm"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/b070nd/staircase-core/src/internal/llm"
 )
 
 func init() {

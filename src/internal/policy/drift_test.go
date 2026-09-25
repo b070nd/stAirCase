@@ -46,7 +46,7 @@ func TestSupervisor_limits(t *testing.T) {
 	assert.Empty(t, reasons[0])
 	assert.Empty(t, reasons[1])
 	assert.Contains(t, reasons[2], "3 files changed (limit 2)")
-	assert.Contains(t, reasons[2], "checkpoint: every 3rd proposal")
+	assert.Contains(t, reasons[2], "checkpoint: one in every 3 proposals")
 
 	reason, halt := s.Check([]string{"b/1"})
 	assert.NotEmpty(t, reason)
@@ -62,4 +62,29 @@ func TestLimits_Tighter(t *testing.T) {
 	a := policy.Limits{CheckpointEvery: 5, MaxFilesChanged: 10, MaxRunDurationSecs: 600}
 	b := policy.Limits{CheckpointEvery: 2, MaxScopeViolations: 3, MaxRunDurationSecs: 900}
 	assert.Equal(t, policy.Limits{CheckpointEvery: 2, MaxFilesChanged: 10, MaxScopeViolations: 3, MaxRunDurationSecs: 600}, a.Tighter(b))
+}
+
+// TestSupervisor_overrides_are_out_of_scope_approvals: a human approving an
+// in-scope change at a checkpoint or file limit is a review, not an override.
+func TestSupervisor_overrides_are_out_of_scope_approvals(t *testing.T) {
+	s := policy.NewSupervisor([]string{"a/**"}, policy.Limits{CheckpointEvery: 1})
+	reason, _ := s.Check([]string{"a/1"})
+	assert.NotEmpty(t, reason)
+	s.Decided([]string{"a/1"}, true, true, reason)
+	assert.Equal(t, 0, s.Report().Overrides)
+	assert.Contains(t, reason, "every proposal", "no ordinal for 1")
+	reason, _ = s.Check([]string{"b/1"})
+	s.Decided([]string{"b/1"}, true, true, reason)
+	assert.Equal(t, 1, s.Report().Overrides)
+}
+
+func TestSupervisor_checkpoint_wording(t *testing.T) {
+	for n, want := range map[int]string{2: "every 2 proposals", 21: "every 21 proposals"} {
+		s := policy.NewSupervisor(nil, policy.Limits{CheckpointEvery: n})
+		var reason string
+		for range n {
+			reason, _ = s.Check(nil)
+		}
+		assert.Contains(t, reason, want)
+	}
 }

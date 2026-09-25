@@ -201,8 +201,10 @@ if staircase audit export 1 >/dev/null 2>&1; then
   CP="$STAIRCASE_DIR/audit/run-1.checkpoint.json"
   staircase audit verify "$CP"
   [ "$MODE" = "tamper" ] && { note "Why finalize refused to commit:"; "$DEMOTOOL" show-mismatch "$CP" || true; }
+elif [ -z "$MODE" ]; then
+  die "audit export failed for a successful run"
 else
-  note "(audit export/verify requires a successful run)"
+  note "(audit export needs a finished run)"
 fi
 
 say "Done."

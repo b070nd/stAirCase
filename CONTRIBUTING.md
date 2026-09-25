@@ -18,7 +18,7 @@ make demo               # the offline HITL + audit walkthrough (no API key)
 Run the same gate CI runs (needs `golangci-lint` and `bats`):
 
 ```bash
-make check                   # lint, gofmt, tidy, full + race tests, pytest, bats, demo
+make check                   # lint, gofmt, tidy, Windows build, full + race tests, bats, demo (3 modes)
 GOOS=windows go build ./...  # the Windows build must keep compiling
 ```
 

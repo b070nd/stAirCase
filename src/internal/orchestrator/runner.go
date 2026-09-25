@@ -508,6 +508,16 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		agentFinished = true
 		finalStatus = persistence.RunStatusKilled
 	}
+	// overBudget kills the run once the model use so far (agents' and the
+	// validator's) exceeds the project's budget cap.
+	overBudget := func() bool {
+		if !display.BudgetExceeded() {
+			return false
+		}
+		fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
+		cancelled()
+		return true
+	}
 	driftHalt := func(reason string) {
 		sup.Halt(reason)
 		payload, _ := json.Marshal(map[string]any{"type": "drift_halt", "reason": reason})
@@ -522,11 +532,7 @@ runLoop:
 		case u := <-usage:
 			tracker.Record(u.Agent, u.Model, u.InputTokens, u.OutputTokens)
 			display.AddActivity(fmt.Sprintf("%-14s step %d", u.Agent, tracker.Totals().Steps))
-			if display.BudgetExceeded() {
-				fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
-				stopAgent()
-				agentFinished = true
-				finalStatus = persistence.RunStatusKilled
+			if overBudget() {
 				break runLoop
 			}
 
@@ -654,6 +660,9 @@ runLoop:
 			if refusal == "" {
 				sup.Decided(files, resp.Approved, source == "operator", driftReason)
 			}
+			if overBudget() { // the validator's model use counts too
+				break runLoop
+			}
 
 		case procErr := <-agentDone:
 			processExited(procErr)
@@ -718,6 +727,7 @@ runLoop:
 			}
 			final.ProposedEdits = append(final.ProposedEdits, e)
 		}
+		final = scrubSecrets(final, delivered()) // as every proposal is, before a human or the chain sees it
 		resp := askHuman(final)
 		reqJSON, _ := json.Marshal(final)
 		payload, _ := json.Marshal(map[string]any{"type": "yield_decided", "seq": totalYields + 1, "source": "operator",
