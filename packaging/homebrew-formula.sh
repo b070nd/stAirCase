@@ -42,6 +42,9 @@ class Staircase < Formula
 
   def install
     bin.install "staircase"
+    bash_completion.install "completions/staircase.bash" => "staircase"
+    zsh_completion.install "completions/staircase.zsh" => "_staircase"
+    fish_completion.install "completions/staircase.fish"
   end
 
   test do

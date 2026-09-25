@@ -6,8 +6,9 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  id-token: write # cosign keyless signing (Sigstore OIDC)
+  contents: write     # create the release
+  id-token: write     # cosign keyless signing and build provenance (Sigstore OIDC)
+  attestations: write # GitHub artifact attestations
 
 jobs:
   goreleaser:
@@ -34,11 +35,19 @@ jobs:
       - name: Install cosign (for keyless artifact signing)
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da  # v3.7.0
 
+      - name: Release notes from CHANGELOG.md
+        run: ./packaging/release-notes.sh "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/release-notes.md"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552  # v6.3.0
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-checksums: ./dist/checksums.txt

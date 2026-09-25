@@ -5,7 +5,9 @@ version: 2
 
 project_name: staircase
 
-# No before-hooks: CI enforces `go mod tidy -diff`, and nothing uses go:generate.
+before:
+  hooks:
+    - ./packaging/completions.sh # bash/zsh/fish completions for the archives
 
 builds:
   - id: staircase
@@ -13,6 +15,10 @@ builds:
     binary: staircase
     env:
       - CGO_ENABLED=0
+    # Reproducible: no local paths, file times and build date from the commit.
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
     # Windows (amd64) ships as experimental: make check cross-builds it, but it
     # is not run in CI, and run_shell / --agent claude-code need a POSIX shell.
     goos:
@@ -29,7 +35,7 @@ builds:
       - -s -w
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
+      - -X main.date={{.CommitDate}}
 
 archives:
   - id: staircase
@@ -37,9 +43,19 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    # File times from the commit, so archives are byte-reproducible too.
+    builds_info:
+      mtime: "{{ .CommitDate }}"
     files:
-      - LICENSE
-      - README.md
+      - src: LICENSE
+        info: &commit_mtime
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info: *commit_mtime
+      - src: CHANGELOG.md
+        info: *commit_mtime
+      - src: completions/*
+        info: *commit_mtime
 
 checksum:
   name_template: "checksums.txt"
