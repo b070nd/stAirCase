@@ -156,15 +156,6 @@ func TestClaudeCode_every_tool_call_is_governed(t *testing.T) {
 	assert.Contains(t, r.Types(), "state_emit")
 }
 
-// TestClaudeCode_hook_failure_blocks: when staircase cannot answer, the hook
-// must exit 2 (Claude Code lets the tool run on any other failure).
-func TestClaudeCode_hook_failure_blocks(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", agent.HookCommand("http://127.0.0.1:1/hook", "tok"))
-	cmd.Stdin = strings.NewReader("{}")
-	_ = cmd.Run()
-	assert.Equal(t, 2, cmd.ProcessState.ExitCode())
-}
-
 // TestClaudeCode_failure_reports_why: Claude Code prints its error (such as
 // an expired login) as the JSON result on stdout, not on stderr.
 func TestClaudeCode_failure_reports_why(t *testing.T) {

@@ -36,6 +36,7 @@ import (
 
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 )
 
 // Limits caps automatic behaviour within a run (CHECK 7.2.1).
@@ -50,20 +51,16 @@ type Limits struct {
 	// operator regardless of matching rules.
 	MaxTotalYields int `json:"max_total_yields"`
 
-	// MaxRunDurationSecs is the maximum wall-clock duration of a run in
-	// seconds; the orchestrator halts a run that exceeds it (drift_halt).
-	MaxRunDurationSecs int `json:"max_run_duration"`
+	// The drift-supervision limits a blueprint can set too (checkpoint_every,
+	// max_files_changed, max_scope_violations, max_run_secs); the stricter of
+	// the two applies.
+	plan.Limits
+}
 
-	// CheckpointEvery sends every Nth proposal to the operator.
-	CheckpointEvery int `json:"checkpoint_every"`
-
-	// MaxFilesChanged sends a proposal to the operator once the run's approved
-	// changes would touch more distinct files than this.
-	MaxFilesChanged int `json:"max_files_changed"`
-
-	// MaxScopeViolations halts the run (drift_halt) when more proposals than
-	// this reach outside the stories' scope.
-	MaxScopeViolations int `json:"max_scope_violations"`
+// Tighter combines two sets of limits, keeping the stricter of each.
+func (l Limits) Tighter(o Limits) Limits {
+	return Limits{MaxAutoApproved: plan.Stricter(l.MaxAutoApproved, o.MaxAutoApproved),
+		MaxTotalYields: plan.Stricter(l.MaxTotalYields, o.MaxTotalYields), Limits: l.Limits.Tighter(o.Limits)}
 }
 
 // Effect is the outcome a rule produces when it matches.
@@ -105,7 +102,7 @@ type Rule struct {
 //	{
 //	  "version": 1,
 //	  "rules": [...],
-//	  "limits": {"max_auto_approved": 10, "max_total_yields": 50, "max_run_duration": 3600},
+//	  "limits": {"max_auto_approved": 10, "max_total_yields": 50, "max_run_secs": 3600},
 //	  "allow_blanket_deny": false
 //	}
 type Engine struct {
@@ -142,6 +139,9 @@ func LoadEngine(wsDir string) (*Engine, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields() // a misspelt field would silently drop a rule or a limit
 	if err := dec.Decode(&e); err != nil {
+		if strings.Contains(err.Error(), `"max_run_duration"`) {
+			return nil, fmt.Errorf("parse policy file %s: limits.max_run_duration is now max_run_secs", path)
+		}
 		return nil, fmt.Errorf("parse policy file %s: %w", path, err)
 	}
 	// Blanket-deny guard: a rule that matches everything and rejects is dangerous
@@ -247,7 +247,7 @@ func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 	// Hard invariant: shell commands must always reach a human operator.
 	// No policy rule can override this — a broad auto-approve rule could
 	// otherwise silently execute arbitrary OS commands.
-	if req.ActionType == "shell_exec" {
+	if req.ActionType == domain.ActionShellExec {
 		return PolicyDecision{}
 	}
 	for i, r := range e.Rules {

@@ -166,7 +166,7 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("blueprint %.12s: %w", pl.BlueprintHash, err)
 		}
-		pl.Limits = b.PlanLimits()
+		pl.Limits = b.Limits
 	}
 
 	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────

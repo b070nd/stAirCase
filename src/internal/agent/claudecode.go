@@ -98,9 +98,9 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	return nil
 }
 
-// HookCommand is the command a hook runs: it posts the hook input to url and
+// hookCommand is the command a hook runs: it posts the hook input to url and
 // prints the answer. Any failure exits 2, which blocks the tool call.
-func HookCommand(url, token string) string {
+func hookCommand(url, token string) string {
 	return fmt.Sprintf("curl -sSf -H 'Authorization: Bearer %s' --data-binary @- %s || exit 2", token, url)
 }
 
@@ -108,7 +108,7 @@ func HookCommand(url, token string) string {
 // url. Every hook failure exits 2, which blocks the tool call: any other
 // non-zero exit would let it proceed.
 func hookSettings(url, token string) []byte {
-	cmd := HookCommand(url, token)
+	cmd := hookCommand(url, token)
 	hook := func(matcher string) []map[string]any {
 		return []map[string]any{{"matcher": matcher,
 			"hooks": []map[string]any{{"type": "command", "command": cmd, "timeout": hookTimeout}}}}
@@ -205,14 +205,17 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		}
 		return ""
 	case "Bash":
-		return h.propose(ctx, in, "shell_exec", domain.ProposedEdit{File: ".", SearchBlock: "(shell)", ReplaceBlock: a.Command})
+		if ap := h.env.ProposeShell(ctx, "claude-code", "Claude Code Bash", ".", a.Command); !ap.Approved {
+			return ap.Refusal()
+		}
+		return ""
 	case "Write", "Edit":
 		rel, err := h.rel(a.FilePath)
 		if err != nil {
 			return "staircase: only files inside the project can be changed"
 		}
 		if in.Tool == "Write" {
-			return h.propose(ctx, in, "file_edit", domain.ProposedEdit{File: rel, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: a.Content})
+			return h.proposeEdit(ctx, in, domain.ProposedEdit{File: rel, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: a.Content})
 		}
 		if a.ReplaceAll {
 			return "staircase: replace_all is not supported; edit each occurrence on its own"
@@ -223,22 +226,20 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		if err != nil || strings.Count(string(cur), a.OldString) != 1 {
 			return "staircase: old_string must match exactly once in the file"
 		}
-		return h.propose(ctx, in, "file_edit", domain.ProposedEdit{File: rel, SearchBlock: a.OldString, ReplaceBlock: a.NewString})
+		return h.proposeEdit(ctx, in, domain.ProposedEdit{File: rel, SearchBlock: a.OldString, ReplaceBlock: a.NewString})
 	}
 	return "staircase: " + in.Tool + " is not available in a governed run"
 }
 
-func (h *hookServer) propose(ctx context.Context, in hookInput, action string, e domain.ProposedEdit) string {
-	ap := h.env.Propose(ctx, domain.YieldRequest{AgentName: "claude-code", ActionType: action,
-		ProposedEdits: []domain.ProposedEdit{e}, ReasoningTrace: "Claude Code " + in.Tool, ConfidenceScore: 0.9})
+// proposeEdit asks for an edit and keeps its approval until PostToolUse.
+func (h *hookServer) proposeEdit(ctx context.Context, in hookInput, e domain.ProposedEdit) string {
+	ap := h.env.ProposeEdit(ctx, "claude-code", "Claude Code "+in.Tool, e)
 	if !ap.Approved {
-		return "rejected: " + orDefault(ap.Feedback, "no feedback")
+		return ap.Refusal()
 	}
-	if action == "file_edit" {
-		h.mu.Lock()
-		h.pending[in.ToolUseID] = ap
-		h.mu.Unlock()
-	}
+	h.mu.Lock()
+	h.pending[in.ToolUseID] = ap
+	h.mu.Unlock()
 	return ""
 }
 

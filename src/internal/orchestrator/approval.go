@@ -28,6 +28,7 @@ const maxApprovedFileBytes = 200 << 10
 const (
 	MarkerNewFile    = "(new file)"    // replace_block is the complete new content
 	MarkerDeleteFile = "(delete file)" // the file is removed
+	MarkerShell      = "(shell)"       // a shell_exec proposal: file is the working directory, replace_block the command
 )
 
 // approvedFile is what the operator approved for one path.

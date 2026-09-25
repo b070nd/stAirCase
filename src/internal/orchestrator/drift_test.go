@@ -155,13 +155,13 @@ func TestDrift_halt_and_ack(t *testing.T) {
 	assert.Contains(t, events[0].Payload, `"ack_drift":1`)
 }
 
-// TestDrift_run_time_limit: a run past max_run_duration halts even while its
+// TestDrift_run_time_limit: a run past max_run_secs halts even while its
 // agent keeps working.
 func TestDrift_run_time_limit(t *testing.T) {
 	started := time.Now()
 	r := runtest.Run(t, runtest.Options{
 		Setup: func(_ *persistence.Store, wsDir string, _ int64) {
-			_ = os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_duration":1}}`), 0o600)
+			_ = os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_secs":1}}`), 0o600)
 		},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, _ *orchestrator.AgentEnv) error {
 			<-ctx.Done()

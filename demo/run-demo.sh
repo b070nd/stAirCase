@@ -31,14 +31,9 @@ done
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APPROVAL_TOKEN="demo-approval-token"
 
-command -v go   >/dev/null || { echo "✗ go required"; exit 1; }
-command -v git  >/dev/null || { echo "✗ git required"; exit 1; }
-command -v curl >/dev/null || { echo "✗ curl required"; exit 1; }
-
-say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
-note() { printf '  \033[2m%s\033[0m\n' "$*"; }
-ok()   { printf '  ✓ %s\n' "$*"; }
-die()  { echo "✗ $*"; [ -f "${RUN_LOG:-}" ] && tail -20 "$RUN_LOG"; exit 1; }
+# shellcheck source=demo/lib.sh
+. "$REPO_ROOT/demo/lib.sh"
+require_tools go git curl
 
 # ── disposable workspace ──────────────────────────────────────────────────────
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/staircase-demo.XXXXXX")"
@@ -55,11 +50,7 @@ cleanup() {
 trap cleanup EXIT
 
 say "Building staircase and the demo's stand-in model"
-STAIRCASE_BIN="$WORK/staircase"
-DEMOTOOL="$WORK/demotool"
-( cd "$REPO_ROOT" && CGO_ENABLED=0 go build -o "$STAIRCASE_BIN" ./src/cmd/staircase \
-                  && CGO_ENABLED=0 go build -o "$DEMOTOOL" ./demo/demotool )
-staircase() { "$STAIRCASE_BIN" "$@"; }
+build_binaries "$WORK"
 APPROVAL_PORT="$("$DEMOTOOL" freeport)"
 
 # ── the product repository (with uncommitted work the run must not touch) ─────

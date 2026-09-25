@@ -25,12 +25,12 @@ const FileName = "blueprint.yaml"
 // Blueprint is the resolved content of a blueprint: file references are
 // replaced by the files' text, so the snapshot stands on its own.
 type Blueprint struct {
-	Name       string  `yaml:"name" json:"name"`
-	Supervisor string  `yaml:"supervisor" json:"supervisor"`
-	Agents     []Agent `yaml:"agents" json:"agents"`
-	Edges      []Edge  `yaml:"edges" json:"edges"`
-	Cases      []Case  `yaml:"cases" json:"cases"`
-	Limits     Limits  `yaml:"limits" json:"limits"`
+	Name       string      `yaml:"name" json:"name"`
+	Supervisor string      `yaml:"supervisor" json:"supervisor"`
+	Agents     []Agent     `yaml:"agents" json:"agents"`
+	Edges      []Edge      `yaml:"edges" json:"edges"`
+	Cases      []Case      `yaml:"cases" json:"cases"`
+	Limits     plan.Limits `yaml:"limits" json:"limits"` // enforced by drift supervision
 }
 
 // Agent is one agent; its prompt is inline or in a file of the blueprint.
@@ -66,14 +66,6 @@ type Story struct {
 type Scope struct {
 	Allow    []string `yaml:"allow" json:"allow,omitempty"`
 	MaxFiles int      `yaml:"max_files" json:"max_files,omitempty"`
-}
-
-// Limits bound a run of the blueprint's cases (enforced by drift supervision).
-type Limits struct {
-	CheckpointEvery    int `yaml:"checkpoint_every" json:"checkpoint_every,omitempty"`
-	MaxFilesChanged    int `yaml:"max_files_changed" json:"max_files_changed,omitempty"`
-	MaxScopeViolations int `yaml:"max_scope_violations" json:"max_scope_violations,omitempty"`
-	MaxRunSecs         int `yaml:"max_run_secs" json:"max_run_secs,omitempty"`
 }
 
 // Load reads dir/blueprint.yaml, rejecting unknown fields, and resolves its
@@ -222,16 +214,10 @@ func (b Blueprint) Check(p plan.Plan, slug string) error {
 	if !reflect.DeepEqual(got, wantStories) {
 		errs = append(errs, errors.New("stories differ from the blueprint"))
 	}
-	if p.Limits != b.PlanLimits() {
+	if p.Limits != b.Limits {
 		errs = append(errs, errors.New("limits differ from the blueprint"))
 	}
 	return errors.Join(errs...)
-}
-
-// PlanLimits are the blueprint's limits as a plan carries them.
-func (b Blueprint) PlanLimits() plan.Limits {
-	return plan.Limits{CheckpointEvery: b.Limits.CheckpointEvery, MaxFilesChanged: b.Limits.MaxFilesChanged,
-		MaxScopeViolations: b.Limits.MaxScopeViolations, MaxRunSecs: b.Limits.MaxRunSecs}
 }
 
 // Binding is what binding a project to this blueprint creates.

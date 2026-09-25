@@ -195,3 +195,15 @@ type YieldResponse struct {
 	Approved bool   `json:"approved"`
 	Feedback string `json:"feedback,omitempty"`
 }
+
+// Action types of a YieldRequest.
+const (
+	ActionFileEdit    = "file_edit"    // create, edit or delete files
+	ActionShellExec   = "shell_exec"   // run a shell command
+	ActionFinalReview = "final_review" // a human approves a run's whole change
+)
+
+// Decide is the answer to a yield request.
+func Decide(approved bool, feedback string) YieldResponse {
+	return YieldResponse{Type: "yield_response", Approved: approved, Feedback: feedback}
+}

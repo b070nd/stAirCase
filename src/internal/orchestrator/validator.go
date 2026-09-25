@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/engine"
 	"github.com/b070nd/staircase-core/src/internal/llm"
+	"github.com/b070nd/staircase-core/src/internal/monitor"
 )
 
 // Validator is an automated reviewer: a model that decides in-scope file edits
@@ -43,10 +45,8 @@ var sensitivePaths = []string{".github/**", "**/.gitlab-ci.yml", "**/Makefile", 
 
 func sensitive(files []string) string {
 	for _, f := range files {
-		for _, g := range sensitivePaths {
-			if engine.MatchGlob(g, f) {
-				return f
-			}
+		if engine.MatchAny(sensitivePaths, f) {
+			return f
 		}
 	}
 	return ""
@@ -117,4 +117,55 @@ func (v *Validator) review(ctx context.Context, before, after map[string]*approv
 		return verdict{}, resp, fmt.Errorf("validator reply is not a JSON verdict: %v", err)
 	}
 	return vd, resp, nil
+}
+
+// decide lets the validator decide a proposal the policy left open. It
+// returns decided=false when a human must decide, with the reason (empty when
+// no validator runs or the proposal is not a file edit). A nil validator
+// decides nothing.
+func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files []string,
+	next map[string]*approvedFile, appr *approvals, tracker *monitor.Tracker) (why string, resp domain.YieldResponse, decided bool) {
+	if v == nil || req.ActionType != domain.ActionFileEdit || appr == nil {
+		return "", resp, false
+	}
+	if f := sensitive(files); f != "" {
+		return "sensitive path " + f + " — a human decides", resp, false
+	}
+	if v.rejectRun >= validatorRejectLimit {
+		return fmt.Sprintf("the validator rejected the last %d proposals — a human decides", v.rejectRun), resp, false
+	}
+	before := map[string]*approvedFile{}
+	for p := range next {
+		f, err := appr.current(p)
+		if err != nil {
+			return "validator: " + err.Error(), resp, false
+		}
+		before[p] = f
+	}
+	vd, llmResp, err := v.review(ctx, before, next)
+	if llmResp.InputTokens+llmResp.OutputTokens > 0 {
+		tracker.Record("validator", v.Model, llmResp.InputTokens, llmResp.OutputTokens)
+	}
+	if err != nil {
+		return "validator unavailable (" + err.Error() + ") — a human decides", resp, false
+	}
+	if !*vd.Approve {
+		v.rejectRun++
+		return "", domain.Decide(false, "review: "+vd.Reason), true
+	}
+	v.rejectRun = 0
+	v.approvals++
+	if v.approvals%validatorSampleEvery == 0 {
+		return "the validator approved (" + vd.Reason + ") — sampled for human review", resp, false
+	}
+	v.unreviewed = true
+	return "", domain.Decide(true, "review: "+vd.Reason), true
+}
+
+// humanDecided records that a human decided in the validator's place, which
+// ends a run of rejections.
+func (v *Validator) humanDecided() {
+	if v != nil {
+		v.rejectRun = 0
+	}
 }

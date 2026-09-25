@@ -28,15 +28,14 @@ case "$MODE" in
   *) echo "usage: smoke.sh model|claude"; exit 2 ;;
 esac
 
-say() { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
-die() { echo "✗ $*"; exit 1; }
+# shellcheck source=demo/lib.sh
+. "$REPO_ROOT/demo/lib.sh"
+require_tools go git curl
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/staircase-smoke.XXXXXX")"
 export STAIRCASE_DIR="$WORK/.staircase"
 trap 'kill ${RUN_PID:-} 2>/dev/null || true; rm -rf "$WORK"' EXIT
-( cd "$REPO_ROOT" && CGO_ENABLED=0 go build -o "$WORK/staircase" ./src/cmd/staircase \
-                  && CGO_ENABLED=0 go build -o "$WORK/demotool" ./demo/demotool )
-staircase() { "$WORK/staircase" "$@"; }
+build_binaries "$WORK"
 
 REPO="$WORK/app"
 mkdir -p "$REPO"
@@ -80,14 +79,14 @@ staircase compile 1 >/dev/null
 # run <run-id> <hold-first-approval-seconds> <staircase run flags...>
 run() {
   local id="$1" hold="$2"; shift 2
-  local port; port="$("$WORK/demotool" freeport)"
+  local port; port="$("$DEMOTOOL" freeport)"
   staircase run 1 --approval-port "$port" --approval-token t "$@" >"$WORK/run$id.log" 2>&1 &
   RUN_PID=$!
   local api="http://127.0.0.1:$port/v1/yields" n=0 y
   while kill -0 "$RUN_PID" 2>/dev/null; do
-    y="$(curl -s -H 'Authorization: Bearer t' "$api" 2>/dev/null | "$WORK/demotool" first-yield || true)"
+    y="$(curl -s -H 'Authorization: Bearer t' "$api" 2>/dev/null | "$DEMOTOOL" first-yield || true)"
     if [ -n "$y" ]; then
-      curl -s -H 'Authorization: Bearer t' "$api/$y" | "$WORK/demotool" show-yield
+      curl -s -H 'Authorization: Bearer t' "$api/$y" | "$DEMOTOOL" show-yield
       if [ "$n" = 0 ] && [ "$hold" -gt 0 ]; then echo "  holding the first approval ${hold}s"; sleep "$hold"; fi
       curl -s -X POST -H 'Authorization: Bearer t' -d '{"feedback":"smoke"}' "$api/$y/approve" >/dev/null
       n=$((n + 1))

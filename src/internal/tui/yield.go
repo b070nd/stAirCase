@@ -20,7 +20,7 @@ func RunYieldTUI(req domain.YieldRequest) domain.YieldResponse {
 	result, err := p.Run()
 	if err != nil {
 		// Fallback to rejection on TUI failure.
-		return domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "TUI error: " + err.Error()}
+		return domain.Decide(false, "TUI error: "+err.Error())
 	}
 	return result.(yieldModel).resp
 }
@@ -79,7 +79,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case stateReviewing:
 			switch msg.String() {
 			case "y", "Y":
-				m.resp = domain.YieldResponse{Type: "yield_response", Approved: true}
+				m.resp = domain.Decide(true, "")
 				m.state = stateDone
 				return m, tea.Quit
 			case "n", "N", "q", "esc":
@@ -89,11 +89,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case stateFeedback:
 			switch msg.Type {
 			case tea.KeyEnter:
-				m.resp = domain.YieldResponse{
-					Type:     "yield_response",
-					Approved: false,
-					Feedback: m.feedback.String(),
-				}
+				m.resp = domain.Decide(false, m.feedback.String())
 				m.state = stateDone
 				return m, tea.Quit
 			case tea.KeyBackspace:

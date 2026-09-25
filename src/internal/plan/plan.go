@@ -40,12 +40,32 @@ type Plan struct {
 	Digest string `json:"-"`
 }
 
-// Limits bound a run of the plan; zero values mean no limit.
+// Limits bound a run (drift supervision); zero values mean no limit. A
+// blueprint declares them (YAML), a plan carries them, policy.json adds its own.
 type Limits struct {
-	CheckpointEvery    int `json:"checkpoint_every,omitempty"`
-	MaxFilesChanged    int `json:"max_files_changed,omitempty"`
-	MaxScopeViolations int `json:"max_scope_violations,omitempty"`
-	MaxRunSecs         int `json:"max_run_secs,omitempty"`
+	CheckpointEvery    int `yaml:"checkpoint_every" json:"checkpoint_every,omitempty"`         // every Nth proposal goes to a human
+	MaxFilesChanged    int `yaml:"max_files_changed" json:"max_files_changed,omitempty"`       // past this many distinct files, a human decides
+	MaxScopeViolations int `yaml:"max_scope_violations" json:"max_scope_violations,omitempty"` // more out-of-scope proposals halt the run
+	MaxRunSecs         int `yaml:"max_run_secs" json:"max_run_secs,omitempty"`                 // a longer run is halted
+}
+
+// Tighter combines two sets of limits, keeping the stricter of each: a
+// workspace policy can only tighten a blueprint's limits.
+func (l Limits) Tighter(o Limits) Limits {
+	return Limits{
+		CheckpointEvery:    Stricter(l.CheckpointEvery, o.CheckpointEvery),
+		MaxFilesChanged:    Stricter(l.MaxFilesChanged, o.MaxFilesChanged),
+		MaxScopeViolations: Stricter(l.MaxScopeViolations, o.MaxScopeViolations),
+		MaxRunSecs:         Stricter(l.MaxRunSecs, o.MaxRunSecs),
+	}
+}
+
+// Stricter is the smaller of two limits, where 0 means no limit.
+func Stricter(a, b int) int {
+	if a == 0 || (b != 0 && b < a) {
+		return b
+	}
+	return a
 }
 
 // Brief is the case as its agents are told it: the PRD, then each story with

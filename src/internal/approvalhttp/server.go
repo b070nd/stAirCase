@@ -292,11 +292,7 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 
-	py.ch <- domain.YieldResponse{
-		Type:     "yield_response",
-		Approved: approved,
-		Feedback: body.Feedback,
-	}
+	py.ch <- domain.Decide(approved, body.Feedback)
 
 	action := "rejected"
 	if approved {
@@ -311,11 +307,7 @@ func (s *Server) rejectAll(reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, py := range s.pending {
-		py.ch <- domain.YieldResponse{
-			Type:     "yield_response",
-			Approved: false,
-			Feedback: reason,
-		}
+		py.ch <- domain.Decide(false, reason)
 		delete(s.pending, id)
 	}
 }

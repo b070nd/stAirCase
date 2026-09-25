@@ -20,8 +20,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -318,10 +316,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if haltedRun != 0 {
 		bound["ack_drift"] = haltedRun
 	}
-	if payload, err := json.Marshal(bound); err == nil {
-		if _, err := r.store.AppendEventLogChained(run.ID, "run_bound", string(payload), ""); err != nil {
-			return fmt.Errorf("audit run_bound: %w", err)
-		}
+	if err := r.audit(run.ID, "run_bound", bound); err != nil {
+		return fmt.Errorf("audit run_bound: %w", err)
 	}
 
 	// ── RUN SETUP ─────────────────────────────────────────────────────────────
@@ -359,21 +355,19 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err != nil {
 		return fmt.Errorf("load policy: %w", err)
 	}
-	limits := policyEngine.Limits
+	limits := policyEngine.Limits.Limits // the drift-supervision limits of the policy …
 	if opts.Plan != nil {
-		l := opts.Plan.Limits
-		limits = limits.Tighter(policy.Limits{CheckpointEvery: l.CheckpointEvery, MaxFilesChanged: l.MaxFilesChanged,
-			MaxScopeViolations: l.MaxScopeViolations, MaxRunDurationSecs: l.MaxRunSecs})
+		limits = limits.Tighter(opts.Plan.Limits) // … and of the plan (its blueprint's)
 	}
 	scope, maxFiles, err := r.driftScope(caseID, opts.Plan)
 	if err != nil {
 		return err
 	}
-	limits = limits.Tighter(policy.Limits{MaxFilesChanged: maxFiles})
+	limits = limits.Tighter(plan.Limits{MaxFilesChanged: maxFiles})
 	sup = policy.NewSupervisor(scope, limits)
 	var runDeadline <-chan time.Time
-	if limits.MaxRunDurationSecs > 0 {
-		runDeadline = time.After(time.Duration(limits.MaxRunDurationSecs) * time.Second)
+	if limits.MaxRunSecs > 0 {
+		runDeadline = time.After(time.Duration(limits.MaxRunSecs) * time.Second)
 	}
 	// P2: verify Ed25519 signature on policy.json when sidecar is present.
 	// Absent signature warns (backward compat); invalid signature is fatal.
@@ -383,35 +377,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		obs.Log.Warn("policy.json is unsigned — run 'staircase policy sign' to enable tamper detection")
 	}
 
-	var approvalSrv *approvalhttp.Server
-	if opts.ApprovalPort > 0 {
-		approvalAddr := fmt.Sprintf("127.0.0.1:%d", opts.ApprovalPort)
-		approvalToken := opts.ApprovalToken
-		if approvalToken == "" {
-			raw := make([]byte, 16)
-			if _, err := rand.Read(raw); err != nil {
-				return fmt.Errorf("generate approval token: %w", err)
-			}
-			approvalToken = hex.EncodeToString(raw)
-		}
-		approvalSrv = approvalhttp.NewServer(approvalAddr, approvalToken)
-		if err := approvalSrv.Start(ctx); err != nil {
-			return fmt.Errorf("approval http server: %w", err)
-		}
-		fmt.Fprintf(os.Stdout, "   🌐 Approval API: http://%s/v1/yields\n", approvalSrv.ListenAddr())
-		fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", approvalToken)
+	approvalSrv, err := startApprovalServer(ctx, opts)
+	if err != nil {
+		return err
 	}
-
 	var debugLog io.Writer
 	if opts.Debug {
-		logDir := filepath.Join(r.wsDir, "log")
-		if err := os.MkdirAll(logDir, 0o700); err == nil {
-			logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", run.ID))
-			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-				debugLog = f
-				defer func() { _ = f.Close() }()
-				fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
-			}
+		if f := r.openDebugLog(run.ID); f != nil {
+			debugLog = f
+			defer func() { _ = f.Close() }()
 		}
 	}
 
@@ -474,8 +448,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		case <-time.After(lostGrace):
 			// Nothing more can be done in-process; the run ends without it.
 			obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", run.ID)
-			_, _ = r.store.AppendEventLogChained(run.ID, "agent_unresponsive",
-				fmt.Sprintf(`{"type":"agent_unresponsive","grace_seconds":%g}`, lostGrace.Seconds()), "")
+			_ = r.audit(run.ID, "agent_unresponsive", map[string]any{"grace_seconds": lostGrace.Seconds()})
 		}
 	}
 	agentFinished := false
@@ -491,8 +464,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("mark case running: %w", err)
 	}
 
-	// Yield counters for policy limit enforcement (CHECK 7.2.1, 7.2.2).
-	var autoApproved, totalYields int
+	dec := &deciders{approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+		display: display, tracker: tracker,
+		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
 	processExited := func(procErr error) {
 		agentFinished = true
@@ -520,8 +494,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	driftHalt := func(reason string) {
 		sup.Halt(reason)
-		payload, _ := json.Marshal(map[string]any{"type": "drift_halt", "reason": reason})
-		_, _ = r.store.AppendEventLogChained(run.ID, "drift_halt", string(payload), "")
+		_ = r.audit(run.ID, "drift_halt", map[string]any{"reason": reason})
 		fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s — halting run #%d\n", reason, run.ID)
 		cancelled()
 	}
@@ -540,125 +513,43 @@ runLoop:
 			display.Render()
 
 		case p := <-proposals:
-			yieldReq := p.req
-			totalYields++
 			// CHECK 4.4.3 / 7.4.2: scrub delivered secret values from all
 			// operator-visible fields before any HITL presentation path.
-			yieldReq = scrubSecrets(yieldReq, delivered())
+			req := scrubSecrets(p.req, delivered())
 			// Child span of the run: its duration is the yield→decision
 			// latency, i.e. how long the human (or policy) took to decide.
 			_, yieldSpan := obs.Tracer.Start(ctx, "staircase.yield",
 				trace.WithAttributes(
-					attribute.String("staircase.agent", yieldReq.AgentName),
-					attribute.String("staircase.action_type", yieldReq.ActionType)))
-			var resp domain.YieldResponse
-			source := "operator"
-			// The orchestrator derives exactly what approving this proposal would
-			// commit. A proposal that cannot be applied as shown (bad path, search
-			// text not found, too large) is refused before policy or human.
-			var next map[string]*approvedFile
-			refusal := ""
-			if yieldReq.ActionType == "file_edit" && appr != nil {
-				if n, err := appr.derive(yieldReq.ProposedEdits); err != nil {
-					refusal = err.Error()
-					if errors.Is(err, errBadPath) {
-						payload, _ := json.Marshal(map[string]any{"type": "approval_path_escape", "agent": yieldReq.AgentName, "detail": refusal})
-						_, _ = r.store.AppendEventLogChained(run.ID, "approval_path_escape", string(payload), "")
-					}
-				} else {
-					next = n
-				}
-			}
-			// Drift supervision: a proposal reaching outside the stories' scope,
-			// past a limit or at a checkpoint goes to a human, never to policy.
-			var files []string
-			for f := range next {
-				files = append(files, f)
-			}
-			sort.Strings(files)
-			driftReason, halt := "", false
-			if refusal == "" {
-				driftReason, halt = sup.Check(files)
-				yieldReq.Drift = driftReason
-			}
-			if refusal != "" {
-				resp = domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "refused by the orchestrator: " + refusal}
-				source = "orchestrator"
-				display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", yieldReq.AgentName, yieldReq.ActionType, refusal))
-			} else if halt {
-				resp = domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "refused: the run has drifted too far from its stories' scope and is halting"}
-				source = "drift"
-			} else if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit || driftReason != "" {
-				// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
-				// yield goes to the human operator regardless of policy rules.
-				why := strings.Trim(limitReason+"; "+driftReason, "; ")
-				display.AddActivity(fmt.Sprintf("%-14s DRIFT  %s → HITL (%s)", yieldReq.AgentName, yieldReq.ActionType, why))
-				resp = askHuman(yieldReq)
-				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
-			} else if dec := policyEngine.Evaluate(yieldReq); dec.Matched {
-				resp = domain.YieldResponse{Type: "yield_response", Approved: dec.Approved, Feedback: dec.Reason}
-				if dec.Approved {
-					autoApproved++
-				}
-				verb := "rejected"
-				if dec.Approved {
-					verb = "approved"
-				}
-				display.AddActivity(fmt.Sprintf("%-14s AUTO   %s → %s (%s)", yieldReq.AgentName, yieldReq.ActionType, verb, dec.Reason))
-				source = "policy"
-			} else if vr, vresp, decided := r.validate(ctx, val, yieldReq, files, next, appr, tracker); decided {
-				resp, source = vresp, "validator:"+val.Model
-				display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → %v (%s)", yieldReq.AgentName, yieldReq.ActionType, resp.Approved, resp.Feedback))
-			} else {
-				yieldReq.Review = vr
-				resp = askHuman(yieldReq)
-				if val != nil && vr != "" {
-					val.rejectRun = 0 // a human has looked
-				}
-				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
-			}
+					attribute.String("staircase.agent", req.AgentName),
+					attribute.String("staircase.action_type", req.ActionType)))
+			rl := dec.decide(ctx, &req)
+			yieldSpan.SetAttributes(
+				attribute.Bool("staircase.approved", rl.resp.Approved),
+				attribute.String("staircase.decision_source", rl.source))
+			yieldSpan.End()
 			// Record the decision, with the exact approved content, before the
 			// runtime can act on it: an approval that is not on the audit chain
 			// is never released (CHECK 7.3.1).
-			yieldSpan.SetAttributes(
-				attribute.Bool("staircase.approved", resp.Approved),
-				attribute.String("staircase.decision_source", source))
-			yieldSpan.End()
-			reqJSON, _ := json.Marshal(yieldReq)
-			decided := map[string]any{
-				"type": "yield_decided", "seq": totalYields, "source": source,
-				"agent": yieldReq.AgentName, "action_type": yieldReq.ActionType,
-				"approved": resp.Approved, "feedback": resp.Feedback,
-				"request_sha256": sha256Hex(reqJSON), "base_sha": baseSHA,
-			}
-			if resp.Approved && next != nil {
-				decided["files"] = digest(next)
-			}
-			if driftReason != "" {
-				decided["drift"] = driftReason
-			}
-			payload, _ := json.Marshal(decided)
-			if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
-				p.reply <- decision{resp: domain.YieldResponse{Type: "yield_response", Approved: false,
-					Feedback: "the orchestrator could not record this decision; the run is stopping"}}
+			if err := r.audit(run.ID, "yield_decided", yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)); err != nil {
+				p.reply <- decision{resp: domain.Decide(false, "the orchestrator could not record this decision; the run is stopping")}
 				stopAgent()
 				agentFinished = true
 				finalStatus = persistence.RunStatusFailed
 				runErr = fmt.Errorf("audit yield_decided: %w", err)
 				break runLoop
 			}
-			d := decision{resp: resp}
-			if resp.Approved && next != nil {
-				appr.record(next)
-				d.files = next
+			d := decision{resp: rl.resp}
+			if rl.resp.Approved && rl.next != nil {
+				appr.record(rl.next)
+				d.files = rl.next
 			}
 			p.reply <- d
-			if halt {
+			if rl.halt {
 				driftHalt(fmt.Sprintf("more than %d proposals reached outside the stories' scope", limits.MaxScopeViolations))
 				break runLoop
 			}
-			if refusal == "" {
-				sup.Decided(files, resp.Approved, source == "operator", driftReason)
+			if !rl.refused {
+				sup.Decided(rl.files, rl.resp.Approved, rl.source == "operator", rl.drift)
 			}
 			if overBudget() { // the validator's model use counts too
 				break runLoop
@@ -669,7 +560,7 @@ runLoop:
 			break runLoop
 
 		case <-runDeadline:
-			driftHalt(fmt.Sprintf("the run exceeded its %d s limit", limits.MaxRunDurationSecs))
+			driftHalt(fmt.Sprintf("the run exceeded its %d s limit", limits.MaxRunSecs))
 			break runLoop
 
 		case <-ctx.Done():
@@ -681,62 +572,22 @@ runLoop:
 
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
-	rep := sup.Report()
-	if payload, err := json.Marshal(map[string]any{"type": "drift_report", "report": rep}); err == nil {
-		_, _ = r.store.AppendEventLogChained(run.ID, "drift_report", string(payload), "")
-	}
-	if len(rep.Scope) > 0 || rep.Violations > 0 || rep.Halted != "" {
-		halted := ""
-		if rep.Halted != "" {
-			halted = ", halted: " + rep.Halted
-		}
-		fmt.Fprintf(os.Stdout, "   🧭 Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
-			len(rep.InScope), len(rep.OutOfScope), rep.Overrides, rep.Violations, halted)
-	}
+	r.reportDrift(run.ID, sup)
 	if finalStatus == persistence.RunStatusSuccess && appr != nil {
-		// The worktree must hold exactly the approved state on the base commit:
-		// approved paths with their approved bytes, no other change in the files
-		// or the index, and no commits of the agent's own.
-		violations, err := appr.verify()
+		ok, err := r.verifyWorktree(run.ID, appr, display)
 		if err != nil {
 			return err
 		}
-		for _, v := range violations {
-			event := map[string]any{"type": v.event, "detail": v.detail}
-			if v.file != "" {
-				event["file"] = v.file
-			}
-			payload, _ := json.Marshal(event)
-			_, _ = r.store.AppendEventLogChained(run.ID, v.event, string(payload), "")
-			obs.Log.Error("worktree does not match the approvals — refusing to commit",
-				"event", v.event, "file", v.file, "detail", v.detail, "run_id", run.ID)
-			display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", v.file, v.detail))
+		if !ok {
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
 	if finalStatus == persistence.RunStatusSuccess && val != nil && val.unreviewed {
-		// The validator approved changes no human has seen: a human approves
-		// the run's whole change once before it is committed.
-		final := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: "final_review",
-			ReasoningTrace: "Final review: the validator approved changes in this run. Approve to commit exactly these files."}
-		for _, p := range slices.Sorted(maps.Keys(appr.files)) {
-			f := appr.files[p]
-			e := domain.ProposedEdit{File: p, SearchBlock: "(final content)", ReplaceBlock: string(f.content)}
-			if f.deleted {
-				e.SearchBlock, e.ReplaceBlock = MarkerDeleteFile, ""
-			}
-			final.ProposedEdits = append(final.ProposedEdits, e)
+		approved, err := dec.finalReview(baseSHA, delivered())
+		if err != nil {
+			return err
 		}
-		final = scrubSecrets(final, delivered()) // as every proposal is, before a human or the chain sees it
-		resp := askHuman(final)
-		reqJSON, _ := json.Marshal(final)
-		payload, _ := json.Marshal(map[string]any{"type": "yield_decided", "seq": totalYields + 1, "source": "operator",
-			"agent": final.AgentName, "action_type": final.ActionType, "approved": resp.Approved, "feedback": resp.Feedback,
-			"request_sha256": sha256Hex(reqJSON), "base_sha": baseSHA, "files": digest(appr.files)})
-		if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
-			return fmt.Errorf("audit final review: %w", err)
-		}
-		if !resp.Approved {
+		if !approved {
 			fmt.Fprintf(os.Stdout, "   ✋ Final review rejected — nothing committed\n")
 			finalStatus = persistence.RunStatusFailed
 		}
@@ -836,7 +687,7 @@ func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
 // attacker cannot forge an approval.
 func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
 	reject := func(msg string) domain.YieldResponse {
-		return domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: msg}
+		return domain.Decide(false, msg)
 	}
 	// A fresh yield_id makes every request unique, so an approval captured for
 	// one request never matches another — not even an identical re-proposal.
@@ -999,44 +850,90 @@ func (r *Runner) driftScope(caseID int64, pl *plan.Plan) (scope []string, maxFil
 	return scope, maxFiles, nil
 }
 
-// validate lets the validator decide a proposal the policy left open. It
-// returns decided=false when a human must decide, with the reason (empty when
-// no validator runs or the proposal is not a file edit).
-func (r *Runner) validate(ctx context.Context, v *Validator, req domain.YieldRequest, files []string,
-	next map[string]*approvedFile, appr *approvals, tracker *monitor.Tracker) (why string, resp domain.YieldResponse, decided bool) {
-	if v == nil || req.ActionType != "file_edit" || appr == nil {
-		return "", resp, false
-	}
-	if f := sensitive(files); f != "" {
-		return "sensitive path " + f + " — a human decides", resp, false
-	}
-	if v.rejectRun >= validatorRejectLimit {
-		return fmt.Sprintf("the validator rejected the last %d proposals — a human decides", v.rejectRun), resp, false
-	}
-	before := map[string]*approvedFile{}
-	for p := range next {
-		f, err := appr.current(p)
-		if err != nil {
-			return "validator: " + err.Error(), resp, false
-		}
-		before[p] = f
-	}
-	vd, llmResp, err := v.review(ctx, before, next)
-	if llmResp.InputTokens+llmResp.OutputTokens > 0 {
-		tracker.Record("validator", v.Model, llmResp.InputTokens, llmResp.OutputTokens)
-	}
+// audit appends event to the run's chain; its payload is fields with the
+// event's type.
+func (r *Runner) audit(runID int64, event string, fields map[string]any) error {
+	payload := map[string]any{"type": event}
+	maps.Copy(payload, fields)
+	b, err := json.Marshal(payload)
 	if err != nil {
-		return "validator unavailable (" + err.Error() + ") — a human decides", resp, false
+		return err
 	}
-	if !*vd.Approve {
-		v.rejectRun++
-		return "", domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "review: " + vd.Reason}, true
+	_, err = r.store.AppendEventLogChained(runID, event, string(b), "")
+	return err
+}
+
+// reportDrift audits the run's drift report and summarizes it.
+func (r *Runner) reportDrift(runID int64, sup *policy.Supervisor) {
+	rep := sup.Report()
+	_ = r.audit(runID, "drift_report", map[string]any{"report": rep})
+	if len(rep.Scope) == 0 && rep.Violations == 0 && rep.Halted == "" {
+		return
 	}
-	v.rejectRun = 0
-	v.approvals++
-	if v.approvals%validatorSampleEvery == 0 {
-		return "the validator approved (" + vd.Reason + ") — sampled for human review", resp, false
+	halted := ""
+	if rep.Halted != "" {
+		halted = ", halted: " + rep.Halted
 	}
-	v.unreviewed = true
-	return "", domain.YieldResponse{Type: "yield_response", Approved: true, Feedback: "review: " + vd.Reason}, true
+	fmt.Fprintf(os.Stdout, "   🧭 Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
+		len(rep.InScope), len(rep.OutOfScope), rep.Overrides, rep.Violations, halted)
+}
+
+// verifyWorktree checks that the worktree holds exactly the approved state on
+// the base commit — approved paths with their approved bytes, no other change
+// in the files or the index, no commits of the agent's own — and audits every
+// violation. It reports whether the run may commit.
+func (r *Runner) verifyWorktree(runID int64, appr *approvals, display *monitor.Display) (bool, error) {
+	violations, err := appr.verify()
+	if err != nil {
+		return false, err
+	}
+	for _, v := range violations {
+		event := map[string]any{"detail": v.detail}
+		if v.file != "" {
+			event["file"] = v.file
+		}
+		_ = r.audit(runID, v.event, event)
+		obs.Log.Error("worktree does not match the approvals — refusing to commit",
+			"event", v.event, "file", v.file, "detail", v.detail, "run_id", runID)
+		display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", v.file, v.detail))
+	}
+	return len(violations) == 0, nil
+}
+
+// startApprovalServer starts the local approval API when the run asks for one
+// (--approval-port); nil otherwise.
+func startApprovalServer(ctx context.Context, opts RunOptions) (*approvalhttp.Server, error) {
+	if opts.ApprovalPort <= 0 {
+		return nil, nil
+	}
+	token := opts.ApprovalToken
+	if token == "" {
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			return nil, fmt.Errorf("generate approval token: %w", err)
+		}
+		token = hex.EncodeToString(raw)
+	}
+	srv := approvalhttp.NewServer(fmt.Sprintf("127.0.0.1:%d", opts.ApprovalPort), token)
+	if err := srv.Start(ctx); err != nil {
+		return nil, fmt.Errorf("approval http server: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "   🌐 Approval API: http://%s/v1/yields\n", srv.ListenAddr())
+	fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", token)
+	return srv, nil
+}
+
+// openDebugLog opens the run's --debug log; nil when it cannot (the run goes on).
+func (r *Runner) openDebugLog(runID int64) *os.File {
+	logDir := filepath.Join(r.wsDir, "log")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		return nil
+	}
+	logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", runID))
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
+	return f
 }

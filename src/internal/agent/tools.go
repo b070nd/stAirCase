@@ -49,14 +49,10 @@ const (
 // bytes and the tool applies exactly those.
 func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 	root := env.Worktree
-	propose := func(ctx context.Context, action string, e domain.ProposedEdit, reasoning string) orchestrator.Approval {
-		return env.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: action,
-			ProposedEdits: []domain.ProposedEdit{e}, ReasoningTrace: reasoning, ConfidenceScore: 0.9})
-	}
 	edit := func(ctx context.Context, e domain.ProposedEdit, reasoning, done string) string {
-		ap := propose(ctx, "file_edit", e, reasoning)
+		ap := env.ProposeEdit(ctx, agent, reasoning, e)
 		if !ap.Approved {
-			return "rejected: " + orDefault(ap.Feedback, "no feedback")
+			return ap.Refusal()
 		}
 		if err := ap.Apply(root); err != nil {
 			return "error: " + err.Error()
@@ -111,9 +107,8 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				Reasoning  string `json:"reasoning"`
 				WorkingDir string `json:"working_dir"`
 			}) string {
-				ap := propose(ctx, "shell_exec", domain.ProposedEdit{File: orDefault(a.WorkingDir, "."), SearchBlock: "(shell)", ReplaceBlock: a.Command}, a.Reasoning)
-				if !ap.Approved {
-					return "rejected: " + orDefault(ap.Feedback, "no feedback")
+				if ap := env.ProposeShell(ctx, agent, a.Reasoning, orDefault(a.WorkingDir, "."), a.Command); !ap.Approved {
+					return ap.Refusal()
 				}
 				return runShell(ctx, root, a.WorkingDir, a.Command)
 			}))

@@ -523,4 +523,13 @@ func TestLoadEngine_fails_closed(t *testing.T) {
 	e, err := policy.LoadEngine(dir)
 	require.NoError(t, err)
 	assert.False(t, e.Evaluate(fileEditReq("file_edit", 1, "a.go")).Approved)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_duration":60}}`), 0o600))
+	_, err = policy.LoadEngine(dir)
+	assert.ErrorContains(t, err, "max_run_duration is now max_run_secs")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_secs":60,"max_auto_approved":2}}`), 0o600))
+	e, err = policy.LoadEngine(dir)
+	require.NoError(t, err)
+	assert.Equal(t, 60, e.Limits.MaxRunSecs)
+	assert.Equal(t, 2, e.Limits.MaxAutoApproved)
 }

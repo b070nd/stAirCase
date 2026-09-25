@@ -132,7 +132,7 @@ func writeAtomic(full string, content []byte, mode os.FileMode) error {
 func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approval {
 	req.Type = "yield_request"
 	reject := func(why string) Approval { return Approval{Feedback: why} }
-	if req.ActionType == "shell_exec" && !e.AllowShell {
+	if req.ActionType == domain.ActionShellExec && !e.AllowShell {
 		e.host.audit("shell_exec_rejected", req)
 		return reject("shell_exec disabled — restart with --allow-shell-exec to enable")
 	}
@@ -149,6 +149,29 @@ func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approva
 	case <-ctx.Done():
 		return reject("the run ended before this proposal was decided")
 	}
+}
+
+// ProposeEdit proposes one file change (see the Marker constants) for agent.
+func (e *AgentEnv) ProposeEdit(ctx context.Context, agent, reasoning string, edit domain.ProposedEdit) Approval {
+	return e.propose(ctx, agent, reasoning, domain.ActionFileEdit, edit)
+}
+
+// ProposeShell proposes running command in dir, relative to the worktree.
+func (e *AgentEnv) ProposeShell(ctx context.Context, agent, reasoning, dir, command string) Approval {
+	return e.propose(ctx, agent, reasoning, domain.ActionShellExec, domain.ProposedEdit{File: dir, SearchBlock: MarkerShell, ReplaceBlock: command})
+}
+
+func (e *AgentEnv) propose(ctx context.Context, agent, reasoning, action string, edit domain.ProposedEdit) Approval {
+	return e.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: action,
+		ProposedEdits: []domain.ProposedEdit{edit}, ReasoningTrace: reasoning, ConfidenceScore: 0.9})
+}
+
+// Refusal is what the agent is told when a proposal was not approved.
+func (a Approval) Refusal() string {
+	if a.Feedback == "" {
+		return "rejected: no feedback"
+	}
+	return "rejected: " + a.Feedback
 }
 
 // Emit reports one step's usage. It waits for the monitor, so the budget

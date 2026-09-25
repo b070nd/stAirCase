@@ -35,8 +35,7 @@ every override is on the chain. Shell commands always go to the operator.
 ## What halts a run
 
 - More than `max_scope_violations` proposals reaching outside the scope;
-- the run lasting longer than `max_run_duration` seconds (`max_run_secs` in a
-  blueprint).
+- the run lasting longer than `max_run_secs` seconds.
 
 The run is stopped (`KILLED`), `drift_halt` is audited with the reason, and the
 case does not run again until the operator has reviewed it:
@@ -57,7 +56,7 @@ absent = no limit):
 {
   "rules": [{"action_types": ["file_edit"], "effect": "approve"}],
   "limits": {"checkpoint_every": 5, "max_files_changed": 10,
-             "max_scope_violations": 2, "max_run_duration": 1800,
+             "max_scope_violations": 2, "max_run_secs": 1800,
              "max_auto_approved": 20, "max_total_yields": 50}
 }
 ```

@@ -30,7 +30,9 @@ since the first Go commits:
   audited before the agent sees them, and the commit is built from the approved
   bytes; unapproved changes, index edits or agent commits fail the run.
 - **`policy.json` fails closed**: unparsable or unknown fields stop the run
-  (they used to be ignored with a warning). A reject rule scoped by
+  (they used to be ignored with a warning). `limits.max_run_duration`, never
+  enforced before, is now `max_run_secs` (the name blueprints use) and is
+  enforced; the old name is refused with that hint. A reject rule scoped by
   `agent_names` no longer counts as a blanket deny.
 - **Unpriced models are not free**: they count at the highest known rate
   against the budget cap; `provider/model` names are priced by their model.
@@ -58,7 +60,7 @@ since the first Go commits:
 - **Drift supervision** (`docs/drift.md`): `story scope` (or a blueprint's
   scope) limits the paths a run may change; out-of-scope proposals, file limits
   and checkpoints go to a human with a `DRIFT:` reason; too many scope
-  violations or `max_run_duration` halt the run (`drift_halt`) until
+  violations or `max_run_secs` halt the run (`drift_halt`) until
   `run --ack-drift`; every run ends with a `drift_report`. Agents are told
   their stories and scope.
 - `run --validator <model>`: an automated reviewer decides in-scope file edits

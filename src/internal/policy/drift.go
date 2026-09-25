@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/staircase-core/src/internal/engine"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 )
 
 // Supervisor watches a run for drift from its plan: changes outside the
@@ -14,7 +15,7 @@ import (
 // and when the run must halt, and reports what happened.
 type Supervisor struct {
 	scope  []string // allow globs of the open stories; empty = no scope check
-	limits Limits
+	limits plan.Limits
 	yields int
 	files  map[string]bool // distinct files of approved changes
 	report DriftReport
@@ -34,20 +35,12 @@ type DriftReport struct {
 
 // NewSupervisor supervises against scope (allow globs, ** spans directories)
 // and limits (zero = unlimited).
-func NewSupervisor(scope []string, limits Limits) *Supervisor {
+func NewSupervisor(scope []string, limits plan.Limits) *Supervisor {
 	return &Supervisor{scope: scope, limits: limits, files: map[string]bool{}, report: DriftReport{Scope: scope}}
 }
 
 func (s *Supervisor) inScope(f string) bool {
-	if len(s.scope) == 0 {
-		return true
-	}
-	for _, g := range s.scope {
-		if engine.MatchGlob(g, f) {
-			return true
-		}
-	}
-	return false
+	return len(s.scope) == 0 || engine.MatchAny(s.scope, f)
 }
 
 // Check assesses a proposal touching files, before it is decided: reason says
@@ -135,23 +128,4 @@ func checkpointNote(n int) string {
 		return "checkpoint: every proposal is reviewed"
 	}
 	return fmt.Sprintf("checkpoint: one in every %d proposals is reviewed", n)
-}
-
-// Tighter combines two sets of limits, keeping the stricter of each (zero =
-// unlimited): a workspace policy can only tighten a blueprint's limits.
-func (l Limits) Tighter(o Limits) Limits {
-	t := func(a, b int) int {
-		if a == 0 || (b != 0 && b < a) {
-			return b
-		}
-		return a
-	}
-	return Limits{
-		MaxAutoApproved:    t(l.MaxAutoApproved, o.MaxAutoApproved),
-		MaxTotalYields:     t(l.MaxTotalYields, o.MaxTotalYields),
-		MaxRunDurationSecs: t(l.MaxRunDurationSecs, o.MaxRunDurationSecs),
-		CheckpointEvery:    t(l.CheckpointEvery, o.CheckpointEvery),
-		MaxFilesChanged:    t(l.MaxFilesChanged, o.MaxFilesChanged),
-		MaxScopeViolations: t(l.MaxScopeViolations, o.MaxScopeViolations),
-	}
 }
