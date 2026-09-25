@@ -1,0 +1,21 @@
+# Weekly, grouped update PRs for Go modules and the pinned GitHub Actions.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-modules:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps)"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"
