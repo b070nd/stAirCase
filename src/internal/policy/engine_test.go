@@ -509,3 +509,18 @@ func TestVerifyPolicySignature_no_policy_file(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, sigPresent)
 }
+
+// TestLoadEngine_fails_closed: a policy with a misspelt field would silently
+// drop a rule or a limit, so it does not load; a reject rule scoped to named
+// agents is not a blanket deny.
+func TestLoadEngine_fails_closed(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limts":{"max_total_yields":3}}`), 0o600))
+	_, err := policy.LoadEngine(dir)
+	assert.ErrorContains(t, err, "limts")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[{"agent_names":["intern"],"effect":"reject"}]}`), 0o600))
+	e, err := policy.LoadEngine(dir)
+	require.NoError(t, err)
+	assert.False(t, e.Evaluate(fileEditReq("file_edit", 1, "a.go")).Approved)
+}

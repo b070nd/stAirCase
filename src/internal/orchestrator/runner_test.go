@@ -541,17 +541,22 @@ func TestRun_without_an_agent_returns_error(t *testing.T) {
 	assert.Contains(t, runErr.Error(), "no agent to run")
 }
 
-// TestRun_malformed_policy_json_logs_warning_and_continues pins today's
-// behaviour: a broken policy.json logs a warning and the run continues with no
-// auto-approval rules. (Phase 5 makes this fail closed — F19.)
-func TestRun_malformed_policy_json_logs_warning_and_continues(t *testing.T) {
+// TestRun_malformed_policy_json_fails_closed: a broken policy.json never runs
+// as "no policy" (F19) — the run fails before the agent starts.
+func TestRun_malformed_policy_json_fails_closed(t *testing.T) {
 	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "")
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte("not-json{"), 0o600))
-
-	require.NoError(t, orchestrator.NewRunner(s, wsDir).Run(context.Background(), caseID,
-		orchestrator.RunOptions{SkipGates: true, Agent: idle}))
+	started := false
+	err := orchestrator.NewRunner(s, wsDir).Run(context.Background(), caseID,
+		orchestrator.RunOptions{SkipGates: true, Agent: orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error {
+			started = true
+			return nil
+		})})
+	require.ErrorContains(t, err, "load policy")
+	assert.ErrorIs(t, err, orchestrator.ErrRunNotSuccessful)
+	assert.False(t, started, "the agent must not run under a broken policy")
 }
 
 // TestRun_quality_gate_failure_returns_error covers the pre-flight gate path

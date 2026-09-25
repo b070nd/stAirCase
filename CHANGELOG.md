@@ -27,6 +27,11 @@ since the first Go commits:
 - **Approvals are bound to bytes the orchestrator derives**, decisions are
   audited before the agent sees them, and the commit is built from the approved
   bytes; unapproved changes, index edits or agent commits fail the run.
+- **`policy.json` fails closed**: unparsable or unknown fields stop the run
+  (they used to be ignored with a warning). A reject rule scoped by
+  `agent_names` no longer counts as a blanket deny.
+- **Unpriced models are not free**: they count at the highest known rate
+  against the budget cap; `provider/model` names are priced by their model.
 - **Webhook approvals** must echo the request's fresh `yield_id` and
   `request_sha256` when a secret is set.
 
@@ -43,6 +48,12 @@ since the first Go commits:
   case's stories and blueprint; recompile plans from earlier builds.
 - `run_bound` records the plan's sha256 and blueprint, and runs record the
   topology version they executed rather than the latest one.
+- **Drift supervision** (`docs/drift.md`): `story scope` (or a blueprint's
+  scope) limits the paths a run may change; out-of-scope proposals, file limits
+  and checkpoints go to a human with a `DRIFT:` reason; too many scope
+  violations or `max_run_duration` halt the run (`drift_halt`) until
+  `run --ack-drift`; every run ends with a `drift_report`. Agents are told
+  their stories and scope.
 - `run --agent claude-code` (experimental): Claude Code does the work, and
   hooks route every tool call through the same approvals — edits and shell
   commands are proposals, reads stay in the worktree, other tools are denied.

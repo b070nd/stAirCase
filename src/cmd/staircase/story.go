@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/user"
+	"path"
+	"strings"
 
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/spf13/cobra"
@@ -129,7 +132,72 @@ var storyAcceptCmd = &cobra.Command{
 	},
 }
 
+var (
+	storyScopeAllow    []string
+	storyScopeMaxFiles int
+)
+
+var storyScopeCmd = &cobra.Command{
+	Use:   "scope <story-id>",
+	Short: "Set the paths a story's runs may change (drift supervision)",
+	Long: `Set the paths a story's runs may change. A proposal touching any other path
+goes to a human instead of the policy, and more than the policy's
+max_scope_violations such proposals halt the run. --allow takes globs relative
+to the repository root (** spans directories) and may repeat; --max-files caps
+the distinct files the story's runs change before a human must look. With no
+flags the scope is cleared. Stories of a case bound to a blueprint take their
+scope from the blueprint: change it there.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(_ *cobra.Command, args []string) error {
+		id, err := parseID("story-id", args[0])
+		if err != nil {
+			return err
+		}
+		store, db, err := openStore()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+		st, err := store.GetUserStory(id)
+		if err != nil {
+			return err
+		}
+		if st == nil {
+			return fmt.Errorf("story #%d not found", id)
+		}
+		if hash, _, err := store.CaseBlueprint(st.CaseID); err != nil {
+			return err
+		} else if hash != "" {
+			return fmt.Errorf("story #%d belongs to case #%d, bound to blueprint %.12s — change the scope in the blueprint and bind again", id, st.CaseID, hash)
+		}
+		for _, g := range storyScopeAllow {
+			if _, err := path.Match(g, ""); err != nil || g == "" || path.IsAbs(g) || strings.HasPrefix(g, "../") {
+				return fmt.Errorf("--allow %q: a glob relative to the repository root", g)
+			}
+		}
+		scope := ""
+		if len(storyScopeAllow) > 0 || storyScopeMaxFiles > 0 {
+			b, _ := json.Marshal(struct {
+				Allow    []string `json:"allow,omitempty"`
+				MaxFiles int      `json:"max_files,omitempty"`
+			}{storyScopeAllow, storyScopeMaxFiles})
+			scope = string(b)
+		}
+		if err := store.SetUserStoryScope(id, scope); err != nil {
+			return err
+		}
+		if scope == "" {
+			fmt.Printf("✅ Story #%d has no scope.\n", id)
+		} else {
+			fmt.Printf("✅ Story #%d scope: %s — recompile case #%d\n", id, scope, st.CaseID)
+		}
+		return nil
+	},
+}
+
 func init() {
-	storyCmd.AddCommand(storyAddCmd, storyListCmd, storyInvalidateCmd, storyAcceptCmd)
+	storyScopeCmd.Flags().StringArrayVar(&storyScopeAllow, "allow", nil, "Glob of paths the story may change (repeatable)")
+	storyScopeCmd.Flags().IntVar(&storyScopeMaxFiles, "max-files", 0, "Most distinct files the story's runs change before a human must look (0 = no cap)")
+	storyCmd.AddCommand(storyAddCmd, storyListCmd, storyInvalidateCmd, storyAcceptCmd, storyScopeCmd)
 	rootCmd.AddCommand(storyCmd)
 }

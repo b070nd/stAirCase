@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +79,9 @@ type RunOptions struct {
 	// Plan is the compiled plan the agent executes, when there is one: the run
 	// records its topology version, digest and blueprint as provenance.
 	Plan *plan.Plan
+	// AckDrift acknowledges that the case's previous run was halted for drift;
+	// without it such a case does not run again.
+	AckDrift bool
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
 	// Defaults to false — operators must explicitly pass --allow-shell-exec.
 	AllowShellExec bool
@@ -204,6 +208,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return nil
 	}
 
+	// A run halted for drift is reviewed before the case runs again.
+	haltedRun, err := r.lastDriftHalt(caseID)
+	if err != nil {
+		return err
+	}
+	if haltedRun != 0 && !opts.AckDrift {
+		return fmt.Errorf("run #%d of case #%d was halted for drift — review it ('staircase inspect log %d'), then run again with --ack-drift", haltedRun, caseID, haltedRun)
+	}
+
 	// ── Create run record ─────────────────────────────────────────────────────
 	if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
 		obs.Log.Warn("kill stale runs", "err", err)
@@ -225,6 +238,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
 	var display *monitor.Display
+	var sup *policy.Supervisor // drift supervision, from RUN SETUP on
 
 	defer func() {
 		if runErr != nil && finalStatus == persistence.RunStatusSuccess {
@@ -238,10 +252,12 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 				runErr = errors.Join(runErr, err)
 			}
 		}
-		if err := writeSummary(r.wsDir, RunSummary{
-			RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus,
-			CommitHash: commitHash, EndTime: endTime,
-		}); err != nil {
+		summary := RunSummary{RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus, CommitHash: commitHash, EndTime: endTime}
+		if sup != nil {
+			rep := sup.Report()
+			summary.Drift = &rep
+		}
+		if err := writeSummary(r.wsDir, summary); err != nil {
 			finalStatus = persistence.RunStatusFailed
 			runErr = errors.Join(runErr, fmt.Errorf("write run summary: %w", err))
 			if err := r.store.FinishRun(run.ID, finalStatus, endTime, commitHash); err != nil {
@@ -293,6 +309,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if opts.Plan != nil {
 		bound["plan_digest"], bound["blueprint_hash"] = opts.Plan.Digest, opts.Plan.BlueprintHash
 	}
+	if haltedRun != 0 {
+		bound["ack_drift"] = haltedRun
+	}
 	if payload, err := json.Marshal(bound); err == nil {
 		if _, err := r.store.AppendEventLogChained(run.ID, "run_bound", string(payload), ""); err != nil {
 			return fmt.Errorf("audit run_bound: %w", err)
@@ -330,10 +349,25 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	policyEngine, err := policy.LoadEngine(r.wsDir)
+	policyEngine, err := policy.LoadEngine(r.wsDir) // fail closed: a broken policy never runs as "no policy"
 	if err != nil {
-		obs.Log.Warn("load policy — proceeding without auto-approval", "err", err)
-		policyEngine = &policy.Engine{}
+		return fmt.Errorf("load policy: %w", err)
+	}
+	limits := policyEngine.Limits
+	if opts.Plan != nil {
+		l := opts.Plan.Limits
+		limits = limits.Tighter(policy.Limits{CheckpointEvery: l.CheckpointEvery, MaxFilesChanged: l.MaxFilesChanged,
+			MaxScopeViolations: l.MaxScopeViolations, MaxRunDurationSecs: l.MaxRunSecs})
+	}
+	scope, maxFiles, err := r.driftScope(caseID, opts.Plan)
+	if err != nil {
+		return err
+	}
+	limits = limits.Tighter(policy.Limits{MaxFilesChanged: maxFiles})
+	sup = policy.NewSupervisor(scope, limits)
+	var runDeadline <-chan time.Time
+	if limits.MaxRunDurationSecs > 0 {
+		runDeadline = time.After(time.Duration(limits.MaxRunDurationSecs) * time.Second)
 	}
 	// P2: verify Ed25519 signature on policy.json when sidecar is present.
 	// Absent signature warns (backward compat); invalid signature is fatal.
@@ -445,6 +479,13 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		agentFinished = true
 		finalStatus = persistence.RunStatusKilled
 	}
+	driftHalt := func(reason string) {
+		sup.Halt(reason)
+		payload, _ := json.Marshal(map[string]any{"type": "drift_halt", "reason": reason})
+		_, _ = r.store.AppendEventLogChained(run.ID, "drift_halt", string(payload), "")
+		fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s — halting run #%d\n", reason, run.ID)
+		cancelled()
+	}
 
 runLoop:
 	for {
@@ -493,14 +534,30 @@ runLoop:
 					next = n
 				}
 			}
+			// Drift supervision: a proposal reaching outside the stories' scope,
+			// past a limit or at a checkpoint goes to a human, never to policy.
+			var files []string
+			for f := range next {
+				files = append(files, f)
+			}
+			sort.Strings(files)
+			driftReason, halt := "", false
+			if refusal == "" {
+				driftReason, halt = sup.Check(files)
+				yieldReq.Drift = driftReason
+			}
 			if refusal != "" {
 				resp = domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "refused by the orchestrator: " + refusal}
 				source = "orchestrator"
 				display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", yieldReq.AgentName, yieldReq.ActionType, refusal))
-			} else if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit {
+			} else if halt {
+				resp = domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "refused: the run has drifted too far from its stories' scope and is halting"}
+				source = "drift"
+			} else if limitHit, limitReason := policyEngine.CheckLimits(autoApproved, totalYields); limitHit || driftReason != "" {
 				// CHECK 7.2.1/7.2.2: once a session limit is hit, every subsequent
 				// yield goes to the human operator regardless of policy rules.
-				display.AddActivity(fmt.Sprintf("%-14s LIMIT  %s → HITL (%s)", yieldReq.AgentName, yieldReq.ActionType, limitReason))
+				why := strings.Trim(limitReason+"; "+driftReason, "; ")
+				display.AddActivity(fmt.Sprintf("%-14s DRIFT  %s → HITL (%s)", yieldReq.AgentName, yieldReq.ActionType, why))
 				display.Pause()
 				switch {
 				case approvalSrv != nil:
@@ -555,6 +612,9 @@ runLoop:
 			if resp.Approved && next != nil {
 				decided["files"] = digest(next)
 			}
+			if driftReason != "" {
+				decided["drift"] = driftReason
+			}
 			payload, _ := json.Marshal(decided)
 			if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
 				p.reply <- decision{resp: domain.YieldResponse{Type: "yield_response", Approved: false,
@@ -571,9 +631,20 @@ runLoop:
 				d.files = next
 			}
 			p.reply <- d
+			if halt {
+				driftHalt(fmt.Sprintf("more than %d proposals reached outside the stories' scope", limits.MaxScopeViolations))
+				break runLoop
+			}
+			if refusal == "" {
+				sup.Decided(files, resp.Approved, source == "operator", driftReason)
+			}
 
 		case procErr := <-agentDone:
 			processExited(procErr)
+			break runLoop
+
+		case <-runDeadline:
+			driftHalt(fmt.Sprintf("the run exceeded its %d s limit", limits.MaxRunDurationSecs))
 			break runLoop
 
 		case <-ctx.Done():
@@ -585,6 +656,18 @@ runLoop:
 
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
 	r.phase = PhaseFinalize
+	rep := sup.Report()
+	if payload, err := json.Marshal(map[string]any{"type": "drift_report", "report": rep}); err == nil {
+		_, _ = r.store.AppendEventLogChained(run.ID, "drift_report", string(payload), "")
+	}
+	if len(rep.Scope) > 0 || rep.Violations > 0 || rep.Halted != "" {
+		halted := ""
+		if rep.Halted != "" {
+			halted = ", halted: " + rep.Halted
+		}
+		fmt.Fprintf(os.Stdout, "   🧭 Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
+			len(rep.InScope), len(rep.OutOfScope), rep.Overrides, rep.Violations, halted)
+	}
 	if finalStatus == persistence.RunStatusSuccess && appr != nil {
 		// The worktree must hold exactly the approved state on the base commit:
 		// approved paths with their approved bytes, no other change in the files
@@ -626,6 +709,8 @@ type RunSummary struct {
 	FinalStatus string    `json:"final_status"`
 	CommitHash  string    `json:"commit_hash,omitempty"`
 	EndTime     time.Time `json:"end_time"`
+	// Drift is the run's drift supervision record.
+	Drift *policy.DriftReport `json:"drift,omitempty"`
 }
 
 // writeSummary writes a RunSummary as summary.json to
@@ -804,4 +889,60 @@ func runAgent(ctx context.Context, a Agent, env *AgentEnv) (err error) {
 		}
 	}()
 	return a.Run(ctx, env)
+}
+
+// lastDriftHalt returns the case's latest run if drift supervision halted it.
+func (r *Runner) lastDriftHalt(caseID int64) (int64, error) {
+	runs, err := r.store.ListRunsByCase(caseID) // newest first
+	if err != nil || len(runs) == 0 {
+		return 0, err
+	}
+	events, err := r.store.ListEventLogs(runs[0].ID)
+	if err != nil {
+		return 0, err
+	}
+	for _, e := range events {
+		if e.EventType == "drift_halt" {
+			return runs[0].ID, nil
+		}
+	}
+	return 0, nil
+}
+
+// driftScope is the union of the allowed paths of the case's open stories
+// (not yet accepted), from the plan when the run has one, otherwise from the
+// stories' own scope; empty means no scope check. maxFiles is the sum of their
+// max_files when every open story sets one (0 = no cap).
+func (r *Runner) driftScope(caseID int64, pl *plan.Plan) (scope []string, maxFiles int, err error) {
+	stories, err := r.store.ListUserStoriesByCase(caseID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("load stories: %w", err)
+	}
+	open := map[int64]bool{}
+	var planned []plan.Story
+	for _, st := range stories {
+		open[st.ID] = st.Status != persistence.StoryStatusImplemented
+		if pl == nil && st.CustomConfig != "" {
+			ps := plan.Story{ID: st.ID}
+			if err := json.Unmarshal([]byte(st.CustomConfig), &ps); err != nil {
+				return nil, 0, fmt.Errorf("story #%d scope: %w", st.ID, err)
+			}
+			planned = append(planned, ps)
+		}
+	}
+	if pl != nil {
+		planned = pl.Stories
+	}
+	capped := true
+	for _, st := range planned {
+		if open[st.ID] {
+			scope = append(scope, st.Allow...)
+			maxFiles += st.MaxFiles
+			capped = capped && st.MaxFiles > 0
+		}
+	}
+	if !capped {
+		maxFiles = 0
+	}
+	return scope, maxFiles, nil
 }

@@ -178,6 +178,10 @@ type YieldRequest struct {
 	// BatchID and present them as a single approval screen. For now the field
 	// is accepted on the wire and displayed by the TUI but not yet batched.
 	BatchID string `json:"batch_id,omitempty"`
+
+	// Drift, set by the orchestrator, says why drift supervision sends this
+	// proposal to a human (outside the stories' scope, a limit, a checkpoint).
+	Drift string `json:"drift,omitempty"`
 }
 
 // YieldResponse is the decision on a YieldRequest, returned to the agent.

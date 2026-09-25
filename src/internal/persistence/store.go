@@ -604,6 +604,17 @@ func (s *Store) UpdateUserStoryStatus(storyID int64, status string) error {
 	return nil
 }
 
+// GetUserStory returns a story, or nil when it does not exist.
+func (s *Store) GetUserStory(storyID int64) (*domain.UserStory, error) {
+	var us domain.UserStory
+	err := s.db.QueryRow(`SELECT id, case_id, description, status, COALESCE(custom_config,'') FROM user_stories WHERE id = ?`, storyID).
+		Scan(&us.ID, &us.CaseID, &us.Description, &us.Status, &us.CustomConfig)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &us, err
+}
+
 func (s *Store) ListUserStoriesByCase(caseID int64) ([]domain.UserStory, error) {
 	rows, err := s.db.Query(
 		`SELECT id, case_id, description, status, COALESCE(custom_config,'') FROM user_stories WHERE case_id = ?`,

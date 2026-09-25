@@ -1,5 +1,7 @@
 package monitor
 
+import "strings"
+
 // ModelPricing holds input/output cost per 1M tokens in USD (approximate).
 type ModelPricing struct {
 	InputPer1M  float64
@@ -33,11 +35,19 @@ var pricingTable = map[string]ModelPricing{
 	"grok-3-mini": {0.30, 0.50},
 }
 
-// EstimateCost returns approximate USD cost. Returns 0 if model is unknown.
+// EstimateCost returns the approximate USD cost. A gateway name
+// ("provider/model") is priced by its model; a model without a price counts at
+// the highest known rates, so an unpriced model never slips past a budget cap.
+// ponytail: conservative ceiling; add pricing overrides if it over-trips.
 func EstimateCost(model string, inputTokens, outputTokens int) float64 {
+	if i := strings.LastIndex(model, "/"); i >= 0 {
+		model = model[i+1:]
+	}
 	p, ok := pricingTable[model]
 	if !ok {
-		return 0
+		for _, q := range pricingTable {
+			p.InputPer1M, p.OutputPer1M = max(p.InputPer1M, q.InputPer1M), max(p.OutputPer1M, q.OutputPer1M)
+		}
 	}
 	return float64(inputTokens)/1_000_000*p.InputPer1M +
 		float64(outputTokens)/1_000_000*p.OutputPer1M

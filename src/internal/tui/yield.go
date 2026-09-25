@@ -117,6 +117,10 @@ func (m yieldModel) View() string {
 
 	sb.WriteString(styleHeader.Render("⚠  HITL Yield Request"))
 	sb.WriteString("\n\n")
+	if m.req.Drift != "" {
+		sb.WriteString(styleReject.Render("DRIFT: " + m.req.Drift))
+		sb.WriteString("\n\n")
+	}
 
 	sb.WriteString(styleLabel.Render("Agent:  "))
 	sb.WriteString(m.req.AgentName)

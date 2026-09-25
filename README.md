@@ -85,6 +85,9 @@ failing closed.
   imported as a content-hash snapshot and pinned: a bound case runs only as its
   blueprint defines it, and every run records the plan and blueprint it
   executed ([docs/blueprints.md](docs/blueprints.md)).
+- **Drift supervision** — changes outside the stories' scope, past file limits
+  or at checkpoints go to a human; too many violations or too long a run halt
+  it until acknowledged ([docs/drift.md](docs/drift.md)).
 
 ## Architecture
 
@@ -133,8 +136,8 @@ flow, audit chain and offline demo have automated tests (including race and
 adversarial checks), but those tests do not establish enterprise readiness. On
 the roadmap:
 
-- **Drift supervision** — story scope, limits and an audited automated reviewer,
-  so agents cannot wander off the plan unnoticed.
+- **Automated reviewer** — an audited model reviewer for in-scope edits, with
+  a human approving each run's final diff.
 - **DSSE audit envelopes** — adopt the Sigstore/in-toto envelope format so the
   audit chain interoperates with the broader supply-chain ecosystem.
 - **Per-agent identity** — distinct identity per agent persona with per-tool

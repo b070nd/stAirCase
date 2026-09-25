@@ -27,6 +27,7 @@
 package policy
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,9 +50,20 @@ type Limits struct {
 	// operator regardless of matching rules.
 	MaxTotalYields int `json:"max_total_yields"`
 
-	// MaxRunDurationSecs is the maximum wall-clock duration of a run in seconds.
-	// Enforced externally by the orchestrator; stored here for audit purposes.
+	// MaxRunDurationSecs is the maximum wall-clock duration of a run in
+	// seconds; the orchestrator halts a run that exceeds it (drift_halt).
 	MaxRunDurationSecs int `json:"max_run_duration"`
+
+	// CheckpointEvery sends every Nth proposal to the operator.
+	CheckpointEvery int `json:"checkpoint_every"`
+
+	// MaxFilesChanged sends a proposal to the operator once the run's approved
+	// changes would touch more distinct files than this.
+	MaxFilesChanged int `json:"max_files_changed"`
+
+	// MaxScopeViolations halts the run (drift_halt) when more proposals than
+	// this reach outside the stories' scope.
+	MaxScopeViolations int `json:"max_scope_violations"`
 }
 
 // Effect is the outcome a rule produces when it matches.
@@ -127,7 +139,9 @@ func LoadEngine(wsDir string) (*Engine, error) {
 		return nil, fmt.Errorf("read policy file: %w", err)
 	}
 	var e Engine
-	if err := json.Unmarshal(data, &e); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields() // a misspelt field would silently drop a rule or a limit
+	if err := dec.Decode(&e); err != nil {
 		return nil, fmt.Errorf("parse policy file %s: %w", path, err)
 	}
 	// Blanket-deny guard: a rule that matches everything and rejects is dangerous
@@ -137,7 +151,8 @@ func LoadEngine(wsDir string) (*Engine, error) {
 			if r.Effect == EffectReject &&
 				len(r.ActionTypes) == 0 &&
 				r.MinConfidence == 0 &&
-				len(r.AllowedExtensions) == 0 {
+				len(r.AllowedExtensions) == 0 &&
+				len(r.AgentNames) == 0 {
 				return nil, fmt.Errorf(
 					"policy rule #%d is a blanket-deny (rejects everything) — "+
 						"set allow_blanket_deny: true to permit this", i,

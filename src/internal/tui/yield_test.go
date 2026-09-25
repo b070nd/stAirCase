@@ -201,3 +201,11 @@ func TestView_feedback_state_shows_prompt(t *testing.T) {
 	v := intermediate.(tui.YieldModel).View()
 	assert.Contains(t, v, "Rejected", "feedback state should show rejection prompt")
 }
+
+// TestView_shows_drift: the operator sees why drift supervision asks them.
+func TestView_shows_drift(t *testing.T) {
+	req := basicReq()
+	req.Drift = "outside the stories' scope: main.go"
+	assert.Contains(t, tui.NewYieldModel(req).View(), "DRIFT: outside the stories' scope: main.go")
+	assert.NotContains(t, tui.NewYieldModel(basicReq()).View(), "DRIFT")
+}

@@ -159,3 +159,15 @@ func (s *Store) CaseBlueprint(caseID int64) (hash, slug string, err error) {
 	err = s.db.QueryRow(`SELECT blueprint_hash, blueprint_slug FROM cases WHERE id = ?`, caseID).Scan(&hash, &slug)
 	return hash, slug, err
 }
+
+// SetUserStoryScope sets a story's scope, as JSON {"allow": [...], "max_files": N}.
+func (s *Store) SetUserStoryScope(storyID int64, scopeJSON string) error {
+	res, err := s.db.Exec(`UPDATE user_stories SET custom_config = ? WHERE id = ?`, scopeJSON, storyID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("story %d not found", storyID)
+	}
+	return nil
+}

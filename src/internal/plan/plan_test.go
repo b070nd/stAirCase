@@ -67,3 +67,13 @@ func sha256Hex(t *testing.T, path string) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
+
+// TestPlan_Brief: agents are told their stories and the paths each may change.
+func TestPlan_Brief(t *testing.T) {
+	p := plan.Plan{PRD: "Say hello.", Stories: []plan.Story{{Text: "Greet", Allow: []string{"GREETING.md", "docs/**"}}, {Text: "Anything"}}}
+	b := p.Brief()
+	assert.Contains(t, b, "Say hello.")
+	assert.Contains(t, b, "- Greet (may change only: GREETING.md, docs/**)")
+	assert.Contains(t, b, "- Anything")
+	assert.Equal(t, "Just the PRD.", plan.Plan{PRD: "Just the PRD."}.Brief())
+}

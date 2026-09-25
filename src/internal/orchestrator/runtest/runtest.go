@@ -38,7 +38,8 @@ type Result struct {
 	Run    persistence.Run
 	Events []domain.RunEventLog
 	Repo   string
-	Err    error // Runner.Run's error
+	WsDir  string // the workspace, removed when the test ends
+	Err    error  // Runner.Run's error
 }
 
 // Types returns the run's audit event types, in order.
@@ -113,7 +114,7 @@ func Run(t testing.TB, o Options) Result {
 	events, err := s.ListEventLogs(runs[0].ID)
 	must(t, err)
 	must(t, s.VerifyChain(runs[0].ID))
-	return Result{Store: s, Run: runs[0], Events: events, Repo: repo, Err: runErr}
+	return Result{Store: s, Run: runs[0], Events: events, Repo: repo, WsDir: wsDir, Err: runErr}
 }
 
 func git(t testing.TB, dir string, args ...string) {

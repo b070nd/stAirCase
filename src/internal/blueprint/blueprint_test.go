@@ -105,7 +105,8 @@ func TestCheck_plan_against_blueprint(t *testing.T) {
 	p := plan.Plan{BlueprintHash: b.Hash(), Supervisor: "supervisor", PRD: "Say hello.",
 		Agents:  []plan.Agent{{Name: "supervisor", Role: "You coordinate the work.", Model: "demo/scripted"}, {Name: "coder", Role: "You write code.", Model: "demo/scripted"}},
 		Edges:   []plan.Edge{{From: "supervisor", To: "coder"}, {From: "coder", To: "supervisor"}},
-		Stories: []plan.Story{{ID: 7, Text: "Create a greeting file", Allow: []string{"GREETING.md"}, MaxFiles: 1}}}
+		Stories: []plan.Story{{ID: 7, Text: "Create a greeting file", Allow: []string{"GREETING.md"}, MaxFiles: 1}},
+		Limits:  plan.Limits{CheckpointEvery: 5, MaxFilesChanged: 10, MaxScopeViolations: 2, MaxRunSecs: 600}}
 	require.NoError(t, b.Check(p, "greet"))
 
 	extra := p
@@ -114,6 +115,9 @@ func TestCheck_plan_against_blueprint(t *testing.T) {
 	scope := p
 	scope.Stories = []plan.Story{{Text: "Create a greeting file", Allow: []string{"**"}, MaxFiles: 1}}
 	assert.ErrorContains(t, b.Check(scope, "greet"), "stories")
+	limits := p
+	limits.Limits.MaxScopeViolations = 0
+	assert.ErrorContains(t, b.Check(limits, "greet"), "limits")
 	prd := p
 	prd.PRD = "Say goodbye."
 	assert.ErrorContains(t, b.Check(prd, "greet"), "PRD")

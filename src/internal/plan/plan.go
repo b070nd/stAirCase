@@ -33,9 +33,37 @@ type Plan struct {
 	Stories         []Story `json:"stories,omitempty"`
 	// BlueprintHash is the blueprint the case was bound from, if any.
 	BlueprintHash string `json:"blueprint_hash,omitempty"`
+	// Limits are the blueprint's run limits (drift supervision); zero = none.
+	Limits Limits `json:"limits,omitzero"`
 
 	// Digest is the sha256 of the plan file, set by Load.
 	Digest string `json:"-"`
+}
+
+// Limits bound a run of the plan; zero values mean no limit.
+type Limits struct {
+	CheckpointEvery    int `json:"checkpoint_every,omitempty"`
+	MaxFilesChanged    int `json:"max_files_changed,omitempty"`
+	MaxScopeViolations int `json:"max_scope_violations,omitempty"`
+	MaxRunSecs         int `json:"max_run_secs,omitempty"`
+}
+
+// Brief is the case as its agents are told it: the PRD, then each story with
+// the paths it may change.
+func (p Plan) Brief() string {
+	var b strings.Builder
+	b.WriteString(p.PRD)
+	if len(p.Stories) > 0 {
+		b.WriteString("\n\nStories:")
+		for _, s := range p.Stories {
+			fmt.Fprintf(&b, "\n- %s", s.Text)
+			if len(s.Allow) > 0 {
+				fmt.Fprintf(&b, " (may change only: %s)", strings.Join(s.Allow, ", "))
+			}
+		}
+		b.WriteString("\n\nChanges outside these paths go to a human reviewer and can halt the run.")
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // Story is one of the case's stories and the paths it may change.

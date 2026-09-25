@@ -222,7 +222,16 @@ func (b Blueprint) Check(p plan.Plan, slug string) error {
 	if !reflect.DeepEqual(got, wantStories) {
 		errs = append(errs, errors.New("stories differ from the blueprint"))
 	}
+	if p.Limits != b.PlanLimits() {
+		errs = append(errs, errors.New("limits differ from the blueprint"))
+	}
 	return errors.Join(errs...)
+}
+
+// PlanLimits are the blueprint's limits as a plan carries them.
+func (b Blueprint) PlanLimits() plan.Limits {
+	return plan.Limits{CheckpointEvery: b.Limits.CheckpointEvery, MaxFilesChanged: b.Limits.MaxFilesChanged,
+		MaxScopeViolations: b.Limits.MaxScopeViolations, MaxRunSecs: b.Limits.MaxRunSecs}
 }
 
 // Binding is what binding a project to this blueprint creates.

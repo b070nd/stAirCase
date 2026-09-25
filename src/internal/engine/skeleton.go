@@ -148,7 +148,7 @@ func shouldIgnoreDir(rel string, patterns []string) bool {
 	rel = filepath.ToSlash(rel)
 	for _, p := range patterns {
 		p = strings.TrimSuffix(p, "/")
-		if matchGlob(p, base) || matchGlob(p, rel) {
+		if MatchGlob(p, base) || MatchGlob(p, rel) {
 			return true
 		}
 	}
@@ -164,17 +164,17 @@ func shouldIgnoreFile(rel string, patterns []string) bool {
 	// Normalise to forward slashes for consistent pattern matching.
 	rel = filepath.ToSlash(rel)
 	for _, p := range patterns {
-		if matchGlob(p, base) || matchGlob(p, rel) {
+		if MatchGlob(p, base) || MatchGlob(p, rel) {
 			return true
 		}
 	}
 	return false
 }
 
-// matchGlob matches name against pattern with support for the ** multi-segment
+// MatchGlob matches name against pattern with support for the ** multi-segment
 // wildcard used in .gitignore files (which filepath.Match does not support).
 // Single-segment patterns fall through to filepath.Match.
-func matchGlob(pattern, name string) bool {
+func MatchGlob(pattern, name string) bool {
 	if !strings.Contains(pattern, "**") {
 		m, _ := filepath.Match(pattern, name)
 		return m

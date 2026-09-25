@@ -36,6 +36,7 @@ var (
 	runReplayLLM      string
 	runAllowShellExec bool
 	runAgent          string
+	runAckDrift       bool
 )
 
 var runCmd = &cobra.Command{
@@ -78,6 +79,8 @@ func init() {
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
+	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
+		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
 	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
 		"Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental)")
 	rootCmd.AddCommand(runCmd)
@@ -141,7 +144,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	switch runAgent {
 	case "built-in":
 	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.PRD}
+		ag = &agent.ClaudeCode{Prompt: pl.Brief()}
 	default:
 		return fmt.Errorf("unknown --agent %q: use built-in or claude-code", runAgent)
 	}
@@ -155,6 +158,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		ApprovalPort:   runApprovalPort,
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
+		AckDrift:       runAckDrift,
 		Agent:          ag,
 		Plan:           &pl,
 	})

@@ -34,11 +34,14 @@ without mounting your home directory or unrelated credentials.
 - Blueprints ([docs/blueprints.md](blueprints.md)) are imported as content-hash
   snapshots; a bound case runs only as its blueprint defines it
   (`runtime.plan_pinned`), and `run_bound` records the plan digest and blueprint.
+- Drift supervision ([docs/drift.md](drift.md)): changes outside the stories'
+  scope, past file limits or at checkpoints go to a human; too many scope
+  violations or too long a run halt it until acknowledged; a broken
+  `policy.json` stops the run.
 
 ## Still Required Before Trusted Project Use
 
 - An OS sandbox for approved shell commands, which today run as your user.
-- Drift supervision: story scope and run limits enforced during a run.
 - Acceptance runs against real models and projects. The offline demo exercises
   the real runtime with a stand-in model; it says nothing about model quality or
   complete project acceptance.

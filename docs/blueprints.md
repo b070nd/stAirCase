@@ -53,5 +53,5 @@ Every run records what it executed as its first audit event, `run_bound`:
 the base commit, the topology version of the plan, the plan's sha256
 (`plan_digest`) and the blueprint hash.
 
-The blueprint's `limits` and the stories' `scope` are carried along for drift
-supervision (not enforced yet).
+The blueprint's `limits` and the stories' `scope` are enforced by
+[drift supervision](drift.md).

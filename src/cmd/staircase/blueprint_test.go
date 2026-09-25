@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/b070nd/staircase-core/src/internal/blueprint"
 	"github.com/b070nd/staircase-core/src/internal/gate"
+	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/b070nd/staircase-core/src/internal/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,4 +81,47 @@ func TestE2E_Blueprint_import_bind_compile_pinned(t *testing.T) {
 	r = gateResult(t, wsDir, caseID, "runtime.plan_pinned")
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "drifted from blueprint hello")
+}
+
+// TestE2E_story_scope sets, validates and clears a story's scope, and refuses
+// stories whose scope comes from a blueprint.
+func TestE2E_story_scope(t *testing.T) {
+	_, s := e2eWorkspace(t)
+	caseID, _ := seedFullCase(t, s)
+	stories, err := s.ListUserStoriesByCase(caseID)
+	require.NoError(t, err)
+	id := fmt.Sprint(stories[0].ID)
+	t.Cleanup(func() { storyScopeAllow, storyScopeMaxFiles = nil, 0 })
+
+	storyScopeAllow, storyScopeMaxFiles = []string{"docs/**", "README.md"}, 3
+	require.NoError(t, storyScopeCmd.RunE(nil, []string{id}))
+	st, err := s.GetUserStory(stories[0].ID)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"allow":["docs/**","README.md"],"max_files":3}`, st.CustomConfig)
+
+	storyScopeAllow = []string{"../outside"}
+	assert.Error(t, storyScopeCmd.RunE(nil, []string{id}))
+	storyScopeAllow, storyScopeMaxFiles = nil, 0
+	require.NoError(t, storyScopeCmd.RunE(nil, []string{id}))
+	st, err = s.GetUserStory(stories[0].ID)
+	require.NoError(t, err)
+	assert.Empty(t, st.CustomConfig)
+
+	hello := filepath.Join("..", "..", "..", "examples", "blueprints", "hello")
+	require.NoError(t, blueprintImportCmd.RunE(nil, []string{hello}))
+	list, err := s.ListBlueprints()
+	require.NoError(t, err)
+	c, err := s.GetCase(caseID)
+	require.NoError(t, err)
+	_, cases, err := s.BindBlueprint(c.ProjectID, blueprintBinding(t, list[0].Content))
+	require.NoError(t, err)
+	bound, err := s.ListUserStoriesByCase(cases[0])
+	require.NoError(t, err)
+	assert.ErrorContains(t, storyScopeCmd.RunE(nil, []string{fmt.Sprint(bound[0].ID)}), "blueprint")
+}
+
+func blueprintBinding(t *testing.T, content string) persistence.Binding {
+	b, err := blueprint.Parse([]byte(content))
+	require.NoError(t, err)
+	return b.Binding()
 }

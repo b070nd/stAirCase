@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/staircase-core/src/internal/blueprint"
 	"github.com/b070nd/staircase-core/src/internal/plan"
 	"os"
 	"path/filepath"
@@ -155,6 +156,17 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	}
 	if pl.BlueprintHash, _, err = store.CaseBlueprint(caseID); err != nil {
 		return fmt.Errorf("load case binding: %w", err)
+	}
+	if pl.BlueprintHash != "" { // a bound case runs under its blueprint's limits
+		stored, err := store.FindBlueprint(pl.BlueprintHash)
+		if err != nil {
+			return err
+		}
+		b, err := blueprint.Parse([]byte(stored.Content))
+		if err != nil {
+			return fmt.Errorf("blueprint %.12s: %w", pl.BlueprintHash, err)
+		}
+		pl.Limits = b.PlanLimits()
 	}
 
 	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────
