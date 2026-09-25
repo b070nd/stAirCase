@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -752,8 +753,16 @@ func writePluginScript(t *testing.T, wsDir, scriptBody string, severity gate.Sev
 	store := persistence.NewStore(db)
 
 	scriptPath := filepath.Join(wsDir, "plugin.sh")
-	script := "#!/bin/sh\n" + scriptBody
+	script := "#!/bin/sh\n[ -n \"$STAIRCASE_WARMUP\" ] && exit 0\n" + scriptBody
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+	// The first run of a newly written executable can take seconds on macOS
+	// under load (measured: p50 0.12 s, max 4 s, against 0.004 s for a script
+	// run before), which a 5 s plugin timeout turned into a flaky test. Real
+	// plugins are installed once; run this one once, unmeasured, before the
+	// gate does. The gate's empty environment skips the warm-up line.
+	warm := exec.Command(scriptPath)
+	warm.Env = []string{"STAIRCASE_WARMUP=1"}
+	require.NoError(t, warm.Run())
 
 	type gatesDef struct {
 		Name           string `json:"name"`

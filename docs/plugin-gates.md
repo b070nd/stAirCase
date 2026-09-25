@@ -40,7 +40,7 @@ Place this file at `$STAIRCASE_DIR/gates.json`:
 | `category` | yes | Display category (shown in gate report) |
 | `severity` | yes | `BLOCK` (prevents run) or `WARN` (advisory) |
 | `script` | yes | Absolute path to an executable file |
-| `timeout_seconds` | no | Default: 30. Gate FAIL if exceeded. |
+| `timeout_seconds` | no | Default: 30. Gate FAIL if exceeded. The first run of a newly written script can take seconds on macOS under load; keep a margin. |
 
 A missing or empty `gates.json` is not an error — zero plugin gates are loaded.
 
