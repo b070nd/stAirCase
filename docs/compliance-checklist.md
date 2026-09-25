@@ -336,4 +336,4 @@ When adding a new feature to stAirCase, verify each item before marking the feat
 
 ---
 
-*Generated from source audit on branch `feature/SAC-5` · commit `post-5b-remediation`*
+*Generated from the source audit of 2026-05-21.*
