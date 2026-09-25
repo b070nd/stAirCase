@@ -31,12 +31,13 @@ without mounting your home directory or unrelated credentials.
 - Existing `staircase/run-N` branches are never overwritten by a new run.
   `run --reconcile` reports inactive branches for inspection but no longer deletes
   them, even when the associated run failed or its record is missing.
+- Blueprints ([docs/blueprints.md](blueprints.md)) are imported as content-hash
+  snapshots; a bound case runs only as its blueprint defines it
+  (`runtime.plan_pinned`), and `run_bound` records the plan digest and blueprint.
 
 ## Still Required Before Trusted Project Use
 
 - An OS sandbox for approved shell commands, which today run as your user.
-- Immutable, independently versioned blueprints with pinned project bindings;
-  a mutable SQLite topology version is not that artifact.
 - Drift supervision: story scope and run limits enforced during a run.
 - Acceptance runs against real models and projects. The offline demo exercises
   the real runtime with a stand-in model; it says nothing about model quality or

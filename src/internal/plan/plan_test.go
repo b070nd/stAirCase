@@ -3,6 +3,7 @@ package plan_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,8 +23,8 @@ func TestPlan_is_run_only_as_compiled(t *testing.T) {
 	require.NoError(t, plan.Write(path, p))
 	got, err := plan.Load(path)
 	require.NoError(t, err)
-	p.Version = plan.Version
-	assert.Equal(t, p, got)
+	p.Version, p.Digest = plan.Version, sha256Hex(t, path)
+	assert.Equal(t, p, got, "Digest is the plan file's sha256")
 
 	b, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -31,7 +32,7 @@ func TestPlan_is_run_only_as_compiled(t *testing.T) {
 	_, err = plan.Load(path)
 	assert.ErrorContains(t, err, "modified after compile")
 
-	require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(b), `"version": 1`, `"version": 99`, 1)), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(b), fmt.Sprintf(`"version": %d`, plan.Version), `"version": 99`, 1)), 0o600))
 	require.NoError(t, os.WriteFile(path+".sha256", []byte(sha256Hex(t, path)), 0o600))
 	_, err = plan.Load(path)
 	assert.ErrorContains(t, err, "version 99")

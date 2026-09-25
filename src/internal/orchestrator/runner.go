@@ -30,6 +30,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/monitor"
 	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/staircase-core/src/internal/plan"
 	"github.com/b070nd/staircase-core/src/internal/policy"
 	"github.com/b070nd/staircase-core/src/internal/tui"
 	"github.com/b070nd/staircase-core/src/internal/webhookauth"
@@ -74,6 +75,9 @@ type RunOptions struct {
 	// Agent runs in-process in the run's worktree: the compiled plan's agent
 	// graph (staircase run), or a scripted agent in tests. Required.
 	Agent Agent
+	// Plan is the compiled plan the agent executes, when there is one: the run
+	// records its topology version, digest and blueprint as provenance.
+	Plan *plan.Plan
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
 	// Defaults to false — operators must explicitly pass --allow-shell-exec.
 	AllowShellExec bool
@@ -176,6 +180,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("no swarm topology registered for project %q — run 'staircase topology register' first", project.Name)
 	}
 	topoVersion := topology.Version
+	if opts.Plan != nil {
+		topoVersion = opts.Plan.TopologyVersion // what runs is the plan, not the latest topology
+	}
 
 	// ── Resolve current git branch (capture SHA on detached HEAD) ─────────────
 	gitBranch := "unknown"
@@ -279,10 +286,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", runBranch, worktree)
 	}
 	// Provenance: what this run started from, before the agent runs.
-	if payload, err := json.Marshal(map[string]any{
+	bound := map[string]any{
 		"type": "run_bound", "base_sha": baseSHA, "branch": runBranch,
 		"worktree": worktree, "topology_version": topoVersion,
-	}); err == nil {
+	}
+	if opts.Plan != nil {
+		bound["plan_digest"], bound["blueprint_hash"] = opts.Plan.Digest, opts.Plan.BlueprintHash
+	}
+	if payload, err := json.Marshal(bound); err == nil {
 		if _, err := r.store.AppendEventLogChained(run.ID, "run_bound", string(payload), ""); err != nil {
 			return fmt.Errorf("audit run_bound: %w", err)
 		}

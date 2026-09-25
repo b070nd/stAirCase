@@ -22,8 +22,7 @@ decision is recorded for audit. It is not an OS sandbox: the agent's tools and
 approved shell commands run as your user (see the safety boundary).
 
 **Before using a project:** read [Project Use and Current Safety Boundary](docs/project-use.md).
-Runs work in their own git worktree, so your checkout is never touched;
-independently versioned blueprints are still readiness work.
+Runs work in their own git worktree, so your checkout is never touched.
 
 It is a single Go binary with a small built-in agent runtime, and the governed
 boundary *around* it — self-hosted. Real model calls send project context to the
@@ -82,6 +81,10 @@ failing closed.
   `--allow-shell-exec`, enforced at three independent layers.
 - **Quality gates** — pluggable pre-run checks (signed `gates.json` manifests)
   that must pass before a run starts.
+- **Blueprints** — a project's automation versioned in its own repository,
+  imported as a content-hash snapshot and pinned: a bound case runs only as its
+  blueprint defines it, and every run records the plan and blueprint it
+  executed ([docs/blueprints.md](docs/blueprints.md)).
 
 ## Architecture
 
@@ -130,8 +133,6 @@ flow, audit chain and offline demo have automated tests (including race and
 adversarial checks), but those tests do not establish enterprise readiness. On
 the roadmap:
 
-- **Immutable blueprints** — independently versioned automation applied to each
-  project, pinned by content hash and recorded on every run.
 - **Drift supervision** — story scope, limits and an audited automated reviewer,
   so agents cannot wander off the plan unnoticed.
 - **DSSE audit envelopes** — adopt the Sigstore/in-toto envelope format so the

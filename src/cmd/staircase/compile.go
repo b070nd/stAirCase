@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/b070nd/staircase-core/src/internal/plan"
 	"os"
@@ -137,6 +138,23 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	}
 	for _, e := range edges {
 		pl.Edges = append(pl.Edges, plan.Edge{From: e.FromNode, To: e.ToNode, Condition: e.Condition})
+	}
+	stories, err := store.ListUserStoriesByCase(caseID)
+	if err != nil {
+		return fmt.Errorf("load stories: %w", err)
+	}
+	for _, st := range stories {
+		ps := plan.Story{ID: st.ID, Text: st.Description}
+		if st.CustomConfig != "" { // a story's scope: {"allow": [...], "max_files": N}
+			if err := json.Unmarshal([]byte(st.CustomConfig), &ps); err != nil {
+				return fmt.Errorf("story #%d scope: %w", st.ID, err)
+			}
+			ps.ID, ps.Text = st.ID, st.Description
+		}
+		pl.Stories = append(pl.Stories, ps)
+	}
+	if pl.BlueprintHash, _, err = store.CaseBlueprint(caseID); err != nil {
+		return fmt.Errorf("load case binding: %w", err)
 	}
 
 	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────

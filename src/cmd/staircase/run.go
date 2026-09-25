@@ -156,5 +156,6 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
 		Agent:          ag,
+		Plan:           &pl,
 	})
 }

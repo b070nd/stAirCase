@@ -19,6 +19,7 @@ var (
 	SecretKeyFileGate                Gate = &secretKeyFileGate{}
 	SecretNoDuplicatesGate           Gate = &secretNoDuplicatesGate{}
 	RuntimePlanCompiledGate          Gate = &runtimePlanCompiledGate{}
+	RuntimePlanPinnedGate            Gate = &runtimePlanPinnedGate{}
 	RuntimeSourcePathGate            Gate = &runtimeSourcePathGate{}
 	RuntimeNoConcurrentRunGate       Gate = &runtimeNoConcurrentRunGate{}
 	RuntimeGitAvailableGate          Gate = &runtimeGitAvailableGate{}

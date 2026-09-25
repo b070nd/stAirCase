@@ -17,7 +17,7 @@ import (
 
 // Version changes whenever a plan's meaning changes; run refuses plans of
 // another version instead of running them with different semantics.
-const Version = 1
+const Version = 2
 
 // Plan is everything a compiled case runs: its topology, prompts and context.
 // compile writes it as canonical JSON with a sha256 sidecar.
@@ -30,6 +30,20 @@ type Plan struct {
 	Edges           []Edge  `json:"edges"`
 	PRD             string  `json:"prd"`
 	RepoContext     string  `json:"repo_context"`
+	Stories         []Story `json:"stories,omitempty"`
+	// BlueprintHash is the blueprint the case was bound from, if any.
+	BlueprintHash string `json:"blueprint_hash,omitempty"`
+
+	// Digest is the sha256 of the plan file, set by Load.
+	Digest string `json:"-"`
+}
+
+// Story is one of the case's stories and the paths it may change.
+type Story struct {
+	ID       int64    `json:"id"`
+	Text     string   `json:"text"`
+	Allow    []string `json:"allow,omitempty"`
+	MaxFiles int      `json:"max_files,omitempty"`
 }
 
 // Agent is one agent of the topology.
@@ -122,6 +136,7 @@ func Load(path string) (Plan, error) {
 	if err := dec.Decode(&p); err != nil {
 		return p, fmt.Errorf("read plan: %w", err)
 	}
+	p.Digest = strings.TrimSpace(string(want))
 	if p.Version != Version {
 		return p, fmt.Errorf("plan version %d, this staircase runs version %d — recompile", p.Version, Version)
 	}

@@ -81,6 +81,17 @@ type UserStory struct {
 	CustomConfig string `json:"custom_config,omitempty"`
 }
 
+// Blueprint is an imported blueprint snapshot, immutable and identified by
+// the sha256 of its canonical content.
+type Blueprint struct {
+	Hash       string    `json:"hash"`
+	Name       string    `json:"name"`
+	Content    string    `json:"content"`
+	SourceDir  string    `json:"source_dir,omitempty"`
+	GitSHA     string    `json:"git_sha,omitempty"` // the source repository's commit, when it was clean
+	ImportedAt time.Time `json:"imported_at"`
+}
+
 type SwarmTopology struct {
 	ID             int64  `json:"id"`
 	ProjectID      int64  `json:"project_id"`

@@ -36,6 +36,16 @@ since the first Go commits:
   it offline, failing loudly on any request not in the recording.
 - `story accept` records acceptance on the audit chain and completes the case.
 - A stuck agent no longer hangs a run (`agent_unresponsive` is audited).
+- **Blueprints** (`docs/blueprints.md`): `blueprint import` snapshots a
+  blueprint directory by content hash, `project bind` creates its topology and
+  cases in a project, and the `runtime.plan_pinned` gate blocks runs of bound
+  cases whose plan drifted from the blueprint. Plans (version 2) carry the
+  case's stories and blueprint; recompile plans from earlier builds.
+- `run_bound` records the plan's sha256 and blueprint, and runs record the
+  topology version they executed rather than the latest one.
+- `run --agent claude-code` (experimental): Claude Code does the work, and
+  hooks route every tool call through the same approvals — edits and shell
+  commands are proposals, reads stay in the worktree, other tools are denied.
 
 ## [1.2.0] — 2026-03-12
 

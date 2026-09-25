@@ -130,6 +130,10 @@ func TestInitDB_applies_migrations_to_legacy_database_without_records(t *testing
 	assert.True(t, columnExists(t, db, "run_event_logs", "git_commit_hash"))
 	assert.True(t, indexExists(t, db, "uidx_secrets_global"))
 	assert.True(t, indexExists(t, db, "uidx_secrets_project"))
+	assert.True(t, columnExists(t, db, "projects", "blueprint_hash"))
+	assert.True(t, columnExists(t, db, "cases", "blueprint_hash"))
+	assert.True(t, columnExists(t, db, "cases", "blueprint_slug"))
+	assert.True(t, columnExists(t, db, "blueprints", "git_sha"))
 
 	var count int
 	err = db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count)

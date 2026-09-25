@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS projects (
     webhook_url TEXT,
     default_model TEXT,
     budget_usd_per_run REAL DEFAULT 0,
+    blueprint_hash TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
     UNIQUE(vendor_id, name)
 );
@@ -78,7 +79,18 @@ CREATE TABLE IF NOT EXISTS cases (
     last_modified DATETIME DEFAULT CURRENT_TIMESTAMP,
     prd_json TEXT,                    -- Semantic Context Hub
     deleted_at DATETIME,
+    blueprint_hash TEXT NOT NULL DEFAULT '',  -- set on cases created by 'project bind'
+    blueprint_slug TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS blueprints (
+    hash TEXT PRIMARY KEY,  -- sha256 of content
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,  -- canonical JSON, file references resolved
+    source_dir TEXT NOT NULL DEFAULT '',
+    git_sha TEXT NOT NULL DEFAULT '',
+    imported_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS user_stories (
@@ -209,4 +221,16 @@ var Migrations = []string{
 		accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE SET NULL
 	)`,
+	// Blueprints (Phase 4): immutable snapshots; projects and cases record theirs.
+	`CREATE TABLE IF NOT EXISTS blueprints (
+		hash TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		content TEXT NOT NULL,
+		source_dir TEXT NOT NULL DEFAULT '',
+		git_sha TEXT NOT NULL DEFAULT '',
+		imported_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`,
+	`ALTER TABLE projects ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE cases ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE cases ADD COLUMN blueprint_slug TEXT NOT NULL DEFAULT ''`,
 }

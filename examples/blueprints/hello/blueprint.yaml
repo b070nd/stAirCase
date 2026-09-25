@@ -1,0 +1,27 @@
+# A blueprint: the automation for a project, kept in its own repository.
+# 'staircase blueprint import <dir>' snapshots it (files resolved, sha256 of
+# the content); 'staircase project bind <project-id> <hash>' creates its
+# topology and cases in a project. See docs/blueprints.md.
+name: hello
+supervisor: supervisor
+agents:
+  - name: supervisor
+    model: demo/scripted            # any model staircase serves, e.g. claude-sonnet-4-6
+    prompt: You coordinate the work.
+  - name: coder
+    model: demo/scripted
+    prompt_file: prompts/coder.md
+edges:
+  - {from: supervisor, to: coder}
+  - {from: coder, to: supervisor}
+cases:
+  - slug: greet
+    prd_file: prd.md
+    stories:
+      - text: Create a greeting file
+        scope: {allow: [GREETING.md], max_files: 1}
+limits:                              # enforced by drift supervision (Phase 5)
+  checkpoint_every: 5
+  max_files_changed: 10
+  max_scope_violations: 2
+  max_run_secs: 600

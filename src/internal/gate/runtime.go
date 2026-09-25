@@ -8,12 +8,14 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/b070nd/staircase-core/src/internal/blueprint"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
 	"github.com/b070nd/staircase-core/src/internal/plan"
 )
 
 func init() {
 	Register(&runtimePlanCompiledGate{})
+	Register(&runtimePlanPinnedGate{})
 	Register(&runtimeSourcePathGate{})
 	Register(&runtimeNoConcurrentRunGate{})
 	Register(&runtimeGitAvailableGate{})
@@ -48,6 +50,50 @@ func (*runtimePlanCompiledGate) Run(ctx Context) Result {
 		}
 	}
 	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan for topology v%d, %d agents", p.TopologyVersion, len(p.Agents)))
+}
+
+// ─── runtime.plan_pinned ─────────────────────────────────────────────────────
+
+type runtimePlanPinnedGate struct{}
+
+func (*runtimePlanPinnedGate) Name() string       { return "runtime.plan_pinned" }
+func (*runtimePlanPinnedGate) Category() string   { return "runtime" }
+func (*runtimePlanPinnedGate) Severity() Severity { return SeverityBlock }
+
+// Run checks that a case bound to a blueprint runs exactly that blueprint:
+// the plan names it and holds its topology, PRD and stories. Anything changed
+// through the imperative CLI after binding blocks the run.
+func (*runtimePlanPinnedGate) Run(ctx Context) Result {
+	const name = "runtime.plan_pinned"
+	hash, slug, err := ctx.Store.CaseBlueprint(ctx.CaseID)
+	if err != nil {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("read case binding: %v", err))
+	}
+	if hash == "" {
+		return pass(name, "runtime", SeverityBlock, "case is not bound to a blueprint")
+	}
+	p, err := plan.Load(filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID)))
+	if err != nil {
+		return skip(name, "runtime", SeverityBlock, "no usable plan (see runtime.plan_compiled)")
+	}
+	if p.BlueprintHash != hash {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was not compiled from blueprint %.12s — run 'staircase compile %d --force' to recompile", hash, ctx.CaseID))
+	}
+	stored, err := ctx.Store.FindBlueprint(hash)
+	if err != nil {
+		return fail(name, "runtime", SeverityBlock, err.Error())
+	}
+	b, err := blueprint.Parse([]byte(stored.Content))
+	if err == nil && b.Hash() != hash {
+		err = errors.New("stored content does not match its hash")
+	}
+	if err != nil {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("blueprint %.12s: %v", hash, err))
+	}
+	if err := b.Check(p, slug); err != nil {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("case #%d drifted from blueprint %s %.12s (%v) — re-bind the project with 'staircase project bind'", ctx.CaseID, b.Name, hash, err))
+	}
+	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan is blueprint %s %.12s, case %s", b.Name, hash, slug))
 }
 
 // ─── runtime.source_path ─────────────────────────────────────────────────────
