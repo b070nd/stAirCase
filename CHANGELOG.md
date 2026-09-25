@@ -58,6 +58,14 @@ since the first Go commits:
   the policy leaves open, from the derived change and the stories only;
   sensitive paths, rejection streaks, unreadable verdicts and every 5th
   approval go to a human, and a human approves the run's final change once.
+- `secret set` on an existing key replaces its value (e.g. a rotated API key)
+  and counts its version; it used to fail with a UNIQUE constraint error.
+- `make demo` is the offline end-to-end acceptance run: blueprint imported
+  from its own repository → bind → run with create, edit and delete approved →
+  run branch holds exactly those changes → developer checkout byte-identical →
+  stories accepted → audit verified; plus `--tamper` and `--drift` paths.
+  `make smoke` / `make smoke-claude` run the same flow against a real model
+  (record, then replay offline) and Claude Code; they skip without credentials.
 - `run --agent claude-code` (experimental): Claude Code does the work, and
   hooks route every tool call through the same approvals — edits and shell
   commands are proposals, reads stay in the worktree, other tools are denied.

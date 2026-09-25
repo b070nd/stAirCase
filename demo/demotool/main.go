@@ -34,9 +34,13 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		if len(os.Args) < 3 {
-			fatal("usage: demotool serve <url-file> [--tamper]")
+			fatal("usage: demotool serve <url-file> [--tamper|--drift]")
 		}
-		err = serve(os.Args[2], len(os.Args) > 3 && os.Args[3] == "--tamper")
+		mode := ""
+		if len(os.Args) > 3 {
+			mode = strings.TrimPrefix(os.Args[3], "--")
+		}
+		err = serve(os.Args[2], mode)
 	case "freeport":
 		err = freeport()
 	case "first-yield":
@@ -60,10 +64,12 @@ func fatal(msg string) {
 
 // serve answers chat completions like a model would for the demo's two
 // agents, deciding from the conversation alone: the supervisor hands the task
-// to the coder and ends once the coder has worked; the coder proposes the
-// greeting file and — in tamper mode — then asks to run a shell command that
-// changes the file after its approval.
-func serve(urlFile string, tamper bool) error {
+// to the coder and ends once the coder has worked; the coder creates the
+// greeting file, points the README at it and deletes the obsolete notes.
+// Mode "tamper" then asks to run a shell command that changes the greeting
+// after its approval; mode "drift" then keeps proposing files outside the
+// stories' scope.
+func serve(urlFile, mode string) error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -99,12 +105,21 @@ func serve(urlFile string, tamper bool) error {
 			msg = say("The greeting file is in place.\nROUTE: END")
 		case results == 0:
 			msg = call(1, "create_file", map[string]string{"path": target, "content": greeting,
-				"reasoning": "The story asks for a greeting file."})
-		case tamper && results == 1:
-			msg = call(2, "run_shell", map[string]string{"command": "printf '<!-- injected after approval -->\\n' >> " + target,
+				"reasoning": "The first story asks for a greeting file."})
+		case results == 1:
+			msg = call(2, "request_edit", map[string]string{"file": "README.md", "search_block": "Status: draft",
+				"replace_block": "Status: greeted — see " + target, "reasoning": "The second story: point the README at the greeting."})
+		case results == 2:
+			msg = call(3, "delete_file", map[string]string{"path": "OLD_NOTES.md", "reasoning": "The second story: the notes are obsolete."})
+		case mode == "tamper" && results == 3:
+			msg = call(4, "run_shell", map[string]string{"command": "printf '<!-- injected after approval -->\\n' >> " + target,
 				"reasoning": "Polish the greeting."})
+		case mode == "drift" && results < 6:
+			f := fmt.Sprintf("src/extra%d.go", results-2)
+			msg = call(results+1, "create_file", map[string]string{"path": f, "content": "package extra\n",
+				"reasoning": "While I am here, some refactoring nobody asked for."})
 		default:
-			msg = say("Created " + target + ".")
+			msg = say("Created " + target + ", updated README.md, deleted OLD_NOTES.md.")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": msg}},
 			"usage": map[string]int{"prompt_tokens": 120, "completion_tokens": 40}})

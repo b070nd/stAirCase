@@ -9,6 +9,7 @@ tamper-evident audit log.
 ./demo/run-demo.sh          # interactive — you approve each proposal yourself
 ./demo/run-demo.sh --auto   # hands-free (approves via curl); used by CI
 ./demo/run-demo.sh --tamper # proves a change made after approval is refused
+./demo/run-demo.sh --drift  # proves an agent wandering off its stories is stopped
 ```
 
 **Requirements:** `go`, `git`, `curl`. No API key. No network. Nothing is
@@ -17,18 +18,28 @@ workspace that is deleted on exit.
 
 ## What it does
 
-1. Builds `staircase` and creates a throwaway workspace + target git repo.
-2. Registers a vendor, project, a supervisor ⇄ coder topology and a case with
-   real CLI commands, and compiles the case to a plan.
-3. Starts a run with the **HTTP approval server** (`--approval-port`). The run
-   works in its own git worktree; your checkout is never touched.
-4. The supervisor hands the task to the coder, whose `create_file` call
-   **blocks for human approval**. You see the complete content that would be
-   written — the orchestrator derived it and binds the approval to those bytes.
-5. You approve (Enter, or `curl`). The tool writes exactly the approved bytes;
-   finalize checks the worktree against the approvals and builds the commit from
-   them. The supervisor then ends the run.
-6. It prints the committed diff and **verifies the signed audit chain**.
+It is the project's offline end-to-end acceptance run (`make demo` runs all
+three modes in CI), and it checks every step instead of just printing it:
+
+1. Builds `staircase` and creates a product repository with a README, an
+   obsolete notes file and some **uncommitted work** of the developer's.
+2. Puts the [`hello` blueprint](../examples/blueprints/hello/blueprint.yaml) in
+   **its own git repository**, imports it (a content-hash snapshot with its
+   source commit) and **binds** it to the project: a topology, one case, two
+   stories, each with the paths it may change.
+3. Compiles the case (the `runtime.plan_pinned` gate confirms the plan is the
+   blueprint's) and starts a run with the **HTTP approval server**. The run works
+   in its own git worktree.
+4. The supervisor hands the work to the coder, who **creates** `GREETING.md`,
+   **edits** `README.md` and **deletes** `OLD_NOTES.md` — each call blocks for
+   your approval and shows exactly what would be applied.
+5. Finalize checks the worktree against the approvals and commits exactly the
+   approved bytes. The demo checks the run branch holds exactly those three
+   changes, that your checkout — HEAD, branch, index, status, every file — is
+   byte-for-byte as before, and that the product repository gained nothing but
+   the run branch.
+6. You **accept both stories**; the case is COMPLETED. The signed audit chain is
+   exported and **verified**.
 
 ### The model is a stand-in — on purpose
 
@@ -58,3 +69,17 @@ and the refusal is written to the audit chain:
 
 This is the headline security control: **approval is bound to content, not to a
 preview or a command.** Only bytes a human approved reach the repository.
+
+## The `--drift` proof
+
+With `--drift`, after its stories' work the coder keeps proposing files under
+`src/`, outside both stories' scope. Even where a policy would auto-approve,
+each goes to you marked `DRIFT: outside the stories' scope`; the blueprint
+allows 2 such proposals, so the 3rd halts the run (`drift_halt`), and the case
+does not run again until you pass `--ack-drift`:
+
+```
+🧭 Drift: more than 2 proposals reached outside the stories' scope — halting run #1
+✓ run halted (KILLED) and exited 1
+✓ the case does not run again until 'staircase run 1 --ack-drift'
+```

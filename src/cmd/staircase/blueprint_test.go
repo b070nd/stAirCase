@@ -68,9 +68,10 @@ func TestE2E_Blueprint_import_bind_compile_pinned(t *testing.T) {
 	pl, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID)))
 	require.NoError(t, err)
 	assert.Equal(t, list[0].Hash, pl.BlueprintHash)
-	require.Len(t, pl.Stories, 1)
+	require.Len(t, pl.Stories, 2)
 	assert.Equal(t, []string{"GREETING.md"}, pl.Stories[0].Allow)
 	assert.Equal(t, 1, pl.Stories[0].MaxFiles)
+	assert.Equal(t, 2, pl.Limits.MaxScopeViolations, "a bound case runs under its blueprint's limits")
 	r := gateResult(t, wsDir, caseID, "runtime.plan_pinned")
 	assert.Equal(t, gate.StatusPass, r.Status, r.Message)
 

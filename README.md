@@ -49,17 +49,21 @@ make demo
 
 `make demo` runs the whole governance loop — the real control plane and agent
 runtime — against a stand-in model, so it's deterministic and needs no API key
-or network. You'll watch a supervisor hand work to a coder, the coder propose a
-file and block for human approval, the approved bytes committed on the run's
-own branch, and a **verified** signed audit chain. Then:
+or network. A blueprint from its own repository is bound to a project; a coder
+creates, edits and deletes files, each blocking for your approval; exactly the
+approved bytes land on the run's own branch while your checkout stays
+byte-identical; you accept the stories; and the signed audit chain is
+**verified**. Then:
 
 ```bash
 ./demo/run-demo.sh --tamper   # an approved shell command changes the file AFTER its approval
+./demo/run-demo.sh --drift    # the agent wanders outside its stories' scope
 ```
 
-The run fails, nothing is committed, and the refusal is recorded as an
-`approval_content_mismatch` event. That's the headline guarantee, demonstrated
-failing closed.
+With `--tamper` the run fails, nothing is committed, and the refusal is recorded
+as an `approval_content_mismatch` event — the headline guarantee, demonstrated
+failing closed. With `--drift` the out-of-scope proposals come to you marked
+`DRIFT`, the run is halted, and the case waits for `--ack-drift`.
 
 ## What it does
 

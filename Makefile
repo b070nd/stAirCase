@@ -1,4 +1,4 @@
-.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo
+.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
@@ -59,8 +59,18 @@ lint:
 	golangci-lint run ./...
 
 # ─── Offline demo (no API key) ────────────────────────────────────────────────
-# Runs the full HITL + approval-content-binding + audit-chain walkthrough with a
-# stub agent. --auto approves via curl so it is non-interactive in CI.
+# The offline end-to-end acceptance run (blueprint → bind → run → approvals →
+# commit → checkout untouched → stories accepted → audit verified) on the real
+# runtime with a stand-in model; plus the tamper and drift paths. --auto
+# approves via curl so it is non-interactive in CI.
 demo:
 	./demo/run-demo.sh --auto
 	./demo/run-demo.sh --auto --tamper
+	./demo/run-demo.sh --auto --drift
+
+# ─── Real-agent smoke runs (opt-in: cost money, need credentials) ────────────
+# Skipped with a message when the credentials are missing. Not part of check.
+smoke:
+	./demo/smoke.sh model
+smoke-claude:
+	./demo/smoke.sh claude
