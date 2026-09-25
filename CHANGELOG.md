@@ -35,6 +35,10 @@ since the first Go commits:
 - **Webhook approvals** must echo the request's fresh `yield_id` and
   `request_sha256` when a secret is set.
 
+- **Releases ship Linux and macOS** (amd64, arm64) only; Windows compiles but
+  is not tested and not shipped. Releases are published from `b070nd/stAirCase`
+  (the cosign identity in QUICKSTART's verification steps is corrected to match).
+
 ### Added
 
 - `--record-llm` / `--replay-llm` record every model exchange of a run and replay

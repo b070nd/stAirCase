@@ -23,6 +23,7 @@ use `staircase story accept <story-id>`.
 7. [Human-in-the-Loop Deep Dive](#7-human-in-the-loop-deep-dive)
 8. [Quality Gates Reference](#8-quality-gates-reference)
 9. [Inspecting Runs & the SOC2 Event Log](#9-inspecting-runs--the-soc2-event-log)
+   - [Blueprints & Drift Supervision](#9a-blueprints--drift-supervision)
 10. [Maintenance](#10-maintenance)
 11. [Troubleshooting](#11-troubleshooting)
 12. [Command Reference](#12-command-reference)
@@ -42,6 +43,16 @@ There is nothing else to install: the agent runtime is built into the `staircase
 ---
 
 ## 2. Build & Install
+
+Release binaries (Linux and macOS, amd64 and arm64) are attached to each
+[GitHub release](https://github.com/b070nd/stAirCase/releases) — verify them as
+shown below — and installable with Homebrew:
+
+```bash
+brew install b070nd/staircase/staircase
+```
+
+Or build from source:
 
 ```bash
 # Clone and build
@@ -70,7 +81,7 @@ keyless signature over `checksums.txt`. To verify a download:
 cosign verify-blob \
   --certificate checksums.txt.pem \
   --signature checksums.txt.sig \
-  --certificate-identity-regexp 'github.com/b070nd/staircase-core' \
+  --certificate-identity-regexp '^https://github.com/b070nd/stAirCase/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 
@@ -803,6 +814,32 @@ staircase inspect log 3 --full
 
 ---
 
+## 9a. Blueprints & Drift Supervision
+
+Instead of registering a topology, cases and stories by hand, keep them as a
+**blueprint** in their own repository, import it as a content-hash snapshot,
+and bind it to a project:
+
+```bash
+staircase blueprint import ~/blueprints/payments     # prints the hash
+staircase project bind 1 <hash>                      # new topology version + the blueprint's cases
+staircase compile <case-id>
+```
+
+A bound case runs only as its blueprint defines it (the `runtime.plan_pinned`
+gate), and every run records the plan and blueprint it executed. Stories carry a
+**scope** — the paths their runs may change — and the blueprint (or
+`policy.json`) sets limits. Changes outside the scope, past the file limits or at
+checkpoints go to you marked `DRIFT`; too many scope violations or too long a
+run halt it until you pass `--ack-drift`. `--validator <model>` lets a model
+review in-scope edits, with you approving the run's final change once.
+
+Details: [docs/blueprints.md](docs/blueprints.md), [docs/drift.md](docs/drift.md).
+For an unbound case, set a story's scope with
+`staircase story scope <story-id> --allow 'src/payments/**'`.
+
+---
+
 ## 10. Maintenance
 
 ### Clean up
@@ -830,7 +867,8 @@ removes it together with the run branch).
 printf %s "$NEW_ANTHROPIC_API_KEY" | staircase secret set ANTHROPIC_API_KEY
 ```
 
-Overwrites the existing encrypted value. All future runs will use the new key.
+Replaces the existing encrypted value (the output says `replaced`, with the
+secret's version). All future runs use the new key.
 (`staircase secret rotate` re-encrypts every secret under a new workspace key.)
 
 ### List stored secrets
@@ -968,6 +1006,15 @@ staircase story add <case-id> <description>
 staircase story list <case-id>
 staircase story accept <story-id>
 staircase story invalidate <story-id>
+staircase story scope <story-id> [--allow <glob>]... [--max-files <n>]
+```
+
+### Blueprints
+
+```
+staircase blueprint import <dir>
+staircase blueprint list
+staircase project bind <project-id> <blueprint-hash>
 ```
 
 ### Secrets
@@ -985,6 +1032,7 @@ staircase compile <case-id> [--force]
 staircase gate <case-id> [--json] [--out <file>]
 staircase run <case-id> [--dry-run] [--skip-gates] [--approval-port <port>] [--allow-shell-exec]
                         [--record-llm <file> | --replay-llm <file>] [--reconcile] [--debug]
+                        [--validator <model>] [--ack-drift] [--agent built-in|claude-code]
 ```
 
 ### Inspection

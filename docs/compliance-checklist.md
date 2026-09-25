@@ -7,9 +7,8 @@
 > [project-use.md](project-use.md). A full revision is planned before 1.0.
 
 **Module:** `github.com/b070nd/staircase-core`
-**Manifesto sources:** `.tasks/2026-03-19-isolation.md`, `.tasks/2026-03-18-enterprise.md`, `.tasks/2026-03-18-enterptise-context.md`
-**Last audited:** 2026-05-21 (post Sprint 1/2 security remediation + audit FAIL fixes)
-**Test suite:** 538 tests · 0 failures · 0 skips (on macOS/Linux) · 76.6% total coverage
+**Origin:** internal requirement notes (not published). The `CHECK x.y.z` ids in code comments refer to the items below.
+**Last audited:** 2026-05-21 — a historical record: statuses and evidence are as of that audit and are not updated per change.
 
 ---
 

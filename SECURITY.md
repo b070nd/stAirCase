@@ -49,8 +49,9 @@ sandbox. See [Project Use and Current Safety Boundary](docs/project-use.md).
   request's fresh `yield_id` and `request_sha256`, so a captured approval cannot
   be replayed onto another request. Without a secret the channel is
   unauthenticated.
-- **Tamper-evident audit chain.** Every run event is hash-chained and
-  Ed25519-signed. Checkpoints can be anchored in a public Rekor transparency log
+- **Tamper-evident audit chain.** Every run event is hash-chained, and each
+  decision is on the chain before the agent sees it. `audit export` writes an
+  Ed25519-signed checkpoint of the chain to an append-only file. Checkpoints can be anchored in a public Rekor transparency log
   (`audit export --anchor`) and re-verified (`audit verify --check-anchor`) for an
   external, append-only witness independent of the workspace key.
 - **Secret handling.** Secrets are stored AES-256-encrypted and decrypted only
@@ -87,6 +88,17 @@ These are documented, not hidden:
   inclusion-proof verification.
 - Agents are named in audit records but not separately authenticated;
   per-agent identity and per-tool credential scoping are on the roadmap.
+- `--agent claude-code` is experimental: Claude Code's tool calls are governed
+  through its hooks (a hook that fails or times out blocks the call), but your
+  own user and project Claude Code settings still load, including their hooks
+  and MCP servers — changes they make inside the worktree fail the run, effects
+  elsewhere are not contained. The hook endpoint's token is visible to local
+  processes of your user.
+- The `--validator` reviewer is a model and can be misled by what it reviews;
+  it only ever decides in-scope, non-sensitive edits, and a human approves the
+  run's final change whenever it decided anything.
+- Drift supervision checks paths, file counts and time, not what a change
+  means: an in-scope edit can still do something no story asked for.
 
 ## Supported versions
 

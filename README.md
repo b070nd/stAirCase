@@ -72,8 +72,8 @@ failing closed. With `--drift` the out-of-scope proposals come to you marked
 - **Approval bound to bytes** — the control plane derives exactly what each
   approved edit produces and commits only that: the commit is built from the
   approved bytes, and a run whose worktree holds anything else fails.
-- **Signed, tamper-evident audit chain** — every event is hash-chained and
-  Ed25519-signed; checkpoints can be anchored in a public
+- **Signed, tamper-evident audit chain** — every event is hash-chained; exported
+  checkpoints of the chain are Ed25519-signed and can be anchored in a public
   [Rekor](https://docs.sigstore.dev/logging/overview/) transparency log for an
   external witness.
 - **Separate worktree per run** — each run works in its own git worktree on a
@@ -108,14 +108,14 @@ State (runs, cases, topologies, encrypted secrets, the audit chain) lives in a
 local SQLite workspace, separate from the repositories being changed — so agent
 exhaust never pollutes your product repos.
 
-Design review: [`docs/architecture.md`](docs/architecture.md) (written for the
-earlier Python runtime; see its banner).
+How it fits together: [`docs/architecture.md`](docs/architecture.md).
 
 ## Install
 
-Releases will ship signed binaries (SBOM + cosign signature over the checksums —
-see [QUICKSTART](QUICKSTART.md#verifying-release-artifacts)); none is cut yet.
-Build from source:
+Release binaries are built for Linux and macOS (amd64, arm64) with checksums,
+an SBOM and a keyless cosign signature over the checksums (see
+[QUICKSTART](QUICKSTART.md#verifying-release-artifacts)); Windows builds compile
+but are not shipped, because they are not tested. Or build from source:
 
 ```bash
 CGO_ENABLED=0 go build -o staircase ./src/cmd/staircase/
