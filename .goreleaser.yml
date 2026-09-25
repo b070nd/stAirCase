@@ -5,10 +5,7 @@ version: 2
 
 project_name: staircase
 
-before:
-  hooks:
-    - go mod tidy
-    - go generate ./...
+# No before-hooks: CI enforces `go mod tidy -diff`, and nothing uses go:generate.
 
 builds:
   - id: staircase
@@ -16,16 +13,13 @@ builds:
     binary: staircase
     env:
       - CGO_ENABLED=0
+    # Windows compiles (make check cross-builds it) but runs untested: not shipped.
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -35,9 +29,6 @@ builds:
 archives:
   - id: staircase
     name_template: "staircase_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - LICENSE
       - README.md
@@ -84,7 +75,7 @@ changelog:
 release:
   github:
     owner: b070nd
-    name: staircase-core
+    name: stAirCase
   draft: false
   prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"

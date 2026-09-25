@@ -18,7 +18,7 @@ test:
 
 # ─── L3 integration ───────────────────────────────────────────────────────────
 test-integration:
-	go test -tags=integration ./src/... -count=1
+	go test ./src/... -count=1  # everything, including the run integration tests -short skips
 
 # ─── L4 E2E (subprocess-level) ────────────────────────────────────────────────
 test-e2e:
