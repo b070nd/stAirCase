@@ -59,7 +59,7 @@ if [[ -z "$STATUS" ]]; then
 fi
 
 # Archive.
-tar czf "$OUT" -C "$REPO" .
+COPYFILE_DISABLE=1 tar czf "$OUT" -C "$REPO" .  # no macOS AppleDouble (._*) entries
 
 echo "Built: $OUT"
 echo "Dirty status: $STATUS"

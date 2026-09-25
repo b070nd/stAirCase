@@ -229,7 +229,7 @@ GIT_AUTHOR_DATE="$COMMIT_DATE" \
 # ── archive (include .git so tests can use git operations on the fixture) ─────
 # We archive the directory contents (not the dir name itself) so extracting
 # tiny-go.tar.gz into a tmpdir gives the repo directly.
-tar czf "$OUT" -C "$REPO" .
+COPYFILE_DISABLE=1 tar czf "$OUT" -C "$REPO" .  # no macOS AppleDouble (._*) entries
 
 echo "Built: $OUT"
 echo "SHA256: $(shasum -a 256 "$OUT" | awk '{print $1}')"
