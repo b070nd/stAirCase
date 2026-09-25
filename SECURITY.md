@@ -8,9 +8,9 @@ in it seriously.
 
 **Please do not open a public issue for security vulnerabilities.**
 
-Report privately to **botond.biro.dev@gmail.com** (or use GitHub's
-[private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
-on this repository). Include a description, reproduction steps, and the affected
+Report it privately through
+[GitHub's private vulnerability reporting](https://github.com/b070nd/stAirCase/security/advisories/new)
+on this repository, or by email to **botond.biro.dev@gmail.com**. Include a description, reproduction steps, and the affected
 version or commit. We aim to acknowledge within a few business days and will
 coordinate a fix and disclosure timeline with you.
 

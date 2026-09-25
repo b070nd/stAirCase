@@ -67,15 +67,17 @@ sudo mv staircase /usr/local/bin/
 Verify:
 ```
 $ staircase version
-stAirCase v0.1.0-dev (commit none, built unknown)
+stAirCase dev (commit none, built unknown)
 ```
 
 The single static binary ships with no CGo; it uses a pure-Go SQLite driver. No shared libraries required.
 
 ### Verifying release artifacts
 
-Tagged releases ship a syft SBOM (`*.spdx.json`) per archive and a Sigstore
-keyless signature over `checksums.txt`. To verify a download:
+Tagged releases are built reproducibly by the release workflow and ship a syft
+SBOM (`*.spdx.json`) per archive, a Sigstore keyless signature over
+`checksums.txt`, and a GitHub build-provenance attestation for every archive.
+To verify a download:
 
 ```bash
 # 1. Verify the checksum file signature (keyless — no public key to manage)
@@ -88,6 +90,10 @@ cosign verify-blob \
 
 # 2. Verify the archive against the now-trusted checksums
 shasum -a 256 -c checksums.txt --ignore-missing
+
+# Or, with the GitHub CLI: check the archive was built by this repository's
+# release workflow (SLSA build provenance)
+gh attestation verify staircase_0.2.0_darwin_arm64.tar.gz --repo b070nd/stAirCase
 ```
 
 ---

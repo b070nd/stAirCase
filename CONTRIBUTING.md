@@ -39,6 +39,20 @@ GOOS=windows go build ./...  # the Windows build must keep compiling
 - **No new dependencies without discussion.** `go.mod` is the supply-chain
   surface — model clients use the standard library, and it should stay that way.
 
+## Releasing (maintainers)
+
+1. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
+   `## [X.Y.Z] — date` heading; it becomes the release notes.
+2. Merge to `master` with CI green, then tag from `master`:
+   `git tag -a vX.Y.Z -m "stAirCase vX.Y.Z" && git push origin vX.Y.Z`.
+3. The release workflow builds the archives reproducibly, signs the
+   checksums (cosign), attaches SBOMs and attests build provenance.
+4. Update the Homebrew tap with `packaging/homebrew-formula.sh` from the
+   release's `checksums.txt`.
+
+Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor
+version may contain breaking changes, listed under "Changed (breaking)".
+
 ## Reporting security issues
 
 Do not use public issues for vulnerabilities — see [SECURITY.md](SECURITY.md).

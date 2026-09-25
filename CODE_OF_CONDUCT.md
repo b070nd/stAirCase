@@ -7,7 +7,7 @@ uphold it.
 ## Reporting
 
 Report unacceptable behavior privately to the maintainer at
-**b070nd.code@gmail.com**. Reports are handled confidentially, and the
+**botond.biro.dev@gmail.com**. Reports are handled confidentially, and the
 maintainer will respond as the Covenant's enforcement guidelines describe.
 
 Security vulnerabilities are not conduct issues: report them as

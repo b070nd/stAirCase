@@ -7,8 +7,12 @@
 
 <p align="center">
   <a href="https://github.com/b070nd/stAirCase/actions/workflows/ci.yml"><img src="https://github.com/b070nd/stAirCase/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/b070nd/stAirCase/actions/workflows/codeql.yml"><img src="https://github.com/b070nd/stAirCase/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/b070nd/stAirCase"><img src="https://api.securityscorecards.dev/projects/github.com/b070nd/stAirCase/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://github.com/b070nd/stAirCase/releases/latest"><img src="https://img.shields.io/github/v/release/b070nd/stAirCase?include_prereleases&sort=semver" alt="Latest release"></a>
+  <a href="https://pkg.go.dev/github.com/b070nd/stAirCase"><img src="https://pkg.go.dev/badge/github.com/b070nd/stAirCase.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/b070nd/stAirCase"><img src="https://goreportcard.com/badge/github.com/b070nd/stAirCase" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/go-1.26-00ADD8.svg" alt="Go 1.26">
   <img src="https://img.shields.io/badge/status-pre--1.0-orange.svg" alt="pre-1.0">
 </p>
 
@@ -112,15 +116,17 @@ How it fits together: [`docs/architecture.md`](docs/architecture.md).
 
 ## Install
 
-Release binaries are built for Linux and macOS (amd64, arm64) with checksums,
-an SBOM and a keyless cosign signature over the checksums (see
-[QUICKSTART](QUICKSTART.md#verifying-release-artifacts)). A Windows (amd64)
-build ships as **experimental**: it is not tested, and `run_shell` and
-`--agent claude-code` need a POSIX shell. Or build from source:
-
 ```bash
-CGO_ENABLED=0 go build -o staircase ./src/cmd/staircase/
+brew install b070nd/staircase/staircase                           # macOS / Linux, with shell completions
+go install github.com/b070nd/stAirCase/src/cmd/staircase@latest   # Go 1.26+
 ```
+
+Or download an archive from the [latest release](https://github.com/b070nd/stAirCase/releases/latest):
+Linux and macOS (amd64, arm64), and an **experimental** Windows (amd64) build —
+untested, and `run_shell` and `--agent claude-code` need a POSIX shell. Every
+release is built reproducibly from its tag, with checksums signed by a keyless
+cosign signature, an SBOM per archive, and GitHub build-provenance attestations;
+[verify a download](QUICKSTART.md#verifying-release-artifacts) before running it.
 
 A single static binary, no CGo, pure-Go SQLite — no shared libraries, no Python.
 The full walkthrough (workspace setup, a real run, HITL, evidence export) is in

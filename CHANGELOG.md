@@ -75,6 +75,14 @@ since the first Go commits:
   stories accepted → audit verified; plus `--tamper` and `--drift` paths.
   `make smoke` / `make smoke-claude` run the same flow against a real model
   (record, then replay offline) and Claude Code; they skip without credentials.
+- **Install and verify**: `go install github.com/b070nd/stAirCase/src/cmd/staircase@latest`
+  (the module path is now the repository path), Homebrew with bash/zsh/fish
+  completions, and release archives that are byte-reproducible from their tag,
+  with signed checksums, SBOMs and GitHub build-provenance attestations
+  (`gh attestation verify`). `staircase version` reports the module version for
+  `go install` builds.
+- Project: code of conduct, issue forms, pull request template, Dependabot,
+  CodeQL and OpenSSF Scorecard; release notes come from this changelog.
 - `run --agent claude-code` (experimental): Claude Code does the work, and
   hooks route every tool call through the same approvals — edits and shell
   commands are proposals, reads stay in the worktree, other tools are denied.
