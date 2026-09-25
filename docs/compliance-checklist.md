@@ -6,7 +6,7 @@
 > The current boundary: [SECURITY.md](../SECURITY.md) and
 > [project-use.md](project-use.md). A full revision is planned before 1.0.
 
-**Module:** `github.com/b070nd/staircase-core`
+**Module:** `github.com/b070nd/stAirCase`
 **Origin:** internal requirement notes (not published). The `CHECK x.y.z` ids in code comments refer to the items below.
 **Last audited:** 2026-05-21 — a historical record: statuses and evidence are as of that audit and are not updated per change.
 

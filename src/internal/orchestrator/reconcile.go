@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
 
 // ReconcileResult describes what [Reconcile] found and cleaned up.

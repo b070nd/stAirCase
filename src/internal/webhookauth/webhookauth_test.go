@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/webhookauth"
+	"github.com/b070nd/stAirCase/src/internal/webhookauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

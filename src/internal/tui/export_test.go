@@ -2,7 +2,7 @@
 // Exposes unexported symbols to the black-box test package (package tui_test).
 package tui
 
-import "github.com/b070nd/staircase-core/src/internal/domain"
+import "github.com/b070nd/stAirCase/src/internal/domain"
 
 // NewYieldModel exposes the unexported constructor for white-box testing.
 var NewYieldModel = newYieldModel

@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/gate"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

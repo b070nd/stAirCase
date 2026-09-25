@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/spf13/cobra"
 )
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/gate"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
 // ImportBlueprint stores a snapshot. It reports false when the hash was

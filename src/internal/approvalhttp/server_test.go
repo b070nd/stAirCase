@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/approvalhttp"
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/approvalhttp"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

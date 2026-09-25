@@ -3,15 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/b070nd/staircase-core/src/internal/blueprint"
-	"github.com/b070nd/staircase-core/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/blueprint"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/engine"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/engine"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

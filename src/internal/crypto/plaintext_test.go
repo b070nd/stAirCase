@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"

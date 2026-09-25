@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/audit"
+	"github.com/b070nd/stAirCase/src/internal/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

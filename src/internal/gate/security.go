@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/llm"
+	"github.com/b070nd/stAirCase/src/internal/llm"
 )
 
 func init() {

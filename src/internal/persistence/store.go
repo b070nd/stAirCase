@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
 // Store provides all persistence operations for stAirCase.

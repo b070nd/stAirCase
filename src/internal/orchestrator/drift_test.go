@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/orchestrator"
-	"github.com/b070nd/staircase-core/src/internal/orchestrator/runtest"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
-	"github.com/b070nd/staircase-core/src/internal/plan"
-	"github.com/b070nd/staircase-core/src/internal/policy"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

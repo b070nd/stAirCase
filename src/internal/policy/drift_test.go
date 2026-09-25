@@ -3,8 +3,8 @@ package policy_test
 import (
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/plan"
-	"github.com/b070nd/staircase-core/src/internal/policy"
+	"github.com/b070nd/stAirCase/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/stretchr/testify/assert"
 )
 

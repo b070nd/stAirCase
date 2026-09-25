@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/obs"
+	"github.com/b070nd/stAirCase/src/internal/obs"
 )
 
 // pluginGateDef is one entry in $wsDir/gates.json.

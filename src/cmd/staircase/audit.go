@@ -40,10 +40,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/audit"
-	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/audit"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

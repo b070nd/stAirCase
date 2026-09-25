@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/policy"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

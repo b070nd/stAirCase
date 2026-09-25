@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 )
 
 // Tool is one function the model may call.

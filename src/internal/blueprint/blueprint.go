@@ -13,9 +13,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
-	"github.com/b070nd/staircase-core/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"gopkg.in/yaml.v3"
 )
 

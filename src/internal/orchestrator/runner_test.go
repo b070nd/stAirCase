@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/orchestrator"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
-	"github.com/b070nd/staircase-core/src/internal/webhookauth"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/webhookauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

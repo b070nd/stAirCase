@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/wslock"
+	"github.com/b070nd/stAirCase/src/internal/wslock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

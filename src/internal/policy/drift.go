@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/engine"
-	"github.com/b070nd/staircase-core/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/engine"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
 // Supervisor watches a run for drift from its plan: changes outside the

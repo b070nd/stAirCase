@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/blueprint"
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/gate"
-	"github.com/b070nd/staircase-core/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/blueprint"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/gate"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

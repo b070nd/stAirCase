@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/engine"
-	"github.com/b070nd/staircase-core/src/internal/llm"
-	"github.com/b070nd/staircase-core/src/internal/monitor"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/engine"
+	"github.com/b070nd/stAirCase/src/internal/llm"
+	"github.com/b070nd/stAirCase/src/internal/monitor"
 )
 
 // Validator is an automated reviewer: a model that decides in-scope file edits

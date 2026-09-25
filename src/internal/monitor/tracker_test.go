@@ -3,7 +3,7 @@ package monitor_test
 import (
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/monitor"
+	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

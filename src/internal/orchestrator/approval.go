@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"

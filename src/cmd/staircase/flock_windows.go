@@ -2,7 +2,7 @@
 
 package main
 
-import "github.com/b070nd/staircase-core/src/internal/wslock"
+import "github.com/b070nd/stAirCase/src/internal/wslock"
 
 // Advisory file locking on Windows is a no-op (see wslock package).
 func flockShared(fd uintptr) error    { return wslock.LockShared(fd) }

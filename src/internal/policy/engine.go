@@ -34,9 +34,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
 // Limits caps automatic behaviour within a run (CHECK 7.2.1).

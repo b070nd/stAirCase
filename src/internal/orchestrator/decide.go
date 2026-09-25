@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/monitor"
-	"github.com/b070nd/staircase-core/src/internal/policy"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/monitor"
+	"github.com/b070nd/stAirCase/src/internal/policy"
 )
 
 // deciders are who may decide a run's proposals, asked in a fixed order: the

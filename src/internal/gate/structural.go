@@ -3,7 +3,7 @@ package gate
 import (
 	"fmt"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
 
 func init() {

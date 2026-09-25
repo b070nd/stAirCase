@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/llm"
+	"github.com/b070nd/stAirCase/src/internal/llm"
 )
 
 // Version changes whenever a plan's meaning changes; run refuses plans of

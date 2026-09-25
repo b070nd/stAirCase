@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/llm"
-	"github.com/b070nd/staircase-core/src/internal/orchestrator"
-	"github.com/b070nd/staircase-core/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/llm"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
 const (

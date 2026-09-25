@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	tui "github.com/b070nd/staircase-core/src/internal/tui"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	tui "github.com/b070nd/stAirCase/src/internal/tui"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────

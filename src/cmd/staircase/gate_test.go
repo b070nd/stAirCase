@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/gate"
+	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/stretchr/testify/assert"
 )
 

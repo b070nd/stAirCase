@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/monitor"
+	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/stretchr/testify/assert"
 )
 

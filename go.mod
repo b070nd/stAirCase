@@ -1,4 +1,4 @@
-module github.com/b070nd/staircase-core
+module github.com/b070nd/stAirCase
 
 go 1.26.3
 

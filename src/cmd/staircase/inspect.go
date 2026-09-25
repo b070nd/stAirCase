@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/cobra"
 )
 

@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/crypto"
-	"github.com/b070nd/staircase-core/src/internal/domain"
-	"github.com/b070nd/staircase-core/src/internal/obs"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/obs"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
 
 // Agent is what a run executes in its worktree, inside the staircase process:
