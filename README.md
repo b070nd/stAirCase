@@ -114,8 +114,9 @@ How it fits together: [`docs/architecture.md`](docs/architecture.md).
 
 Release binaries are built for Linux and macOS (amd64, arm64) with checksums,
 an SBOM and a keyless cosign signature over the checksums (see
-[QUICKSTART](QUICKSTART.md#verifying-release-artifacts)); Windows builds compile
-but are not shipped, because they are not tested. Or build from source:
+[QUICKSTART](QUICKSTART.md#verifying-release-artifacts)). A Windows (amd64)
+build ships as **experimental**: it is not tested, and `run_shell` and
+`--agent claude-code` need a POSIX shell. Or build from source:
 
 ```bash
 CGO_ENABLED=0 go build -o staircase ./src/cmd/staircase/

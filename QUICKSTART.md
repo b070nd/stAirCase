@@ -44,7 +44,8 @@ There is nothing else to install: the agent runtime is built into the `staircase
 
 ## 2. Build & Install
 
-Release binaries (Linux and macOS, amd64 and arm64) are attached to each
+Release binaries (Linux and macOS, amd64 and arm64; Windows amd64 as an
+untested, experimental build) are attached to each
 [GitHub release](https://github.com/b070nd/stAirCase/releases) — verify them as
 shown below — and installable with Homebrew:
 

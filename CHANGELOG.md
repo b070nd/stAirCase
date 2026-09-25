@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-25
+
 The Go rewrite (versioned 0.x, starting over from the Bash 1.x line). Highlights
 since the first Go commits:
 
@@ -35,9 +37,10 @@ since the first Go commits:
 - **Webhook approvals** must echo the request's fresh `yield_id` and
   `request_sha256` when a secret is set.
 
-- **Releases ship Linux and macOS** (amd64, arm64) only; Windows compiles but
-  is not tested and not shipped. Releases are published from `b070nd/stAirCase`
-  (the cosign identity in QUICKSTART's verification steps is corrected to match).
+- **Releases** ship Linux and macOS (amd64, arm64) and an experimental,
+  untested Windows amd64 build (`run_shell` and `--agent claude-code` need a
+  POSIX shell). They are published from `b070nd/stAirCase` (the cosign identity
+  in QUICKSTART's verification steps is corrected to match).
 
 ### Added
 

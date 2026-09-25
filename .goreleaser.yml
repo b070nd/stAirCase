@@ -13,13 +13,18 @@ builds:
     binary: staircase
     env:
       - CGO_ENABLED=0
-    # Windows compiles (make check cross-builds it) but runs untested: not shipped.
+    # Windows (amd64) ships as experimental: make check cross-builds it, but it
+    # is not run in CI, and run_shell / --agent claude-code need a POSIX shell.
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -29,6 +34,9 @@ builds:
 archives:
   - id: staircase
     name_template: "staircase_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
     files:
       - LICENSE
       - README.md
@@ -60,7 +68,7 @@ signs:
       - "--yes"
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
