@@ -87,7 +87,8 @@ failing closed.
   executed ([docs/blueprints.md](docs/blueprints.md)).
 - **Drift supervision** — changes outside the stories' scope, past file limits
   or at checkpoints go to a human; too many violations or too long a run halt
-  it until acknowledged ([docs/drift.md](docs/drift.md)).
+  it until acknowledged; an optional model reviewer decides in-scope edits,
+  with a human approving each run's final change ([docs/drift.md](docs/drift.md)).
 
 ## Architecture
 
@@ -136,8 +137,6 @@ flow, audit chain and offline demo have automated tests (including race and
 adversarial checks), but those tests do not establish enterprise readiness. On
 the roadmap:
 
-- **Automated reviewer** — an audited model reviewer for in-scope edits, with
-  a human approving each run's final diff.
 - **DSSE audit envelopes** — adopt the Sigstore/in-toto envelope format so the
   audit chain interoperates with the broader supply-chain ecosystem.
 - **Per-agent identity** — distinct identity per agent persona with per-tool

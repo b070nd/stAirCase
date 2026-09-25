@@ -2,6 +2,7 @@
 
 Drift supervision keeps a run on its stories. It never approves anything by
 itself: it decides which proposals a human must see, and when a run must stop.
+An optional [automated reviewer](#automated-reviewer) takes over in-scope edits.
 
 ## Scope
 
@@ -71,6 +72,29 @@ Every run ends with a `drift_report` event — scope, files changed in and
 outside it, scope violations, human overrides, automatic and human decisions,
 and why the run halted — also written to `runs/<id>/summary.json` and
 summarized in the terminal.
+
+## Automated reviewer
+
+```bash
+staircase run <case-id> --validator openai/gpt-6-astra
+```
+
+A validator is a model (any model staircase serves; its key comes from the
+workspace secrets like the agents') that decides file edits the policy rules
+leave open, in place of a human:
+
+- it sees only the change as the orchestrator derived it — each file before and
+  after, as JSON data — and the case's stories; never the agent's reasoning;
+- its rejection goes back to the agent as review feedback; its decisions are
+  audited in `yield_decided` with source `validator:<model>`;
+- a human decides instead, with the validator's note shown (`review` in the
+  approval API and webhook): drift proposals, shell commands, sensitive paths
+  (CI, build, dependency, `.env` and shell files), files over 32 KiB, a reply
+  that is not a verdict, the proposal after 2 rejections in a row, and every
+  5th validator approval (sampling);
+- when the validator approved anything, a human approves the run's whole
+  change once (`final_review`) before it is committed; rejecting it commits
+  nothing.
 
 ## Budget
 

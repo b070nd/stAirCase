@@ -120,6 +120,15 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 	return next, nil
 }
 
+// current is a path's approved state so far: approved in this run, or as in
+// the base commit (nil when absent).
+func (a *approvals) current(p string) (*approvedFile, error) {
+	if f, ok := a.files[p]; ok {
+		return f, nil
+	}
+	return a.fromBase(p)
+}
+
 // record adopts a derived state once the decision is on the audit chain.
 func (a *approvals) record(next map[string]*approvedFile) {
 	for p, f := range next {

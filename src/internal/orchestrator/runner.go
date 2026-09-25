@@ -16,9 +16,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +30,7 @@ import (
 	"github.com/b070nd/staircase-core/src/internal/crypto"
 	"github.com/b070nd/staircase-core/src/internal/domain"
 	"github.com/b070nd/staircase-core/src/internal/gate"
+	"github.com/b070nd/staircase-core/src/internal/llm"
 	"github.com/b070nd/staircase-core/src/internal/monitor"
 	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
@@ -79,6 +82,9 @@ type RunOptions struct {
 	// Plan is the compiled plan the agent executes, when there is one: the run
 	// records its topology version, digest and blueprint as provenance.
 	Plan *plan.Plan
+	// Validator, when set, decides in-scope file edits the policy leaves open
+	// (see Validator); a human approves the run's final change once.
+	Validator *Validator
 	// AckDrift acknowledges that the case's previous run was halted for drift;
 	// without it such a case does not run again.
 	AckDrift bool
@@ -433,6 +439,29 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	defer cancelAgent()
 	stopped := make(chan struct{})
 	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, proposals: proposals, usage: usage, host: host}
+	val := opts.Validator
+	if val != nil {
+		if val.Chat == nil {
+			val.Chat = &llm.Router{Secret: host.secret}
+		}
+		if opts.Plan != nil {
+			val.brief = opts.Plan.Brief()
+		}
+	}
+	// askHuman shows a proposal to the operator: approval API, webhook or TUI.
+	askHuman := func(req domain.YieldRequest) domain.YieldResponse {
+		display.Pause()
+		defer display.Resume()
+		switch {
+		case approvalSrv != nil:
+			_, ch := approvalSrv.PendYield(req)
+			return <-ch
+		case project.WebhookURL != "":
+			return sendWebhookYield(project.WebhookURL, webhookSecret, req)
+		default:
+			return tui.RunYieldTUI(req)
+		}
+	}
 	go func() {
 		defer close(stopped)
 		done <- runAgent(agentCtx, opts.Agent, env)
@@ -558,17 +587,7 @@ runLoop:
 				// yield goes to the human operator regardless of policy rules.
 				why := strings.Trim(limitReason+"; "+driftReason, "; ")
 				display.AddActivity(fmt.Sprintf("%-14s DRIFT  %s → HITL (%s)", yieldReq.AgentName, yieldReq.ActionType, why))
-				display.Pause()
-				switch {
-				case approvalSrv != nil:
-					_, ch := approvalSrv.PendYield(yieldReq)
-					resp = <-ch
-				case project.WebhookURL != "":
-					resp = sendWebhookYield(project.WebhookURL, webhookSecret, yieldReq)
-				default:
-					resp = tui.RunYieldTUI(yieldReq)
-				}
-				display.Resume()
+				resp = askHuman(yieldReq)
 				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
 			} else if dec := policyEngine.Evaluate(yieldReq); dec.Matched {
 				resp = domain.YieldResponse{Type: "yield_response", Approved: dec.Approved, Feedback: dec.Reason}
@@ -581,18 +600,15 @@ runLoop:
 				}
 				display.AddActivity(fmt.Sprintf("%-14s AUTO   %s → %s (%s)", yieldReq.AgentName, yieldReq.ActionType, verb, dec.Reason))
 				source = "policy"
+			} else if vr, vresp, decided := r.validate(ctx, val, yieldReq, files, next, appr, tracker); decided {
+				resp, source = vresp, "validator:"+val.Model
+				display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → %v (%s)", yieldReq.AgentName, yieldReq.ActionType, resp.Approved, resp.Feedback))
 			} else {
-				display.Pause()
-				switch {
-				case approvalSrv != nil:
-					_, ch := approvalSrv.PendYield(yieldReq)
-					resp = <-ch
-				case project.WebhookURL != "":
-					resp = sendWebhookYield(project.WebhookURL, webhookSecret, yieldReq)
-				default:
-					resp = tui.RunYieldTUI(yieldReq)
+				yieldReq.Review = vr
+				resp = askHuman(yieldReq)
+				if val != nil && vr != "" {
+					val.rejectRun = 0 // a human has looked
 				}
-				display.Resume()
 				display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", yieldReq.AgentName, yieldReq.ActionType, resp.Approved))
 			}
 			// Record the decision, with the exact approved content, before the
@@ -686,6 +702,32 @@ runLoop:
 			obs.Log.Error("worktree does not match the approvals — refusing to commit",
 				"event", v.event, "file", v.file, "detail", v.detail, "run_id", run.ID)
 			display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", v.file, v.detail))
+			finalStatus = persistence.RunStatusFailed
+		}
+	}
+	if finalStatus == persistence.RunStatusSuccess && val != nil && val.unreviewed {
+		// The validator approved changes no human has seen: a human approves
+		// the run's whole change once before it is committed.
+		final := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: "final_review",
+			ReasoningTrace: "Final review: the validator approved changes in this run. Approve to commit exactly these files."}
+		for _, p := range slices.Sorted(maps.Keys(appr.files)) {
+			f := appr.files[p]
+			e := domain.ProposedEdit{File: p, SearchBlock: "(final content)", ReplaceBlock: string(f.content)}
+			if f.deleted {
+				e.SearchBlock, e.ReplaceBlock = MarkerDeleteFile, ""
+			}
+			final.ProposedEdits = append(final.ProposedEdits, e)
+		}
+		resp := askHuman(final)
+		reqJSON, _ := json.Marshal(final)
+		payload, _ := json.Marshal(map[string]any{"type": "yield_decided", "seq": totalYields + 1, "source": "operator",
+			"agent": final.AgentName, "action_type": final.ActionType, "approved": resp.Approved, "feedback": resp.Feedback,
+			"request_sha256": sha256Hex(reqJSON), "base_sha": baseSHA, "files": digest(appr.files)})
+		if _, err := r.store.AppendEventLogChained(run.ID, "yield_decided", string(payload), ""); err != nil {
+			return fmt.Errorf("audit final review: %w", err)
+		}
+		if !resp.Approved {
+			fmt.Fprintf(os.Stdout, "   ✋ Final review rejected — nothing committed\n")
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
@@ -945,4 +987,46 @@ func (r *Runner) driftScope(caseID int64, pl *plan.Plan) (scope []string, maxFil
 		maxFiles = 0
 	}
 	return scope, maxFiles, nil
+}
+
+// validate lets the validator decide a proposal the policy left open. It
+// returns decided=false when a human must decide, with the reason (empty when
+// no validator runs or the proposal is not a file edit).
+func (r *Runner) validate(ctx context.Context, v *Validator, req domain.YieldRequest, files []string,
+	next map[string]*approvedFile, appr *approvals, tracker *monitor.Tracker) (why string, resp domain.YieldResponse, decided bool) {
+	if v == nil || req.ActionType != "file_edit" || appr == nil {
+		return "", resp, false
+	}
+	if f := sensitive(files); f != "" {
+		return "sensitive path " + f + " — a human decides", resp, false
+	}
+	if v.rejectRun >= validatorRejectLimit {
+		return fmt.Sprintf("the validator rejected the last %d proposals — a human decides", v.rejectRun), resp, false
+	}
+	before := map[string]*approvedFile{}
+	for p := range next {
+		f, err := appr.current(p)
+		if err != nil {
+			return "validator: " + err.Error(), resp, false
+		}
+		before[p] = f
+	}
+	vd, llmResp, err := v.review(ctx, before, next)
+	if llmResp.InputTokens+llmResp.OutputTokens > 0 {
+		tracker.Record("validator", v.Model, llmResp.InputTokens, llmResp.OutputTokens)
+	}
+	if err != nil {
+		return "validator unavailable (" + err.Error() + ") — a human decides", resp, false
+	}
+	if !*vd.Approve {
+		v.rejectRun++
+		return "", domain.YieldResponse{Type: "yield_response", Approved: false, Feedback: "review: " + vd.Reason}, true
+	}
+	v.rejectRun = 0
+	v.approvals++
+	if v.approvals%validatorSampleEvery == 0 {
+		return "the validator approved (" + vd.Reason + ") — sampled for human review", resp, false
+	}
+	v.unreviewed = true
+	return "", domain.YieldResponse{Type: "yield_response", Approved: true, Feedback: "review: " + vd.Reason}, true
 }

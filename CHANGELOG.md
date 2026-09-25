@@ -54,6 +54,10 @@ since the first Go commits:
   violations or `max_run_duration` halt the run (`drift_halt`) until
   `run --ack-drift`; every run ends with a `drift_report`. Agents are told
   their stories and scope.
+- `run --validator <model>`: an automated reviewer decides in-scope file edits
+  the policy leaves open, from the derived change and the stories only;
+  sensitive paths, rejection streaks, unreadable verdicts and every 5th
+  approval go to a human, and a human approves the run's final change once.
 - `run --agent claude-code` (experimental): Claude Code does the work, and
   hooks route every tool call through the same approvals — edits and shell
   commands are proposals, reads stay in the worktree, other tools are denied.

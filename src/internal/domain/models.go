@@ -182,6 +182,11 @@ type YieldRequest struct {
 	// Drift, set by the orchestrator, says why drift supervision sends this
 	// proposal to a human (outside the stories' scope, a limit, a checkpoint).
 	Drift string `json:"drift,omitempty"`
+
+	// Review, set by the orchestrator, is the automated validator's note when
+	// a human decides in its place (a sampled approval, repeated rejections,
+	// a sensitive path, the validator unavailable).
+	Review string `json:"review,omitempty"`
 }
 
 // YieldResponse is the decision on a YieldRequest, returned to the agent.

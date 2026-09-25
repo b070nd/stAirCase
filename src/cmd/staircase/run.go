@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/b070nd/staircase-core/src/internal/llm"
 	"github.com/b070nd/staircase-core/src/internal/obs"
 	"github.com/b070nd/staircase-core/src/internal/orchestrator"
 	"github.com/b070nd/staircase-core/src/internal/persistence"
@@ -37,6 +38,7 @@ var (
 	runAllowShellExec bool
 	runAgent          string
 	runAckDrift       bool
+	runValidator      string
 )
 
 var runCmd = &cobra.Command{
@@ -81,6 +83,9 @@ func init() {
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
+	runCmd.Flags().StringVar(&runValidator, "validator", "",
+		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
+			"a human approves the run's final change once")
 	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
 		"Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental)")
 	rootCmd.AddCommand(runCmd)
@@ -149,6 +154,14 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown --agent %q: use built-in or claude-code", runAgent)
 	}
 
+	var validator *orchestrator.Validator
+	if runValidator != "" {
+		if llm.SecretFor(runValidator) == "" {
+			return fmt.Errorf("--validator %q: no provider serves this model", runValidator)
+		}
+		validator = &orchestrator.Validator{Model: runValidator}
+	}
+
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
 		DryRun:         runDryRun,
@@ -159,6 +172,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
 		AckDrift:       runAckDrift,
+		Validator:      validator,
 		Agent:          ag,
 		Plan:           &pl,
 	})
