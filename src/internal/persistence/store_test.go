@@ -768,3 +768,27 @@ func TestSecretRoundTrip(t *testing.T) {
 	assert.Equal(t, originalValue, decrypted,
 		"decrypted value must match the original plaintext")
 }
+
+// TestSetSecret_replaces_a_value: storing a key again replaces its value (a
+// rotated API key) in the same scope and counts the version; other scopes
+// are untouched.
+func TestSetSecret_replaces_a_value(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffold(t, s)
+	replaced, v, err := s.SetSecret("K", "one", nil)
+	require.NoError(t, err)
+	assert.False(t, replaced)
+	assert.Equal(t, 1, v)
+	_, _, err = s.SetSecret("K", "project", &projectID)
+	require.NoError(t, err)
+	replaced, v, err = s.SetSecret("K", "two", nil)
+	require.NoError(t, err)
+	assert.True(t, replaced)
+	assert.Equal(t, 2, v)
+	global, err := s.GetSecret("K", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "two", global.EncryptedValue)
+	scoped, err := s.GetSecret("K", &projectID)
+	require.NoError(t, err)
+	assert.Equal(t, "project", scoped.EncryptedValue)
+}

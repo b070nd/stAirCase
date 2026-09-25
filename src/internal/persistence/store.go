@@ -305,6 +305,31 @@ func (s *Store) CreateSecret(keyName, encryptedValue string, projectID *int64) (
 	return &domain.Secret{ID: id, KeyName: keyName, EncryptedValue: encryptedValue, ScopedToProjectID: projectID}, nil
 }
 
+// SetSecret stores a secret, replacing the value of the same key in the same
+// scope (global when projectID is nil) and counting its version.
+func (s *Store) SetSecret(keyName, encryptedValue string, projectID *int64) (replaced bool, version int, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	err = tx.QueryRow(`UPDATE secrets SET encrypted_value = ?, version = version + 1
+		WHERE key_name = ? AND scoped_to_project_id IS ? RETURNING version`, encryptedValue, keyName, projectID).Scan(&version)
+	switch {
+	case err == nil:
+		replaced = true
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err = tx.Exec(`INSERT INTO secrets (key_name, encrypted_value, scoped_to_project_id) VALUES (?, ?, ?)`,
+			keyName, encryptedValue, projectID); err != nil {
+			return false, 0, fmt.Errorf("create secret: %w", err)
+		}
+		version = 1
+	default:
+		return false, 0, fmt.Errorf("update secret: %w", err)
+	}
+	return replaced, version, tx.Commit()
+}
+
 // GetSecret returns the most specific secret for keyName: project-scoped first, global fallback.
 func (s *Store) GetSecret(keyName string, projectID *int64) (*domain.Secret, error) {
 	sec := &domain.Secret{}

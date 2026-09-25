@@ -30,7 +30,10 @@ Pipe the value in non-interactively:
   printf 'my-secret' | staircase secret set MY_KEY
 
 Or enter it interactively (input will not be echoed):
-  staircase secret set MY_KEY`,
+  staircase secret set MY_KEY
+
+Setting a key that exists in the same scope replaces its value (for example a
+rotated API key) and counts its version.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		// Read the secret value from stdin (CHECK 4.5.1: never accept as argv
@@ -101,7 +104,7 @@ Or enter it interactively (input will not be echoed):
 			pid = &secretProjectID
 		}
 
-		sec, err := store.CreateSecret(args[0], encrypted, pid)
+		replaced, version, err := store.SetSecret(args[0], encrypted, pid)
 		_ = flockUnlock(lockF.Fd()) // release before any further I/O
 		if err != nil {
 			return fmt.Errorf("store secret: %w", err)
@@ -111,7 +114,11 @@ Or enter it interactively (input will not be echoed):
 		if pid != nil {
 			scope = fmt.Sprintf("project #%d", *pid)
 		}
-		fmt.Printf("✅ Secret #%d %q stored (%s).\n", sec.ID, sec.KeyName, scope)
+		if replaced {
+			fmt.Printf("✅ Secret %q replaced (%s, version %d).\n", args[0], scope, version)
+		} else {
+			fmt.Printf("✅ Secret %q stored (%s).\n", args[0], scope)
+		}
 		return nil
 	},
 }
