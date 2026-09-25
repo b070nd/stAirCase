@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security issues** go through a private report instead — see SECURITY.md.
+        Please remove secrets, tokens and private code from anything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `staircase version`.
+      placeholder: stAirCase v0.2.0 (commit …, built …)
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: macOS 15 arm64 / Ubuntu 24.04 amd64 / Windows 11 (experimental)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran. `make demo` reproductions are ideal.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: Terminal output, `staircase doctor`, or `staircase inspect log <run-id>` (redacted).
+      render: text
