@@ -67,3 +67,12 @@ func TestParseID_rejects_trailing_garbage(t *testing.T) {
 		assert.Error(t, err, "input %q", s)
 	}
 }
+
+// TestBuildVersion: a release build's injected version wins; otherwise
+// (go install) the module version Go recorded in the binary is used.
+func TestBuildVersion(t *testing.T) {
+	assert.Equal(t, "0.2.0", buildVersion("0.2.0", "v0.3.0"), "ldflags version wins")
+	assert.Equal(t, "0.3.0", buildVersion("", "v0.3.0"), "go install records the module version")
+	assert.Equal(t, "dev", buildVersion("", "(devel)"), "a plain go build is a dev build")
+	assert.Equal(t, "dev", buildVersion("", ""))
+}
