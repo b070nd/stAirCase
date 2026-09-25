@@ -35,6 +35,7 @@ var (
 	runRecordLLM      string
 	runReplayLLM      string
 	runAllowShellExec bool
+	runAgent          string
 )
 
 var runCmd = &cobra.Command{
@@ -77,6 +78,8 @@ func init() {
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
+	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
+		"Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -134,6 +137,15 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("the plan was compiled for case #%d — run 'staircase compile %d --force'", pl.CaseID, caseID)
 	}
 
+	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}
+	switch runAgent {
+	case "built-in":
+	case "claude-code":
+		ag = &agent.ClaudeCode{Prompt: pl.PRD}
+	default:
+		return fmt.Errorf("unknown --agent %q: use built-in or claude-code", runAgent)
+	}
+
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
 		DryRun:         runDryRun,
@@ -143,6 +155,6 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		ApprovalPort:   runApprovalPort,
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
-		Agent:          &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM},
+		Agent:          ag,
 	})
 }
