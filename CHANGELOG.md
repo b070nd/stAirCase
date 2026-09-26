@@ -44,6 +44,16 @@ since the first Go commits:
   POSIX shell). They are published from `b070nd/stAirCase` (the cosign identity
   in QUICKSTART's verification steps is corrected to match).
 
+### Security
+
+- Built with Go 1.26.8 and updated dependencies with published fixes that
+  stAirCase's code reaches: go-git 5.19.2 (path traversal via reference
+  names, worktree symlinks, crafted repositories), golang.org/x/crypto 0.56.0
+  (SSH client), google.golang.org/grpc 1.83.1 (HTTP/2 transport, used by the
+  trace exporter) and goldmark 1.7.17 (terminal approval rendering). Go 1.26.5+
+  also fixes an os.Root symlink escape (GO-2026-4970). govulncheck reports no
+  reachable vulnerabilities.
+
 ### Added
 
 - `--record-llm` / `--replay-llm` record every model exchange of a run and replay
