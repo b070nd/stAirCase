@@ -50,3 +50,12 @@ func TestAppendCheckpoint_bad_dir(t *testing.T) {
 	err := audit.AppendCheckpoint("/nonexistent/dir/run.json", []byte(`{}`))
 	assert.Error(t, err)
 }
+
+// TestAppendCheckpoint_leaves_the_callers_buffer_alone: the newline is added
+// to a copy, even when the caller's slice has spare capacity.
+func TestAppendCheckpoint_leaves_the_callers_buffer_alone(t *testing.T) {
+	buf := make([]byte, 3, 8)
+	copy(buf, "abc")
+	require.NoError(t, audit.AppendCheckpoint(filepath.Join(t.TempDir(), "cp.ndjson"), buf))
+	assert.Equal(t, byte(0), buf[:4][3], "nothing written past len(data)")
+}

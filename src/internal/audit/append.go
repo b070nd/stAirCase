@@ -5,6 +5,7 @@ package audit
 import (
 	"fmt"
 	"os"
+	"slices"
 )
 
 // AppendCheckpoint opens path for append (O_APPEND|O_CREATE|O_WRONLY, mode
@@ -20,10 +21,9 @@ func AppendCheckpoint(path string, data []byte) error {
 	defer func() { _ = f.Close() }()
 	// Append data plus a newline delimiter so multiple exports remain readable
 	// as NDJSON when the same file is reused across staircase audit export calls.
-	payload := make([]byte, len(data)+1)
-	copy(payload, data)
-	payload[len(data)] = '\n'
-	if _, err := f.Write(payload); err != nil {
+	// One write keeps each record whole under O_APPEND; Clip makes append copy
+	// instead of writing into the caller's buffer.
+	if _, err := f.Write(append(slices.Clip(data), '\n')); err != nil {
 		return fmt.Errorf("write checkpoint: %w", err)
 	}
 	return nil

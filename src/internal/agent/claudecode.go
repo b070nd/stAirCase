@@ -222,7 +222,7 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		}
 		// Claude Code needs old_string to match exactly once; the orchestrator
 		// replaces the first match. Refuse the ambiguous case before a human sees it.
-		cur, err := os.ReadFile(filepath.Join(h.root, filepath.FromSlash(rel)))
+		cur, err := h.readInside(rel)
 		if err != nil || strings.Count(string(cur), a.OldString) != 1 {
 			return "staircase: old_string must match exactly once in the file"
 		}
@@ -241,6 +241,18 @@ func (h *hookServer) proposeEdit(ctx context.Context, in hookInput, e domain.Pro
 	h.pending[in.ToolUseID] = ap
 	h.mu.Unlock()
 	return ""
+}
+
+// readInside reads a worktree file through os.Root, which refuses any path
+// leaving the worktree when the file is opened — so a symlink swapped in after
+// rel checked the path cannot redirect the read.
+func (h *hookServer) readInside(rel string) ([]byte, error) {
+	root, err := os.OpenRoot(h.root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	return root.ReadFile(filepath.FromSlash(rel))
 }
 
 // rel maps a path Claude Code names (absolute, or relative to the worktree) to
