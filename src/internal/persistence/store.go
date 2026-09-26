@@ -1,23 +1,36 @@
 package persistence
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
 // Store provides all persistence operations for stAirCase.
 type Store struct {
 	db *sql.DB
+	// appendMu serializes the read-last-hash + insert in AppendEventLogChained
+	// so two concurrent appenders (e.g. the IPC server goroutine and the
+	// orchestrator run loop) cannot read the same prevHash and fork the
+	// tamper-proof audit chain.
+	appendMu sync.Mutex
 }
 
 // NewStore creates a Store backed by an open database connection.
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
+
+// DB returns the underlying *sql.DB for use in tests and migration tooling.
+// Production code should prefer the typed Store methods.
+func (s *Store) DB() *sql.DB { return s.db }
 
 // ─── Vendor ───────────────────────────────────────────────────────────────────
 
@@ -57,7 +70,7 @@ func (s *Store) ListVendors() ([]domain.Vendor, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var vs []domain.Vendor
 	for rows.Next() {
 		var v domain.Vendor
@@ -113,7 +126,7 @@ func (s *Store) ListProjectsByVendor(vendorID int64) ([]domain.Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ps []domain.Project
 	for rows.Next() {
 		var p domain.Project
@@ -132,7 +145,7 @@ func (s *Store) ListAllProjects() ([]domain.Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ps []domain.Project
 	for rows.Next() {
 		var p domain.Project
@@ -193,7 +206,7 @@ func (s *Store) ListProjectDependencies(projectID int64) ([]domain.ProjectDepend
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var deps []domain.ProjectDependency
 	for rows.Next() {
 		var d domain.ProjectDependency
@@ -212,7 +225,7 @@ func (s *Store) ListAllProjectDependencies() ([]domain.ProjectDependency, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var deps []domain.ProjectDependency
 	for rows.Next() {
 		var d domain.ProjectDependency
@@ -266,7 +279,7 @@ func (s *Store) ListComponentsByProject(projectID int64) ([]domain.Component, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cs []domain.Component
 	for rows.Next() {
 		var c domain.Component
@@ -290,6 +303,31 @@ func (s *Store) CreateSecret(keyName, encryptedValue string, projectID *int64) (
 	}
 	id, _ := res.LastInsertId()
 	return &domain.Secret{ID: id, KeyName: keyName, EncryptedValue: encryptedValue, ScopedToProjectID: projectID}, nil
+}
+
+// SetSecret stores a secret, replacing the value of the same key in the same
+// scope (global when projectID is nil) and counting its version.
+func (s *Store) SetSecret(keyName, encryptedValue string, projectID *int64) (replaced bool, version int, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	err = tx.QueryRow(`UPDATE secrets SET encrypted_value = ?, version = version + 1
+		WHERE key_name = ? AND scoped_to_project_id IS ? RETURNING version`, encryptedValue, keyName, projectID).Scan(&version)
+	switch {
+	case err == nil:
+		replaced = true
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err = tx.Exec(`INSERT INTO secrets (key_name, encrypted_value, scoped_to_project_id) VALUES (?, ?, ?)`,
+			keyName, encryptedValue, projectID); err != nil {
+			return false, 0, fmt.Errorf("create secret: %w", err)
+		}
+		version = 1
+	default:
+		return false, 0, fmt.Errorf("update secret: %w", err)
+	}
+	return replaced, version, tx.Commit()
 }
 
 // GetSecret returns the most specific secret for keyName: project-scoped first, global fallback.
@@ -324,7 +362,7 @@ func (s *Store) ListSecretsByProject(projectID int64) ([]domain.Secret, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ss []domain.Secret
 	for rows.Next() {
 		var sec domain.Secret
@@ -334,6 +372,121 @@ func (s *Store) ListSecretsByProject(projectID int64) ([]domain.Secret, error) {
 		ss = append(ss, sec)
 	}
 	return ss, rows.Err()
+}
+
+// LogSecretAccess writes one row to secret_access_log for every decrypt
+// attempt (CHECK 4.4.1).  outcome must be "success", "error", or "not_found".
+// runID may be nil when the call originates outside of a run context.
+func (s *Store) LogSecretAccess(runID *int64, keyName, outcome string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO secret_access_log (run_id, key_name, outcome) VALUES (?, ?, ?)`,
+		runID, keyName, outcome,
+	)
+	return err
+}
+
+// CountSecretAccesses returns the total number of secret_access_log rows for
+// the given run.  Used by TestAtUseAuditCounts (CHECK 4.4.2).
+func (s *Store) CountSecretAccesses(runID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM secret_access_log WHERE run_id = ?`, runID,
+	).Scan(&n)
+	return n, err
+}
+
+// ListAllSecrets returns every secret row (both global and project-scoped).
+// Used by RotateSecrets to iterate over all ciphertexts.
+func (s *Store) ListAllSecrets() ([]domain.Secret, error) {
+	rows, err := s.db.Query(
+		`SELECT id, key_name, encrypted_value, scoped_to_project_id FROM secrets ORDER BY id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ss []domain.Secret
+	for rows.Next() {
+		var sec domain.Secret
+		if err := rows.Scan(&sec.ID, &sec.KeyName, &sec.EncryptedValue, &sec.ScopedToProjectID); err != nil {
+			return nil, err
+		}
+		ss = append(ss, sec)
+	}
+	return ss, rows.Err()
+}
+
+// RotateSecrets re-encrypts every secret in a single DB transaction (CHECK
+// 4.3.2).  oldKey decrypts the existing ciphertexts; newKey produces the
+// replacement ciphertexts.  The function also bumps the version column.
+// The caller is responsible for holding the workspace filesystem lock before
+// calling this method (CHECK 4.3.3).
+func (s *Store) RotateSecrets(oldKey, newKey []byte, decrypt func([]byte, string) (string, error), encrypt func([]byte, string) (string, error)) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("rotate: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return rotateSecretsOnTx(tx, oldKey, newKey, decrypt, encrypt)
+}
+
+// RotateSecretsOnConn is like RotateSecrets but runs the transaction on the
+// provided pinned connection.  Use this when the caller needs to set
+// per-connection PRAGMAs (e.g. synchronous=FULL) before the transaction
+// begins, guaranteeing that the PRAGMA and the transaction share the same
+// underlying SQLite connection.
+func (s *Store) RotateSecretsOnConn(ctx context.Context, conn *sql.Conn, oldKey, newKey []byte, decrypt func([]byte, string) (string, error), encrypt func([]byte, string) (string, error)) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("rotate: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return rotateSecretsOnTx(tx, oldKey, newKey, decrypt, encrypt)
+}
+
+// rotateSecretsOnTx performs the re-encryption work inside an already-open
+// transaction.  Shared by RotateSecrets and RotateSecretsOnConn.
+func rotateSecretsOnTx(tx *sql.Tx, oldKey, newKey []byte, decrypt func([]byte, string) (string, error), encrypt func([]byte, string) (string, error)) error {
+	rows, err := tx.Query(`SELECT id, encrypted_value, version FROM secrets`)
+	if err != nil {
+		return fmt.Errorf("rotate: list: %w", err)
+	}
+
+	type row struct {
+		id      int64
+		enc     string
+		version int
+	}
+	var toUpdate []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.enc, &r.version); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("rotate: scan: %w", err)
+		}
+		toUpdate = append(toUpdate, r)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("rotate: rows: %w", err)
+	}
+
+	for _, r := range toUpdate {
+		pt, err := decrypt(oldKey, r.enc)
+		if err != nil {
+			return fmt.Errorf("rotate: decrypt id=%d: %w", r.id, err)
+		}
+		newEnc, err := encrypt(newKey, pt)
+		if err != nil {
+			return fmt.Errorf("rotate: re-encrypt id=%d: %w", r.id, err)
+		}
+		if _, err := tx.Exec(
+			`UPDATE secrets SET encrypted_value = ?, version = ? WHERE id = ?`,
+			newEnc, r.version+1, r.id,
+		); err != nil {
+			return fmt.Errorf("rotate: update id=%d: %w", r.id, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // ─── Case ─────────────────────────────────────────────────────────────────────
@@ -395,7 +548,7 @@ func (s *Store) ListCasesByProject(projectID int64) ([]domain.Case, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cs []domain.Case
 	for rows.Next() {
 		var c domain.Case
@@ -462,8 +615,29 @@ func (s *Store) CreateUserStory(caseID int64, description string) (*domain.UserS
 }
 
 func (s *Store) UpdateUserStoryStatus(storyID int64, status string) error {
-	_, err := s.db.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, status, storyID)
-	return err
+	res, err := s.db.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, status, storyID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("story %d not found", storyID)
+	}
+	return nil
+}
+
+// GetUserStory returns a story, or nil when it does not exist.
+func (s *Store) GetUserStory(storyID int64) (*domain.UserStory, error) {
+	var us domain.UserStory
+	err := s.db.QueryRow(`SELECT id, case_id, description, status, COALESCE(custom_config,'') FROM user_stories WHERE id = ?`, storyID).
+		Scan(&us.ID, &us.CaseID, &us.Description, &us.Status, &us.CustomConfig)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &us, err
 }
 
 func (s *Store) ListUserStoriesByCase(caseID int64) ([]domain.UserStory, error) {
@@ -474,7 +648,7 @@ func (s *Store) ListUserStoriesByCase(caseID int64) ([]domain.UserStory, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var stories []domain.UserStory
 	for rows.Next() {
 		var us domain.UserStory
@@ -548,7 +722,7 @@ func (s *Store) ListTopologiesByProject(projectID int64) ([]domain.SwarmTopology
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ts []domain.SwarmTopology
 	for rows.Next() {
 		var t domain.SwarmTopology
@@ -596,7 +770,7 @@ func (s *Store) ListAgentNodes(topologyID int64) ([]domain.AgentNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var nodes []domain.AgentNode
 	for rows.Next() {
 		var n domain.AgentNode
@@ -629,7 +803,7 @@ func (s *Store) ListAgentTools(agentID int64) ([]domain.AgentTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tools []domain.AgentTool
 	for rows.Next() {
 		var t domain.AgentTool
@@ -662,7 +836,7 @@ func (s *Store) ListEdges(topologyID int64) ([]domain.Edge, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var edges []domain.Edge
 	for rows.Next() {
 		var e domain.Edge
@@ -682,7 +856,8 @@ func (s *Store) CreateRun(caseID int64, topologyVersion int, gitBranch string) (
 	// SQLite cannot express this as a FK because topology_version is a semantic
 	// version number, not a row ID, so we validate it here instead.
 	var topoCount int
-	err := s.db.QueryRow(`
+	err := s.db.QueryRow(
+		`
 		SELECT COUNT(*)
 		FROM swarm_topologies st
 		JOIN cases c ON c.project_id = st.project_id
@@ -739,6 +914,111 @@ func (s *Store) UpdateRunStatus(runID int64, status string, endTime *time.Time, 
 	return err
 }
 
+// FinishRun atomically records a terminal run and its case outcome. Execution
+// does not accept stories: a successful case with unverified work stays pending.
+func (s *Store) FinishRun(runID int64, status string, endTime time.Time, commitHash string) error {
+	if status != RunStatusSuccess && status != RunStatusFailed && status != RunStatusKilled {
+		return fmt.Errorf("finish run: invalid terminal status %q", status)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("finish run: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var caseID int64
+	if err := tx.QueryRow(`SELECT case_id FROM runs WHERE id = ?`, runID).Scan(&caseID); err != nil {
+		return fmt.Errorf("finish run: load case: %w", err)
+	}
+	caseStatus, err := caseStatusAfter(tx, caseID, status)
+	if err != nil {
+		return fmt.Errorf("finish run: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE runs SET status = ?, end_time = ?, git_commit_hash = ? WHERE id = ?`, status, endTime, commitHash, runID); err != nil {
+		return fmt.Errorf("finish run: update run: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE cases SET status = ?, last_modified = ? WHERE id = ?`, caseStatus, endTime, caseID); err != nil {
+		return fmt.Errorf("finish run: update case: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("finish run: commit: %w", err)
+	}
+	return nil
+}
+
+// caseStatusAfter is the single rule for a case's status after a terminal run:
+// success completes the case only once every story is operator-accepted
+// (IMPLEMENTED); otherwise it stays pending. Any other run outcome fails it.
+func caseStatusAfter(tx *sql.Tx, caseID int64, runStatus string) (string, error) {
+	if runStatus != RunStatusSuccess {
+		return CaseStatusFailed, nil
+	}
+	var remaining int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM user_stories WHERE case_id = ? AND status != 'IMPLEMENTED'`, caseID).Scan(&remaining); err != nil {
+		return "", fmt.Errorf("inspect stories: %w", err)
+	}
+	if remaining > 0 {
+		return CaseStatusPending, nil
+	}
+	return CaseStatusCompleted, nil
+}
+
+// AcceptUserStory records an operator's acceptance of a story after they have
+// verified delivered work. It requires a successful run of the story's case and,
+// in one transaction, marks the story IMPLEMENTED, appends a story_accepted
+// entry to that run's audit chain (bound to the run's commit), and recomputes
+// the case status. Returns the run the acceptance was recorded against and the
+// resulting case status.
+func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseStatus string, err error) {
+	s.appendMu.Lock() // same serialization as AppendEventLogChained: no chain forks
+	defer s.appendMu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, "", fmt.Errorf("accept story: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var caseID int64
+	if err := tx.QueryRow(`SELECT case_id FROM user_stories WHERE id = ?`, storyID).Scan(&caseID); errors.Is(err, sql.ErrNoRows) {
+		return 0, "", fmt.Errorf("story %d not found", storyID)
+	} else if err != nil {
+		return 0, "", fmt.Errorf("accept story: load story: %w", err)
+	}
+	var commit string
+	err = tx.QueryRow(`SELECT id, COALESCE(git_commit_hash,'') FROM runs WHERE case_id = ? AND status = ? ORDER BY id DESC LIMIT 1`,
+		caseID, RunStatusSuccess).Scan(&runID, &commit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", fmt.Errorf("case %d has no successful run — accept stories only after verifying delivered work", caseID)
+	} else if err != nil {
+		return 0, "", fmt.Errorf("accept story: load run: %w", err)
+	}
+	var prevHash string
+	if err := tx.QueryRow(`SELECT event_hash FROM run_event_logs WHERE run_id = ? ORDER BY id DESC LIMIT 1`, runID).Scan(&prevHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, "", fmt.Errorf("accept story: read last event hash: %w", err)
+	}
+	payload, err := json.Marshal(map[string]any{"type": "story_accepted", "story_id": storyID, "actor": actor})
+	if err != nil {
+		return 0, "", fmt.Errorf("accept story: %w", err)
+	}
+	now := time.Now()
+	if _, err := tx.Exec(`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash) VALUES (?, ?, ?, ?, ?, ?)`,
+		runID, "story_accepted", string(payload), now, ComputeEventHash(string(payload), prevHash, commit), commit); err != nil {
+		return 0, "", fmt.Errorf("accept story: audit: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, StoryStatusImplemented, storyID); err != nil {
+		return 0, "", fmt.Errorf("accept story: update story: %w", err)
+	}
+	if caseStatus, err = caseStatusAfter(tx, caseID, RunStatusSuccess); err != nil {
+		return 0, "", fmt.Errorf("accept story: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE cases SET status = ?, last_modified = ? WHERE id = ?`, caseStatus, now, caseID); err != nil {
+		return 0, "", fmt.Errorf("accept story: update case: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, "", fmt.Errorf("accept story: commit: %w", err)
+	}
+	return runID, caseStatus, nil
+}
+
 func (s *Store) ListRunsByCase(caseID int64) ([]domain.Run, error) {
 	rows, err := s.db.Query(
 		`SELECT id, case_id, topology_version, status, start_time, end_time, git_branch, COALESCE(git_commit_hash,'')
@@ -747,7 +1027,7 @@ func (s *Store) ListRunsByCase(caseID int64) ([]domain.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanRuns(rows)
 }
 
@@ -759,7 +1039,7 @@ func (s *Store) ListRunsByStatus(status string) ([]domain.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanRuns(rows)
 }
 
@@ -800,6 +1080,24 @@ func (s *Store) GetLastEventHash(runID int64) (string, error) {
 // guard protects callers that bypass the IPC layer (e.g. tests, future CLIs).
 const maxEventLogPayload = 64 * 1024 // 64 KiB
 
+// ComputeEventHash is the single source of truth for the SOC2 chain-hash
+// algorithm: SHA-256(payload ‖ prevHash ‖ gitCommitHash).
+//
+// Note on CHECK 9.1.1: the checklist specifies SHA-256(prev_hash ‖ event_body)
+// (prevHash first). The implementation uses payload first and includes
+// gitCommitHash as a third input.  This divergence is intentional: including
+// the git commit hash ties each entry to the exact source revision that wrote
+// it, which is a stronger guarantee than the baseline spec.  Changing the
+// order would invalidate all existing audit chains, so we document it here
+// rather than silently break backward compatibility.
+//
+// Both AppendEventLog and external verifiers (audit export/verify) must call
+// this function so that any future change to the algorithm stays in one place.
+func ComputeEventHash(payload, prevHash, gitCommitHash string) string {
+	h := sha256.Sum256([]byte(payload + prevHash + gitCommitHash))
+	return fmt.Sprintf("%x", h)
+}
+
 // AppendEventLog writes a tamper-proof entry: hash = SHA-256(payload + prevHash + gitCommitHash).
 // gitCommitHash is stored per-entry so that inspect log can verify each entry
 // with the exact value that was current when the entry was written — the hash
@@ -809,8 +1107,7 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 	if len(payload) > maxEventLogPayload {
 		payload = payload[:maxEventLogPayload]
 	}
-	h := sha256.Sum256([]byte(payload + prevHash + gitCommitHash))
-	eventHash := fmt.Sprintf("%x", h)
+	eventHash := ComputeEventHash(payload, prevHash, gitCommitHash)
 	now := time.Now()
 	res, err := s.db.Exec(
 		`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash)
@@ -832,6 +1129,24 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 	}, nil
 }
 
+// AppendEventLogChained atomically reads the run's last event hash and appends
+// a new entry chained to it. The read+insert is serialized by appendMu so that
+// concurrent callers within the process cannot both observe the same prevHash
+// and fork the chain. This is the method production callers must use; the
+// lower-level AppendEventLog (explicit prevHash) is retained for tests and
+// external verifiers. Single-process serialization is sufficient because the
+// no_concurrent_run gate guarantees only one run writes a given workspace's
+// event log at a time.
+func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommitHash string) (*domain.RunEventLog, error) {
+	s.appendMu.Lock()
+	defer s.appendMu.Unlock()
+	prevHash, err := s.GetLastEventHash(runID)
+	if err != nil {
+		return nil, fmt.Errorf("read last event hash: %w", err)
+	}
+	return s.AppendEventLog(runID, eventType, payload, prevHash, gitCommitHash)
+}
+
 func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 	rows, err := s.db.Query(
 		`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash
@@ -840,7 +1155,7 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var logs []domain.RunEventLog
 	for rows.Next() {
 		var l domain.RunEventLog
@@ -850,6 +1165,28 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
+}
+
+// VerifyChain recomputes every event hash for the run and returns the first
+// position (1-based) where the stored hash does not match the recomputed value.
+// Returns nil when the chain is intact.
+//
+// This is CHECK 9.1.2 — used by "staircase audit verify" and the tamper test.
+func (s *Store) VerifyChain(runID int64) error {
+	logs, err := s.ListEventLogs(runID)
+	if err != nil {
+		return fmt.Errorf("verify chain: list events: %w", err)
+	}
+	prevHash := ""
+	for i, entry := range logs {
+		want := ComputeEventHash(entry.Payload, prevHash, entry.GitCommitHash)
+		if entry.EventHash != want {
+			return fmt.Errorf("verify chain: hash mismatch at entry %d (id=%d): stored=%s computed=%s",
+				i+1, entry.ID, entry.EventHash, want)
+		}
+		prevHash = entry.EventHash
+	}
+	return nil
 }
 
 // KillStaleRuns marks any RUNNING run for caseID that started more than maxAge
@@ -875,7 +1212,8 @@ func (s *Store) KillStaleRuns(caseID int64, maxAge time.Duration) (int64, error)
 // the current topology, not an outdated one.
 func (s *Store) HasSuccessfulRunAtTopologyVersion(projectID int64, topoVersion int) (bool, error) {
 	var count int
-	err := s.db.QueryRow(`
+	err := s.db.QueryRow(
+		`
 		SELECT COUNT(*)
 		FROM runs
 		JOIN cases ON runs.case_id = cases.id

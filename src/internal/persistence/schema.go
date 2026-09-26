@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     source_path TEXT,
     webhook_url TEXT,
+    default_model TEXT,
+    budget_usd_per_run REAL DEFAULT 0,
+    blueprint_hash TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
     UNIQUE(vendor_id, name)
 );
@@ -36,7 +39,21 @@ CREATE TABLE IF NOT EXISTS secrets (
     key_name TEXT NOT NULL,
     encrypted_value TEXT NOT NULL,
     scoped_to_project_id INTEGER,
+    version INTEGER NOT NULL DEFAULT 1,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+    encryption_scheme TEXT NOT NULL DEFAULT 'aes-256-gcm',
     FOREIGN KEY (scoped_to_project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- Secret access audit log (SOC2 at-use audit, CHECK 4.1.3).
+-- run_id is SET NULL on run delete so audit history is never silently lost.
+CREATE TABLE IF NOT EXISTS secret_access_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    key_name TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN ('success','error','not_found')),
+    accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE SET NULL
 );
 -- Enforce deterministic secret resolution: one global entry and one per-project entry per key.
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_secrets_global
@@ -62,7 +79,18 @@ CREATE TABLE IF NOT EXISTS cases (
     last_modified DATETIME DEFAULT CURRENT_TIMESTAMP,
     prd_json TEXT,                    -- Semantic Context Hub
     deleted_at DATETIME,
+    blueprint_hash TEXT NOT NULL DEFAULT '',  -- set on cases created by 'project bind'
+    blueprint_slug TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS blueprints (
+    hash TEXT PRIMARY KEY,  -- sha256 of content
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,  -- canonical JSON, file references resolved
+    source_dir TEXT NOT NULL DEFAULT '',
+    git_sha TEXT NOT NULL DEFAULT '',
+    imported_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS user_stories (
@@ -180,4 +208,29 @@ var Migrations = []string{
 	    ON secrets(key_name, scoped_to_project_id) WHERE scoped_to_project_id IS NOT NULL`,
 	`ALTER TABLE projects ADD COLUMN default_model TEXT`,
 	`ALTER TABLE projects ADD COLUMN budget_usd_per_run REAL DEFAULT 0`,
+	// §4.1.1: add versioning and activation columns to secrets (idx 8-10).
+	`ALTER TABLE secrets ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE secrets ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE secrets ADD COLUMN encryption_scheme TEXT NOT NULL DEFAULT 'aes-256-gcm'`,
+	// §4.1.3: secret at-use audit log; run_id SET NULL on delete so history is never lost (idx 11).
+	`CREATE TABLE IF NOT EXISTS secret_access_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id INTEGER,
+		key_name TEXT NOT NULL,
+		outcome TEXT NOT NULL CHECK(outcome IN ('success','error','not_found')),
+		accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE SET NULL
+	)`,
+	// Blueprints (Phase 4): immutable snapshots; projects and cases record theirs.
+	`CREATE TABLE IF NOT EXISTS blueprints (
+		hash TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		content TEXT NOT NULL,
+		source_dir TEXT NOT NULL DEFAULT '',
+		git_sha TEXT NOT NULL DEFAULT '',
+		imported_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`,
+	`ALTER TABLE projects ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE cases ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE cases ADD COLUMN blueprint_slug TEXT NOT NULL DEFAULT ''`,
 }

@@ -3,7 +3,7 @@ package monitor_test
 import (
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/monitor"
+	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,14 +48,19 @@ func TestEstimateCost_known_model(t *testing.T) {
 	assert.InDelta(t, 10.50, cost, 0.01)
 }
 
-func TestEstimateCost_unknown_model_returns_zero(t *testing.T) {
-	assert.Equal(t, 0.0, monitor.EstimateCost("unknown-model-xyz", 1000000, 1000000))
+// TestEstimateCost_never_free: a model without a price (a gateway name, a new
+// model, Claude Code) counts at the highest known rate, so a budget cap still
+// stops the run; gateway names are priced by their model.
+func TestEstimateCost_never_free(t *testing.T) {
+	assert.Equal(t, monitor.EstimateCost("claude-sonnet-4-6", 1000, 1000), monitor.EstimateCost("anthropic/claude-sonnet-4-6", 1000, 1000))
+	assert.Equal(t, monitor.EstimateCost("claude-opus-4-6", 1_000_000, 1_000_000), monitor.EstimateCost("unknown-model-xyz", 1_000_000, 1_000_000))
+	assert.Greater(t, monitor.EstimateCost("claude-code", 1000, 0), 0.0)
 }
 
 func TestDisplay_BudgetExceeded_no_cap(t *testing.T) {
 	tr := monitor.NewTracker(1, 1, "proj", "main")
 	tr.Record("agent", "claude-opus-4-6", 1_000_000, 1_000_000) // very expensive
-	d := monitor.NewDisplay(tr, 0)                               // no cap
+	d := monitor.NewDisplay(tr, 0)                              // no cap
 	assert.False(t, d.BudgetExceeded())
 }
 

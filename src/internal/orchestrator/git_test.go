@@ -1,0 +1,237 @@
+package orchestrator_test
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// ─── OpenGitRepo ─────────────────────────────────────────────────────────────
+
+func TestGitRepo_open_nonexistent_returns_error(t *testing.T) {
+	_, err := orchestrator.OpenGitRepo("/nonexistent/path/xyz")
+	assert.Error(t, err)
+}
+
+func TestGitRepo_open_bare_repo_returns_error(t *testing.T) {
+	dir := t.TempDir()
+	out, err := exec.Command("git", "-C", dir, "init", "--bare").CombinedOutput()
+	require.NoError(t, err, "git init --bare: %s", out)
+
+	// A bare repository has no worktree, so OpenGitRepo must fail.
+	_, err = orchestrator.OpenGitRepo(dir)
+	assert.Error(t, err, "bare repo has no worktree — must return error")
+}
+
+// ─── CurrentBranch ───────────────────────────────────────────────────────────
+
+func TestGitRepo_CurrentBranch_returns_main(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+	branch, err := gr.CurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "main", branch)
+}
+
+// ─── BranchExists ────────────────────────────────────────────────────────────
+
+func TestGitRepo_BranchExists_false_for_unknown(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+	assert.False(t, gr.BranchExists("no-such-branch"))
+}
+
+func TestGitRepo_BranchExists_true_for_main(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+	assert.True(t, gr.BranchExists("main"))
+}
+
+// ─── CreateBranch / DeleteBranch ─────────────────────────────────────────────
+
+func TestGitRepo_CreateBranch_and_verify_exists(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	require.NoError(t, gr.CreateBranch("staircase/run-99"))
+	assert.True(t, gr.BranchExists("staircase/run-99"))
+}
+
+func TestGitRepo_DeleteBranch_removes_branch(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	// Create then immediately check out main so we can delete the new branch.
+	require.NoError(t, gr.CreateBranch("staircase/run-88"))
+	require.NoError(t, gr.CheckoutBranch("main"))
+
+	require.NoError(t, gr.DeleteBranch("staircase/run-88"))
+	assert.False(t, gr.BranchExists("staircase/run-88"))
+}
+
+// ─── CurrentBranch — detached HEAD ───────────────────────────────────────────
+
+func TestGitRepo_CurrentBranch_on_detached_HEAD(t *testing.T) {
+	repoPath := initGitRepo(t)
+
+	// Resolve HEAD SHA via system git, then detach HEAD at that commit.
+	shaBytes, err := exec.Command("git", "-C", repoPath, "rev-parse", "HEAD").Output()
+	require.NoError(t, err)
+	sha := strings.TrimSpace(string(shaBytes))
+	require.Len(t, sha, 40, "SHA must be 40 hex chars")
+
+	out, err := exec.Command("git", "-C", repoPath, "checkout", "--detach", sha).CombinedOutput()
+	require.NoError(t, err, "detach HEAD: %s", out)
+
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	branch, err := gr.CurrentBranch()
+	require.NoError(t, err)
+	// In detached-HEAD state CurrentBranch returns the full commit SHA.
+	assert.Len(t, branch, 40, "detached HEAD must return 40-char SHA")
+	assert.Equal(t, sha, branch)
+}
+
+// ─── CheckoutBranch ──────────────────────────────────────────────────────────
+
+func TestGitRepo_CheckoutBranch_restores_main(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	require.NoError(t, gr.CreateBranch("staircase/run-77"))
+	require.NoError(t, gr.CheckoutBranch("main"))
+
+	branch, err := gr.CurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "main", branch)
+}
+
+func TestGitRepo_CheckoutBranch_by_sha_detaches_HEAD(t *testing.T) {
+	repoPath := initGitRepo(t)
+
+	shaBytes, err := exec.Command("git", "-C", repoPath, "rev-parse", "HEAD").Output()
+	require.NoError(t, err)
+	sha := strings.TrimSpace(string(shaBytes))
+	require.Len(t, sha, 40)
+
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	// A 40-char string triggers the SHA checkout path in CheckoutBranch.
+	require.NoError(t, gr.CheckoutBranch(sha))
+
+	// HEAD is now detached at the given commit.
+	current, err := gr.CurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, sha, current)
+}
+
+// ─── IsClean ─────────────────────────────────────────────────────────────────
+
+func TestGitRepo_IsClean_on_clean_repo(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	clean, err := gr.IsClean()
+	require.NoError(t, err)
+	assert.True(t, clean)
+}
+
+func TestGitRepo_IsClean_false_with_untracked_file(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "dirty.txt"), []byte("x"), 0o644))
+
+	clean, err := gr.IsClean()
+	require.NoError(t, err)
+	assert.False(t, clean)
+}
+
+// ─── ListBranches ────────────────────────────────────────────────────────────
+
+func TestGitRepo_ListBranches_prefix_filter(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	require.NoError(t, gr.CreateBranch("staircase/run-1"))
+	require.NoError(t, gr.CheckoutBranch("main"))
+	require.NoError(t, gr.CreateBranch("staircase/run-2"))
+	require.NoError(t, gr.CheckoutBranch("main"))
+
+	branches, err := gr.ListBranches("staircase/run-")
+	require.NoError(t, err)
+	assert.Len(t, branches, 2)
+	assert.NotContains(t, branches, "main")
+}
+
+func TestGitRepo_ListBranches_empty_when_no_match(t *testing.T) {
+	repoPath := initGitRepo(t)
+	gr, err := orchestrator.OpenGitRepo(repoPath)
+	require.NoError(t, err)
+
+	branches, err := gr.ListBranches("staircase/run-")
+	require.NoError(t, err)
+	assert.Empty(t, branches)
+}
+
+// ─── Commit — default author fallback ────────────────────────────────────────
+
+func TestApprovedCommit_falls_back_to_default_author_when_no_global_config(t *testing.T) {
+	// Point HOME at an empty directory and give the repo no local user, so no
+	// config names one: the author falls back to "staircase" <staircase@local>.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"-C", repo, "init", "-q", "-b", "main"},
+		{"-C", repo, "-c", "user.name=tmp", "-c", "user.email=tmp@tmp", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		out, err := exec.Command("git", args...).CombinedOutput()
+		require.NoError(t, err, "git setup: %s", out)
+	}
+
+	sha, err := orchestrator.CommitApprovedForTest(repo, "file.txt", "data", func() {})
+	require.NoError(t, err)
+	require.Len(t, sha, 40, "commit must succeed with the default author")
+	out, err := exec.Command("git", "-C", repo, "log", "-1", "--format=%an <%ae>|%cn <%ce>", sha).CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	assert.Equal(t, "staircase <staircase@local>|staircase <staircase@local>", strings.TrimSpace(string(out)))
+}
+
+// TestOpenGitRepo_linked_worktree: runs execute in a `git worktree`; commits
+// made through GitRepo there must land on the worktree's branch and leave the
+// main checkout's HEAD alone.
+func TestOpenGitRepo_linked_worktree(t *testing.T) {
+	repo := initGitRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", "staircase/run-7", wt, "HEAD").CombinedOutput()
+	require.NoError(t, err, "%s", out)
+
+	hash, err := orchestrator.CommitApprovedForTest(wt, "f.txt", "x\n", func() {})
+	require.NoError(t, err)
+
+	out, err = exec.Command("git", "-C", repo, "rev-parse", "staircase/run-7").CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	assert.Equal(t, hash, strings.TrimSpace(string(out)), "commit must be on the run branch")
+	out, _ = exec.Command("git", "-C", repo, "symbolic-ref", "HEAD").CombinedOutput()
+	assert.Equal(t, "refs/heads/main", strings.TrimSpace(string(out)), "main checkout must not move")
+	out, _ = exec.Command("git", "-C", repo, "status", "--porcelain").CombinedOutput()
+	assert.Empty(t, strings.TrimSpace(string(out)), "main checkout must stay clean")
+}

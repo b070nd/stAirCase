@@ -1,13 +1,17 @@
 package gate_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/b070nd/staircase-core/src/internal/gate"
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/gate"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -130,6 +134,55 @@ func (g *stubGate) Category() string        { return "test" }
 func (g *stubGate) Severity() gate.Severity { return g.sev }
 func (g *stubGate) Run(_ gate.Context) gate.Result {
 	return gate.Result{Name: g.name, Category: "test", Severity: g.sev, Status: g.stat, Message: g.msg}
+}
+
+// TestAllGates_metadata_methods verifies that every registered gate implementation
+// returns non-empty Name, Category, and Severity values.  This covers the
+// Name/Category/Severity method bodies on all concrete gate structs (CHECK 12.4.3).
+func TestAllGates_metadata_methods(t *testing.T) {
+	allGates := []gate.Gate{
+		gate.CaseProjectExistsGate,
+		gate.CaseHasStoriesGate,
+		gate.CaseHasPRDGate,
+		gate.TopologyExistsGate,
+		gate.TopologyHasAgentsGate,
+		gate.TopologySupervisorRegisteredGate,
+		gate.TopologyEdgesValidGate,
+		gate.TopologyNoOrphanAgentsGate,
+		gate.TopologyRuntimeValidGate,
+		gate.SecretProviderKeysGate,
+		gate.SecretKeyFileGate,
+		gate.SecretNoDuplicatesGate,
+		gate.RuntimePlanCompiledGate,
+		gate.RuntimeSourcePathGate,
+		gate.RuntimeNoConcurrentRunGate,
+		gate.RuntimeGitAvailableGate,
+		gate.DepNoCycleGate,
+		gate.DepDepsCompletedGate,
+	}
+	for _, g := range allGates {
+		assert.NotEmpty(t, g.Name(), "gate Name() must not be empty")
+		assert.NotEmpty(t, g.Category(), "gate Category() must not be empty")
+		assert.NotEmpty(t, string(g.Severity()), "gate Severity() must not be empty")
+	}
+}
+
+// TestRunAll_with_real_registry_nonexistent_case exercises the full registered
+// gate set on a context whose CaseID doesn't exist.  Most gates will SKIP or
+// FAIL, which covers the skip() helper in gate.go and the Skip/Fail summary
+// paths in RunAll.
+func TestRunAll_with_real_registry_nonexistent_case(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	ctx.CaseID = 999_999 // no such case → many gates will SKIP
+
+	// Do NOT replace the registry; use the real set so all Name/Category/Severity
+	// methods are invoked via RunAll.
+	report := gate.RunAll(ctx)
+
+	// At least some gates must have been executed (non-empty gates list).
+	assert.NotEmpty(t, report.Gates, "RunAll must execute the real gate registry")
+	// The overall must not be PASS on an unconfigured workspace.
+	assert.NotEqual(t, gate.StatusPass, report.Overall)
 }
 
 // ─── Structural gates ─────────────────────────────────────────────────────────
@@ -299,31 +352,52 @@ func TestTopologyNoOrphanAgentsGate_all_connected(t *testing.T) {
 
 // ─── Security gates ───────────────────────────────────────────────────────────
 
-func TestSecretAnthropicKeyGate_missing(t *testing.T) {
-	ctx, _ := newGateEnv(t)
-	_, ctx.CaseID = makeCase(t, ctx.Store)
-	r := gate.SecretAnthropicKeyGate.Run(ctx)
-	assert.Equal(t, gate.StatusFail, r.Status)
-	assert.Equal(t, gate.SeverityBlock, r.Severity)
+func topoWithModels(t *testing.T, s *persistence.Store, projectID int64, models ...string) {
+	t.Helper()
+	topo, err := s.CreateSwarmTopology(projectID, "a0", "memory", "langgraph")
+	require.NoError(t, err)
+	for i, m := range models {
+		_, err := s.CreateAgentNode(topo.ID, fmt.Sprintf("a%d", i), "r", m, nil)
+		require.NoError(t, err)
+	}
 }
 
-func TestSecretAnthropicKeyGate_global_present(t *testing.T) {
+func TestSecretProviderKeysGate_no_topology_defers_to_structural_gates(t *testing.T) {
 	ctx, _ := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
-	ctx.Store.CreateSecret("ANTHROPIC_API_KEY", "sk-test", nil)
-	r := gate.SecretAnthropicKeyGate.Run(ctx)
+	r := gate.SecretProviderKeysGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
-	assert.Contains(t, r.Message, "global")
 }
 
-func TestSecretAnthropicKeyGate_project_scoped(t *testing.T) {
+func TestSecretProviderKeysGate_requires_each_models_provider_key(t *testing.T) {
 	ctx, _ := newGateEnv(t)
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
-	ctx.Store.CreateSecret("ANTHROPIC_API_KEY", "sk-proj", &pID)
-	r := gate.SecretAnthropicKeyGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+	topoWithModels(t, ctx.Store, pID, "claude-sonnet-4-6", "gpt-5", "openai/gpt-6-astra")
+	ctx.Store.CreateSecret("ANTHROPIC_API_KEY", "sk-a", nil)
+	r := gate.SecretProviderKeysGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Equal(t, gate.SeverityBlock, r.Severity)
+	assert.Contains(t, r.Message, "OPENAI_API_KEY")
+	assert.Contains(t, r.Message, "LLM_GATEWAY_API_KEY")
+	assert.NotContains(t, r.Message, "ANTHROPIC_API_KEY missing")
+
+	ctx.Store.CreateSecret("OPENAI_API_KEY", "sk-o", &pID)
+	ctx.Store.CreateSecret("LLM_GATEWAY_API_KEY", "vck-g", nil)
+	r = gate.SecretProviderKeysGate.Run(ctx)
+	assert.Equal(t, gate.StatusPass, r.Status, r.Message)
+	assert.Contains(t, r.Message, "global")
 	assert.Contains(t, r.Message, "project")
+}
+
+func TestSecretProviderKeysGate_unknown_model_blocks(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	topoWithModels(t, ctx.Store, pID, "mystery-model")
+	r := gate.SecretProviderKeysGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Contains(t, r.Message, "no known provider")
 }
 
 func TestSecretKeyFileGate_missing(t *testing.T) {
@@ -338,7 +412,7 @@ func TestSecretKeyFileGate_missing(t *testing.T) {
 func TestSecretKeyFileGate_wrong_size(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), []byte("short"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), []byte("short"), 0o600))
 	r := gate.SecretKeyFileGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "32")
@@ -348,7 +422,7 @@ func TestSecretKeyFileGate_bad_permissions(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	key := make([]byte, 32)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0o644))
 	r := gate.SecretKeyFileGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status, "bad permissions should warn, not block")
 }
@@ -357,7 +431,7 @@ func TestSecretKeyFileGate_valid(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	key := make([]byte, 32)
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, ".key"), key, 0o600))
 	r := gate.SecretKeyFileGate.Run(ctx)
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
@@ -378,88 +452,73 @@ func TestSecretNoDuplicatesGate_no_duplicates(t *testing.T) {
 
 // ─── Runtime gates ────────────────────────────────────────────────────────────
 
-func TestRuntimeScriptCompiledGate_missing(t *testing.T) {
+func TestRuntimePlanCompiledGate_missing(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	_, ctx.CaseID = makeCase(t, ctx.Store)
 	ctx.WsDir = wsDir
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Equal(t, gate.SeverityBlock, r.Severity)
 }
 
-func TestRuntimeScriptCompiledGate_present(t *testing.T) {
-	// Script exists, no .topo sidecar (pre-feature scripts) → backward-compat pass.
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	_, ctx.CaseID = makeCase(t, ctx.Store)
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", ctx.CaseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+// writePlan compiles a minimal plan for caseID against topology version topo.
+func writePlan(t *testing.T, wsDir string, caseID int64, topo int) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "tmp"), 0o755))
+	path := filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID))
+	require.NoError(t, plan.Write(path, plan.Plan{CaseID: caseID, TopologyVersion: topo, Supervisor: "sup",
+		Agents: []plan.Agent{{Name: "sup", Role: "r", Model: "claude-sonnet-4-6"}}}))
+	return path
 }
 
-func TestRuntimeScriptCompiledGate_current_topology_passes(t *testing.T) {
-	// Script compiled for the same topology version as the current one → pass.
+func TestRuntimePlanCompiledGate_current_topology_passes(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
 	topo, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topo.Version)), 0644))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+	writePlan(t, wsDir, caseID, topo.Version)
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
+	assert.Equal(t, gate.StatusPass, r.Status, r.Message)
 }
 
-func TestRuntimeScriptCompiledGate_stale_topology_warns(t *testing.T) {
-	// Script compiled for v1 but topology is now v2 → warn.
+func TestRuntimePlanCompiledGate_stale_topology_warns(t *testing.T) {
+	// Plan compiled for v1 but topology is now v2 → warn.
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
 	pID, caseID := makeCase(t, ctx.Store)
 	ctx.CaseID = caseID
 	topoV1, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph") // v1
-	ctx.Store.CreateSwarmTopology(pID, "sup2", "memory", "langgraph")              // v2
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	require.NoError(t, os.WriteFile(sidecar, []byte(fmt.Sprintf("%d", topoV1.Version)), 0644))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
+	ctx.Store.CreateSwarmTopology(pID, "sup2", "memory", "langgraph")             // v2
+	writePlan(t, wsDir, caseID, topoV1.Version)
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status)
 	assert.Contains(t, r.Message, "--force")
 }
 
-func TestRuntimeVenvReadyGate_no_venv(t *testing.T) {
+// TestRuntimePlanCompiledGate_blocks_a_plan_that_would_not_run_as_compiled
+// catches a plan edited after compile, or one compiled for another case,
+// passing the pre-flight.
+func TestRuntimePlanCompiledGate_blocks_a_plan_that_would_not_run_as_compiled(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	ctx.WsDir = wsDir
-	r := gate.RuntimeVenvReadyGate.Run(ctx)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	topo, _ := ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
+	path := writePlan(t, wsDir, caseID, topo.Version)
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(b), `"role": "r"`, `"role": "x"`, 1)), 0o600))
+	r := gate.RuntimePlanCompiledGate.Run(ctx)
 	assert.Equal(t, gate.StatusFail, r.Status)
-}
+	assert.Contains(t, r.Message, "modified after compile")
 
-func TestRuntimeVenvReadyGate_venv_no_hash_warns(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0755))
-	r := gate.RuntimeVenvReadyGate.Run(ctx)
-	assert.Equal(t, gate.StatusWarn, r.Status)
-}
-
-func TestRuntimeVenvReadyGate_fully_ready(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv", "bin"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", "bin", "python"), []byte(""), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "venv", ".requirements_hash"), []byte("abc"), 0644))
-	r := gate.RuntimeVenvReadyGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+	other := writePlan(t, wsDir, caseID+1, topo.Version)
+	require.NoError(t, os.Rename(other, path))
+	require.NoError(t, os.Rename(other+".sha256", path+".sha256"))
+	r = gate.RuntimePlanCompiledGate.Run(ctx)
+	assert.Equal(t, gate.StatusFail, r.Status)
+	assert.Contains(t, r.Message, fmt.Sprintf("compiled for case #%d", caseID+1))
 }
 
 func TestRuntimeSourcePathGate_no_source_path_passes(t *testing.T) {
@@ -611,6 +670,28 @@ func TestTopologyRuntimeValidGate_invalid_runtime(t *testing.T) {
 	assert.Contains(t, r.Message, "tensorflow")
 }
 
+// crewai and autogen are recognised future runtimes — gate must WARN (not pass,
+// not block) so the operator is aware before wasting a run.
+func TestTopologyRuntimeValidGate_crewai_warns(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "crewai")
+	r := gate.TopologyRuntimeValidGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "not yet executable")
+}
+
+func TestTopologyRuntimeValidGate_autogen_warns(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	pID, caseID := makeCase(t, ctx.Store)
+	ctx.CaseID = caseID
+	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "autogen")
+	r := gate.TopologyRuntimeValidGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "not yet executable")
+}
+
 // ─── Soft-deleted case gate ───────────────────────────────────────────────────
 
 func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
@@ -622,47 +703,6 @@ func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
 	assert.Contains(t, r.Message, "deleted")
 }
 
-// ─── runtime.venv_broken gate ─────────────────────────────────────────────────
-
-func TestRuntimeVenvBrokenGate_no_sentinel_passes(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	r := gate.RuntimeVenvBrokenGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
-}
-
-func TestRuntimeVenvBrokenGate_sentinel_present_fails(t *testing.T) {
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	require.NoError(t, os.MkdirAll(filepath.Join(wsDir, "venv"), 0755))
-	sentinel := filepath.Join(wsDir, "venv", ".requirements_hash.broken")
-	require.NoError(t, os.WriteFile(sentinel, []byte("broken"), 0644))
-	r := gate.RuntimeVenvBrokenGate.Run(ctx)
-	assert.Equal(t, gate.StatusFail, r.Status)
-	assert.Contains(t, r.Message, "broken")
-}
-
-// ─── runtime.script_compiled — corrupt sidecar backward-compat ───────────────
-
-func TestRuntimeScriptCompiledGate_corrupt_sidecar_passes(t *testing.T) {
-	// A sidecar with non-numeric content (e.g. truncated write) must not crash
-	// or block the run — the gate falls through to pass, treating the sidecar
-	// as absent (same behaviour as pre-sidecar scripts).
-	ctx, wsDir := newGateEnv(t)
-	ctx.WsDir = wsDir
-	pID, caseID := makeCase(t, ctx.Store)
-	ctx.CaseID = caseID
-	ctx.Store.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
-	tmpDir := filepath.Join(wsDir, "tmp")
-	require.NoError(t, os.MkdirAll(tmpDir, 0755))
-	script := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.py", caseID))
-	sidecar := filepath.Join(tmpDir, fmt.Sprintf("graph_exec_case%d.topo", caseID))
-	require.NoError(t, os.WriteFile(script, []byte("# graph"), 0600))
-	require.NoError(t, os.WriteFile(sidecar, []byte("not-a-number"), 0644))
-	r := gate.RuntimeScriptCompiledGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status, "corrupt sidecar must fall through to pass")
-}
-
 // ─── deps.deps_completed — upstream has no topology ───────────────────────────
 
 func TestDepDepsCompletedGate_upstream_no_topology_warns(t *testing.T) {
@@ -670,7 +710,7 @@ func TestDepDepsCompletedGate_upstream_no_topology_warns(t *testing.T) {
 	// topology registered — the gate should warn, not panic.
 	ctx, _ := newGateEnv(t)
 	v, _ := ctx.Store.CreateVendor(t.Name())
-	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "")   // no topology
+	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "") // no topology
 	downstream, _ := ctx.Store.CreateProject(v.ID, "Down", "")
 	ctx.Store.CreateProjectDependency(downstream.ID, upstream.ID)
 	c, _ := ctx.Store.CreateCase(downstream.ID)
@@ -698,4 +738,143 @@ func TestRuntimeGitAvailableGate_with_source_path_and_git_present(t *testing.T) 
 	r := gate.RuntimeGitAvailableGate.Run(ctx)
 	// git is available in the test environment; expect pass.
 	assert.Equal(t, gate.StatusPass, r.Status)
+}
+
+// ─── Plugin gate tests ────────────────────────────────────────────────────────
+
+// writePluginScript writes a shell script to wsDir and registers it in gates.json.
+// The script body is the content between #!/bin/sh and EOF.
+// Returns the gate.Context with WsDir pointing to wsDir.
+func writePluginScript(t *testing.T, wsDir, scriptBody string, severity gate.Severity) gate.Context {
+	t.Helper()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	store := persistence.NewStore(db)
+
+	scriptPath := filepath.Join(wsDir, "plugin.sh")
+	script := "#!/bin/sh\n[ -n \"$STAIRCASE_WARMUP\" ] && exit 0\n" + scriptBody
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+	// The first run of a newly written executable can take seconds on macOS
+	// under load (measured: p50 0.12 s, max 4 s, against 0.004 s for a script
+	// run before), which a 5 s plugin timeout turned into a flaky test. Real
+	// plugins are installed once; run this one once, unmeasured, before the
+	// gate does. The gate's empty environment skips the warm-up line.
+	warm := exec.Command(scriptPath)
+	warm.Env = []string{"STAIRCASE_WARMUP=1"}
+	require.NoError(t, warm.Run())
+
+	type gatesDef struct {
+		Name           string `json:"name"`
+		Category       string `json:"category"`
+		Severity       string `json:"severity"`
+		Script         string `json:"script"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
+	}
+	defs := []gatesDef{{
+		Name:           "test.plugin",
+		Category:       "test",
+		Severity:       string(severity),
+		Script:         scriptPath,
+		TimeoutSeconds: 5,
+	}}
+	raw, _ := json.Marshal(defs)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"), raw, 0o644))
+
+	return gate.Context{WsDir: wsDir, Store: store}
+}
+
+func TestPlugin_pass(t *testing.T) {
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir,
+		`printf '{"status":"PASS","message":"all good"}\n'`,
+		gate.SeverityWarn,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusPass, report.Gates[0].Status)
+	assert.Equal(t, "all good", report.Gates[0].Message)
+}
+
+func TestPlugin_warn(t *testing.T) {
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir,
+		`printf '{"status":"WARN","message":"advisory"}\n'`,
+		gate.SeverityWarn,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusWarn, report.Gates[0].Status)
+}
+
+// TestPluginMalformedOutput verifies CHECK 11.5: malformed plugin output
+// results in a FAIL gate, never a panic or crash.
+func TestPluginMalformedOutput(t *testing.T) {
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir,
+		`printf 'this is not json at all\n'`,
+		gate.SeverityWarn,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusFail, report.Gates[0].Status, "malformed output must be FAIL")
+	assert.Contains(t, report.Gates[0].Message, "malformed output", "message must explain the parse error")
+}
+
+// TestPluginIsolation verifies CHECK 11.6: the plugin subprocess cannot read
+// $STAIRCASE_DIR from its environment — the env is cleared before exec.
+func TestPluginIsolation(t *testing.T) {
+	t.Setenv("STAIRCASE_DIR", "/secret/workspace/path")
+	wsDir := t.TempDir()
+	// The script checks whether STAIRCASE_DIR is set; passes iff it is absent.
+	ctx := writePluginScript(t, wsDir, `
+if [ -n "${STAIRCASE_DIR+x}" ]; then
+    printf '{"status":"FAIL","message":"STAIRCASE_DIR leaked into plugin env"}\n'
+else
+    printf '{"status":"PASS","message":"STAIRCASE_DIR not in env"}\n'
+fi`,
+		gate.SeverityBlock,
+	)
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(ctx)
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusPass, report.Gates[0].Status,
+		"plugin must not see STAIRCASE_DIR: %s", report.Gates[0].Message)
+}
+
+// TestPlugin_timeout verifies CHECK 11.4: a plugin that exceeds its timeout
+// is killed and returns StatusFail within the deadline.
+func TestPlugin_timeout(t *testing.T) {
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	store := persistence.NewStore(db)
+
+	scriptPath := filepath.Join(wsDir, "slow_plugin.sh")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/sh\nsleep 99\n"), 0o755))
+
+	type gatesDef struct {
+		Name           string `json:"name"`
+		Category       string `json:"category"`
+		Severity       string `json:"severity"`
+		Script         string `json:"script"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
+	}
+	raw, _ := json.Marshal([]gatesDef{{
+		Name:           "test.slow",
+		Category:       "test",
+		Severity:       "WARN",
+		Script:         scriptPath,
+		TimeoutSeconds: 1, // 1-second timeout — script sleeps for 99 s
+	}})
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"), raw, 0o644))
+
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(gate.Context{WsDir: wsDir, Store: store})
+	require.Len(t, report.Gates, 1)
+	assert.Equal(t, gate.StatusFail, report.Gates[0].Status, "timed-out plugin must be FAIL")
 }

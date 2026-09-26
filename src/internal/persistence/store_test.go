@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -495,6 +496,47 @@ func TestAppendEventLog_payload_capped_at_store_level(t *testing.T) {
 	assert.LessOrEqual(t, len(entry.Payload), 64*1024, "store must cap payload at 64 KiB")
 }
 
+// ─── VerifyChain / CHECK 9.1.2-9.1.3 ─────────────────────────────────────────
+
+func TestVerifyChain_intact_chain_returns_nil(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
+	run, _ := s.CreateRun(caseID, topo.Version, "main")
+
+	e1, _ := s.AppendEventLog(run.ID, "state_emit", "payload1", "", "")
+	_, _ = s.AppendEventLog(run.ID, "state_emit", "payload2", e1.EventHash, "git123")
+
+	assert.NoError(t, s.VerifyChain(run.ID), "intact chain must verify without error")
+}
+
+func TestVerifyChain_tampered_payload_detected(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
+	run, _ := s.CreateRun(caseID, topo.Version, "main")
+
+	e1, _ := s.AppendEventLog(run.ID, "state_emit", "original", "", "")
+	_, _ = s.AppendEventLog(run.ID, "state_emit", "second", e1.EventHash, "")
+
+	// Tamper: directly update the first entry's payload via raw SQL.
+	_, err := s.DB().Exec(`UPDATE run_event_logs SET payload = 'tampered' WHERE id = ?`, e1.ID)
+	require.NoError(t, err)
+
+	verr := s.VerifyChain(run.ID)
+	require.Error(t, verr, "tampered chain must fail verification")
+	assert.Contains(t, verr.Error(), "entry 1", "error must identify the first broken link")
+}
+
+func TestVerifyChain_empty_run_returns_nil(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
+	run, _ := s.CreateRun(caseID, topo.Version, "main")
+
+	assert.NoError(t, s.VerifyChain(run.ID), "empty run has no chain to verify")
+}
+
 // ─── DeleteComponent consistency ─────────────────────────────────────────────
 
 func TestDeleteComponent_not_found_returns_error(t *testing.T) {
@@ -620,4 +662,133 @@ func TestCreateSecret_global_and_project_scoped_same_key_allowed(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.CreateSecret("SHARED_KEY", "project_val", &p.ID)
 	require.NoError(t, err, "one global + one project-scoped entry for the same key must be allowed")
+}
+
+// ─── Secret at-use audit (CHECK 4.4.2) ────────────────────────────────────────
+
+// TestAtUseAuditCounts verifies that N secret accesses produce exactly N rows
+// in secret_access_log for the given run (CHECK 4.4.2).
+func TestAtUseAuditCounts(t *testing.T) {
+	s := newTestStore(t)
+	_, _, caseID := scaffold(t, s)
+	projectID := mustGetProjectID(t, s, caseID)
+	topo, _ := s.CreateSwarmTopology(projectID, "sup", "memory", "langgraph")
+	run, err := s.CreateRun(caseID, topo.Version, "main")
+	require.NoError(t, err)
+
+	const N = 3
+	for i := range N {
+		key := fmt.Sprintf("KEY_%d", i)
+		require.NoError(t, s.LogSecretAccess(&run.ID, key, "success"))
+	}
+	// One additional error outcome to confirm mixed outcomes are counted.
+	require.NoError(t, s.LogSecretAccess(&run.ID, "MISSING_KEY", "not_found"))
+
+	count, err := s.CountSecretAccesses(run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, N+1, count, "secret_access_log must have one row per LogSecretAccess call")
+}
+
+// TestAtUseAuditCounts_nil_run_id verifies that LogSecretAccess accepts a nil
+// run_id for calls made outside of a run context (CHECK 4.4.1).
+func TestAtUseAuditCounts_nil_run_id(t *testing.T) {
+	s := newTestStore(t)
+	err := s.LogSecretAccess(nil, "SOME_KEY", "success")
+	assert.NoError(t, err, "LogSecretAccess with nil runID must not error")
+}
+
+// TestRotateSecrets_re_encrypts_all verifies that RotateSecrets re-encrypts
+// every secret and bumps its version (CHECK 4.3.1 / 4.3.2).
+func TestRotateSecrets_re_encrypts_all(t *testing.T) {
+	s := newTestStore(t)
+
+	// Minimal key and codec stubs — just ensure the round-trip works.
+	oldKey := make([]byte, 32)
+	newKey := make([]byte, 32)
+	newKey[0] = 1 // different from oldKey
+
+	encryptFn := func(key []byte, pt string) (string, error) {
+		// XOR with first key byte — deterministic stub, not real crypto.
+		out := make([]byte, len(pt))
+		for i, b := range []byte(pt) {
+			out[i] = b ^ key[0]
+		}
+		return string(out), nil
+	}
+	decryptFn := func(key []byte, ct string) (string, error) {
+		return encryptFn(key, ct) // XOR is self-inverse
+	}
+
+	enc, _ := encryptFn(oldKey, "secret1")
+	_, err := s.CreateSecret("K1", enc, nil)
+	require.NoError(t, err)
+
+	enc2, _ := encryptFn(oldKey, "secret2")
+	_, err = s.CreateSecret("K2", enc2, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, s.RotateSecrets(oldKey, newKey, decryptFn, encryptFn))
+
+	// After rotation, the stored ciphertext should decrypt with newKey but not oldKey.
+	sec, err := s.GetSecret("K1", nil)
+	require.NoError(t, err)
+	pt, err := decryptFn(newKey, sec.EncryptedValue)
+	require.NoError(t, err)
+	assert.Equal(t, "secret1", pt, "rotated secret must decrypt with new key")
+
+	ptWrong, _ := decryptFn(oldKey, sec.EncryptedValue)
+	assert.NotEqual(t, "secret1", ptWrong, "rotated secret must not decrypt with old key")
+}
+
+// TestSecretRoundTrip exercises the full secret lifecycle: generate workspace
+// key → encrypt → store → retrieve → decrypt → verify (CHECK 3.4.4).
+func TestSecretRoundTrip(t *testing.T) {
+	wsDir := t.TempDir()
+	require.NoError(t, crypto.GenerateKey(wsDir))
+
+	aesKey, err := crypto.LoadKey(wsDir)
+	require.NoError(t, err)
+
+	const keyName = "ROUNDTRIP_SECRET"
+	const originalValue = "plaintext-value-abc123"
+
+	ciphertext, err := crypto.Encrypt(aesKey, originalValue)
+	require.NoError(t, err, "Encrypt must succeed with a valid workspace key")
+
+	s := newTestStore(t)
+	_, err = s.CreateSecret(keyName, ciphertext, nil /* global scope */)
+	require.NoError(t, err, "CreateSecret must persist the ciphertext")
+
+	sec, err := s.GetSecret(keyName, nil)
+	require.NoError(t, err)
+	require.NotNil(t, sec, "GetSecret must return the stored secret")
+
+	decrypted, err := crypto.Decrypt(aesKey, sec.EncryptedValue)
+	require.NoError(t, err, "Decrypt must succeed with the same key")
+	assert.Equal(t, originalValue, decrypted,
+		"decrypted value must match the original plaintext")
+}
+
+// TestSetSecret_replaces_a_value: storing a key again replaces its value (a
+// rotated API key) in the same scope and counts the version; other scopes
+// are untouched.
+func TestSetSecret_replaces_a_value(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, _ := scaffold(t, s)
+	replaced, v, err := s.SetSecret("K", "one", nil)
+	require.NoError(t, err)
+	assert.False(t, replaced)
+	assert.Equal(t, 1, v)
+	_, _, err = s.SetSecret("K", "project", &projectID)
+	require.NoError(t, err)
+	replaced, v, err = s.SetSecret("K", "two", nil)
+	require.NoError(t, err)
+	assert.True(t, replaced)
+	assert.Equal(t, 2, v)
+	global, err := s.GetSecret("K", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "two", global.EncryptedValue)
+	scoped, err := s.GetSecret("K", &projectID)
+	require.NoError(t, err)
+	assert.Equal(t, "project", scoped.EncryptedValue)
 }

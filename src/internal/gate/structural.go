@@ -3,7 +3,7 @@ package gate
 import (
 	"fmt"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
 
 func init() {
@@ -22,8 +22,8 @@ func init() {
 
 type caseProjectExistsGate struct{}
 
-func (*caseProjectExistsGate) Name() string     { return "case.project_exists" }
-func (*caseProjectExistsGate) Category() string { return "structural" }
+func (*caseProjectExistsGate) Name() string       { return "case.project_exists" }
+func (*caseProjectExistsGate) Category() string   { return "structural" }
 func (*caseProjectExistsGate) Severity() Severity { return SeverityBlock }
 
 func (*caseProjectExistsGate) Run(ctx Context) Result {
@@ -224,8 +224,21 @@ func (*topologyEdgesValidGate) Run(ctx Context) Result {
 }
 
 // ─── topology.runtime_valid ───────────────────────────────────────────────────
+//
+// Three tiers:
+//   - implementedRuntimes  – langgraph is fully executable today → PASS
+//   - recognisedRuntimes   – crewai/autogen are spec'd for a future phase;
+//                            registered in the schema but the code-generator
+//                            raises NotImplementedError at runtime → WARN so
+//                            the operator knows before wasting a run
+//   - anything else        → BLOCK (truly unknown)
 
-var knownRuntimes = map[string]bool{"langgraph": true, "crewai": true, "autogen": true}
+var implementedRuntimes = map[string]bool{"langgraph": true}
+
+// recognisedRuntimes are accepted by the schema CHECK constraint, but staircase
+// runs every topology with its built-in agent runtime. Allowing them silently
+// would be a false affordance — we emit a WARN so the operator sees it first.
+var recognisedRuntimes = map[string]bool{"crewai": true, "autogen": true}
 
 type topologyRuntimeValidGate struct{}
 
@@ -243,12 +256,18 @@ func (*topologyRuntimeValidGate) Run(ctx Context) Result {
 	if t == nil {
 		return skip(name, "structural", SeverityBlock, "no topology")
 	}
-	if !knownRuntimes[t.RuntimeType] {
-		return fail(name, "structural", SeverityBlock,
-			fmt.Sprintf("unknown runtime_type %q — valid values: langgraph, crewai, autogen", t.RuntimeType))
+	if implementedRuntimes[t.RuntimeType] {
+		return pass(name, "structural", SeverityBlock,
+			fmt.Sprintf("runtime_type=%q", t.RuntimeType))
 	}
-	return pass(name, "structural", SeverityBlock,
-		fmt.Sprintf("runtime_type=%q", t.RuntimeType))
+	if recognisedRuntimes[t.RuntimeType] {
+		return warn(name, "structural",
+			fmt.Sprintf("runtime_type=%q is registered but not yet executable — "+
+				"the code generator will raise NotImplementedError at run time; "+
+				"only 'langgraph' is currently supported", t.RuntimeType))
+	}
+	return fail(name, "structural", SeverityBlock,
+		fmt.Sprintf("unknown runtime_type %q — valid values: langgraph (implemented), crewai/autogen (future)", t.RuntimeType))
 }
 
 // ─── topology.no_orphan_agents ────────────────────────────────────────────────

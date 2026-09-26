@@ -1,17 +1,40 @@
-bin/
-var/
+/bin/
+/var/
 *.exe
 *.test
 *.prof
 .DS_Store
-.github/
 .idea/
 .tasks/
 tasks/
 .vscode/
 .setup/
+.claude/
+.review/
+graphify-out/
 vendor/
-staircase
-IMPLEMENTATION_CHECKLIST.md
-TECHNICAL_REVIEW.md
-staircase-*
+/staircase
+/staircase-*
+
+# Python bytecode and cache (CHECK 2.2.3 — no compiled artifacts in VCS)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Built Go binaries under src/ (CHECK 2.2.3)
+src/staircase
+
+# Note: tests/fixtures/repos/*.tar.gz are intentional test fixtures (pre-built
+# git repository snapshots required by the orchestrator integration tests).
+# They are exempt from CHECK 2.2.3 because they are not build outputs —
+# they cannot be regenerated without the original repo history.
+
+# Local development ledger and delete-candidate quarantine (not part of the product)
+/PROTOCOL.md
+/.quarantine/
+
+# goreleaser output
+/dist/
+/completions/

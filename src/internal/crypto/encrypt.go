@@ -41,21 +41,21 @@ func GenerateKey(wsDir string) error {
 	}
 	tmpPath := tmp.Name()
 	if _, err := tmp.Write(key); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write temp key: %w", err)
 	}
-	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("chmod temp key: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp key: %w", err)
 	}
 	if err := os.Rename(tmpPath, keyPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("install key: %w", err)
 	}
 	return nil
@@ -65,7 +65,15 @@ func GenerateKey(wsDir string) error {
 // On Unix it also verifies that the key file has mode 0600; a wider permission
 // set indicates the file may have been exposed and is treated as an error.
 // (On Windows POSIX mode bits are not meaningful and the check is skipped.)
+//
+// LoadKey automatically resumes any "committed" rotation journal left by a
+// crashed rotation before reading the key.  This ensures that any command
+// that loads the key self-heals an interrupted rotation without requiring the
+// user to re-run 'staircase secret rotate'.
 func LoadKey(wsDir string) ([]byte, error) {
+	if err := ResumeIfCommitted(wsDir); err != nil {
+		return nil, fmt.Errorf("load workspace key: rotate recovery: %w", err)
+	}
 	keyPath := filepath.Join(wsDir, KeyFile)
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(keyPath)

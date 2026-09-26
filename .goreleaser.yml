@@ -7,8 +7,7 @@ project_name: staircase
 
 before:
   hooks:
-    - go mod tidy
-    - go generate ./...
+    - ./packaging/completions.sh # bash/zsh/fish completions for the archives
 
 builds:
   - id: staircase
@@ -16,6 +15,12 @@ builds:
     binary: staircase
     env:
       - CGO_ENABLED=0
+    # Reproducible: no local paths, file times and build date from the commit.
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    # Windows (amd64) ships as experimental: make check cross-builds it, but it
+    # is not run in CI, and run_shell / --agent claude-code need a POSIX shell.
     goos:
       - linux
       - darwin
@@ -30,23 +35,56 @@ builds:
       - -s -w
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
+      - -X main.date={{.CommitDate}}
 
 archives:
   - id: staircase
     name_template: "staircase_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
+    # File times from the commit, so archives are byte-reproducible too.
+    builds_info:
+      mtime: "{{ .CommitDate }}"
     files:
-      - LICENSE
-      - README.md
+      - src: LICENSE
+        info: &commit_mtime
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info: *commit_mtime
+      - src: CHANGELOG.md
+        info: *commit_mtime
+      - src: completions/*
+        info: *commit_mtime
 
 checksum:
   name_template: "checksums.txt"
 
+# SBOM generation (requires syft in PATH on the release runner).
+# Produces one SPDX JSON file per release archive for supply-chain provenance.
+# Install syft in CI via: anchore/sbom-action/download-syft before goreleaser step.
+sboms:
+  - artifacts: archive
+    documents:
+      - "${artifact}.spdx.json"
+
+# Keyless (Sigstore OIDC) signing of the checksum file. Verifying the signed
+# checksums transitively verifies every archive. Requires cosign in PATH and
+# an OIDC token (id-token: write) on the release job. Skipped in snapshot builds.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -61,7 +99,7 @@ changelog:
 release:
   github:
     owner: b070nd
-    name: staircase-core
+    name: stAirCase
   draft: false
   prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"

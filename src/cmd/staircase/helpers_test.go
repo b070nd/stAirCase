@@ -1,0 +1,78 @@
+package main
+
+import (
+	"testing"
+
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/gate"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParseID_valid_integer(t *testing.T) {
+	id, err := parseID("case", "42")
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), id)
+}
+
+func TestParseID_invalid_string_returns_error(t *testing.T) {
+	_, err := parseID("case", "abc")
+	assert.ErrorContains(t, err, "invalid case")
+	assert.ErrorContains(t, err, "abc")
+}
+
+func TestTrimNL_strips_trailing_newline(t *testing.T) {
+	assert.Equal(t, "hello", trimNL([]byte("hello\n")))
+}
+
+func TestTrimNL_strips_crlf(t *testing.T) {
+	assert.Equal(t, "hello", trimNL([]byte("hello\r\n")))
+}
+
+func TestTrimNL_no_newline_unchanged(t *testing.T) {
+	assert.Equal(t, "hello", trimNL([]byte("hello")))
+}
+
+func TestTrimNL_empty_input(t *testing.T) {
+	assert.Equal(t, "", trimNL([]byte{}))
+}
+
+func TestFilterSubgraph_returns_root_and_reachable_deps(t *testing.T) {
+	projects := []domain.Project{{ID: 1}, {ID: 2}, {ID: 3}}
+	deps := []domain.ProjectDependency{
+		{SourceProjectID: 1, TargetProjectID: 2},
+	}
+	ps, ds := filterSubgraph(1, projects, deps)
+	require.Len(t, ps, 2)
+	require.Len(t, ds, 1)
+	assert.Equal(t, int64(3), projects[2].ID) // project 3 unreachable — not in result
+}
+
+func TestFilterSubgraph_single_node_no_deps(t *testing.T) {
+	ps, ds := filterSubgraph(7, []domain.Project{{ID: 7}}, nil)
+	assert.Len(t, ps, 1)
+	assert.Empty(t, ds)
+}
+
+func TestStatusIcon_all_branches(t *testing.T) {
+	assert.Contains(t, statusIcon(gate.StatusPass), "✅")
+	assert.Contains(t, statusIcon(gate.StatusWarn), "⚠")
+	assert.Contains(t, statusIcon(gate.StatusFail), "❌")
+	assert.NotEmpty(t, statusIcon(gate.Status("unknown"))) // default branch
+}
+
+func TestParseID_rejects_trailing_garbage(t *testing.T) {
+	for _, s := range []string{"1abc", "1 2", "0x1", ""} {
+		_, err := parseID("case", s)
+		assert.Error(t, err, "input %q", s)
+	}
+}
+
+// TestBuildVersion: a release build's injected version wins; otherwise
+// (go install) the module version Go recorded in the binary is used.
+func TestBuildVersion(t *testing.T) {
+	assert.Equal(t, "0.2.0", buildVersion("0.2.0", "v0.3.0"), "ldflags version wins")
+	assert.Equal(t, "0.3.0", buildVersion("", "v0.3.0"), "go install records the module version")
+	assert.Equal(t, "dev", buildVersion("", "(devel)"), "a plain go build is a dev build")
+	assert.Equal(t, "dev", buildVersion("", ""))
+}

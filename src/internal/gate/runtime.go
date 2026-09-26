@@ -1,108 +1,99 @@
 package gate
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/blueprint"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
 func init() {
-	Register(&runtimeScriptCompiledGate{})
-	Register(&runtimeVenvReadyGate{})
-	Register(&runtimeVenvBrokenGate{})
+	Register(&runtimePlanCompiledGate{})
+	Register(&runtimePlanPinnedGate{})
 	Register(&runtimeSourcePathGate{})
 	Register(&runtimeNoConcurrentRunGate{})
 	Register(&runtimeGitAvailableGate{})
 }
 
-// ─── runtime.script_compiled ─────────────────────────────────────────────────
+// ─── runtime.plan_compiled ───────────────────────────────────────────────────
 
-type runtimeScriptCompiledGate struct{}
+type runtimePlanCompiledGate struct{}
 
-func (*runtimeScriptCompiledGate) Name() string       { return "runtime.script_compiled" }
-func (*runtimeScriptCompiledGate) Category() string   { return "runtime" }
-func (*runtimeScriptCompiledGate) Severity() Severity { return SeverityBlock }
+func (*runtimePlanCompiledGate) Name() string       { return "runtime.plan_compiled" }
+func (*runtimePlanCompiledGate) Category() string   { return "runtime" }
+func (*runtimePlanCompiledGate) Severity() Severity { return SeverityBlock }
 
-func (*runtimeScriptCompiledGate) Run(ctx Context) Result {
-	const name = "runtime.script_compiled"
-	script := filepath.Join(ctx.WsDir, "tmp",
-		fmt.Sprintf("graph_exec_case%d.py", ctx.CaseID))
-	info, err := os.Stat(script)
-	if err != nil {
-		return fail(name, "runtime", SeverityBlock,
-			fmt.Sprintf("compiled script not found — run 'staircase compile %d'", ctx.CaseID))
+// Run checks that the case has a plan that will run as compiled: present,
+// unmodified, of this staircase's plan version, valid, for this case — and
+// warns when the topology changed after compile.
+func (*runtimePlanCompiledGate) Run(ctx Context) Result {
+	const name = "runtime.plan_compiled"
+	p, err := plan.Load(filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID)))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("no compiled plan — run 'staircase compile %d'", ctx.CaseID))
+	case err != nil:
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan cannot run: %v — run 'staircase compile %d --force'", err, ctx.CaseID))
+	case p.CaseID != ctx.CaseID:
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was compiled for case #%d — run 'staircase compile %d --force'", p.CaseID, ctx.CaseID))
 	}
-
-	// Check whether the script was compiled against the current topology version.
-	// The sidecar file graph_exec_case{N}.topo is written by `staircase compile`
-	// and contains the topology version number at compile time.
-	topoSidecar := filepath.Join(ctx.WsDir, "tmp",
-		fmt.Sprintf("graph_exec_case%d.topo", ctx.CaseID))
-	if raw, err := os.ReadFile(topoSidecar); err == nil {
-		compiledVersion, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
-		if parseErr == nil {
-			c, _ := ctx.Store.GetCase(ctx.CaseID)
-			if c != nil {
-				currentTopo, _ := ctx.Store.GetLatestTopology(c.ProjectID)
-				if currentTopo != nil && compiledVersion < currentTopo.Version {
-					return warn(name, "runtime",
-						fmt.Sprintf("script was compiled for topology v%d but current topology is v%d — re-run 'staircase compile %d --force'",
-							compiledVersion, currentTopo.Version, ctx.CaseID))
-				}
-			}
+	if c, _ := ctx.Store.GetCase(ctx.CaseID); c != nil {
+		if cur, _ := ctx.Store.GetLatestTopology(c.ProjectID); cur != nil && p.TopologyVersion < cur.Version {
+			return warn(name, "runtime", fmt.Sprintf("plan was compiled for topology v%d but current topology is v%d — re-run 'staircase compile %d --force'",
+				p.TopologyVersion, cur.Version, ctx.CaseID))
 		}
 	}
-	// Sidecar absent → script was compiled before this feature existed; pass through.
-
-	return pass(name, "runtime", SeverityBlock,
-		fmt.Sprintf("%s (%d bytes)", filepath.Base(script), info.Size()))
+	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan for topology v%d, %d agents", p.TopologyVersion, len(p.Agents)))
 }
 
-// ─── runtime.venv_ready ───────────────────────────────────────────────────────
+// ─── runtime.plan_pinned ─────────────────────────────────────────────────────
 
-type runtimeVenvReadyGate struct{}
+type runtimePlanPinnedGate struct{}
 
-func (*runtimeVenvReadyGate) Name() string       { return "runtime.venv_ready" }
-func (*runtimeVenvReadyGate) Category() string   { return "runtime" }
-func (*runtimeVenvReadyGate) Severity() Severity { return SeverityBlock }
+func (*runtimePlanPinnedGate) Name() string       { return "runtime.plan_pinned" }
+func (*runtimePlanPinnedGate) Category() string   { return "runtime" }
+func (*runtimePlanPinnedGate) Severity() Severity { return SeverityBlock }
 
-func (*runtimeVenvReadyGate) Run(ctx Context) Result {
-	const name = "runtime.venv_ready"
-	python := filepath.Join(ctx.WsDir, "venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		return fail(name, "runtime", SeverityBlock,
-			"venv not found — run 'staircase init'")
+// Run checks that a case bound to a blueprint runs exactly that blueprint:
+// the plan names it and holds its topology, PRD and stories. Anything changed
+// through the imperative CLI after binding blocks the run.
+func (*runtimePlanPinnedGate) Run(ctx Context) Result {
+	const name = "runtime.plan_pinned"
+	hash, slug, err := ctx.Store.CaseBlueprint(ctx.CaseID)
+	if err != nil {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("read case binding: %v", err))
 	}
-	hashFile := filepath.Join(ctx.WsDir, "venv", ".requirements_hash")
-	if _, err := os.Stat(hashFile); err != nil {
-		// Venv predates hash tracking; advisory only.
-		return warn(name, "runtime",
-			"venv exists but has no requirements hash — run 'staircase init' to re-validate packages")
+	if hash == "" {
+		return pass(name, "runtime", SeverityBlock, "case is not bound to a blueprint")
 	}
-	return pass(name, "runtime", SeverityBlock, "venv present, requirements hash verified")
-}
-
-// ─── runtime.venv_broken ─────────────────────────────────────────────────────
-
-type runtimeVenvBrokenGate struct{}
-
-func (*runtimeVenvBrokenGate) Name() string       { return "runtime.venv_broken" }
-func (*runtimeVenvBrokenGate) Category() string   { return "runtime" }
-func (*runtimeVenvBrokenGate) Severity() Severity { return SeverityBlock }
-
-func (*runtimeVenvBrokenGate) Run(ctx Context) Result {
-	const name = "runtime.venv_broken"
-	sentinel := filepath.Join(ctx.WsDir, "venv", ".requirements_hash.broken")
-	if _, err := os.Stat(sentinel); err == nil {
-		return fail(name, "runtime", SeverityBlock,
-			"venv is in a broken state — run 'staircase doctor --fix-venv' to repair")
+	p, err := plan.Load(filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID)))
+	if err != nil {
+		return skip(name, "runtime", SeverityBlock, "no usable plan (see runtime.plan_compiled)")
 	}
-	return pass(name, "runtime", SeverityBlock, "venv broken sentinel absent")
+	if p.BlueprintHash != hash {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was not compiled from blueprint %.12s — run 'staircase compile %d --force' to recompile", hash, ctx.CaseID))
+	}
+	stored, err := ctx.Store.FindBlueprint(hash)
+	if err != nil {
+		return fail(name, "runtime", SeverityBlock, err.Error())
+	}
+	b, err := blueprint.Parse([]byte(stored.Content))
+	if err == nil && b.Hash() != hash {
+		err = errors.New("stored content does not match its hash")
+	}
+	if err != nil {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("blueprint %.12s: %v", hash, err))
+	}
+	if err := b.Check(p, slug); err != nil {
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("case #%d drifted from blueprint %s %.12s (%v) — re-bind the project with 'staircase project bind'", ctx.CaseID, b.Name, hash, err))
+	}
+	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan is blueprint %s %.12s, case %s", b.Name, hash, slug))
 }
 
 // ─── runtime.source_path ─────────────────────────────────────────────────────

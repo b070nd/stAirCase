@@ -1,6 +1,6 @@
 package persistence
 
-import "github.com/b070nd/staircase-core/src/internal/domain"
+import "github.com/b070nd/stAirCase/src/internal/domain"
 
 // Status constants re-exported from domain so callers that already import
 // persistence do not need a separate domain import just for string values.

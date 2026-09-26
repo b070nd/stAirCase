@@ -13,7 +13,7 @@ package gate
 import (
 	"time"
 
-	"github.com/b070nd/staircase-core/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
 
 // ─── Core types ───────────────────────────────────────────────────────────────
@@ -89,10 +89,20 @@ type Summary struct {
 // Blocking returns true when the report has at least one hard (BLOCK) failure.
 func (r Report) Blocking() bool { return r.Overall == StatusFail }
 
-// RunAll executes every registered gate in insertion order and returns a Report.
+// RunAll executes every registered gate plus any plugin gates from
+// $wsDir/gates.json in insertion order and returns a Report.
 func RunAll(ctx Context) Report {
+	pluginGates := loadPluginGates(ctx.WsDir)
+	allGates := append(append([]Gate{}, registry...), pluginGates...)
 	report := Report{CaseID: ctx.CaseID, RunAt: time.Now().UTC()}
-	for _, g := range registry {
+	// Verify gates.json signature before executing any plugin gate (P3).
+	if len(pluginGates) > 0 {
+		checkGatesSignature(ctx.WsDir, &report)
+		if report.Overall == StatusFail {
+			return report
+		}
+	}
+	for _, g := range allGates {
 		res := g.Run(ctx)
 		report.Gates = append(report.Gates, res)
 		switch res.Status {

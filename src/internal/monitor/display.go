@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -153,7 +154,8 @@ func (d *Display) Render() {
 			modelStr = modelStr[:23] + "..."
 		}
 
-		row := fmt.Sprintf("%s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
+		row := fmt.Sprintf(
+			"%s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
 			dot,
 			a.Name,
 			modelStr,
@@ -190,7 +192,8 @@ func (d *Display) Render() {
 		}
 	}
 
-	totalRow := fmt.Sprintf("  %s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
+	totalRow := fmt.Sprintf(
+		"  %s %-16s  %-26s  %6d  %9s  %9s  %10s  %7s",
 		" ",
 		"TOTAL",
 		"",
@@ -219,9 +222,9 @@ func (d *Display) Render() {
 
 	// Erase previous render, then print new.
 	if prevLines > 0 {
-		fmt.Printf("\033[%dA\033[J", prevLines)
+		fmt.Fprintf(os.Stdout, "\033[%dA\033[J", prevLines)
 	}
-	fmt.Print(out)
+	fmt.Fprint(os.Stdout, out)
 
 	newLines := strings.Count(out, "\n")
 	d.mu.Lock()
@@ -241,7 +244,7 @@ func (d *Display) Final(status string) {
 	if strings.Contains(status, "FAIL") || strings.Contains(status, "KILL") {
 		statusLine = dWarn.Render("❌ " + status)
 	}
-	fmt.Println(statusLine)
+	fmt.Fprintln(os.Stdout, statusLine)
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────

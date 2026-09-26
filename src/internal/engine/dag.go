@@ -3,7 +3,7 @@ package engine
 import (
 	"fmt"
 
-	"github.com/b070nd/staircase-core/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
 // TopoSort returns projects in dependency order (dependencies before dependents)
