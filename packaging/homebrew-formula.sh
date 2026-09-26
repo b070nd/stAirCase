@@ -13,8 +13,10 @@ class Staircase < Formula
   desc "Enforcement gate between AI agent plans and your codebase"
   homepage "https://github.com/b070nd/stAirCase"
   version "${V}"
-  version_scheme 1 # the Go rewrite restarts at 0.x after the Bash 1.x line
   license "MIT"
+  version_scheme 1 # the Go rewrite restarts at 0.x after the Bash 1.x line
+
+  depends_on "git"
 
   on_macos do
     on_arm do
@@ -37,8 +39,6 @@ class Staircase < Formula
       sha256 "$(sum linux_amd64)"
     end
   end
-
-  depends_on "git"
 
   def install
     bin.install "staircase"
