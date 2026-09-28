@@ -1,50 +1,78 @@
-# Project Use and Current Safety Boundary
+# Safety boundary
 
-stAirCase is pre-1.0. Runs work in their own git worktree, so your checkout is
-never touched; still, evaluate on a project you can afford to experiment with, and
-keep `STAIRCASE_DIR` outside it. Agents act only through proposals the control
-plane decides, but approved shell commands (`--allow-shell-exec`) run as your OS
-user without a sandbox — use a restricted container or VM for untrusted work,
-without mounting your home directory or unrelated credentials.
+Read this before you point stAirCase at a project you care about. It says plainly
+what stAirCase guarantees, what it does not, and how to use it safely today.
 
-## Verified Run Semantics
+stAirCase is **pre-1.0**.
 
-- `SUCCESS` means the agents finished and finalization succeeded: the worktree
-  held exactly the approved state, and the commit on `staircase/run-N` was built
-  from the approved bytes. A run with no approved changes succeeds without one.
-- A run fails if its worktree holds anything that was not approved (including
-  changes made by approved shell commands), if its branch moved, or if an agent
-  fails; the reason is on the audit chain. The worktree is kept for inspection.
-- Setup, verify, commit, and summary-write failures return a nonzero exit and
-  attempt to record `FAILED`. Run and case terminal states are updated together
-  in a SQLite transaction. If the database is unavailable, the command still
-  fails; its last persisted state may require later recovery.
-- A commit hash is retained when delivery succeeded but a later operation failed.
-  Inspect it before retrying to avoid delivering the same change twice.
-- Successful execution does not prove story acceptance. Pending or invalidated
-  stories are not automatically marked implemented; their case remains pending.
-- After reviewing the actual changes and running the project's own checks, use
-  `staircase story accept <story-id>` to record acceptance. This is an operator
-  declaration, not an automatic validator. It requires a successful run of the
-  case, is appended to that run's audit chain (bound to its commit), and marks
-  the case COMPLETED once every story is accepted.
-- Existing `staircase/run-N` branches are never overwritten by a new run.
-  `run --reconcile` reports inactive branches for inspection but no longer deletes
-  them, even when the associated run failed or its record is missing.
-- Blueprints ([docs/blueprints.md](blueprints.md)) are imported as content-hash
-  snapshots; a bound case runs only as its blueprint defines it
-  (`runtime.plan_pinned`), and `run_bound` records the plan digest and blueprint.
-- Drift supervision ([docs/drift.md](drift.md)): changes outside the stories'
-  scope, past file limits or at checkpoints go to a human; too many scope
-  violations or too long a run halt it until acknowledged; a broken
-  `policy.json` stops the run.
+## What stAirCase guarantees
 
-## Still Required Before Trusted Project Use
+- **Your checkout is not touched.** Each run works in its own git worktree on its
+  own branch, `staircase/run-N`. An existing branch with that name is never
+  overwritten.
+- **Only approved bytes are committed.** stAirCase computes itself what each
+  approved change produces. At the end of a run, the worktree must hold exactly
+  that; anything else — a file nobody approved, a change after approval, a commit
+  made by the agent — fails the run and nothing is committed.
+- **Every decision is on record.** Each proposal and decision is written to a
+  hash-chained audit log before the agent learns the answer, and can be exported
+  with a signature. See [Audit evidence](audit.md).
+- **Shell commands are off by default.** Agents can only propose shell commands
+  when you start a run with `--allow-shell-exec`, and a person must approve each
+  one; rules never approve them automatically.
+- **Keys stay out of the model's reach.** API keys are stored encrypted, used only
+  to call the provider, and removed from every log and audit record.
 
-- An OS sandbox for approved shell commands, which today run as your user.
-- Acceptance runs against real models and projects. The offline demo exercises
-  the real runtime with a stand-in model; it says nothing about model quality or
-  complete project acceptance.
+## What stAirCase does not do
 
-No enterprise-readiness or compromised-runtime containment claim should be
-inferred from the current test suite.
+- **It is not a sandbox.** stAirCase and its agents run as **your user**. An
+  approved shell command can read and change anything you can, outside the
+  repository too. Only the changes it makes *inside* the worktree are caught (they
+  fail the run).
+- **It does not judge quality.** A successful run means "exactly what was approved
+  was committed", not "the story is done". That is your decision:
+  `staircase story accept`.
+- **It does not understand meaning.** [Drift supervision](drift.md) checks paths,
+  file counts and time. An in-scope change can still do something no story asked
+  for. The [validator](approvals.md#letting-a-model-review-changes-the-validator)
+  is a model and can be wrong.
+- **It sends code to your model provider.** A real run sends the PRD, the stories,
+  a map of the repository and the files the agents read. Nothing else leaves the
+  machine — unless you anchor evidence in the public Rekor log, which publishes the
+  whole record ([details](audit.md#add-an-outside-witness-rekor)).
+
+## How to use it safely today
+
+1. **Try it on a project you can afford to experiment with.** Keep the workspace
+   (`~/.staircase-workspace`) outside the repository.
+2. **Leave shell commands off** unless you need them. If you turn them on for
+   untrusted work, run stAirCase in a container or VM that does not mount your home
+   folder or unrelated credentials.
+3. **Give stories a scope** so changes elsewhere come to you (`staircase story scope`).
+4. **Set a budget cap** per project (`staircase project config set --budget-cap`).
+5. **Review the branch** before you merge it, and run your project's own tests.
+
+## What a run's result means
+
+| Result | Meaning |
+|---|---|
+| `SUCCESS` | the agents finished, and the commit on `staircase/run-N` holds exactly the approved changes. A run with no approved changes succeeds without a commit. |
+| `FAILED` | an agent failed, or the worktree held something that was not approved, or the branch moved. Nothing was committed. The reason is on the audit chain and the worktree is kept for you to look at. |
+| `KILLED` | the run was stopped: by you, by the budget cap, or by drift supervision. |
+
+If something fails **after** the commit was made (for example writing the run
+summary), the commit is kept and shown. Look at it before you run again, so you do
+not deliver the same change twice.
+
+`staircase run <case-id> --reconcile` lists `staircase/run-*` branches that no run
+is using any more (it never deletes them) and marks runs that are still recorded as
+running, but no longer are, as stopped.
+
+## Still missing before trusted use
+
+- **An OS sandbox** for approved shell commands.
+- **Experience with real projects.** The tests and the offline demo check the
+  safety mechanics with a stand-in model. They say nothing about how well a given
+  model does real work.
+
+Nothing in the current tests should be read as a claim of enterprise readiness.

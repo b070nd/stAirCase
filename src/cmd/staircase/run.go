@@ -43,7 +43,7 @@ var (
 
 var runCmd = &cobra.Command{
 	Use:   "run <case-id>",
-	Short: "Execute a Case run with the active swarm topology",
+	Short: "Run a compiled case: agents work, you approve, the approved change is committed",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runCaseHandler,
 	// A FAILED/KILLED run returns an error so the process exits non-zero; the
@@ -73,7 +73,7 @@ func init() {
 	runCmd.Flags().StringVar(&runMetricsAddr, "metrics-addr", "",
 		"Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.")
 	runCmd.Flags().StringVar(&runOTelEndpoint, "otel-endpoint", "",
-		"OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled (CHECK 10.3.1).")
+		"OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.")
 	runCmd.Flags().StringVar(&runRecordLLM, "record-llm", "",
 		"Record every model exchange of this run to this file (JSON lines) for offline replay.")
 	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",

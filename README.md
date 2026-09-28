@@ -1,8 +1,7 @@
 <h1 align="center">stAirCase</h1>
 
 <p align="center">
-  <strong>The enforcement gate between AI plans and your codebase.</strong><br>
-  Open, self-hostable, with an offline demo. External workspace state, approval workflows, and auditable runs.
+  <strong>AI agents propose. You approve. Only what you approved is committed — and you can prove it.</strong>
 </p>
 
 <p align="center">
@@ -18,146 +17,95 @@
 
 ---
 
-AI coding agents are useful and increasingly autonomous. The risk isn't that they
-write code — it's that they write code **you never saw, approved, or can prove
-the provenance of afterward**. stAirCase is the control layer that sits between an
-agent's plan and its execution: the agent proposes, a human approves, and every
-decision is recorded for audit. It is not an OS sandbox: the agent's tools and
-approved shell commands run as your user (see the safety boundary).
+AI coding agents are fast, but it is hard to know exactly what they changed, who
+agreed to it, and whether what was committed is what was reviewed.
 
-**Before using a project:** read [Project Use and Current Safety Boundary](docs/project-use.md).
-Runs work in their own git worktree, so your checkout is never touched.
+**stAirCase** sits between AI agents and your repository:
 
-It is a single Go binary with a small built-in agent runtime, and the governed
-boundary *around* it — self-hosted. Real model calls send project context to the
-configured provider; the offline demo uses a stand-in model and makes none.
+- the agents work in a **separate copy** of your repository, never in your checkout;
+- every change they want to make is a **proposal** that waits for a decision — by
+  you, or by a rule you wrote;
+- at the end, stAirCase commits **exactly the approved bytes** on a new branch, and
+  nothing else;
+- every decision is recorded on a **tamper-evident audit chain** that you can
+  export, sign and hand to someone else to verify.
 
-```
-        plan ─▶ ┌───────────── stAirCase control plane (Go) ─────────────┐
-                │  quality gates → HITL approval → content-bound commit  │
-                │           every decision → signed audit chain          │
-                └───────────────────────────────────────────────────────┘ ─▶ governed change
-                                          ▲
-                              agents (built in, in-process)
-                         every edit or command is a proposal the
-                         control plane decides — the gate is the boundary
-```
+It is one program with no dependencies except git. Your agent setup, plans and
+evidence live in a workspace outside your repositories.
 
-## See it in 60 seconds (no API key, fully offline)
+## See it work in one minute
+
+No API key and no network needed — the demo uses a stand-in model:
 
 ```bash
 git clone https://github.com/b070nd/stAirCase.git
 cd stAirCase
-make demo
+./demo/run-demo.sh
 ```
 
-`make demo` runs the whole governance loop — the real control plane and agent
-runtime — against a stand-in model, so it's deterministic and needs no API key
-or network. A blueprint from its own repository is bound to a project; a coder
-creates, edits and deletes files, each blocking for your approval; exactly the
-approved bytes land on the run's own branch while your checkout stays
-byte-identical; you accept the stories; and the signed audit chain is
-**verified**. Then:
+An agent proposes to create, edit and delete a file, and waits for you each time.
+At the end the demo proves that the new branch holds exactly those changes and that
+your checkout did not change. Two more modes show the safety checks at work:
 
 ```bash
-./demo/run-demo.sh --tamper   # an approved shell command changes the file AFTER its approval
-./demo/run-demo.sh --drift    # the agent wanders outside its stories' scope
+./demo/run-demo.sh --tamper   # a file changes after you approved it → nothing is committed
+./demo/run-demo.sh --drift    # the agent works outside its task → the run is stopped
 ```
-
-With `--tamper` the run fails, nothing is committed, and the refusal is recorded
-as an `approval_content_mismatch` event — the headline guarantee, demonstrated
-failing closed. With `--drift` the out-of-scope proposals come to you marked
-`DRIFT`, the run is halted, and the case waits for `--ack-drift`.
-
-## What it does
-
-- **Human-in-the-loop approval** — agents *yield* before any file edit, branch
-  commit, or shell command; a human (or an explicit policy rule) decides.
-- **Approval bound to bytes** — the control plane derives exactly what each
-  approved edit produces and commits only that: the commit is built from the
-  approved bytes, and a run whose worktree holds anything else fails.
-- **Signed, tamper-evident audit chain** — every event is hash-chained; exported
-  checkpoints of the chain are Ed25519-signed and can be anchored in a public
-  [Rekor](https://docs.sigstore.dev/logging/overview/) transparency log for an
-  external witness.
-- **Separate worktree per run** — each run works in its own git worktree on a
-  `staircase/run-N` branch; your checkout is never touched.
-- **Secret handling** — secrets are encrypted at rest; model API keys are
-  decrypted only to call the model, are never shown to it, and are scrubbed from
-  every log and audit record. Shell commands get a minimal environment.
-- **Shell execution off by default** — `run_shell` is disabled unless you pass
-  `--allow-shell-exec`, enforced at three independent layers.
-- **Quality gates** — pluggable pre-run checks (signed `gates.json` manifests)
-  that must pass before a run starts.
-- **Blueprints** — a project's automation versioned in its own repository,
-  imported as a content-hash snapshot and pinned: a bound case runs only as its
-  blueprint defines it, and every run records the plan and blueprint it
-  executed ([docs/blueprints.md](docs/blueprints.md)).
-- **Drift supervision** — changes outside the stories' scope, past file limits
-  or at checkpoints go to a human; too many violations or too long a run halt
-  it until acknowledged; an optional model reviewer decides in-scope edits,
-  with a human approving each run's final change ([docs/drift.md](docs/drift.md)).
-
-## Architecture
-
-One Go binary. `staircase compile` turns a case (PRD, stories, agent topology)
-into a checksummed plan; `staircase run` executes it with the built-in agent
-runtime — a supervisor and its agents calling models over HTTPS (Anthropic,
-OpenAI, Gemini, xAI, or any model through an OpenAI-compatible LLM gateway).
-The agents' tools cannot change the repository themselves: every edit is a
-proposal the control plane decides and audits, and tools write only the bytes it
-derived. There is no Python and no separate runtime process.
-
-State (runs, cases, topologies, encrypted secrets, the audit chain) lives in a
-local SQLite workspace, separate from the repositories being changed — so agent
-exhaust never pollutes your product repos.
-
-How it fits together: [`docs/architecture.md`](docs/architecture.md).
 
 ## Install
 
 ```bash
-brew install b070nd/staircase/staircase                           # macOS / Linux, with shell completions
-go install github.com/b070nd/stAirCase/src/cmd/staircase@latest   # Go 1.26+
+brew install b070nd/staircase/staircase
 ```
 
-Or download an archive from the [latest release](https://github.com/b070nd/stAirCase/releases/latest):
-Linux and macOS (amd64, arm64), and an **experimental** Windows (amd64) build —
-untested, and `run_shell` and `--agent claude-code` need a POSIX shell. Every
-release is built reproducibly from its tag, with checksums signed by a keyless
-cosign signature, an SBOM per archive, and GitHub build-provenance attestations;
-[verify a download](QUICKSTART.md#verifying-release-artifacts) before running it.
+Or `go install github.com/b070nd/stAirCase/src/cmd/staircase@latest`, or download a
+signed archive for Linux, macOS or Windows (experimental). See [Install](docs/install.md),
+including how to verify a download.
 
-A single static binary, no CGo, pure-Go SQLite — no shared libraries, no Python.
-The full walkthrough (workspace setup, a real run, HITL, evidence export) is in
-**[QUICKSTART.md](QUICKSTART.md)**.
+Then follow **[Getting started](QUICKSTART.md)**: your first real run in about 15
+minutes.
+
+## What you get
+
+| | |
+|---|---|
+| **Approval bound to bytes** | stAirCase computes itself what each approved change produces, and commits only that. Anything else fails the run. |
+| **Your checkout untouched** | every run works in its own git worktree, on its own `staircase/run-N` branch. |
+| **Evidence you can hand over** | a hash-chained audit log, Ed25519-signed exports, optional anchoring in the public Rekor log. |
+| **Approve your way** | in the terminal, from a script (local HTTP API), from a service (signed webhook), with rules, or with a reviewer model. |
+| **Runs stay on task** | give each story the paths it may change; anything else comes to you, and a run that keeps wandering is stopped. |
+| **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |
+| **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway — mixed in one team. Budget caps per project. |
+| **Shell off by default** | agents can only ask to run commands when you allow it, and a person approves each one. |
+| **Claude Code, governed** | run Claude Code as the agent, with every tool call going through the same approvals (experimental). |
+
+## Know the limits
+
+stAirCase controls **what reaches your repository**. It is **not a sandbox**: agents
+and approved shell commands run as your user. Read the
+[safety boundary](docs/safety.md) before you use it on a project you care about.
+stAirCase is pre-1.0.
+
+## Documentation
+
+Everything is in **[docs/](docs/README.md)** — start with [Concepts](docs/concepts.md)
+(five minutes) and [Getting started](QUICKSTART.md).
 
 ## Security
 
-stAirCase is a security tool; its threat model and guarantees are documented in
-**[SECURITY.md](SECURITY.md)**, including how to report a vulnerability. In short:
-only bytes a human (or an explicit policy rule) approved can be committed, every
-decision is on a signed and externally anchorable audit chain, and the shell tool
-is off by default. Without an OS sandbox, approved shell commands still run as
-your user — that is the main limitation.
+How stAirCase protects your code, its known limits, and how to report a
+vulnerability privately: [SECURITY.md](SECURITY.md).
 
-## Status & roadmap
+## Roadmap
 
-Pre-1.0 and under active development. The control plane, agent runtime, HITL
-flow, audit chain and offline demo have automated tests (including race and
-adversarial checks), but those tests do not establish enterprise readiness. On
-the roadmap:
-
-- **DSSE audit envelopes** — adopt the Sigstore/in-toto envelope format so the
-  audit chain interoperates with the broader supply-chain ecosystem.
-- **Per-agent identity** — distinct identity per agent persona with per-tool
-  credential scoping.
-- **OS-level sandbox** for untrusted runtimes, not only shell-enabled runs.
+- An OS sandbox for approved shell commands.
+- Audit records in the standard DSSE envelope format, for supply-chain tools.
+- A separate identity per agent, with its own credentials.
 
 ## Contributing
 
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for build/test
-conventions (`make check` is the gate) and the project norms.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` is
+the test every change must pass.
 
 ## License
 

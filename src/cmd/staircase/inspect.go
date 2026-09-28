@@ -75,7 +75,7 @@ var inspectLogFull bool
 
 var inspectLogCmd = &cobra.Command{
 	Use:   "log <run-id>",
-	Short: "Show the SOC2 event log for a run and verify the hash chain",
+	Short: "Show the audit event log of a run and verify its hash chain",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()

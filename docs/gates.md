@@ -1,111 +1,130 @@
-# Plugin Gates
+# Gates
 
-stAirCase supports **script-based plugin gates** that run alongside the built-in
-quality gates. Plugin gates execute as isolated subprocesses and communicate
-via JSON over stdin/stdout, so they can be written in any language.
+A **gate** is a check that runs before a run starts. `staircase run` runs every gate
+first and stops if any **BLOCK** gate fails. A **WARN** gate only prints a warning.
 
-## Quick start
+Run the gates yourself to see what a run would find:
 
-1. Write a script that reads a JSON line from stdin and writes a JSON line to stdout.
-2. Make it executable (`chmod +x`).
-3. Register it in `$STAIRCASE_DIR/gates.json`.
-4. Run `staircase gate <case-id>` — your gate appears in the report.
+```bash
+staircase gate 1            # 1 = the case
+staircase gate 1 --json     # the same report as JSON
+```
 
-## `gates.json` format
+The exit code is `0` when no BLOCK gate failed, `1` when one did, and `2` for a
+usage error, so you can use `staircase gate` in scripts and CI.
 
-Place this file at `$STAIRCASE_DIR/gates.json`:
+Each gate reports `PASS`, `WARN`, `FAIL` or `SKIP`. A gate is skipped when it cannot
+apply, for example when the case does not exist; another gate then reports the real
+problem.
+
+## Built-in gates
+
+| Gate | Severity | Checks that… |
+|---|---|---|
+| `case.project_exists` | BLOCK | the case exists and belongs to a project |
+| `case.has_stories` | BLOCK | the case has at least one pending story |
+| `case.has_prd` | WARN | the case has a PRD |
+| `deps.no_cycle` | BLOCK | project dependencies have no cycle |
+| `deps.deps_completed` | WARN | every project this one depends on has a successful run with its current topology |
+| `secret.key_file` | BLOCK | the workspace key `.key` exists, is 32 bytes and only you can read it |
+| `secret.provider_keys` | BLOCK | every model in the team has its API key stored ([Models](models.md)) |
+| `secret.no_duplicate_keys` | WARN | no secret name is stored twice for the project |
+| `topology.exists` | BLOCK | the project has a topology |
+| `topology.has_agents` | BLOCK | the topology has agents |
+| `topology.supervisor_registered` | BLOCK | the supervisor is one of the agents |
+| `topology.edges_valid` | BLOCK | every edge connects two existing agents |
+| `topology.runtime_valid` | BLOCK | the topology's runtime type is one stAirCase can run |
+| `topology.no_orphan_agents` | WARN | every agent has at least one edge (an agent with none never runs) |
+| `runtime.plan_compiled` | BLOCK | the case was compiled, for this case and topology |
+| `runtime.plan_pinned` | BLOCK | for a [blueprint](blueprints.md) case: the plan still matches the blueprint |
+| `runtime.source_path` | BLOCK | the project's repository folder exists |
+| `runtime.git_available` | BLOCK | `git` is installed |
+| `runtime.no_concurrent_run` | BLOCK | no other run of the case is active |
+
+A failing gate says how to fix it, for example
+`no compiled plan — run 'staircase compile 1'`.
+
+## Add your own gates
+
+You can add checks of your own, in any language. A plugin gate is a program that
+reads one line of JSON and writes one line of JSON.
+
+### 1. Write the script
+
+```sh
+#!/bin/sh
+read -r input                       # {"case_id": 1, "ws_dir": "/home/me/.staircase-workspace"}
+echo '{"status": "PASS", "message": "all checks passed"}'
+```
+
+Make it executable (`chmod +x`). Full examples, in shell and Python, are in
+[`plugins/gates/`](../plugins/gates/).
+
+**Input** (one line on standard input):
+
+| Field | Meaning |
+|---|---|
+| `case_id` | the case being checked |
+| `ws_dir` | the workspace folder |
+
+**Output** (one line on standard output):
+
+| Field | Meaning |
+|---|---|
+| `status` | `PASS`, `WARN`, `FAIL` or `SKIP` |
+| `message` | the text shown in the report |
+
+### 2. Register it
+
+List your gates in `gates.json` in the workspace (`~/.staircase-workspace/gates.json`):
 
 ```json
 [
   {
-    "name":            "custom.my-check",
-    "category":        "custom",
-    "severity":        "WARN",
-    "script":          "/absolute/path/to/my_check.sh",
+    "name": "custom.license-header",
+    "category": "custom",
+    "severity": "WARN",
+    "script": "/home/me/gates/license_header.sh",
     "timeout_seconds": 30
-  },
-  {
-    "name":            "custom.python-check",
-    "category":        "security",
-    "severity":        "BLOCK",
-    "script":          "/absolute/path/to/check.py",
-    "timeout_seconds": 60
   }
 ]
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | yes | Unique dot-separated identifier, e.g. `custom.my-check` |
-| `category` | yes | Display category (shown in gate report) |
-| `severity` | yes | `BLOCK` (prevents run) or `WARN` (advisory) |
-| `script` | yes | Absolute path to an executable file |
-| `timeout_seconds` | no | Default: 30. Gate FAIL if exceeded. The first run of a newly written script can take seconds on macOS under load; keep a margin. |
+| Field | Required | Meaning |
+|---|---|---|
+| `name` | yes | a unique name, e.g. `custom.license-header` |
+| `category` | yes | the group shown in the report |
+| `severity` | yes | `BLOCK` (stops the run) or `WARN` |
+| `script` | yes | the absolute path of the program |
+| `timeout_seconds` | no | default 30. The first start of a new script can take seconds on macOS; leave a margin. |
 
-A missing or empty `gates.json` is not an error — zero plugin gates are loaded.
+No `gates.json`, or an empty one, means no plugin gates.
 
-## Plugin protocol
+Start new gates as `WARN` and change them to `BLOCK` once they work reliably.
 
-### Input (stdin)
+### 3. Sign the list
 
-The gate runner writes one JSON line to the plugin's stdin:
-
-```json
-{"case_id": 42, "ws_dir": "/home/user/.staircase-workspace"}
+```bash
+staircase gate sign      # writes gates.json.sig
+staircase gate verify
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `case_id` | integer | ID of the case being gated |
-| `ws_dir` | string | Staircase workspace directory path |
+Without a signature, `staircase gate` warns. With a signature that does not match
+(because `gates.json` changed), the gates block the run. Sign again after each edit.
 
-### Output (stdout)
+### What counts as a failure
 
-The plugin must write one JSON line to stdout before exiting:
+| The script… | Result |
+|---|---|
+| exits 0 with valid JSON | the status it wrote |
+| exits 0 with anything else | `FAIL` (malformed output) |
+| exits with another code | `FAIL`, with its error output in the message |
+| runs longer than `timeout_seconds` | `FAIL` (killed) |
 
-```json
-{"status": "PASS", "message": "all checks passed"}
-```
+### What the script can see
 
-| Field | Type | Values |
-|-------|------|--------|
-| `status` | string | `PASS`, `WARN`, `FAIL`, or `SKIP` |
-| `message` | string | Human-readable explanation shown in the gate report |
-
-### Exit behaviour
-
-| Exit code | Stdout | Outcome |
-|-----------|--------|---------|
-| 0 | valid JSON | status from JSON |
-| 0 | malformed | `FAIL` — "plugin malformed output: …" |
-| non-zero | any | `FAIL` — stderr included in message |
-| timeout | — | `FAIL` — "plugin error: signal: killed" |
-
-## Sandbox
-
-Plugin scripts run in a strict sandbox (CHECK 11.3, 11.6):
-
-- **Empty environment**: no `PATH`, no `STAIRCASE_DIR`, no API keys or secrets.
-  Use absolute paths for any external tools.
-- **Fresh working directory**: a new temporary directory, deleted after execution.
-  Do not rely on cwd persisting between runs.
-- **Timeout enforced**: the process is killed after `timeout_seconds`.
-
-## Examples
-
-See [`plugins/gates/`](../plugins/gates/) in this repository for:
-
-- `example_check.sh` — minimal shell plugin
-- `example_check.py` — minimal Python plugin
-
-## Security notes
-
-- Plugin scripts receive `ws_dir` (the workspace path) via JSON stdin so they
-  can inspect project state. They do **not** receive secrets, API keys, or
-  database credentials — plugins do not inherit the orchestrator's environment.
-- `ws_dir` is intentionally shared so gates can read topology/config files; treat
-  any world-readable workspace content as accessible to gate scripts.
-- Scripts are executed with the OS user that ran `staircase gate`. Ensure
-  plugin scripts are owned and writable only by trusted users.
-- The `severity: BLOCK` setting will prevent `staircase run` when the gate
-  fails, so test plugins thoroughly before promoting them to BLOCK severity.
+- **No environment variables** — no `PATH`, no API keys, no secrets. Use absolute
+  paths for any program you call.
+- **An empty, temporary working folder**, deleted afterwards.
+- **Your user account.** The script runs as you and can read the workspace folder
+  it is given. Only use scripts you trust, and keep them writable only by you.

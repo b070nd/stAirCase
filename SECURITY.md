@@ -21,7 +21,7 @@ act only through its tools: reads are confined to the run's worktree, and every
 change is a proposal the orchestrator decides and audits — the file tools can
 write nothing but the bytes it derived and approved. The remaining uncontained
 path is an **approved shell command**, which runs as your OS user without an OS
-sandbox. See [Project Use and Current Safety Boundary](docs/project-use.md).
+sandbox. See the [safety boundary](docs/safety.md).
 
 - **Trust boundary at the orchestrator.** Model output never executes directly:
   tool calls become proposals (edits, or shell commands with
@@ -65,7 +65,10 @@ sandbox. See [Project Use and Current Safety Boundary](docs/project-use.md).
   policy never auto-approves one; rejected attempts are audited.
 - **Data leaving the machine.** A real run sends the PRD, the repository map and
   the files agents read to the configured model provider. The offline demo and
-  `--replay-llm` runs send nothing.
+  `--replay-llm` runs send nothing. `audit export --anchor` uploads the **whole**
+  signed record — reasoning, paths and proposed changes — to the Rekor log, which
+  is public and permanent; anchor only runs whose content may be public, or use
+  your own Rekor instance (`--rekor-url`).
 - **Supply chain.** Releases ship an SBOM and a cosign (keyless, Sigstore OIDC)
   signature over the checksums; GitHub Actions are SHA-pinned.
 

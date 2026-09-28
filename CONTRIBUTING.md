@@ -26,18 +26,34 @@ GOOS=windows go build ./...  # the Windows build must keep compiling
 
 - **Every fix lands with a test.** Bug fixes get a regression test that fails
   before and passes after; security fixes get an adversarial test that proves the
-  attack is blocked. See `docs/testing.md`.
+  attack is blocked. See [docs/testing.md](docs/testing.md).
 - **The Go control plane is the trust boundary.** Security decisions
   (approval, path sandboxing, secret delivery, audit logging) belong in Go, never
   delegated to agent tools: a tool may only apply what the orchestrator
-  approved. See `SECURITY.md`.
+  approved. See [SECURITY.md](SECURITY.md).
 - **Surgical changes.** Touch only what your change requires; match the
   surrounding style. Don't reformat or refactor unrelated code in the same PR.
 - **Conventional commits.** Follow the existing history, e.g.
-  `fix(orchestrator): …`, `feat(audit): …`, `docs: …`. Co-authorship and a clear
-  body explaining the *why* are appreciated.
+  `fix(orchestrator): …`, `feat(audit): …`, `docs: …`, with a body that explains
+  the *why*.
 - **No new dependencies without discussion.** `go.mod` is the supply-chain
   surface — model clients use the standard library, and it should stay that way.
+
+## Writing documentation
+
+The docs are for people who have never seen stAirCase. [docs/README.md](docs/README.md)
+lists every page.
+
+- **Plain English.** Short sentences, common words, one idea per paragraph. Explain
+  a term the first time you use it, or link to [Concepts](docs/concepts.md).
+- **Every claim is true today.** Check a behaviour in the code or by running the
+  command before you describe it; show commands the reader can copy.
+- **Say what can go wrong**, especially anything that sends data off the machine
+  or cannot be undone.
+- **The CLI reference is generated.** After changing a command's help text, run
+  `UPDATE_DOCS=1 go test ./src/cmd/staircase -run TestCLIReference`. `make check`
+  fails if [docs/cli.md](docs/cli.md) is out of date or a relative link points
+  nowhere.
 
 ## Releasing (maintainers)
 

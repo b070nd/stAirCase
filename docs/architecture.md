@@ -1,5 +1,8 @@
 # Architecture
 
+This page is for contributors and reviewers: how stAirCase is built inside. To
+*use* stAirCase you do not need it; start with [Concepts](concepts.md).
+
 stAirCase is one Go binary (`staircase`, no CGo) with a local SQLite workspace
 (`$STAIRCASE_DIR`). It keeps the automation that changes a product — agents,
 prompts, plans, run evidence — **outside** the product's repository, and it is
@@ -24,7 +27,7 @@ the only path by which an agent's change reaches that repository.
 
 1. **Blueprint** (`internal/blueprint`) — `blueprint import` reads a directory's
    `blueprint.yaml` strictly, resolves prompt/PRD files confined to it
-   (`os.Root`), and stores canonical JSON named by its sha256. `project bind`
+   (`os.Root`), and stores canonical JSON named by its SHA-256. `project bind`
    creates a new topology version, cases and stories in one transaction.
    Projects can also be set up with the imperative CLI (`topology`, `case`,
    `story`).
@@ -96,10 +99,9 @@ the only path by which an agent's change reaches that repository.
   allowlisted environment.
 - **Humans decide** through the TUI, the local approval API (token) or a webhook
   (HMAC, fresh `yield_id` and request hash echoed). The validator is a model
-  and bounded accordingly ([drift.md](drift.md)).
+  and bounded accordingly ([approvals](approvals.md#letting-a-model-review-changes-the-validator)).
 - **State** stays in the workspace, not the product repository; the product
   repository gains only `staircase/run-N` branches.
 
-See also: [blueprints](blueprints.md), [drift supervision](drift.md),
-[plugin gates](plugin-gates.md), [project use](project-use.md),
+See also: [concepts](concepts.md), [safety boundary](safety.md),
 [testing](testing.md).
