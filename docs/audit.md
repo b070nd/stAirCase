@@ -75,6 +75,47 @@ git fetch origin refs/notes/staircase:refs/notes/staircase
 staircase verify <commit> --key signing.pub
 ```
 
+## Require certificates on pull requests
+
+A CI check can refuse pull requests with an agent's commit that is not properly
+certified. Commit your workspace's public key to the repository (it is public; copy
+`~/.staircase-workspace/.signing.pub`, for example to `.github/staircase.pub`), and
+add a workflow:
+
+```yaml
+name: stAirCase
+on: pull_request
+permissions:
+  contents: read
+  attestations: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: b070nd/stAirCase@v0.3.0
+        with:
+          key: .github/staircase.pub
+          min-cal: 3
+```
+
+The check installs that release of `staircase` after verifying how it was built,
+fetches the certificates (`refs/notes/staircase`) and checks every commit of the pull
+request that names an agent in an `Assisted-by:` trailer. With `all: true`, every
+commit needs a certificate. Push the certificates together with the branch:
+
+```bash
+git push origin staircase/run-7 refs/notes/staircase
+```
+
+What it cannot do: a commit made with an agent but not marked `Assisted-by:` looks
+like a person's commit. Use `all: true` where every change must come through
+stAirCase.
+
+The same check runs locally: `staircase verify main..HEAD --min-cal 3`.
+
 ## Look at a run
 
 ```bash

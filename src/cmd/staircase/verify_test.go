@@ -103,3 +103,24 @@ func decodedArtifact(t *testing.T, entry string) string {
 	require.NoError(t, err)
 	return string(b)
 }
+
+// TestVerify_range: over a range, every commit that says an agent helped
+// (Assisted-by:) must carry a valid certificate; a person's commit passes
+// unless --all asks every commit to be certified.
+func TestVerify_range(t *testing.T) {
+	_, _, git := sessionRepo(t)
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	git("checkout", "-q", "staircase/run-1")
+	git("commit", "-q", "--allow-empty", "-m", "a person's commit")
+	verifyMinCAL, verifyKey, verifyFile, verifyCheckAnchor, verifyAll = 3, "", "", false, false
+	t.Cleanup(func() { verifyMinCAL, verifyAll = 0, false })
+
+	require.NoError(t, verifyHandler(nil, []string{"main..HEAD"}), "the run's commit is certified, the person's needs none")
+
+	verifyAll = true
+	assert.ErrorContains(t, verifyHandler(nil, []string{"main..HEAD"}), "no change certificate")
+	verifyAll = false
+
+	git("commit", "-q", "--allow-empty", "-m", "sneaky\n\nAssisted-by: Claude Code")
+	assert.ErrorContains(t, verifyHandler(nil, []string{"main..HEAD"}), "says an agent helped")
+}

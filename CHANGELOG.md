@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   shell commands were approved).
 - `staircase verify <commit>`: checks a commit's certificate against the
   trusted key, that it is about exactly this commit, and `--min-cal`.
+- `staircase verify main..HEAD`: checks every commit in a range that names an
+  agent (`Assisted-by:`), or every commit with `--all`.
+- A GitHub Action, `uses: b070nd/stAirCase@<version>`, that requires valid
+  change certificates on a pull request's agent commits. It installs the
+  staircase release after checking its build attestation.
 - `staircase audit anchor <run-id>`: anchors a run's change certificate in a
   Rekor transparency log. Only digests are sent, never code or reasoning;
   `staircase verify --check-anchor` confirms it.

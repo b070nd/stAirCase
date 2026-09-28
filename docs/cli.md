@@ -733,10 +733,10 @@ staircase vendor list
 
 ## staircase verify
 
-Check that a commit carries a valid change certificate
+Check that a commit, or every agent commit in a range, carries a valid change certificate
 
 ```
-staircase verify <commit> [flags]
+staircase verify <commit | range> [flags]
 ```
 
 Checks the change certificate of a commit in the git repository you are in:
@@ -751,9 +751,14 @@ or pass the certificate file with --certificate.
 The trusted key is the workspace's public signing key (.signing.pub), or the
 file given with --key: that file is all a reviewer needs.
 
+A range (main..HEAD) checks every commit in it that names an agent in an
+Assisted-by: trailer; --all checks every commit. This is what a CI check on a
+pull request runs.
+
 Flags:
 
 ```
+      --all                  In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)
       --certificate string   Read the certificate from this file instead of the git note
       --check-anchor         Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
       --key string           Public signing key to trust (default: the workspace's .signing.pub)

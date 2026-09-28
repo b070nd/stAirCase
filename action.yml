@@ -1,0 +1,39 @@
+name: stAirCase verify
+description: Require a valid change certificate on every commit an AI agent helped make
+author: b070nd
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  key:
+    description: Path of the trusted public signing key (a workspace's .signing.pub) in the repository
+    required: true
+  min-cal:
+    description: Lowest change assurance level accepted (1-4)
+    default: "2"
+  all:
+    description: '"true": every commit in the range needs a certificate, not only those that name an agent'
+    default: "false"
+  range:
+    description: Commit range to check; default for a pull request is origin/<base>..<head>
+    default: ""
+  version:
+    description: staircase release to use (vX.Y.Z); default is the version of this action, else the latest release
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Verify change certificates
+      shell: bash
+      env:
+        KEY: ${{ inputs.key }}
+        MIN_CAL: ${{ inputs.min-cal }}
+        ALL: ${{ inputs.all }}
+        RANGE: ${{ inputs.range }}
+        VERSION: ${{ inputs.version || github.action_ref }}
+        BASE_REF: ${{ github.base_ref }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        GH_TOKEN: ${{ github.token }}
+      run: '"$GITHUB_ACTION_PATH/packaging/verify-action.sh"'
