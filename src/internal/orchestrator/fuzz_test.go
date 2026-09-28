@@ -119,8 +119,18 @@ func FuzzDerive(f *testing.F) {
 				t.Fatalf("delete: got %v, %v", next["f.txt"], err)
 			}
 		default:
-			src := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(content)
-			s := strings.ReplaceAll(search, "\r\n", "\n")
+			// The file keeps its own line endings (F89): an LF file is edited as
+			// is; in a CRLF file the blocks' lines end in CRLF; only a file with
+			// mixed endings is read with universal newlines.
+			src := content
+			s, r := strings.ReplaceAll(search, "\r\n", "\n"), strings.ReplaceAll(replace, "\r\n", "\n")
+			switch {
+			case !strings.Contains(content, "\r"):
+			case allCRLF([]byte(content)):
+				s, r = strings.ReplaceAll(s, "\n", "\r\n"), strings.ReplaceAll(r, "\n", "\r\n")
+			default:
+				src = strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(content)
+			}
 			i := strings.Index(src, s)
 			if i < 0 {
 				if err == nil {
@@ -128,12 +138,32 @@ func FuzzDerive(f *testing.F) {
 				}
 				return
 			}
-			want := src[:i] + strings.ReplaceAll(replace, "\r\n", "\n") + src[i+len(s):]
+			want := src[:i] + r + src[i+len(s):]
 			if err != nil || string(next["f.txt"].content) != want || next["f.txt"].mode != 0o644 {
 				t.Fatalf("edit: got %q (%v); want %q", next["f.txt"].content, err, want)
 			}
 		}
 	})
+}
+
+// TestDerive_keeps_the_files_line_endings: editing one line of a CRLF file
+// changes that line only, in the file's own line endings; the reviewer sees
+// the whole change (F89).
+func TestDerive_keeps_the_files_line_endings(t *testing.T) {
+	for _, c := range []struct{ content, search, replace, want string }{
+		{"a\r\nb\r\nc\r\n", "b\n", "B\nB2\n", "a\r\nB\r\nB2\r\nc\r\n"},
+		{"a\r\nb\r\nc\r\n", "b\r\n", "B\r\n", "a\r\nB\r\nc\r\n"},
+		{"a\nb\nc\n", "b\n", "B\n", "a\nB\nc\n"},
+	} {
+		a := &approvals{repo: &GitRepo{path: t.TempDir()},
+			files: map[string]*approvedFile{"f.txt": {content: []byte(c.content), mode: 0o644}}}
+		next, err := a.derive([]domain.ProposedEdit{{File: "f.txt", SearchBlock: c.search, ReplaceBlock: c.replace}})
+		if err != nil {
+			t.Errorf("%q: %v", c.content, err)
+		} else if got := string(next["f.txt"].content); got != c.want {
+			t.Errorf("%q: got %q; want %q", c.content, got, c.want)
+		}
+	}
 }
 
 // FuzzUniversalNewlines: the text an edit applies to has no carriage returns

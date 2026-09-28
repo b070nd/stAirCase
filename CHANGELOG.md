@@ -37,6 +37,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- An edit to a Windows-style (CRLF) file no longer rewrites every line ending
+  in the file: it changes only its own lines and keeps the file's line
+  endings, so what you approve is what you see.
+- A repository's own Claude Code settings (its `.claude` hooks, and user
+  settings with their hooks, plugins and MCP servers) no longer load in a
+  governed Claude Code run.
+
 - The `runtime.plan_pinned` gate skips a case that does not exist, instead of
   failing with a database error.
 

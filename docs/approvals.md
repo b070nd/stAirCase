@@ -12,6 +12,11 @@ stAirCase checks that the worktree holds exactly what was approved and commits
 only that. Anything else - a file nobody approved, a change after the approval, a
 commit made by the agent - fails the run, and nothing is committed.
 
+An edit changes only the lines it shows you, in the file's own line endings (LF,
+or CRLF for a Windows-style file). The one exception is a file that already mixes
+both: there an edit also turns every line ending into LF, a change the proposal
+screen does not show line by line.
+
 ## Who decides, in order
 
 1. **stAirCase refuses** a proposal it cannot apply as shown: a path outside the

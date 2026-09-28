@@ -45,8 +45,8 @@ func runTools(t *testing.T, base map[string]runtest.File, opts orchestrator.RunO
 
 // TestTools_write_exactly_what_was_approved catches a tool writing anything
 // but the orchestrator's derived bytes: the full created content (not a
-// preview), edits under Python-compatible newline rules, the exec bit kept,
-// and approved deletions.
+// preview), edits that keep the file's own line endings (F89), the exec bit
+// kept, and approved deletions.
 func TestTools_write_exactly_what_was_approved(t *testing.T) {
 	big := strings.Repeat("x", 50_000) // well past the old 10,000-char preview
 	r, out := runTools(t, map[string]runtest.File{
@@ -68,7 +68,7 @@ func TestTools_write_exactly_what_was_approved(t *testing.T) {
 	assert.Equal(t, big, got)
 	got, err = r.OnBranch("f.txt")
 	require.NoError(t, err)
-	assert.Equal(t, "a\nB\n", got)
+	assert.Equal(t, "a\r\nB\r\n", got, "the CRLF file stays CRLF")
 	mode, err := exec.Command("git", "-C", r.Repo, "ls-tree", fmt.Sprintf("staircase/run-%d", r.Run.ID), "run.sh").CombinedOutput()
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(mode), "100755"), "exec bit kept: %s", mode)

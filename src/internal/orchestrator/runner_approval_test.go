@@ -173,19 +173,19 @@ func approvalScenarios() []approvalScenario {
 			assert.Equal(t, "hello\n", got)
 		},
 	}, {
-		name: "edits_chain_with_universal_newlines",
+		name: "edits_chain_and_keep_the_files_crlf_line_endings", // F89
 		base: map[string]baseFile{"f.txt": {"a\r\nb\r\n", 0o644}},
 		agent: func(ctx context.Context, a *scriptedAgent) {
 			a.ask(ctx, [3]string{"f.txt", "b\n", "B\n"})
-			a.write("f.txt", "a\nB\n")
+			a.write("f.txt", "a\r\nB\r\n")
 			a.ask(ctx, [3]string{"f.txt", "a\n", "A\n"})
-			a.write("f.txt", "A\nB\n")
+			a.write("f.txt", "A\r\nB\r\n")
 		},
 		check: func(t *testing.T, r scenarioResult) {
 			require.Equal(t, persistence.RunStatusSuccess, r.run.Status)
 			got, err := onBranch(t, r, "f.txt")
 			require.NoError(t, err)
-			assert.Equal(t, "A\nB\n", got)
+			assert.Equal(t, "A\r\nB\r\n", got)
 		},
 	}, {
 		name: "post_approval_tamper_fails",
