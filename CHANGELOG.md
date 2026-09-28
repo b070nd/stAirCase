@@ -17,6 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   shell commands were approved).
 - `staircase verify <commit>`: checks a commit's certificate against the
   trusted key, that it is about exactly this commit, and `--min-cal`.
+- `staircase audit anchor <run-id>`: anchors a run's change certificate in a
+  Rekor transparency log. Only digests are sent, never code or reasoning;
+  `staircase verify --check-anchor` confirms it.
 - `staircase claude "task"`: run Claude Code on a task in the current git
   repository with no setup. The workspace, a project for the repository and a
   case for the task are created when missing; every change still comes to you,

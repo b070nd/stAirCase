@@ -14,6 +14,27 @@ Global flag, accepted by every command:
 
 The workspace directory can also be set with the `STAIRCASE_DIR` environment variable.
 
+## staircase audit anchor
+
+Anchor a run's change certificate in a Rekor transparency log (digests only)
+
+```
+staircase audit anchor <run-id> [flags]
+```
+
+Puts the run's change certificate in a Rekor transparency log, an outside
+witness that it existed at this time. Only the certificate is sent: commit
+hashes, digests, counts and the level, never code, prompts or reasoning.
+The log keeps its hash, the signature and your public key.
+
+Check it later with: staircase verify <commit> --check-anchor
+
+Flags:
+
+```
+      --rekor-url string   Rekor server URL (default "https://rekor.sigstore.dev")
+```
+
 ## staircase audit export
 
 Export a signed audit checkpoint for a completed run
@@ -734,6 +755,7 @@ Flags:
 
 ```
       --certificate string   Read the certificate from this file instead of the git note
+      --check-anchor         Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
       --key string           Public signing key to trust (default: the workspace's .signing.pub)
       --min-cal int          Fail below this change assurance level (1-4)
 ```

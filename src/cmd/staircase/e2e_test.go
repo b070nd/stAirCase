@@ -657,35 +657,7 @@ func TestAudit_Export_anchor_and_verify_checkAnchor(t *testing.T) {
 	require.NoError(t, crypto.GenerateSigningKey(wsDir))
 	runID := seedRunWithLogs(t, s, 2)
 
-	// Minimal mock Rekor: accepts any entry and, like the real log, keeps the
-	// artifact's hash instead of the artifact.
-	entries := map[string]string{}
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			var e map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&e)
-			spec := e["spec"].(map[string]any)
-			artifact, _ := base64.StdEncoding.DecodeString(spec["data"].(map[string]any)["content"].(string))
-			sum := sha256.Sum256(artifact)
-			spec["data"] = map[string]any{"hash": map[string]string{"algorithm": "sha256", "value": hex.EncodeToString(sum[:])}}
-			raw, _ := json.Marshal(e)
-			sum = sha256.Sum256(raw)
-			uuid := hex.EncodeToString(sum[:])
-			entries[uuid] = base64.StdEncoding.EncodeToString(raw)
-			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				uuid: map[string]any{"logIndex": 1, "logID": "mock", "integratedTime": 1750000000},
-			})
-			return
-		}
-		uuid := strings.TrimPrefix(r.URL.Path, "/api/v1/log/entries/")
-		if b, ok := entries[uuid]; ok {
-			_ = json.NewEncoder(w).Encode(map[string]any{uuid: map[string]any{"body": b}})
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	t.Cleanup(mock.Close)
+	mock := fakeRekor(t)
 
 	// Export with anchoring enabled.
 	auditAnchor, auditRekorURL = true, mock.URL
@@ -766,4 +738,37 @@ func TestCaseRollback_discards_the_run_but_keeps_history_truthful(t *testing.T) 
 	cs, err := s.GetCase(c.ID)
 	require.NoError(t, err)
 	assert.Equal(t, persistence.CaseStatusPending, cs.Status, "discarded work leaves the case to be run again")
+}
+
+// fakeRekor accepts any entry and, like the real log, keeps the artifact's
+// hash instead of the artifact; it serves entries back by uuid.
+func fakeRekor(t *testing.T) *httptest.Server {
+	entries := map[string]string{}
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var e map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&e)
+			spec := e["spec"].(map[string]any)
+			artifact, _ := base64.StdEncoding.DecodeString(spec["data"].(map[string]any)["content"].(string))
+			sum := sha256.Sum256(artifact)
+			spec["data"] = map[string]any{"hash": map[string]string{"algorithm": "sha256", "value": hex.EncodeToString(sum[:])}}
+			raw, _ := json.Marshal(e)
+			sum = sha256.Sum256(raw)
+			uuid := hex.EncodeToString(sum[:])
+			entries[uuid] = base64.StdEncoding.EncodeToString(raw)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				uuid: map[string]any{"logIndex": 1, "logID": "mock", "integratedTime": 1750000000},
+			})
+			return
+		}
+		uuid := strings.TrimPrefix(r.URL.Path, "/api/v1/log/entries/")
+		if b, ok := entries[uuid]; ok {
+			_ = json.NewEncoder(w).Encode(map[string]any{uuid: map[string]any{"body": b}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(mock.Close)
+	return mock
 }

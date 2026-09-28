@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,9 +17,10 @@ import (
 )
 
 var (
-	verifyMinCAL int
-	verifyKey    string
-	verifyFile   string
+	verifyMinCAL      int
+	verifyKey         string
+	verifyFile        string
+	verifyCheckAnchor bool
 )
 
 var verifyCmd = &cobra.Command{
@@ -43,6 +45,8 @@ func init() {
 	verifyCmd.Flags().IntVar(&verifyMinCAL, "min-cal", 0, "Fail below this change assurance level (1-4)")
 	verifyCmd.Flags().StringVar(&verifyKey, "key", "", "Public signing key to trust (default: the workspace's .signing.pub)")
 	verifyCmd.Flags().StringVar(&verifyFile, "certificate", "", "Read the certificate from this file instead of the git note")
+	verifyCmd.Flags().BoolVar(&verifyCheckAnchor, "check-anchor", false,
+		"Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace")
 	rootCmd.AddCommand(verifyCmd)
 }
 
@@ -98,6 +102,19 @@ func verifyHandler(_ *cobra.Command, args []string) error {
 	if p.CAL < verifyMinCAL {
 		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d: %s", commit, p.CAL, verifyMinCAL,
 			strings.Join(p.Notes, "; "))
+	}
+	if verifyCheckAnchor {
+		sidecar := verifyFile + ".anchor"
+		if verifyFile == "" {
+			sidecar = certificatePath(viper.GetString("STAIRCASE_DIR"), p.Run) + ".anchor"
+		}
+		payload, err := base64.StdEncoding.DecodeString(env.Payload)
+		if err != nil {
+			return err
+		}
+		if err := checkAnchor(sidecar, payload); err != nil {
+			return fmt.Errorf("commit %.12s: %w", commit, err)
+		}
 	}
 	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, p.CAL)
 	fmt.Printf("   run #%d from %.12s, assisted by %s\n", p.Run, p.BaseCommit, strings.Join(p.Agents, ", "))

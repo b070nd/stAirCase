@@ -115,14 +115,25 @@ If any character of the evidence was changed, verification fails.
 A signature proves the evidence was not changed after signing, but whoever holds the
 signing key could create new, different evidence. To prove **when** the evidence
 existed, anchor it in [Rekor](https://docs.sigstore.dev/logging/overview/), Sigstore's
-public, append-only transparency log:
+public, append-only transparency log.
+
+**Anchor the change certificate (recommended).** Only the certificate is sent: commit
+hashes, digests, decision counts and the level. No code, prompts or reasoning leave
+your machine.
+
+```bash
+staircase audit anchor 7                              # writes run-7.certificate.json.anchor
+staircase verify staircase/run-7 --check-anchor
+```
+
+**Anchor the whole record.** This also covers every event of the run:
 
 ```bash
 staircase audit export 7 --anchor                   # also writes run-7.checkpoint.json.anchor
 staircase audit verify run-7.checkpoint.json --check-anchor
 ```
 
-> **What leaves your machine.** The whole signed record - every event of the run,
+> **What leaves your machine with `--anchor`.** The whole signed record - every event of the run,
 > including the agents' reasoning, file paths and the proposed changes - is sent to
 > the Rekor service, which checks the signature. The public log then keeps, for
 > good, only the record's SHA-256, the signature and your public key; it does not
