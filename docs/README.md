@@ -22,6 +22,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Gates](gates.md) | the checks before a run, and how to add your own |
 | [Audit evidence](audit.md) | inspect runs, change certificates, [require them in CI](audit.md#require-certificates-on-pull-requests), let others verify evidence |
 | [Governing Claude Code](claude-code.md) | use Claude Code as the agent (experimental) |
+| [Governing Codex](codex.md) | use OpenAI's Codex as the agent (experimental) |
 | [Troubleshooting](troubleshooting.md) | common messages and what to do |
 
 ## Reference

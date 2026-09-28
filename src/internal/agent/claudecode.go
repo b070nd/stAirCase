@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
@@ -142,6 +143,9 @@ type hookServer struct {
 	env   *orchestrator.AgentEnv
 	root  string // the worktree, symlinks resolved
 	token string
+	codex bool // Codex's tools and rules instead of Claude Code's (see codex.go)
+
+	started atomic.Bool // a SessionStart hook arrived: the agent runs staircase's hooks
 
 	mu      sync.Mutex
 	pending map[string]orchestrator.Approval // tool_use_id → approved edit, until PostToolUse
@@ -165,8 +169,15 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch in.Event {
+	case "SessionStart":
+		h.started.Store(true)
+		_, _ = w.Write([]byte("{}"))
 	case "PreToolUse":
-		reason := h.pre(r.Context(), in)
+		pre := h.pre
+		if h.codex {
+			pre = h.preCodex
+		}
+		reason := pre(r.Context(), in)
 		decision := "allow"
 		if reason != "" {
 			decision = "deny"
@@ -181,6 +192,12 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if ok {
 			if err := ap.Apply(h.root); err != nil { // finalize verify fails the run on any divergence
 				_ = json.NewEncoder(w).Encode(map[string]any{"decision": "block", "reason": "staircase: " + err.Error()})
+				return
+			}
+		}
+		if h.codex && in.Tool == "Bash" {
+			if reason := h.postCodexCommand(r.Context(), in); reason != "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"decision": "block", "reason": reason})
 				return
 			}
 		}

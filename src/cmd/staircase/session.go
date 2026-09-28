@@ -35,21 +35,55 @@ drift (see docs/drift.md).`,
 	RunE: claudeSession,
 }
 
+var codexCmd = &cobra.Command{
+	Use:   "codex <task>",
+	Short: "Run Codex on a task in this repository, with every change decided by you",
+	Long: `Runs OpenAI's Codex CLI on the task in a separate worktree of the git
+repository you are in. Every file edit it wants to make comes to you first.
+Its shell commands run in Codex's sandbox (no network, writes only in the
+worktree), and the files a command changes come to you afterwards: kept if
+you approve, reverted if not. At the end, exactly the approved changes are
+committed on a new branch, staircase/run-N; your checkout is not touched.
+
+No setup is needed. Codex must be installed (the ChatGPT app for macOS
+includes it) and logged in.`,
+	Args: cobra.ArbitraryArgs,
+	RunE: codexSession,
+}
+
 func init() {
 	claudeCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
 	claudeCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Let Claude Code propose shell commands (each still needs your approval)")
 	claudeCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
+	claudeCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
 	rootCmd.AddCommand(claudeCmd)
+	codexCmd.Flags().StringVar(&runModel, "model", "", "Model for Codex (default: its own)")
+	codexCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
+	codexCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
+	codexCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	rootCmd.AddCommand(codexCmd)
 }
 
-// claudeSession is `staircase claude <task>`: a governed Claude Code run in
-// the current repository, with nothing to set up first.
+// claudeSession is `staircase claude <task>`.
 func claudeSession(_ *cobra.Command, args []string) error {
+	return session("claude-code", "Claude Code", "claude", args)
+}
+
+// codexSession is `staircase codex <task>`.
+func codexSession(_ *cobra.Command, args []string) error {
+	return session("codex", "Codex", "codex", args)
+}
+
+// session is a governed run of harness in the current repository, with
+// nothing to set up first.
+func session(harness, name, command string, args []string) error {
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
-		return errors.New(`what should Claude Code do? For example: staircase claude "add a /health endpoint"`)
+		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
 	}
 	root, err := gitTopLevel()
 	if err != nil {
@@ -97,7 +131,7 @@ func claudeSession(_ *cobra.Command, args []string) error {
 			}
 		}
 		fmt.Printf("🧭 Project %q (#%d), case #%d, story #%d\n", project.Name, project.ID, c.ID, story.ID)
-		if _, err := compileCase(store, wsDir, c.ID, "claude-code", true); err != nil {
+		if _, err := compileCase(store, wsDir, c.ID, harness, true); err != nil {
 			return 0, err
 		}
 		return c.ID, nil
@@ -125,7 +159,7 @@ func claudeSession(_ *cobra.Command, args []string) error {
 func gitTopLevel() (string, error) {
 	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
-		return "", errors.New("not inside a git repository: run staircase claude from the repository the task is about")
+		return "", errors.New("not inside a git repository: run staircase from the repository the task is about")
 	}
 	root := strings.TrimSpace(string(out))
 	if err := exec.Command("git", "-C", root, "rev-parse", "--verify", "-q", "HEAD").Run(); err != nil {

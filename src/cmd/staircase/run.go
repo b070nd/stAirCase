@@ -37,6 +37,7 @@ var (
 	runReplayLLM      string
 	runAllowShellExec bool
 	runAgent          string
+	runModel          string
 	runAckDrift       bool
 	runValidator      string
 )
@@ -86,8 +87,9 @@ func init() {
 	runCmd.Flags().StringVar(&runValidator, "validator", "",
 		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
 			"a human approves the run's final change once")
+	runCmd.Flags().StringVar(&runModel, "model", "", "Model for an agent harness (claude-code, codex); default: the harness's own")
 	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
-		"Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental)")
+		"Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -163,9 +165,11 @@ func runCase(caseID int64) error {
 	switch who {
 	case "built-in":
 	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.Brief()}
+		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel}
+	case "codex":
+		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
 	default:
-		return fmt.Errorf("unknown --agent %q: use built-in or claude-code", runAgent)
+		return fmt.Errorf("unknown --agent %q: use built-in, claude-code or codex", who)
 	}
 
 	var validator *orchestrator.Validator

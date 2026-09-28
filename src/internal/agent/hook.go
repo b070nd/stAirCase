@@ -16,7 +16,7 @@ import (
 const HookFileEnv = "STAIRCASE_HOOK_FILE"
 
 // hookAgents are the agents whose hook calls a run can decide.
-var hookAgents = []string{"claude-code"}
+var hookAgents = []string{"claude-code", "codex"}
 
 // hookClient waits as long as a person needs to decide; the agent's own hook
 // timeout bounds it. No proxy: the token only ever goes to the local run.

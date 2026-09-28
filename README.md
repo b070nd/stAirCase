@@ -77,7 +77,7 @@ minutes.
 | **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |
 | **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway - mixed in one team. Budget caps per project. |
 | **Shell off by default** | agents can only ask to run commands when you allow it, and a person approves each one. |
-| **Claude Code, governed** | run Claude Code as the agent, with every tool call going through the same approvals (experimental). |
+| **Claude Code and Codex, governed** | `staircase claude "task"` or `staircase codex "task"`: the agents you already use, with every change going through the same approvals (experimental). |
 
 ## Know the limits
 

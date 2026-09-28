@@ -30,6 +30,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("FAKE_CLAUDE") != "" {
 		os.Exit(fakeClaude())
 	}
+	if os.Getenv("FAKE_CODEX") != "" {
+		os.Exit(fakeCodex())
+	}
 	os.Exit(m.Run())
 }
 

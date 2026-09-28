@@ -157,9 +157,11 @@ drift (see docs/drift.md).
 Flags:
 
 ```
-      --allow stringArray   A path (glob) the task may change; repeat for more
-      --allow-shell-exec    Let Claude Code propose shell commands (each still needs your approval)
-      --approval-port int   Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --allow stringArray       A path (glob) the task may change; repeat for more
+      --allow-shell-exec        Let Claude Code propose shell commands (each still needs your approval)
+      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --model string            Model for Claude Code (default: its own)
 ```
 
 ## staircase clean
@@ -188,6 +190,33 @@ Flags:
       --keep-failed   Preserve branches/logs for FAILED runs
 ```
 
+## staircase codex
+
+Run Codex on a task in this repository, with every change decided by you
+
+```
+staircase codex <task> [flags]
+```
+
+Runs OpenAI's Codex CLI on the task in a separate worktree of the git
+repository you are in. Every file edit it wants to make comes to you first.
+Its shell commands run in Codex's sandbox (no network, writes only in the
+worktree), and the files a command changes come to you afterwards: kept if
+you approve, reverted if not. At the end, exactly the approved changes are
+committed on a new branch, staircase/run-N; your checkout is not touched.
+
+No setup is needed. Codex must be installed (the ChatGPT app for macOS
+includes it) and logged in.
+
+Flags:
+
+```
+      --allow stringArray       A path (glob) the task may change; repeat for more
+      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --model string            Model for Codex (default: its own)
+```
+
 ## staircase compile
 
 Compile a Case into the plan staircase run executes
@@ -199,7 +228,7 @@ staircase compile <case-id> [flags]
 Flags:
 
 ```
-      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code (default "built-in")
+      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex (default "built-in")
       --force          Overwrite an existing plan
 ```
 
@@ -532,13 +561,14 @@ Flags:
 
 ```
       --ack-drift               Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
-      --agent string            Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental) (default "built-in")
+      --agent string            Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental) (default "built-in")
       --allow-shell-exec        Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int       Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string   Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
       --debug                   Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
       --dry-run                 Validate and print the execution plan without running
       --metrics-addr string     Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.
+      --model string            Model for an agent harness (claude-code, codex); default: the harness's own
       --otel-endpoint string    OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.
       --reconcile               Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
       --record-llm string       Record every model exchange of this run to this file (JSON lines) for offline replay.

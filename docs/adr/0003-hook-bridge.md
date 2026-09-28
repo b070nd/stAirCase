@@ -60,6 +60,16 @@ Such runs reach at most CAL 2 ([ADR 0001](0001-core-promise-and-assurance-levels
 **Later**, the same command will talk to a local daemon over a unix socket. The agents'
 configuration will not change.
 
+## Update, 2026-09-28: what Codex really does
+
+Checked against codex-cli 0.155: Codex does not ask for a review of a hook it has not
+seen; it **skips it silently**, so a governed session would run ungoverned without
+an error. stAirCase therefore starts Codex with `--dangerously-bypass-hook-trust`
+(which also runs the user's own unreviewed Codex hooks for that session) and fails
+the run when Codex's `SessionStart` hook never reaches it. Trust-by-hash did not
+turn out to be the mechanism that matters; the stable command still keeps the token
+off the command line.
+
 ## Consequences
 
 - Supporting a new agent means one dialect plus tests that drive it with a fake agent

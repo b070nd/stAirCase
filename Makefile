@@ -1,4 +1,4 @@
-.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude fuzz
+.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
@@ -83,3 +83,5 @@ smoke:
 	./demo/smoke.sh model
 smoke-claude:
 	./demo/smoke.sh claude
+smoke-codex:
+	./demo/smoke.sh codex

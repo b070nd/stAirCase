@@ -99,6 +99,14 @@ These are documented, not hidden:
   only stAirCase's settings (no user, project or local settings and no MCP
   servers), so a repository's own `.claude` hooks do not run. Settings a
   company manages centrally still apply.
+- Codex (`staircase codex`, `--agent codex`) is experimental: its edits are
+  decided before they are applied, but its shell commands run without a
+  decision inside Codex's own sandbox (no network, writes only in the worktree
+  and temporary folders). Files they change are reviewed afterwards (CAL 2).
+  The sandbox does not restrict reading, so a command can read files outside
+  the repository and send them to OpenAI. Codex is started with
+  `--dangerously-bypass-hook-trust`, which also runs the user's own unreviewed
+  Codex hooks for that session; a run whose hooks never report in fails.
 - The `--validator` reviewer is a model and can be misled by what it reviews;
   it only ever decides in-scope, non-sensitive edits, and a human approves the
   run's final change whenever it decided anything.

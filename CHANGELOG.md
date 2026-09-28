@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase codex "task"`: run OpenAI's Codex CLI under governance, with no
+  setup. Its edits (`apply_patch`) are decided before they are applied; its
+  shell commands run in Codex's sandbox (no network, writes only in the
+  worktree) and the files they change are reviewed afterwards: kept if
+  approved, reverted if not. A Codex run that never calls stAirCase's hooks
+  fails. `run --agent codex`, `compile --agent codex`, `make smoke-codex`.
+- Review after the fact: changes an agent's command made in the worktree come
+  to a decision as one proposal (approved, they are kept; rejected, they are
+  reverted). A run that keeps such changes reaches CAL 2.
+- `--model` for `staircase claude`, `staircase codex` and `run` with an agent
+  harness.
 - **Change certificates.** Every run that commits signs a change certificate
   about exactly that commit (in-toto statement in a DSSE envelope, workspace
   Ed25519 key, digests only) and attaches it as a git note

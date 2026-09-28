@@ -53,6 +53,7 @@ a separate worktree, and shows you every change it wants to make: press **`y`** 
 approve, **`n`** to reject with a reason. At the end, exactly the approved changes
 are on a new branch, `staircase/run-N`, and your checkout is untouched. Continue
 with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).
+With OpenAI's Codex it is the same: `staircase codex "..."` ([Governing Codex](docs/codex.md)).
 
 The rest of this page sets up stAirCase's own agents, with the model provider of
 your choice.
