@@ -107,6 +107,9 @@ Six contracts stay stable and versioned while everything around them may change:
   - `staircase verify`;
   - a GitHub Action that requires certificates;
   - public anchoring of digests only, never content.
+- **Lessons from your rejections:** when you reject a change, your reason is kept for
+  the project (in the workspace, not the repository) and the next session's agent
+  reads it first, so the same mistake is not proposed twice.
 
 ### Phase 2 - v0.4: any agent, anywhere
 
@@ -132,8 +135,13 @@ Six contracts stay stable and versioned while everything around them may change:
 - **Approve the task, not every step:** building on the up-front agreement from phase
   2, changes inside the approved scope can be approved on evidence; anything outside
   comes to you. Some approvals are sampled for your review.
-- **Verifiers:** tests run in a sandbox on the exact approved code, and their results
-  become evidence.
+- **Gates as evidence:** each checkpoint must pass its gates - tests run in a sandbox
+  on the exact approved code, two independent reviewer models that must agree, and a
+  person - and every gate's result goes into the change certificate.
+- **A definition of done:** a session cannot end until its required gates pass. The
+  agent's own "stop" hook is refused with the failures, so it keeps working inside
+  governance until the result is right. ("An attempt is allowed to be wrong; it is not
+  allowed to ship until it isn't.")
 - **Guards:**
   - new or changed dependencies always come to you;
   - hidden Unicode ("Trojan Source") and secrets written into code are flagged.
