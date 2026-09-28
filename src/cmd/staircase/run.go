@@ -169,6 +169,8 @@ func runCase(caseID int64) error {
 		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel}
 	case "codex":
 		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
+	case "review":
+		ag = &agent.Review{Commit: pl.Review.Commit, By: pl.Review.By}
 	default:
 		return fmt.Errorf("unknown --agent %q: use built-in, claude-code or codex", who)
 	}
