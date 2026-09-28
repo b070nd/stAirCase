@@ -25,9 +25,15 @@ screen does not show line by line.
 2. **Drift supervision** can stop the run, or send the proposal to a person - for a
    change outside the stories' scope, too many files, or a checkpoint. See
    [Drift supervision](drift.md).
-3. **Your policy** rules (`policy.json`) can approve or reject it automatically.
-4. **A validator model**, if you turned one on, can decide in-scope file changes.
-5. **A person** decides everything else.
+3. **Guards** send a change to a person, whatever the rules say, when it adds
+   something risky: hidden Unicode characters that make code read differently from
+   how it runs ("Trojan Source"), a change to dependencies (`go.mod`,
+   `package.json`, lock files and the like), or what looks like a secret (private
+   keys, cloud and API keys, tokens). Only what the change adds counts. The reason
+   is shown as `CHECK:` and recorded with the decision.
+4. **Your policy** rules (`policy.json`) can approve or reject it automatically.
+5. **A validator model**, if you turned one on, can decide in-scope file changes.
+6. **A person** decides everything else.
 
 Shell commands always go to a person.
 

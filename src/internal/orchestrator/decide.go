@@ -68,14 +68,17 @@ func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling 
 	// a limit or at a checkpoint goes to a human, never to policy.
 	rl.drift, rl.halt = d.drift.Check(rl.files)
 	req.Drift = rl.drift
+	if rl.next != nil {
+		req.Guard = guard(rl.next, func(p string) *approvedFile { f, _ := d.approvals.current(p); return f })
+	}
 	if rl.halt {
 		rl.resp, rl.source = domain.Decide(false, "refused: the run has drifted too far from its stories' scope and is halting"), "drift"
 		return rl
 	}
 	// CHECK 7.2.1/7.2.2: once a session limit is hit, every proposal goes to a
 	// human regardless of the policy's rules.
-	if limitHit, limitReason := d.policy.CheckLimits(d.autoApproved, d.total); limitHit || rl.drift != "" {
-		why := strings.Trim(limitReason+"; "+rl.drift, "; ")
+	if limitHit, limitReason := d.policy.CheckLimits(d.autoApproved, d.total); limitHit || rl.drift != "" || req.Guard != "" {
+		why := strings.Trim(limitReason+"; "+rl.drift+"; "+req.Guard, "; ")
 		d.display.AddActivity(fmt.Sprintf("%-14s DRIFT  %s → HITL (%s)", req.AgentName, req.ActionType, why))
 		return d.human(req, rl)
 	}
@@ -148,6 +151,9 @@ func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.Y
 	}
 	if req.ReviewAfter {
 		fields["review_after"] = true
+	}
+	if req.Guard != "" {
+		fields["guard"] = req.Guard
 	}
 	return fields
 }

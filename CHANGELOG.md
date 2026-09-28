@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Guards: a file change that adds hidden Unicode (Trojan Source), changes
+  dependencies (go.mod, package.json, lock files and others) or writes what
+  looks like a secret goes to a person even when a policy rule or the
+  validator would approve it. Only what the change adds counts; the reason is
+  shown as `CHECK:` and recorded as `guard` with the decision.
+- `make check` fails when any tracked file contains hidden Unicode.
+
+- The run is an explicit state machine: one table lists every phase and the
+  moves allowed between them, the runner refuses any other move, and every
+  run's evidence ends with `run_path`, the phases it went through.
+
+- Company-wide governance: `staircase hook-template claude-code|codex` prints
+  the managed settings a company deploys so that every session on its machines
+  goes through stAirCase. Their hook (`staircase hook <agent> --require`)
+  blocks tool calls outside a governed session and governs them inside one.
+- A session decides each tool call once, even when two hooks (a company's
+  managed hook and the session's own) ask for it at the same time.
+
+- `staircase review <branch | commit> --by "<who>"`: bring changes made elsewhere
+  (a cloud agent's pull request) into a worktree of the current branch one file
+  at a time, decide each file, and commit exactly the approved ones with a
+  certificate naming who made them and the exact commit reviewed (CAL 2). The
+  branch's own diff is applied, so newer work on the current branch is kept.
+
 - Two-person review (CAL 4): `staircase sign <commit>` adds a reviewer's SSH
   signature (ssh-keygen -Y sign) to the commit's change certificate;
   `staircase verify --allowed-signers <file>` counts it when the reviewer is in

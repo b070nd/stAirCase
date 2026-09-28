@@ -25,6 +25,10 @@ the only path by which an agent's change reaches that repository.
 
 ## Flow of a run
 
+A run is an explicit state machine: `runMoves` in `internal/orchestrator/runner.go`
+lists every phase and the phases it may move to, and the runner refuses any other
+move. The path a run took is recorded as its last audit event (`run_path`).
+
 1. **Blueprint** (`internal/blueprint`) - `blueprint import` reads a directory's
    `blueprint.yaml` strictly, resolves prompt/PRD files confined to it
    (`os.Root`), and stores canonical JSON named by its SHA-256. `project bind`

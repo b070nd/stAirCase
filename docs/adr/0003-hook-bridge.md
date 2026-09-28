@@ -70,6 +70,13 @@ the run when Codex's `SessionStart` hook never reaches it. Trust-by-hash did not
 turn out to be the mechanism that matters; the stable command still keeps the token
 off the command line.
 
+## Update, 2026-09-28: managed hooks
+
+A company's managed hook uses `--require` instead of the pass-through mode: outside a
+governed session it blocks, inside one it forwards like the session's own hook. The
+session's hook server decides each tool call once (by the agent's tool-use id), so
+two hooks asking for the same call get one decision. See docs/managed.md.
+
 ## Consequences
 
 - Supporting a new agent means one dialect plus tests that drive it with a fake agent

@@ -64,14 +64,22 @@ func fakeClaude() int {
 	hook := func(event string, id int, c fakeCall) (int, string) {
 		in, _ := json.Marshal(map[string]any{"hook_event_name": event, "tool_name": c.Tool,
 			"tool_input": c.Input, "tool_use_id": fmt.Sprint("t", id), "cwd": "."})
-		cmd := exec.Command("/bin/sh", "-c", s.Hooks[event][0].Hooks[0].Command)
-		cmd.Stdin = bytes.NewReader(in)
-		out, _ := cmd.Output()
-		code := 0
-		if cmd.ProcessState != nil {
-			code = cmd.ProcessState.ExitCode()
+		run := func() (int, string) {
+			cmd := exec.Command("/bin/sh", "-c", s.Hooks[event][0].Hooks[0].Command)
+			cmd.Stdin = bytes.NewReader(in)
+			out, _ := cmd.Output()
+			code := 0
+			if cmd.ProcessState != nil {
+				code = cmd.ProcessState.ExitCode()
+			}
+			return code, string(out)
 		}
-		return code, string(out)
+		if os.Getenv("FAKE_CLAUDE_TWICE") != "" { // a company's managed hook and the session's own, in parallel
+			done := make(chan struct{})
+			go func() { run(); close(done) }()
+			defer func() { <-done }()
+		}
+		return run()
 	}
 	if f := os.Getenv("FAKE_CLAUDE_ARGS"); f != "" {
 		b, _ := json.Marshal(os.Args[1:])
@@ -188,4 +196,34 @@ func TestClaudeCode_failure_reports_why(t *testing.T) {
 	require.Error(t, r.Err)
 	assert.Equal(t, persistence.RunStatusFailed, r.Run.Status)
 	assert.Contains(t, r.Err.Error(), "Failed to authenticate")
+}
+
+// TestClaudeCode_two_hooks_decide_once: with a company's managed hook and the
+// session's own hook both installed, Claude Code calls both for every tool
+// call; each call is still proposed and decided once.
+func TestClaudeCode_two_hooks_decide_once(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "decisions.log")
+	script, err := json.Marshal([]fakeCall{
+		{Tool: "Write", Input: map[string]any{"file_path": "$WT/a.txt", "content": "a\n"}},
+		{Tool: "Write", Input: map[string]any{"file_path": "$WT/b.txt", "content": "b\n"}},
+	})
+	require.NoError(t, err)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.json"), script, 0o600))
+	bin := filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s FAKE_CLAUDE_TWICE=1 exec %s \"$@\"\n",
+		filepath.Join(dir, "script.json"), logFile, os.Args[0]), 0o755))
+	r := runtest.Run(t, runtest.Options{Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin}})
+	require.NoError(t, r.Err)
+	decided := 0
+	for _, typ := range r.Types() {
+		if typ == "yield_decided" {
+			decided++
+		}
+	}
+	assert.Equal(t, 2, decided, "two tool calls, two decisions")
+	for _, f := range []string{"a.txt", "b.txt"} {
+		_, err := r.OnBranch(f)
+		assert.NoError(t, err)
+	}
 }

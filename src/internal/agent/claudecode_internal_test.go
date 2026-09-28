@@ -19,7 +19,7 @@ func TestHookCommand_is_stable_and_holds_no_secret(t *testing.T) {
 	bin := filepath.Join(dir, "staircase")
 	assert.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s ' \"$@\"\n"), 0o755))
 
-	cmd := hookCommand(bin, "claude-code")
+	cmd := HookCommand(bin, "claude-code", "--governed")
 	out, err := exec.Command("/bin/sh", "-c", cmd).Output()
 	assert.NoError(t, err)
 	assert.Equal(t, "hook claude-code --governed ", string(out))

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -161,4 +162,23 @@ func rel(p string) string {
 		return p
 	}
 	return r
+}
+
+// TestNoHiddenUnicode: no tracked file contains characters that make code
+// read differently from how it runs (Trojan Source) - the guard staircase
+// applies to agents' changes, applied to its own repository. Tests write such
+// characters as escapes (\u202e), never raw.
+func TestNoHiddenUnicode(t *testing.T) {
+	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z").Output()
+	require.NoError(t, err)
+	hidden := regexp.MustCompile("[\u202a-\u202e\u2066-\u2069\u200b-\u200d\u2060\ufeff]")
+	for _, f := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		b, err := os.ReadFile(filepath.Join(repoRoot, f))
+		if err != nil {
+			continue
+		}
+		if loc := hidden.FindIndex(b); loc != nil {
+			t.Errorf("%s: hidden Unicode at byte %d", f, loc[0])
+		}
+	}
 }

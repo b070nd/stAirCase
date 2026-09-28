@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,33 @@ const (
 	PhaseBranchRestore RunPhase = "BRANCH_RESTORE"
 )
 
+// runMoves is the run's state machine: from each phase, the phases it may
+// move to. A failure during setup (BRANCH_CREATE, AGENT_START) or finalize
+// goes to BRANCH_RESTORE; the agent loop always ends in FINALIZE. A run that
+// stops in PRE_FLIGHT never existed. Any other move is a bug, and the run
+// fails rather than continue in an unknown state.
+var runMoves = map[RunPhase][]RunPhase{
+	PhasePreFlight:     {PhaseBranchCreate},
+	PhaseBranchCreate:  {PhaseAgentStart, PhaseBranchRestore},
+	PhaseAgentStart:    {PhaseAgentLoop, PhaseBranchRestore},
+	PhaseAgentLoop:     {PhaseFinalize},
+	PhaseFinalize:      {PhaseBranchRestore},
+	PhaseBranchRestore: nil,
+}
+
+// RunMoves is a copy of the run's state machine, for tests and documentation.
+func RunMoves() map[RunPhase][]RunPhase { return maps.Clone(runMoves) }
+
+// enter moves the run to phase p, if the state machine allows it from the
+// current phase, and remembers the path for the run's evidence (run_path).
+func (r *Runner) enter(p RunPhase) error {
+	if !slices.Contains(runMoves[r.phase], p) {
+		return fmt.Errorf("run state machine: %s cannot follow %s", p, r.phase)
+	}
+	r.phase, r.path = p, append(r.path, p)
+	return nil
+}
+
 // RunOptions carries all user-supplied flags for a run.
 type RunOptions struct {
 	DryRun        bool
@@ -99,7 +127,8 @@ type RunOptions struct {
 type Runner struct {
 	store *persistence.Store
 	wsDir string
-	phase RunPhase // current phase; read via Phase() for observability and tests
+	phase RunPhase   // current phase; read via Phase() for observability and tests
+	path  []RunPhase // the phases this run went through, in order
 }
 
 // NewRunner constructs a Runner bound to the given store and workspace directory.
@@ -128,7 +157,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		obs.ActiveRuns.Dec()
 		obs.RunDuration.Observe(time.Since(t0Run).Seconds())
 	}()
-	r.phase = PhasePreFlight
+	r.phase, r.path = PhasePreFlight, []RunPhase{PhasePreFlight}
 
 	// ── Load case + project ───────────────────────────────────────────────────
 	caseRec, err := r.store.GetCase(caseID)
@@ -244,7 +273,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
 
 	// ── BRANCH_CREATE ─────────────────────────────────────────────────────────
-	r.phase = PhaseBranchCreate
+	if err := r.enter(PhaseBranchCreate); err != nil {
+		return err
+	}
 	runBranch := fmt.Sprintf("staircase/run-%d", run.ID)
 	worktree := "" // the run's checkout: the agent's project root, never the developer's
 	var wgr *GitRepo
@@ -278,7 +309,12 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 				runErr = errors.Join(runErr, err)
 			}
 		}
-		r.phase = PhaseBranchRestore
+		if err := r.enter(PhaseBranchRestore); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
+		if err := r.audit(run.ID, "run_path", map[string]any{"phases": r.path}); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
 		if worktree != "" {
 			if finalStatus == persistence.RunStatusSuccess {
 				// The deliverable is the run branch; the worktree was only scaffolding.
@@ -420,7 +456,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	defer renderTicker.Stop()
 
 	// ── AGENT_START ───────────────────────────────────────────────────────────
-	r.phase = PhaseAgentStart
+	if err := r.enter(PhaseAgentStart); err != nil {
+		return err
+	}
 	if opts.Agent == nil {
 		return errors.New("no agent to run")
 	}
@@ -481,7 +519,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}()
 
 	// ── AGENT_LOOP ────────────────────────────────────────────────────────────
-	r.phase = PhaseAgentLoop
+	if err := r.enter(PhaseAgentLoop); err != nil {
+		return err
+	}
 	if err := r.store.UpdateCaseStatus(caseID, persistence.CaseStatusRunning); err != nil {
 		return fmt.Errorf("mark case running: %w", err)
 	}
@@ -606,7 +646,9 @@ runLoop:
 	}
 
 	// ── FINALIZE ──────────────────────────────────────────────────────────────
-	r.phase = PhaseFinalize
+	if err := r.enter(PhaseFinalize); err != nil {
+		return err
+	}
 	r.reportDrift(run.ID, sup)
 	if finalStatus == persistence.RunStatusSuccess && appr != nil {
 		ok, err := r.verifyWorktree(run.ID, appr, display)

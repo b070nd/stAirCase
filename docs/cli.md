@@ -230,7 +230,7 @@ staircase compile <case-id> [flags]
 Flags:
 
 ```
-      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex (default "built-in")
+      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex, review (default "built-in")
       --force          Overwrite an existing plan
 ```
 
@@ -357,6 +357,32 @@ in a hook installed once for a user or a company, calls pass through when no
 governed session is running.
 
 Supported agents: claude-code.
+
+## staircase hook-template
+
+Print the managed settings that make every agent session on a company's machines go through stAirCase
+
+```
+staircase hook-template <claude-code | codex> [flags]
+```
+
+Prints settings a company deploys through its device management so that every
+Claude Code or Codex session on its machines goes through stAirCase. The hook
+they install blocks every tool call outside a governed session (start one with
+staircase claude or staircase codex) and governs the calls inside one.
+
+  claude-code  managed-settings.json (it also sets allowManagedHooksOnly, so
+               user and repository hooks do not load)
+  codex        the [hooks] block of the managed Codex configuration
+
+--bin is where staircase is installed on those machines (default: this
+program). See docs/managed.md.
+
+Flags:
+
+```
+      --bin string   Path of staircase on the managed machines (default: this program)
+```
 
 ## staircase init
 
@@ -550,6 +576,36 @@ Verify the audit chain of a run and print every approval decision in order.
 
 Replay refuses to proceed if the hash chain is broken - this prevents
 replaying a tampered run log.
+
+## staircase review
+
+Review changes made elsewhere (a cloud agent's pull request) and certify what you approve
+
+```
+staircase review <branch | commit> [flags]
+```
+
+Brings the changes of a branch made elsewhere, for example a pull request
+opened by a cloud agent, into a separate worktree of your current branch, one
+file at a time. Each changed file comes to you (or your rules) to approve or
+reject; rejected files are left out. Exactly the approved files are committed
+on a new branch, staircase/run-N, with a change certificate that names who made
+the changes (--by) and the exact commit reviewed. The files were changed before
+they were decided, so the change reaches CAL 2.
+
+Fetch a pull request first, for example:
+  git fetch origin pull/42/head:pr-42
+  staircase review pr-42 --by "Copilot coding agent"
+
+Flags:
+
+```
+      --allow stringArray       A path (glob) the changes may touch; a file elsewhere comes to you as drift
+      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --by string               Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
+  -y, --yes                     Start without asking to confirm (needed without a terminal)
+```
 
 ## staircase run
 
