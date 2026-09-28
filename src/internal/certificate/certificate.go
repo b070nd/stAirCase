@@ -47,6 +47,9 @@ type Predicate struct {
 	ChainHead  string         `json:"chainHead"`       // the audit chain's last hash when the commit was made
 	CAL        int            `json:"cal"`             // the change assurance level reached (ADR 0001)
 	Notes      []string       `json:"notes,omitempty"` // why the level is not higher
+	// RequestedBy is the git identity (user.email) the run was made under:
+	// a second person's signature must come from someone else (CAL 4).
+	RequestedBy string `json:"requestedBy,omitempty"`
 }
 
 // New is a statement about commit.
@@ -75,6 +78,14 @@ type Signature struct {
 	KeyID string `json:"keyid"`
 	Sig   string `json:"sig"` // base64
 }
+
+// SSHSignature marks a person's signature in an envelope: its keyid is this
+// prefix and the signer's principal, its sig the base64 of an armored SSH
+// signature (ssh-keygen -Y sign) over the envelope's PAE in SSHNamespace.
+const (
+	SSHSignature = "sshsig:"
+	SSHNamespace = "staircase-certificate"
+)
 
 // PAE is the DSSE pre-authentication encoding: the bytes that are signed.
 func PAE(payloadType string, payload []byte) []byte {

@@ -17,7 +17,9 @@ staircase claude --allow 'src/**' "fix the failing date test"     # limit where 
 ```
 
 This creates the workspace, a project for the repository and a case for the task
-when they are missing, then runs it. Claude Code needs no API key in stAirCase: it
+when they are missing, shows you what is about to happen and asks you to confirm,
+then runs it. Your confirmation is recorded on the audit chain (`task_agreed`). In
+a script, with no terminal to ask, add `--yes`. Claude Code needs no API key in stAirCase: it
 uses its own login.
 
 For a case you set up yourself (stories, scope, blueprint), compile it for Claude

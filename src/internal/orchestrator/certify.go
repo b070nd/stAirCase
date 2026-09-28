@@ -74,6 +74,9 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if pl != nil {
 		p.PlanDigest, p.Blueprint = pl.Digest, pl.BlueprintHash
 	}
+	if out, err := exec.Command("git", "-C", repo.path, "config", "user.email").Output(); err == nil {
+		p.RequestedBy = strings.TrimSpace(string(out))
+	}
 	shell, after := false, false
 	for _, e := range events {
 		if e.EventType != "yield_decided" {

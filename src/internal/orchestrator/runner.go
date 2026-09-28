@@ -83,6 +83,9 @@ type RunOptions struct {
 	// Validator, when set, decides in-scope file edits the policy leaves open
 	// (see Validator); a human approves the run's final change once.
 	Validator *Validator
+	// Agreed says who agreed to the task before the run (a session's
+	// confirmation); it is recorded after run_bound.
+	Agreed string
 	// AckDrift acknowledges that the case's previous run was halted for drift;
 	// without it such a case does not run again.
 	AckDrift bool
@@ -328,6 +331,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	if err := r.audit(run.ID, "run_bound", bound); err != nil {
 		return fmt.Errorf("audit run_bound: %w", err)
+	}
+	if opts.Agreed != "" {
+		agreed := map[string]any{"by": opts.Agreed}
+		if opts.Plan != nil {
+			agreed["plan_digest"] = opts.Plan.Digest
+		}
+		if err := r.audit(run.ID, "task_agreed", agreed); err != nil {
+			return fmt.Errorf("audit task_agreed: %w", err)
+		}
 	}
 
 	// ── RUN SETUP ─────────────────────────────────────────────────────────────

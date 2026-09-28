@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -22,6 +23,7 @@ var (
 	verifyFile        string
 	verifyCheckAnchor bool
 	verifyAll         bool
+	verifySigners     string
 )
 
 var verifyCmd = &cobra.Command{
@@ -50,6 +52,8 @@ func init() {
 	verifyCmd.Flags().IntVar(&verifyMinCAL, "min-cal", 0, "Fail below this change assurance level (1-4)")
 	verifyCmd.Flags().StringVar(&verifyKey, "key", "", "Public signing key to trust (default: the workspace's .signing.pub)")
 	verifyCmd.Flags().StringVar(&verifyFile, "certificate", "", "Read the certificate from this file instead of the git note")
+	verifyCmd.Flags().StringVar(&verifySigners, "allowed-signers", "",
+		"git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4")
 	verifyCmd.Flags().BoolVar(&verifyAll, "all", false, "In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)")
 	verifyCmd.Flags().BoolVar(&verifyCheckAnchor, "check-anchor", false,
 		"Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace")
@@ -145,12 +149,21 @@ func verifyCommit(commit string) error {
 		return fmt.Errorf("the certificate is about commit %.12s, not %.12s", s.Commit(), commit)
 	}
 	p := s.Predicate
-	if p.CAL < verifyMinCAL {
+	level, signers := p.CAL, []string(nil)
+	if verifySigners != "" && p.CAL >= 3 { // ADR 0001: CAL 4 = CAL 3 + a second, identified person
+		if signers, err = personSignatures(env, verifySigners, p.RequestedBy); err != nil {
+			return err
+		}
+		if len(signers) > 0 {
+			level = 4
+		}
+	}
+	if level < verifyMinCAL {
 		why := ""
 		if len(p.Notes) > 0 {
 			why = ": " + strings.Join(p.Notes, "; ")
 		}
-		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d%s", commit, p.CAL, verifyMinCAL, why)
+		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d%s", commit, level, verifyMinCAL, why)
 	}
 	if verifyCheckAnchor {
 		sidecar := verifyFile + ".anchor"
@@ -165,7 +178,10 @@ func verifyCommit(commit string) error {
 			return fmt.Errorf("commit %.12s: %w", commit, err)
 		}
 	}
-	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, p.CAL)
+	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, level)
+	if len(signers) > 0 {
+		fmt.Printf("   reviewed and signed by %s\n", strings.Join(signers, ", "))
+	}
 	fmt.Printf("   run #%d from %.12s, assisted by %s\n", p.Run, p.BaseCommit, strings.Join(p.Agents, ", "))
 	for source, n := range p.Decisions {
 		fmt.Printf("   %d decision(s) by %s\n", n, source)
@@ -174,4 +190,42 @@ func verifyCommit(commit string) error {
 		fmt.Printf("   note: %s\n", n)
 	}
 	return nil
+}
+
+// personSignatures are the trusted people who signed env (staircase sign):
+// each signature must verify with ssh-keygen against the allowed_signers file,
+// and the requester's own signature does not count.
+func personSignatures(env certificate.Envelope, allowedSigners, requester string) ([]string, error) {
+	payload, err := base64.StdEncoding.DecodeString(env.Payload)
+	if err != nil {
+		return nil, err
+	}
+	pae := certificate.PAE(env.PayloadType, payload)
+	var who []string
+	for _, s := range env.Signatures {
+		principal, ok := strings.CutPrefix(s.KeyID, certificate.SSHSignature)
+		if !ok || principal == requester {
+			continue
+		}
+		sig, err := base64.StdEncoding.DecodeString(s.Sig)
+		if err != nil {
+			continue
+		}
+		f, err := os.CreateTemp("", "staircase-sig-*")
+		if err != nil {
+			return nil, err
+		}
+		_, werr := f.Write(sig)
+		_ = f.Close()
+		if werr == nil {
+			cmd := exec.Command("ssh-keygen", "-Y", "verify", "-f", allowedSigners, "-I", principal,
+				"-n", certificate.SSHNamespace, "-s", f.Name())
+			cmd.Stdin = bytes.NewReader(pae)
+			if cmd.Run() == nil {
+				who = append(who, principal)
+			}
+		}
+		_ = os.Remove(f.Name())
+	}
+	return who, nil
 }

@@ -48,8 +48,10 @@ cd ~/code/shop
 staircase claude "add a /health endpoint that returns 200 and the body ok"
 ```
 
-stAirCase creates what it needs (workspace, project, case), starts Claude Code in
-a separate worktree, and shows you every change it wants to make: press **`y`** to
+stAirCase creates what it needs (workspace, project, case) and first shows you what
+is about to happen: the task, where it may change files, how edits and commands are
+handled, the model and the budget. Press **`y`** to start. It then runs Claude Code in
+a separate worktree and shows you every change it wants to make: press **`y`** to
 approve, **`n`** to reject with a reason. At the end, exactly the approved changes
 are on a new branch, `staircase/run-N`, and your checkout is untouched. Continue
 with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).

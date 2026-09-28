@@ -38,6 +38,7 @@ var (
 	runAllowShellExec bool
 	runAgent          string
 	runModel          string
+	runAgreedBy       string // who agreed to the task before a session started
 	runAckDrift       bool
 	runValidator      string
 )
@@ -191,6 +192,7 @@ func runCase(caseID int64) error {
 		AllowShellExec: runAllowShellExec,
 		AckDrift:       runAckDrift,
 		Validator:      validator,
+		Agreed:         runAgreedBy,
 		Agent:          ag,
 		Plan:           &pl,
 	})
