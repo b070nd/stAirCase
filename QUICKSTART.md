@@ -76,17 +76,18 @@ The single static binary ships with no CGo; it uses a pure-Go SQLite driver. No 
 
 Tagged releases are built reproducibly by the release workflow and ship a syft
 SBOM (`*.spdx.json`) per archive, a Sigstore keyless signature over
-`checksums.txt`, and a GitHub build-provenance attestation for every archive.
-To verify a download:
+`checksums.txt` (a `checksums.txt.sigstore.json` bundle), and a GitHub
+build-provenance attestation for every archive. To verify a download:
 
 ```bash
 # 1. Verify the checksum file signature (keyless — no public key to manage)
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
+  --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp '^https://github.com/b070nd/stAirCase/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
+# (v0.2.0 ships checksums.txt.sig and checksums.txt.pem instead of the bundle:
+#  use --signature checksums.txt.sig --certificate checksums.txt.pem.)
 
 # 2. Verify the archive against the now-trusted checksums
 shasum -a 256 -c checksums.txt --ignore-missing

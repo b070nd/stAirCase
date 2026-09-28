@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+
+- Release checksums are signed into one Sigstore bundle,
+  `checksums.txt.sigstore.json` (the format cosign 3 writes), instead of
+  separate `.sig` and `.pem` files; verify with `cosign verify-blob --bundle`.
+
 ## [0.2.0] — 2026-09-25
 
 The Go rewrite (versioned 0.x, starting over from the Bash 1.x line). Highlights
