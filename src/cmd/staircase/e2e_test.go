@@ -657,14 +657,19 @@ func TestAudit_Export_anchor_and_verify_checkAnchor(t *testing.T) {
 	require.NoError(t, crypto.GenerateSigningKey(wsDir))
 	runID := seedRunWithLogs(t, s, 2)
 
-	// Minimal mock Rekor: accepts any entry, serves it back by uuid.
+	// Minimal mock Rekor: accepts any entry and, like the real log, keeps the
+	// artifact's hash instead of the artifact.
 	entries := map[string]string{}
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var e map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&e)
+			spec := e["spec"].(map[string]any)
+			artifact, _ := base64.StdEncoding.DecodeString(spec["data"].(map[string]any)["content"].(string))
+			sum := sha256.Sum256(artifact)
+			spec["data"] = map[string]any{"hash": map[string]string{"algorithm": "sha256", "value": hex.EncodeToString(sum[:])}}
 			raw, _ := json.Marshal(e)
-			sum := sha256.Sum256(raw)
+			sum = sha256.Sum256(raw)
 			uuid := hex.EncodeToString(sum[:])
 			entries[uuid] = base64.StdEncoding.EncodeToString(raw)
 			w.WriteHeader(http.StatusCreated)

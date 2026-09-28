@@ -25,7 +25,7 @@ staircase audit export <run-id> [flags]
 Flags:
 
 ```
-      --anchor             Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record - reasoning, paths, proposed changes - to a public, permanent log
+      --anchor             Also anchor the signed checkpoint in a Rekor transparency log (external witness). The whole record is sent to the Rekor service; its public, permanent log keeps the record's SHA-256, the signature and your public key
       --rekor-url string   Rekor server URL used by --anchor / --check-anchor (default "https://rekor.sigstore.dev")
 ```
 

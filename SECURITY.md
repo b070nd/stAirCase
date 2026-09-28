@@ -65,10 +65,11 @@ sandbox. See the [safety boundary](docs/safety.md).
   policy never auto-approves one; rejected attempts are audited.
 - **Data leaving the machine.** A real run sends the PRD, the repository map and
   the files agents read to the configured model provider. The offline demo and
-  `--replay-llm` runs send nothing. `audit export --anchor` uploads the **whole**
-  signed record - reasoning, paths and proposed changes - to the Rekor log, which
-  is public and permanent; anchor only runs whose content may be public, or use
-  your own Rekor instance (`--rekor-url`).
+  `--replay-llm` runs send nothing. `audit export --anchor` sends the **whole**
+  signed record - reasoning, paths and proposed changes - to the Rekor service;
+  its public, permanent log keeps only the record's SHA-256, the signature and
+  your public key. To keep the record from any third party, use your own Rekor
+  instance (`--rekor-url`).
 - **Supply chain.** Releases ship an SBOM and a cosign (keyless, Sigstore OIDC)
   signature over the checksums; GitHub Actions are SHA-pinned.
 
@@ -87,7 +88,7 @@ These are documented, not hidden:
 - The agent runtime runs in the orchestrator's process: its tools are part of
   the trusted code, tested but not isolated.
 - The audit chain uses raw Ed25519 over canonical JSON, not yet DSSE envelopes;
-  Rekor anchoring proves log inclusion and content match but not (yet) full Merkle
+  Rekor anchoring proves log inclusion and hash and signature match but not (yet) full Merkle
   inclusion-proof verification.
 - Agents are named in audit records but not separately authenticated;
   per-agent identity and per-tool credential scoping are on the roadmap.

@@ -122,11 +122,12 @@ staircase audit export 7 --anchor                   # also writes run-7.checkpoi
 staircase audit verify run-7.checkpoint.json --check-anchor
 ```
 
-> **Warning: anchoring makes the evidence public, permanently.** The whole signed
-> record is uploaded to the log - every event of the run, including the agents'
-> reasoning, file paths and the proposed changes themselves. The public Rekor log
-> cannot delete entries. Anchor only runs whose content may be public (for example
-> open-source work), or use `--rekor-url` to anchor in a Rekor instance you run
+> **What leaves your machine.** The whole signed record - every event of the run,
+> including the agents' reasoning, file paths and the proposed changes - is sent to
+> the Rekor service, which checks the signature. The public log then keeps, for
+> good, only the record's SHA-256, the signature and your public key; it does not
+> store the record itself (checked on rekor.sigstore.dev). If the record must not
+> reach a third party at all, use `--rekor-url` with a Rekor instance you run
 > yourself.
 
 ## Accepting stories is evidence too

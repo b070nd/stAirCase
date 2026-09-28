@@ -38,8 +38,9 @@ stAirCase is **pre-1.0**.
   is a model and can be wrong.
 - **It sends code to your model provider.** A real run sends the PRD, the stories,
   a map of the repository and the files the agents read. Nothing else leaves the
-  machine - unless you anchor evidence in the public Rekor log, which publishes the
-  whole record ([details](audit.md#add-an-outside-witness-rekor)).
+  machine - unless you anchor evidence in the public Rekor log: the record is sent
+  to that service, which keeps its hash and your public key for good
+  ([details](audit.md#add-an-outside-witness-rekor)).
 
 ## How to use it safely today
 

@@ -6,13 +6,13 @@
 // transparency log adds an external, append-only witness: once anchored, the
 // record's existence at a point in time can be proven to a third party.
 //
-// Entry type: `rekord` (artifact inline) rather than `hashedrekord`, because
-// plain Ed25519 signs the full message - hashedrekord verifies over a digest,
-// which requires ed25519ph. Checkpoint records are small NDJSON lines, so
-// inlining the artifact is cheap and keeps verification sound server-side.
+// Entry type: `rekord` rather than `hashedrekord`, because plain Ed25519
+// signs the full message - hashedrekord verifies over a digest, which
+// requires ed25519ph. The artifact is sent inline so the server can check the
+// signature; the log then stores only its hash, the signature and the key.
 //
-// Scope (documented limitation): VerifyAnchor confirms the log entry exists
-// and its inlined artifact content matches the local record byte-for-byte.
+// Scope (documented limitation): VerifyAnchor confirms the log entry exists,
+// its hash is the local record's and its signature is valid for the record.
 // Full Merkle inclusion-proof / signed-tree-head verification is future work.
 package audit
 
@@ -20,8 +20,10 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -74,13 +76,18 @@ type rekordPubKey struct {
 	Content string `json:"content"` // base64 of PEM-encoded PKIX key
 }
 
-// logEntryBody is the decoded base64 `body` of a fetched Rekor entry -
-// the same shape as proposedEntry; only the artifact content is compared.
+// logEntryBody is the decoded base64 `body` of a fetched Rekor entry. The
+// log stores the artifact's hash, the signature and the key; the artifact
+// itself is never stored (checked on rekor.sigstore.dev, 2026-09-28).
 type logEntryBody struct {
 	Spec struct {
 		Data struct {
-			Content string `json:"content"`
+			Hash struct {
+				Algorithm string `json:"algorithm"`
+				Value     string `json:"value"`
+			} `json:"hash"`
 		} `json:"data"`
+		Signature rekordSig `json:"signature"`
 	} `json:"spec"`
 }
 
@@ -234,12 +241,28 @@ func VerifyAnchor(record []byte, recordSHA256 string, anchors []Anchor) (Anchor,
 	if err := json.Unmarshal(bodyRaw, &body); err != nil {
 		return Anchor{}, fmt.Errorf("rekor fetch: parse body: %w", err)
 	}
-	logged, err := base64.StdEncoding.DecodeString(body.Spec.Data.Content)
-	if err != nil {
-		return Anchor{}, fmt.Errorf("rekor fetch: decode artifact: %w", err)
+	// The log keeps the artifact's hash, never the artifact: the record must
+	// hash to it, and the logged signature must be valid for the record.
+	sum := sha256.Sum256(record)
+	if body.Spec.Data.Hash.Algorithm != "sha256" || body.Spec.Data.Hash.Value != hex.EncodeToString(sum[:]) {
+		return Anchor{}, fmt.Errorf("rekor anchor MISMATCH: the logged hash is not the local record's (uuid %s)", match.UUID)
 	}
-	if !bytes.Equal(logged, record) {
-		return Anchor{}, fmt.Errorf("rekor anchor MISMATCH: logged artifact differs from local record (uuid %s)", match.UUID)
+	sig, err := base64.StdEncoding.DecodeString(body.Spec.Signature.Content)
+	if err != nil {
+		return Anchor{}, fmt.Errorf("rekor fetch: decode signature: %w", err)
+	}
+	pemBytes, err := base64.StdEncoding.DecodeString(body.Spec.Signature.PublicKey.Content)
+	if err != nil {
+		return Anchor{}, fmt.Errorf("rekor fetch: decode public key: %w", err)
+	}
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return Anchor{}, fmt.Errorf("rekor fetch: logged public key is not PEM (uuid %s)", match.UUID)
+	}
+	pubAny, err := x509.ParsePKIXPublicKey(block.Bytes)
+	pub, ok := pubAny.(ed25519.PublicKey)
+	if err != nil || !ok || !ed25519.Verify(pub, record, sig) {
+		return Anchor{}, fmt.Errorf("rekor anchor MISMATCH: the logged signature does not match the local record (uuid %s)", match.UUID)
 	}
 	return *match, nil
 }

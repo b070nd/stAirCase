@@ -24,7 +24,7 @@ import (
 // verifies the Ed25519 signature over the inlined artifact before accepting.
 type mockRekor struct {
 	t       *testing.T
-	entries map[string]string // uuid → base64 body (the proposed entry, like real Rekor)
+	entries map[string]string // uuid → base64 body, as the real log keeps it
 	nextIdx int64
 }
 
@@ -72,8 +72,14 @@ func (m *mockRekor) handler() http.HandlerFunc {
 				return
 			}
 
-			// Accept: store body exactly as proposed (matches real Rekor body field).
-			raw, _ := json.Marshal(entry)
+			// Accept, and store what the real log stores: the artifact's hash, the
+			// signature and the key, never the artifact itself (checked against
+			// a public rekor.sigstore.dev entry, 2026-09-28).
+			stored := map[string]any{"apiVersion": entry.APIVersion, "kind": entry.Kind, "spec": map[string]any{
+				"data":      map[string]any{"hash": map[string]string{"algorithm": "sha256", "value": hex.EncodeToString(sha256NewSum(artifact))}},
+				"signature": entry.Spec.Signature,
+			}}
+			raw, _ := json.Marshal(stored)
 			uuid := hex.EncodeToString(sha256NewSum(raw))
 			m.entries[uuid] = base64.StdEncoding.EncodeToString(raw)
 			m.nextIdx++

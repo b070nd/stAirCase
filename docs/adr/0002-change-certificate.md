@@ -8,7 +8,7 @@
 
 Today a run's evidence is its hash-chained event log, exported as a signed checkpoint.
 It is complete, but specific to stAirCase, large, and full of content: prompts,
-reasoning and code. Anchoring it publicly would publish all of that (F87). The people
+reasoning and code. Anchoring it sends all of that to the Rekor service (F87). The people
 who need to trust a change - a CI check, a maintainer, an auditor - need something
 small, standard and tied to the commit.
 
@@ -56,7 +56,10 @@ only digests; the ledger holds the content and stays private.
   so it cannot live inside the commit itself.
 
 **Public anchoring.** Only the envelope (digests) goes to a transparency log such as
-Rekor. The ledger and the events never do. This fixes F87.
+Rekor. The ledger and the events never do. (Correction, checked on
+rekor.sigstore.dev: the log never stored records, only their hashes, but
+`audit export --anchor` still sends the whole record to the Rekor service.
+Anchoring the certificate instead keeps the content on your machine.)
 
 **Verification.** `staircase verify <commit>` checks:
 - the signature, against the trusted key;

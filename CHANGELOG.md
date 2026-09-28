@@ -41,11 +41,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   (`docs/README.md`), a page per task, troubleshooting, and a CLI reference
   generated from the program (`docs/cli.md`). `docs/plugin-gates.md` is now
   `docs/gates.md`, and `docs/project-use.md` is now `docs/safety.md`.
-- `audit export --anchor` now warns in its help that the whole record is
-  uploaded to Rekor's public, permanent log.
+- `audit export --anchor` now says in its help what leaves the machine: the
+  whole record is sent to the Rekor service, whose public log keeps its SHA-256,
+  the signature and your public key.
 
 ### Fixed
 
+- `audit verify --check-anchor` could not succeed against the real Rekor log:
+  it expected the log to return the record, but the log keeps only the
+  record's hash. It now checks the logged hash and signature.
 - An edit to a Windows-style (CRLF) file no longer rewrites every line ending
   in the file: it changes only its own lines and keeps the file's line
   endings, so what you approve is what you see.
