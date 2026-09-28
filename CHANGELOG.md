@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Lessons from rejections: when a case is compiled, the plan lists the changes a
+  person rejected in the project's earlier runs, with their reasons (the ten
+  most recent), and every agent reads them in its brief.
 - `staircase codex "task"`: run OpenAI's Codex CLI under governance, with no
   setup. Its edits (`apply_patch`) are decided before they are applied; its
   shell commands run in Codex's sandbox (no network, writes only in the

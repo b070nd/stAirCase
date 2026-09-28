@@ -48,7 +48,11 @@ replaces and the new text. Press:
 | `y` | approve |
 | `n` (or `q`, `Esc`) | reject: type a reason and press `Enter`; `Esc` goes back |
 
-The agent receives your reason and can try again.
+The agent receives your reason and can try again. Your reason also teaches later
+sessions: when a case of the same project is compiled, the plan lists the changes
+people rejected before, with their reasons (the ten most recent), and every agent
+reads them in its brief. They come from the audit chain, so nothing is stored in
+your repository; rejections without a reason are not listed.
 
 ### From another terminal or a script: the approval API
 

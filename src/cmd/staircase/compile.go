@@ -117,6 +117,9 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 
 	// ── 6. Who runs it: an agent harness, or the topology's agents ──────────
 	pl := plan.Plan{CaseID: caseID, Harness: harness, PRD: caseRec.PrdJSON, RepoContext: repoContext}
+	if pl.Lessons, err = projectLessons(store, project.ID); err != nil {
+		return "", fmt.Errorf("load earlier reviews: %w", err)
+	}
 	if harness != "" {
 		fmt.Printf("   🤖 Agent: %s (brings its own model; no topology needed)\n", harness)
 	} else if err := addTopology(store, project, &pl); err != nil {

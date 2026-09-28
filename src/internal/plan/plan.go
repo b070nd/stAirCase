@@ -32,6 +32,9 @@ type Plan struct {
 	PRD             string  `json:"prd"`
 	RepoContext     string  `json:"repo_context"`
 	Stories         []Story `json:"stories,omitempty"`
+	// Lessons are what reviewers of the project rejected before, with their
+	// reasons, newest first: the agents read them in the brief.
+	Lessons []string `json:"lessons,omitempty"`
 	// Harness is the external agent that runs the case (see Harnesses); empty
 	// means the built-in agents above. A harness plan has no agents of its own.
 	Harness string `json:"harness,omitempty"`
@@ -86,6 +89,12 @@ func (p Plan) Brief() string {
 			}
 		}
 		b.WriteString("\n\nChanges outside these paths go to a human reviewer and can halt the run.")
+	}
+	if len(p.Lessons) > 0 {
+		b.WriteString("\n\nReviewers of this project rejected before - do not repeat:")
+		for _, l := range p.Lessons {
+			fmt.Fprintf(&b, "\n- %s", l)
+		}
 	}
 	return strings.TrimSpace(b.String())
 }

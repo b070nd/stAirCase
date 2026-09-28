@@ -97,3 +97,11 @@ func TestPlan_harness(t *testing.T) {
 	mixed.Harness = "claude-code"
 	assert.ErrorContains(t, mixed.Validate(), "has agents")
 }
+
+// TestPlan_Brief_lessons: what reviewers rejected before in the project is
+// in the brief, so the agent does not propose it again.
+func TestPlan_Brief_lessons(t *testing.T) {
+	p := plan.Plan{PRD: "Add a health endpoint.", Lessons: []string{"src/api.go: no global variables, use the Server struct"}}
+	assert.Contains(t, p.Brief(), "Reviewers of this project rejected before - do not repeat:\n- src/api.go: no global variables, use the Server struct")
+	assert.NotContains(t, plan.Plan{PRD: "x"}.Brief(), "rejected before")
+}
