@@ -852,7 +852,8 @@ func (s *Store) ListEdges(topologyID int64) ([]domain.Edge, error) {
 
 func (s *Store) CreateRun(caseID int64, topologyVersion int, gitBranch string) (*domain.Run, error) {
 	// Enforce referential integrity: topology_version must correspond to a real
-	// swarm_topologies row for the project that owns this case.
+	// swarm_topologies row for the project that owns this case. 0 means the
+	// case runs an agent harness, which has no topology.
 	// SQLite cannot express this as a FK because topology_version is a semantic
 	// version number, not a row ID, so we validate it here instead.
 	var topoCount int
@@ -867,7 +868,7 @@ func (s *Store) CreateRun(caseID int64, topologyVersion int, gitBranch string) (
 	if err != nil {
 		return nil, fmt.Errorf("create run: validate topology version: %w", err)
 	}
-	if topoCount == 0 {
+	if topoCount == 0 && topologyVersion != 0 {
 		return nil, fmt.Errorf("create run: topology version %d does not exist for the project of case %d", topologyVersion, caseID)
 	}
 

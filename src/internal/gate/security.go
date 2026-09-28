@@ -27,6 +27,9 @@ func (*secretProviderKeysGate) Severity() Severity { return SeverityBlock }
 // runtime client will request, so a run cannot die at its first LLM call.
 func (*secretProviderKeysGate) Run(ctx Context) Result {
 	const name = "secret.provider_keys"
+	if ctx.Harness != "" {
+		return pass(name, "security", SeverityBlock, "the case runs "+ctx.Harness+", which uses its own login")
+	}
 	c, err := ctx.Store.GetCase(ctx.CaseID)
 	if err != nil || c == nil {
 		return fail(name, "security", SeverityBlock, fmt.Sprintf("case %d not found", ctx.CaseID))

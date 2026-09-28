@@ -184,10 +184,17 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err != nil {
 		return fmt.Errorf("load topology: %w", err)
 	}
-	if topology == nil {
+	harness := ""
+	if opts.Plan != nil {
+		harness = opts.Plan.Harness
+	}
+	if topology == nil && harness == "" { // a harness brings its own agent: version 0, no topology
 		return fmt.Errorf("no swarm topology registered for project %q - run 'staircase topology register' first", project.Name)
 	}
-	topoVersion := topology.Version
+	topoVersion := 0
+	if topology != nil {
+		topoVersion = topology.Version
+	}
 	if opts.Plan != nil {
 		topoVersion = opts.Plan.TopologyVersion // what runs is the plan, not the latest topology
 	}
@@ -312,6 +319,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	if opts.Plan != nil {
 		bound["plan_digest"], bound["blueprint_hash"] = opts.Plan.Digest, opts.Plan.BlueprintHash
+	}
+	if harness != "" {
+		bound["harness"] = harness
 	}
 	if haltedRun != 0 {
 		bound["ack_drift"] = haltedRun

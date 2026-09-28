@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/llm"
@@ -31,6 +32,9 @@ type Plan struct {
 	PRD             string  `json:"prd"`
 	RepoContext     string  `json:"repo_context"`
 	Stories         []Story `json:"stories,omitempty"`
+	// Harness is the external agent that runs the case (see Harnesses); empty
+	// means the built-in agents above. A harness plan has no agents of its own.
+	Harness string `json:"harness,omitempty"`
 	// BlueprintHash is the blueprint the case was bound from, if any.
 	BlueprintHash string `json:"blueprint_hash,omitempty"`
 	// Limits are the blueprint's run limits (drift supervision); zero = none.
@@ -117,8 +121,22 @@ func IsEnd(node string) bool { return node == "END" || node == "__end__" }
 var builtinTools = map[string]bool{"read_file": true, "list_dir": true, "request_edit": true,
 	"create_file": true, "delete_file": true, "run_shell": true}
 
+// Harnesses are the external agents a case can be run by instead of the
+// built-in agents: they bring their own model and login, and every tool
+// call goes through the run's hooks.
+var Harnesses = []string{"claude-code"}
+
 // Validate reports what would make the plan fail to run.
 func (p Plan) Validate() error {
+	if p.Harness != "" {
+		switch {
+		case !slices.Contains(Harnesses, p.Harness):
+			return fmt.Errorf("unknown harness %q - supported: %s", p.Harness, strings.Join(Harnesses, ", "))
+		case len(p.Agents) > 0 || len(p.Edges) > 0 || p.Supervisor != "":
+			return fmt.Errorf("the plan runs harness %q but also has agents of its own", p.Harness)
+		}
+		return nil
+	}
 	var errs []error
 	known := map[string]bool{}
 	for _, a := range p.Agents {

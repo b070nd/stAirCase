@@ -82,3 +82,10 @@ sc() {
   run env -i "$STAIRCASE_BIN" hook claude-code --governed </dev/null
   [ "$status" -eq 2 ]
 }
+
+@test "claude: outside a git repository says so" {
+  cd "$WORK_DIR"
+  run sc claude "add a health endpoint"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not inside a git repository"* ]]
+}

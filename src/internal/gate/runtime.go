@@ -22,6 +22,11 @@ func init() {
 	Register(&runtimeGitAvailableGate{})
 }
 
+// planPath is where compile writes the case's plan.
+func planPath(ctx Context) string {
+	return filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID))
+}
+
 // ─── runtime.plan_compiled ───────────────────────────────────────────────────
 
 type runtimePlanCompiledGate struct{}
@@ -35,7 +40,7 @@ func (*runtimePlanCompiledGate) Severity() Severity { return SeverityBlock }
 // warns when the topology changed after compile.
 func (*runtimePlanCompiledGate) Run(ctx Context) Result {
 	const name = "runtime.plan_compiled"
-	p, err := plan.Load(filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID)))
+	p, err := plan.Load(planPath(ctx))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("no compiled plan - run 'staircase compile %d'", ctx.CaseID))
@@ -43,6 +48,8 @@ func (*runtimePlanCompiledGate) Run(ctx Context) Result {
 		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan cannot run: %v - run 'staircase compile %d --force'", err, ctx.CaseID))
 	case p.CaseID != ctx.CaseID:
 		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was compiled for case #%d - run 'staircase compile %d --force'", p.CaseID, ctx.CaseID))
+	case p.Harness != "":
+		return pass(name, "runtime", SeverityBlock, "plan runs "+p.Harness)
 	}
 	if c, _ := ctx.Store.GetCase(ctx.CaseID); c != nil {
 		if cur, _ := ctx.Store.GetLatestTopology(c.ProjectID); cur != nil && p.TopologyVersion < cur.Version {

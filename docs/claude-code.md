@@ -9,8 +9,23 @@ Code does the work with its own tools, but **every tool call is decided by
 stAirCase first**, with the same approvals, audit chain and final checks as any
 other run.
 
+In any git repository, with nothing to set up first:
+
 ```bash
-staircase run 1 --agent claude-code
+staircase claude "add a /health endpoint that returns 200 and the body ok"
+staircase claude --allow 'src/**' "fix the failing date test"     # limit where it may change files
+```
+
+This creates the workspace, a project for the repository and a case for the task
+when they are missing, then runs it. Claude Code needs no API key in stAirCase: it
+uses its own login.
+
+For a case you set up yourself (stories, scope, blueprint), compile it for Claude
+Code and run it as usual:
+
+```bash
+staircase compile 1 --agent claude-code
+staircase run 1
 ```
 
 ## What you need

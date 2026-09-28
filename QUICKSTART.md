@@ -4,7 +4,7 @@ In about 15 minutes you will:
 
 1. watch the whole flow once, offline, with no API key;
 2. let AI agents make a real change in one of your repositories - with you
-   approving every step;
+   approving every step (with Claude Code, in one command);
 3. review the result, accept it, and keep signed evidence of what happened.
 
 New to the words used here (case, story, topology, proposal)? Read
@@ -37,7 +37,27 @@ the new branch holds exactly the approved changes, that your checkout did not ch
 and that the signed audit chain verifies. Two more modes show the safety checks
 failing closed: `--tamper` and `--drift`. More in [the demo guide](demo/README.md).
 
-## 3. Your first real run
+## 3. The fastest way: Claude Code
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and it is
+logged in, you need no setup at all. In any git repository with at least one
+commit:
+
+```bash
+cd ~/code/shop
+staircase claude "add a /health endpoint that returns 200 and the body ok"
+```
+
+stAirCase creates what it needs (workspace, project, case), starts Claude Code in
+a separate worktree, and shows you every change it wants to make: press **`y`** to
+approve, **`n`** to reject with a reason. At the end, exactly the approved changes
+are on a new branch, `staircase/run-N`, and your checkout is untouched. Continue
+with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).
+
+The rest of this page sets up stAirCase's own agents, with the model provider of
+your choice.
+
+## 4. Your first real run with stAirCase's agents
 
 You need a git repository with at least one commit, and an API key for a model
 provider. The steps below use Anthropic; any supported provider works (see
@@ -127,7 +147,7 @@ To approve from another terminal, a script or a service instead, see
 When the agents finish, stAirCase checks that the worktree holds exactly what you
 approved and commits it on the branch `staircase/run-1`.
 
-## 4. Review and accept
+## 5. Review and accept
 
 ```bash
 git -C ~/code/shop log --stat -1 staircase/run-1     # what was committed
@@ -151,7 +171,7 @@ GitHub pull request for you; it needs a GitHub token (see the
 Not happy with the result? `staircase case rollback 1` removes the run's branch and
 worktree, keeps its audit record, and lets you run the case again.
 
-## 5. Keep the evidence
+## 6. Keep the evidence
 
 Every decision of the run is on a tamper-evident audit chain. Export a signed copy:
 

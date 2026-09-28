@@ -11,9 +11,11 @@
 package gate
 
 import (
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
 // ─── Core types ───────────────────────────────────────────────────────────────
@@ -50,6 +52,9 @@ type Context struct {
 	CaseID int64
 	WsDir  string
 	Store  *persistence.Store
+	// Harness is the agent harness the case's plan runs ("" = the built-in
+	// agents). RunAll reads it from the compiled plan.
+	Harness string
 }
 
 // Gate is the interface every quality check must implement.
@@ -102,8 +107,19 @@ func RunAll(ctx Context) Report {
 			return report
 		}
 	}
+	if ctx.Harness == "" {
+		if p, err := plan.Load(planPath(ctx)); err == nil && p.CaseID == ctx.CaseID {
+			ctx.Harness = p.Harness
+		}
+	}
 	for _, g := range allGates {
-		res := g.Run(ctx)
+		var res Result
+		if ctx.Harness != "" && strings.HasPrefix(g.Name(), "topology.") {
+			// A harness brings its own agent: the case needs no topology.
+			res = skip(g.Name(), g.Category(), g.Severity(), "the case runs "+ctx.Harness+"; no topology needed")
+		} else {
+			res = g.Run(ctx)
+		}
 		report.Gates = append(report.Gates, res)
 		switch res.Status {
 		case StatusPass:

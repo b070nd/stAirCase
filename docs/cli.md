@@ -114,6 +114,33 @@ Show detailed status of a Case
 staircase case status <case-id>
 ```
 
+## staircase claude
+
+Run Claude Code on a task in this repository, with every change decided by you
+
+```
+staircase claude <task> [flags]
+```
+
+Runs Claude Code on the task in a separate worktree of the git repository you
+are in. Every file change and command it wants to make comes to you first. At
+the end, exactly the approved changes are committed on a new branch,
+staircase/run-N; your checkout is not touched.
+
+No setup is needed: the workspace, a project for this repository and a case for
+the task are created when missing. Claude Code must be installed and logged in.
+
+--allow limits the paths the task may change; changes elsewhere come to you as
+drift (see docs/drift.md).
+
+Flags:
+
+```
+      --allow stringArray   A path (glob) the task may change; repeat for more
+      --allow-shell-exec    Let Claude Code propose shell commands (each still needs your approval)
+      --approval-port int   Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+```
+
 ## staircase clean
 
 Remove leftovers of older staircase versions from tmp/
@@ -151,7 +178,8 @@ staircase compile <case-id> [flags]
 Flags:
 
 ```
-      --force   Overwrite an existing plan
+      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code (default "built-in")
+      --force          Overwrite an existing plan
 ```
 
 ## staircase component add

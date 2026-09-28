@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase claude "task"`: run Claude Code on a task in the current git
+  repository with no setup. The workspace, a project for the repository and a
+  case for the task are created when missing; every change still comes to you,
+  and exactly the approved changes land on a run branch.
+- `staircase compile --agent claude-code`: a plan can name the agent harness
+  that runs it. Such a case needs no topology and no provider key; the harness
+  is recorded in the run's first audit event.
 - `staircase hook <agent>`: one command that passes an agent's hook calls to the
   run that governs it, and blocks the call on every failure (exit code 2).
 - `ROADMAP.md` and the first architecture decisions in `docs/adr/`.

@@ -96,7 +96,11 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	return runCase(caseID)
+}
 
+// runCase runs a compiled case with the run flags.
+func runCase(caseID int64) error {
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
 	db, err := persistence.InitDB(wsDir)
@@ -145,8 +149,18 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("the plan was compiled for case #%d - run 'staircase compile %d --force'", pl.CaseID, caseID)
 	}
 
+	// The plan says who runs the case; --agent can only choose a harness for a
+	// plan compiled for the built-in agents.
+	who := runAgent
+	if pl.Harness != "" {
+		if runAgent != "built-in" && runAgent != pl.Harness {
+			return fmt.Errorf("case #%d is compiled to run %s, not %s - recompile with 'staircase compile %d --force --agent %s'",
+				caseID, pl.Harness, runAgent, caseID, runAgent)
+		}
+		who = pl.Harness
+	}
 	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}
-	switch runAgent {
+	switch who {
 	case "built-in":
 	case "claude-code":
 		ag = &agent.ClaudeCode{Prompt: pl.Brief()}
