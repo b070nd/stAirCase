@@ -17,7 +17,8 @@
 Other targets: `make test` (fast: `-short` skips the integration tests),
 `make test-integration` (everything), `make test-e2e`, `make test-ci` (named
 audit checks), `make coverage`, `make vuln` (govulncheck), and the opt-in
-`make smoke` / `make smoke-claude` (real agents; see below).
+`make smoke` / `make smoke-claude` (real agents; see below), and `make fuzz`
+(explores the trusted core; `FUZZTIME=5m` per target).
 
 ## Layers
 
@@ -25,6 +26,14 @@ audit checks), `make coverage`, `make vuln` (govulncheck), and the opt-in
 approval derivation, plan and blueprint parsing and hashing, policy rules and
 the drift supervisor, model clients against `httptest` servers, record/replay,
 gates, the event hash chain, crypto and redaction.
+
+**Fuzz tests** (`src/internal/orchestrator/fuzz_test.go`) state the trusted
+core's rules as properties and check them on arbitrary input: an accepted path is a
+canonical file path inside the worktree with no `.git` part and no symlink on the
+way; an edit changes exactly the first occurrence of its search text or is refused;
+a new file is its content byte for byte. `go test` runs the seeds; `make fuzz`
+explores, and a failing input it saves under `testdata/fuzz/` is committed as a
+regression test.
 
 **Run integration tests** drive a whole run in-process:
 `orchestrator/runtest.Run` creates a throwaway workspace and git repository and
