@@ -66,10 +66,14 @@ read, removed when the run ends; they never appear on a command line.
 
 ## Limits
 
-- Your own Claude Code settings (user and project) still load, including their
-  hooks and MCP servers. Changes they make inside the worktree fail the run; effects
-  elsewhere are not contained. Use a Claude Code setup without extra hooks or MCP
-  servers for governed runs.
+- stAirCase starts Claude Code with **only its own settings**: your user settings
+  and the repository's own `.claude` settings are not loaded, so their hooks,
+  plugins and MCP servers cannot act outside governance. Settings your company
+  manages centrally still apply.
+- The repository's `CLAUDE.md` files are still read. They are instructions for the
+  model and cannot run anything themselves.
+- A shell command you approve runs as your user, without a sandbox, as in any run
+  with `--allow-shell-exec` (see the [safety boundary](safety.md)).
 
 ## What is recorded
 

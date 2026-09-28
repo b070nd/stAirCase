@@ -91,13 +91,13 @@ These are documented, not hidden:
   inclusion-proof verification.
 - Agents are named in audit records but not separately authenticated;
   per-agent identity and per-tool credential scoping are on the roadmap.
-- `--agent claude-code` is experimental: Claude Code's tool calls are governed
-  through its hooks (a hook that fails or times out blocks the call), but your
-  own user and project Claude Code settings still load, including their hooks
-  and MCP servers - changes they make inside the worktree fail the run, effects
-  elsewhere are not contained. The hooks reach the run through `staircase hook`,
-  which blocks on every failure; the run's token sits in a file only your user
-  can read, never on a command line.
+- Claude Code (`staircase claude`, `--agent claude-code`) is experimental: its
+  tool calls are governed through its hooks, which reach the run through
+  `staircase hook` and block on every failure; the run's token sits in a file
+  only your user can read, never on a command line. Claude Code is started with
+  only stAirCase's settings (no user, project or local settings and no MCP
+  servers), so a repository's own `.claude` hooks do not run. Settings a
+  company manages centrally still apply.
 - The `--validator` reviewer is a model and can be misled by what it reviews;
   it only ever decides in-scope, non-sensitive edits, and a human approves the
   run's final change whenever it decided anything.

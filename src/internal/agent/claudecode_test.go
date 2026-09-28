@@ -70,6 +70,10 @@ func fakeClaude() int {
 		}
 		return code, string(out)
 	}
+	if f := os.Getenv("FAKE_CLAUDE_ARGS"); f != "" {
+		b, _ := json.Marshal(os.Args[1:])
+		_ = os.WriteFile(f, b, 0o600)
+	}
 	wd, _ := os.Getwd()
 	var calls []fakeCall
 	script, _ := os.ReadFile(os.Getenv("FAKE_CLAUDE"))
@@ -136,8 +140,9 @@ func TestClaudeCode_every_tool_call_is_governed(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.json"), script, 0o600))
 	bin := filepath.Join(dir, "claude")
-	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s exec %s \"$@\"\n",
-		filepath.Join(dir, "script.json"), logFile, os.Args[0]), 0o755))
+	argsFile := filepath.Join(dir, "args.json")
+	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s FAKE_CLAUDE_ARGS=%s exec %s \"$@\"\n",
+		filepath.Join(dir, "script.json"), logFile, argsFile, os.Args[0]), 0o755))
 	r := runtest.Run(t, runtest.Options{
 		Base:  map[string]runtest.File{"f.txt": {Content: "a\nb\na2\n", Mode: 0o644}},
 		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
@@ -160,6 +165,15 @@ func TestClaudeCode_every_tool_call_is_governed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "a\nB\na2\n", got)
 	assert.Contains(t, r.Types(), "state_emit")
+
+	// Only staircase's settings load: the user's and the repository's own
+	// hooks and MCP servers would act outside governance (F82).
+	var args []string
+	b, err := os.ReadFile(argsFile)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(b, &args))
+	assert.Contains(t, strings.Join(args, "\x00"), "--setting-sources\x00\x00", "no user, project or local settings")
+	assert.Contains(t, args, "--strict-mcp-config")
 }
 
 // TestClaudeCode_failure_reports_why: Claude Code prints its error (such as
