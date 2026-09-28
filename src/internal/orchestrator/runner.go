@@ -603,12 +603,22 @@ runLoop:
 		}
 	}
 	if finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
-		hash, err := appr.commit(runBranch, fmt.Sprintf("staircase: run #%d - case #%d", run.ID, caseID))
+		chainHead, err := r.store.GetLastEventHash(run.ID)
+		if err != nil {
+			return err
+		}
+		hash, err := appr.commit(runBranch, commitMessage(run.ID, caseID, opts.Plan, chainHead))
 		if err != nil {
 			return err
 		}
 		if hash != "" {
 			commitHash = hash
+			// The commit is made; a certificate that cannot be written is reported
+			// and recorded, not a reason to call the run failed.
+			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr); err != nil {
+				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
+				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
+			}
 		}
 	}
 

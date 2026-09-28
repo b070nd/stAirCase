@@ -184,7 +184,13 @@ ok "HEAD, branch, index, status and every file are exactly as before"
 [ "$(git -C "$TARGET_REPO" worktree list | wc -l | tr -d ' ')" = "1" ] || [ "$MODE" != "" ] || die "a worktree was left behind"
 BRANCHES="$(git -C "$TARGET_REPO" branch --format='%(refname:short)' | paste -sd, -)"
 [ "$BRANCHES" = "main,staircase/run-1" ] || die "unexpected branches: $BRANCHES"
-ok "the product repository gained only the run branch ($BRANCHES); no harness files"
+ok "the product repository gained only the run branch ($BRANCHES) and its certificate note; no harness files"
+if [ -z "$MODE" ]; then
+  say "Checking the change certificate of the run's commit"
+  (cd "$TARGET_REPO" && staircase verify staircase/run-1 --min-cal 3) | sed 's/^/    /'
+  git -C "$TARGET_REPO" log -1 --format=%B staircase/run-1 | grep -q '^Assisted-by: ' || die "no Assisted-by trailer"
+  ok "signed, about exactly this commit, CAL 3; the commit names the agents that helped"
+fi
 
 say "The tamper-evident audit chain"
 staircase inspect runs || true

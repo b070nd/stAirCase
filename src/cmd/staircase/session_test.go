@@ -78,35 +78,7 @@ func fakeClaude() int {
 // under governance and leaves exactly the approved change on a run branch. A
 // second session in the same repository reuses the project.
 func TestClaudeSession_needs_no_setup(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test - skipped in -short mode")
-	}
-	repo := filepath.Join(t.TempDir(), "shop")
-	require.NoError(t, os.MkdirAll(repo, 0o755))
-	git := func(args ...string) string {
-		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
-		require.NoError(t, err, "git %v: %s", args, out)
-		return string(out)
-	}
-	git("init", "-q", "-b", "main")
-	git("config", "user.email", "t@t")
-	git("config", "user.name", "T")
-	require.NoError(t, os.WriteFile(filepath.Join(repo, "README.md"), []byte("shop\n"), 0o644))
-	git("add", "-A")
-	git("commit", "-q", "-m", "init")
-
-	ws := filepath.Join(t.TempDir(), "workspace") // does not exist yet
-	viper.Set("STAIRCASE_DIR", ws)
-	t.Cleanup(func() { viper.Set("STAIRCASE_DIR", "") })
-	require.NoError(t, os.MkdirAll(ws, 0o700)) // only for the policy: no terminal to approve from
-	require.NoError(t, os.WriteFile(filepath.Join(ws, "policy.json"),
-		[]byte(`{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`), 0o600))
-	bin := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "claude"),
-		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=1 exec %q \"$@\"\n", os.Args[0]), 0o755))
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Chdir(repo)
-
+	repo, ws, git := sessionRepo(t)
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
 	assert.Equal(t, "ok\n", git("show", "staircase/run-1:HEALTH.md"))
 	assert.NoFileExists(t, filepath.Join(repo, "HEALTH.md"), "the checkout is not touched")
@@ -122,6 +94,42 @@ func TestClaudeSession_needs_no_setup(t *testing.T) {
 	cases, err := persistence.NewStore(db).ListCasesByProject(projects[0].ID)
 	require.NoError(t, err)
 	assert.Len(t, cases, 2)
+}
+
+// sessionRepo is a git repository "shop" with one commit, the current
+// directory, with a fake claude on PATH and a workspace (not yet created)
+// whose policy approves file edits: no terminal is needed to decide.
+func sessionRepo(t *testing.T) (repo, ws string, git func(args ...string) string) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("integration test - skipped in -short mode")
+	}
+	repo = filepath.Join(t.TempDir(), "shop")
+	require.NoError(t, os.MkdirAll(repo, 0o755))
+	git = func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+		return string(out)
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "T")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "README.md"), []byte("shop\n"), 0o644))
+	git("add", "-A")
+	git("commit", "-q", "-m", "init")
+
+	ws = filepath.Join(t.TempDir(), "workspace") // does not exist yet
+	viper.Set("STAIRCASE_DIR", ws)
+	t.Cleanup(func() { viper.Set("STAIRCASE_DIR", "") })
+	require.NoError(t, os.MkdirAll(ws, 0o700)) // only for the policy: no terminal to approve from
+	require.NoError(t, os.WriteFile(filepath.Join(ws, "policy.json"),
+		[]byte(`{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`), 0o600))
+	bin := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "claude"),
+		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=1 exec %q \"$@\"\n", os.Args[0]), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Chdir(repo)
+	return repo, ws, git
 }
 
 // TestClaudeSession_outside_a_repository fails with a clear message.

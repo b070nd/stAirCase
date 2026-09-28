@@ -710,6 +710,34 @@ List all registered vendors
 staircase vendor list
 ```
 
+## staircase verify
+
+Check that a commit carries a valid change certificate
+
+```
+staircase verify <commit> [flags]
+```
+
+Checks the change certificate of a commit in the git repository you are in:
+it must be signed by the trusted key, be about exactly this commit, and reach
+the required change assurance level (--min-cal, see docs/adr/0001).
+
+The certificate is read from the commit's git note (refs/notes/staircase),
+which a run writes; fetch notes from a remote with
+  git fetch origin refs/notes/staircase:refs/notes/staircase
+or pass the certificate file with --certificate.
+
+The trusted key is the workspace's public signing key (.signing.pub), or the
+file given with --key: that file is all a reviewer needs.
+
+Flags:
+
+```
+      --certificate string   Read the certificate from this file instead of the git note
+      --key string           Public signing key to trust (default: the workspace's .signing.pub)
+      --min-cal int          Fail below this change assurance level (1-4)
+```
+
 ## staircase version
 
 Print the version of stAirCase

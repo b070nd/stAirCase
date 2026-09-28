@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Change certificates.** Every run that commits signs a change certificate
+  about exactly that commit (in-toto statement in a DSSE envelope, workspace
+  Ed25519 key, digests only) and attaches it as a git note
+  (`refs/notes/staircase`); the commit message names the agents that helped
+  (`Assisted-by:`) and the audit chain's head (`Staircase-Chain:`). The
+  certificate states the change assurance level reached (CAL 3, or CAL 2 when
+  shell commands were approved).
+- `staircase verify <commit>`: checks a commit's certificate against the
+  trusted key, that it is about exactly this commit, and `--min-cal`.
 - `staircase claude "task"`: run Claude Code on a task in the current git
   repository with no setup. The workspace, a project for the repository and a
   case for the task are created when missing; every change still comes to you,

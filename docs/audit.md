@@ -32,6 +32,49 @@ Events you will see:
 A decision is written to the chain **before** the agent learns it. Secrets are
 removed from every event before it is stored.
 
+## The change certificate on every commit
+
+Each run that commits leaves a **change certificate** about exactly that commit: a
+small, signed statement of who helped, what was decided and by whom, and the
+[assurance level](adr/0001-core-promise-and-assurance-levels.md) the change reached.
+It holds digests only, never code or prompts.
+
+- It is attached to the commit as a git note (`refs/notes/staircase`) and saved as
+  `audit/run-N.certificate.json` in the workspace.
+- The commit message itself names the agents that helped (`Assisted-by:`) and where
+  the audit chain stood (`Staircase-Chain:`).
+
+Check a commit, in the repository:
+
+```bash
+staircase verify staircase/run-7
+staircase verify staircase/run-7 --min-cal 3     # fail below CAL 3
+```
+
+```
+✅ Commit 8a4ae8705334: valid change certificate, CAL 3
+   run #7 from 1ec6a66040cc, assisted by Claude Code
+   3 decision(s) by operator
+```
+
+A run reaches CAL 3 when every action was decided before it ran; it drops to CAL 2
+when shell commands were approved, because they run without a sandbox. The
+certificate format is described in [ADR 0002](adr/0002-change-certificate.md).
+
+**For a reviewer on another machine:** notes are not pushed or fetched by default.
+Push them with the branch:
+
+```bash
+git push origin staircase/run-7 refs/notes/staircase
+```
+
+The reviewer fetches them and verifies with your public key, the only file they need:
+
+```bash
+git fetch origin refs/notes/staircase:refs/notes/staircase
+staircase verify <commit> --key signing.pub
+```
+
 ## Look at a run
 
 ```bash
