@@ -55,7 +55,7 @@ func (g *GitRepo) CurrentBranch() (string, error) {
 	if head.Name().IsBranch() {
 		return head.Name().Short(), nil
 	}
-	// Detached HEAD — return the full commit SHA so checkout can restore it.
+	// Detached HEAD - return the full commit SHA so checkout can restore it.
 	return head.Hash().String(), nil
 }
 
@@ -108,7 +108,7 @@ func (g *GitRepo) CreateBranch(name string) error {
 // HEAD by SHA (40-char hex string). Equivalent to `git checkout <name>`.
 func (g *GitRepo) CheckoutBranch(nameOrSHA string) error {
 	if len(nameOrSHA) == 40 {
-		// Looks like a commit SHA — restore detached HEAD.
+		// Looks like a commit SHA - restore detached HEAD.
 		return g.w.Checkout(&gogit.CheckoutOptions{
 			Hash: plumbing.NewHash(nameOrSHA),
 		})
@@ -122,7 +122,7 @@ func (g *GitRepo) CheckoutBranch(nameOrSHA string) error {
 // entry and its ref. Equivalent to `git branch -D <name>`.
 func (g *GitRepo) DeleteBranch(name string) error {
 	// DeleteBranch removes the [branch "<name>"] config section (may return an
-	// error if no config entry exists — safe to ignore).
+	// error if no config entry exists - safe to ignore).
 	_ = g.r.DeleteBranch(name)
 	// RemoveReference removes the actual ref pointer (this is what makes the
 	// branch disappear from `git branch -a`).

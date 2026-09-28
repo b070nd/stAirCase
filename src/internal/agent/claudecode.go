@@ -258,7 +258,7 @@ func (h *hookServer) proposeEdit(ctx context.Context, in hookInput, e domain.Pro
 }
 
 // readInside reads a worktree file through os.Root, which refuses any path
-// leaving the worktree when the file is opened — so a symlink swapped in after
+// leaving the worktree when the file is opened - so a symlink swapped in after
 // rel checked the path cannot redirect the read.
 func (h *hookServer) readInside(rel string) ([]byte, error) {
 	root, err := os.OpenRoot(h.root)

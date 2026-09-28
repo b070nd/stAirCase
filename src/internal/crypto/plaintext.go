@@ -18,7 +18,7 @@ func ScrubBytes(data []byte, secrets []string) []byte {
 
 // Plaintext is a byte-slice wrapper that:
 //   - never leaks its value through fmt.Sprintf / log / json (String returns
-//     "<redacted>" — satisfying CHECK 4.2.2),
+//     "<redacted>" - satisfying CHECK 4.2.2),
 //   - provides Zero() to overwrite the backing bytes when the value is no
 //     longer needed, reducing the window in which plaintext lives in memory.
 //

@@ -79,7 +79,7 @@ func init() {
 	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",
 		"File path to replay recorded LLM exchanges instead of calling the real API.")
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
-		"Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. "+
+		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
@@ -138,11 +138,11 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	pl, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID)))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return fmt.Errorf("case #%d is not compiled — run 'staircase compile %d' first", caseID, caseID)
+		return fmt.Errorf("case #%d is not compiled - run 'staircase compile %d' first", caseID, caseID)
 	case err != nil:
 		return fmt.Errorf("plan for case #%d: %w", caseID, err)
 	case pl.CaseID != caseID:
-		return fmt.Errorf("the plan was compiled for case #%d — run 'staircase compile %d --force'", pl.CaseID, caseID)
+		return fmt.Errorf("the plan was compiled for case #%d - run 'staircase compile %d --force'", pl.CaseID, caseID)
 	}
 
 	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}

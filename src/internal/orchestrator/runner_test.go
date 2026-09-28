@@ -138,7 +138,7 @@ func TestCrashInjection_stale_run_marked_killed(t *testing.T) {
 	// Back-date: set start_time to 3 hours ago so Reconcile considers it stale.
 	staleTime := time.Now().Add(-3 * time.Hour)
 	require.NoError(t, s.UpdateRunStatus(run.ID, persistence.RunStatusRunning, &staleTime, ""))
-	// The above sets end_time — we need start_time. Use a direct re-query to confirm
+	// The above sets end_time - we need start_time. Use a direct re-query to confirm
 	// the run is still RUNNING (UpdateRunStatus sets end_time; start_time is immutable).
 	// Instead, we rely on Reconcile using ListRunsByCase + StartTime comparison.
 	// Since we can't update start_time directly, simulate by using KillStaleRuns
@@ -176,7 +176,7 @@ func TestKillAtPhase(t *testing.T) {
 	// The run is still RUNNING (crash happened before any status update).
 	assert.Equal(t, persistence.RunStatusRunning, run.Status)
 
-	// Reconcile: KillStaleRuns(0) ages-out the stale run immediately —
+	// Reconcile: KillStaleRuns(0) ages-out the stale run immediately -
 	// duration=0 kills any RUNNING run regardless of elapsed time.
 	n, err := s.KillStaleRuns(caseID, 0)
 	require.NoError(t, err)
@@ -408,7 +408,7 @@ func TestScrubSecrets_skips_empty_active_value(t *testing.T) {
 			{File: "/repo/config.go"},
 		},
 	}
-	// An empty string would replace every character if not skipped — assert the
+	// An empty string would replace every character if not skipped - assert the
 	// original path is preserved when the only active value is "".
 	result := orchestrator.ExportedScrubSecrets(req, []string{""})
 	assert.Equal(t, "/repo/config.go", result.ProposedEdits[0].File)
@@ -511,7 +511,7 @@ func TestRunGates_blocks_on_failing_gates(t *testing.T) {
 
 // TestRun_reconcile_option_covers_block verifies that opts.Reconcile=true causes
 // the reconcile pre-flight block to execute inside Run() (covers that code path).
-// The run is expected to fail at crypto.LoadKey (no key in wsDir) — that is fine;
+// The run is expected to fail at crypto.LoadKey (no key in wsDir) - that is fine;
 // the important part is that the reconcile block was reached.
 func TestRun_reconcile_option_covers_block(t *testing.T) {
 	s := newTestStore(t)
@@ -523,7 +523,7 @@ func TestRun_reconcile_option_covers_block(t *testing.T) {
 		Reconcile: true,
 		SkipGates: true,
 	})
-	// Must fail somewhere after the reconcile block — specifically at LoadKey.
+	// Must fail somewhere after the reconcile block - specifically at LoadKey.
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workspace key")
 }
@@ -542,7 +542,7 @@ func TestRun_without_an_agent_returns_error(t *testing.T) {
 }
 
 // TestRun_malformed_policy_json_fails_closed: a broken policy.json never runs
-// as "no policy" (F19) — the run fails before the agent starts.
+// as "no policy" (F19) - the run fails before the agent starts.
 func TestRun_malformed_policy_json_fails_closed(t *testing.T) {
 	wsDir := agentWorkspace(t)
 	s := newTestStore(t)
@@ -567,7 +567,7 @@ func TestRun_quality_gate_failure_returns_error(t *testing.T) {
 
 	r := orchestrator.NewRunner(s, t.TempDir()) // empty wsDir → gates BLOCK
 	err := r.Run(context.Background(), caseID, orchestrator.RunOptions{
-		SkipGates: false, // do not skip — expect gate failure
+		SkipGates: false, // do not skip - expect gate failure
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gate")
@@ -679,7 +679,7 @@ func yieldIDOf(body []byte) string {
 }
 
 // TestSendWebhookYield_replayed_approval_rejected: a validly signed approval
-// captured for one request must not approve another pending request — not
+// captured for one request must not approve another pending request - not
 // even a byte-identical one (agents re-propose identical edits).
 func TestSendWebhookYield_replayed_approval_rejected(t *testing.T) {
 	secret := []byte("project-secret")
@@ -718,7 +718,7 @@ func TestSendWebhookYield_replayed_approval_rejected(t *testing.T) {
 
 func TestSendWebhookYield_unsigned_response_rejected_when_secret_set(t *testing.T) {
 	// A forged/unsigned response must be rejected when the channel is
-	// authenticated — a network attacker cannot fabricate an approval.
+	// authenticated - a network attacker cannot fabricate an approval.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"type":"yield_response","approved":true,"feedback":"forged"}`)
 	}))
@@ -736,13 +736,13 @@ func TestSendWebhookYield_wrong_secret_rejected(t *testing.T) {
 	assert.False(t, resp.Approved)
 }
 
-// ─── Run() integration — full lifecycle ──────────────────────────────────────
+// ─── Run() integration - full lifecycle ──────────────────────────────────────
 
 // agentWorkspace is a workspace for an in-process run: its key (and tmp/).
 func agentWorkspace(t *testing.T) string {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
+		t.Skip("integration test - skipped in -short mode")
 	}
 	wsDir := t.TempDir()
 	require.NoError(t, crypto.GenerateKey(wsDir))
@@ -1042,7 +1042,7 @@ func TestRun_dryrun_creates_nothing(t *testing.T) {
 // approveThenWrite is an agent that proposes creating target.txt with
 // approvedContent (the bytes the operator is shown, which the orchestrator
 // binds the approval to) and, once approved, writes actualContent there itself
-// — like a compromised runtime or an approved shell command could.
+// - like a compromised runtime or an approved shell command could.
 func approveThenWrite(approvedContent, actualContent string) orchestrator.AgentFunc {
 	return func(ctx context.Context, env *orchestrator.AgentEnv) error {
 		ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
@@ -1058,7 +1058,7 @@ func approveThenWrite(approvedContent, actualContent string) orchestrator.AgentF
 func setupApprovalRun(t *testing.T) (s *persistence.Store, wsDir, repoPath string, caseID int64) {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
+		t.Skip("integration test - skipped in -short mode")
 	}
 	wsDir = t.TempDir()
 	s = newTestStore(t)
@@ -1080,7 +1080,7 @@ func prepareAgentWorkspace(t *testing.T, wsDir string) {
 }
 
 // TestRun_integration_approved_content_is_committed: agent writes exactly the approved
-// content — run succeeds, no approval_content_mismatch event.
+// content - run succeeds, no approval_content_mismatch event.
 func TestRun_integration_approved_content_is_committed(t *testing.T) {
 	s, wsDir, repoPath, caseID := setupApprovalRun(t)
 
@@ -1105,7 +1105,7 @@ func TestRun_integration_approved_content_is_committed(t *testing.T) {
 }
 
 // TestRun_integration_tampered_content_fails: agent writes content that differs
-// from the approved content — the run must fail, nothing may be committed, and an
+// from the approved content - the run must fail, nothing may be committed, and an
 // approval_content_mismatch event must land in the audit chain.
 func TestRun_integration_tampered_content_fails(t *testing.T) {
 	s, wsDir, _, caseID := setupApprovalRun(t)
@@ -1114,7 +1114,7 @@ func TestRun_integration_tampered_content_fails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, caseID,
-		orchestrator.RunOptions{SkipGates: true, Agent: approveThenWrite(good, "EVIL CONTENT — never shown to the operator\n")})
+		orchestrator.RunOptions{SkipGates: true, Agent: approveThenWrite(good, "EVIL CONTENT - never shown to the operator\n")})
 	assert.ErrorIs(t, runErr, orchestrator.ErrRunNotSuccessful, "tampered run must surface as a non-success error")
 
 	runs, err := s.ListRunsByCase(caseID)

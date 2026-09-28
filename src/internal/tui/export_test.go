@@ -1,4 +1,4 @@
-// export_test.go — compiled only during `go test`.
+// export_test.go - compiled only during `go test`.
 // Exposes unexported symbols to the black-box test package (package tui_test).
 package tui
 

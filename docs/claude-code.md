@@ -42,7 +42,7 @@ check of the run still compares the whole worktree with what was approved.
 Some edits are refused before you see them:
 
 - an `Edit` whose text to replace does not appear **exactly once** in the file;
-- an `Edit` with `replace_all` — Claude Code is asked to change each place on its
+- an `Edit` with `replace_all` - Claude Code is asked to change each place on its
   own.
 
 If the hook cannot reach the run, or anything else goes wrong, the tool call is

@@ -1,7 +1,7 @@
 <h1 align="center">stAirCase</h1>
 
 <p align="center">
-  <strong>AI agents propose. You approve. Only what you approved is committed — and you can prove it.</strong>
+  <strong>AI agents propose. You approve. Only what you approved is committed - and you can prove it.</strong>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@ agreed to it, and whether what was committed is what was reviewed.
 **stAirCase** sits between AI agents and your repository:
 
 - the agents work in a **separate copy** of your repository, never in your checkout;
-- every change they want to make is a **proposal** that waits for a decision — by
+- every change they want to make is a **proposal** that waits for a decision - by
   you, or by a rule you wrote;
 - at the end, stAirCase commits **exactly the approved bytes** on a new branch, and
   nothing else;
@@ -35,7 +35,7 @@ evidence live in a workspace outside your repositories.
 
 ## See it work in one minute
 
-No API key and no network needed — the demo uses a stand-in model:
+No API key and no network needed - the demo uses a stand-in model:
 
 ```bash
 git clone https://github.com/b070nd/stAirCase.git
@@ -75,7 +75,7 @@ minutes.
 | **Approve your way** | in the terminal, from a script (local HTTP API), from a service (signed webhook), with rules, or with a reviewer model. |
 | **Runs stay on task** | give each story the paths it may change; anything else comes to you, and a run that keeps wandering is stopped. |
 | **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |
-| **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway — mixed in one team. Budget caps per project. |
+| **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway - mixed in one team. Budget caps per project. |
 | **Shell off by default** | agents can only ask to run commands when you allow it, and a person approves each one. |
 | **Claude Code, governed** | run Claude Code as the agent, with every tool call going through the same approvals (experimental). |
 
@@ -88,7 +88,7 @@ stAirCase is pre-1.0.
 
 ## Documentation
 
-Everything is in **[docs/](docs/README.md)** — start with [Concepts](docs/concepts.md)
+Everything is in **[docs/](docs/README.md)** - start with [Concepts](docs/concepts.md)
 (five minutes) and [Getting started](QUICKSTART.md).
 
 ## Security

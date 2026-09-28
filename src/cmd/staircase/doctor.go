@@ -29,7 +29,7 @@ func init() {
 func doctorHandler(_ *cobra.Command, _ []string) error {
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
-	fmt.Printf("🩺 stAirCase Doctor — workspace: %s\n\n", wsDir)
+	fmt.Printf("🩺 stAirCase Doctor - workspace: %s\n\n", wsDir)
 
 	allOK := true
 
@@ -37,7 +37,7 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 		if ok {
 			fmt.Printf("  ✅ %s\n", label)
 		} else {
-			fmt.Printf("  ❌ %s — %s\n", label, detail)
+			fmt.Printf("  ❌ %s - %s\n", label, detail)
 			allOK = false
 		}
 	}
@@ -67,7 +67,7 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 
 	// ── 4. Leftovers of the Python runtime ────────────────────────────────────
 	if _, err := os.Stat(filepath.Join(wsDir, "venv")); err == nil {
-		fmt.Println("  ℹ️  venv/ is from an older staircase and no longer used — you can delete it")
+		fmt.Println("  ℹ️  venv/ is from an older staircase and no longer used - you can delete it")
 	}
 
 	// ── 5. Git ────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 	if _, err := os.Stat(filepath.Join(wsDir, "tmp")); err == nil {
 		fmt.Println("  ✅ tmp/ directory")
 	} else {
-		fmt.Println("  ℹ️  tmp/ directory — created on first run")
+		fmt.Println("  ℹ️  tmp/ directory - created on first run")
 	}
 
 	fmt.Println()

@@ -134,7 +134,7 @@ func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approva
 	reject := func(why string) Approval { return Approval{Feedback: why} }
 	if req.ActionType == domain.ActionShellExec && !e.AllowShell {
 		e.host.audit("shell_exec_rejected", req)
-		return reject("shell_exec disabled — restart with --allow-shell-exec to enable")
+		return reject("shell_exec disabled - restart with --allow-shell-exec to enable")
 	}
 	e.host.audit("yield_request", req)
 	p := proposal{req: req, reply: make(chan decision, 1)}
@@ -250,7 +250,7 @@ func (h *agentHost) secret(name string) (string, error) {
 	}
 	if sec == nil {
 		outcome = "not_found"
-		return "", fmt.Errorf("secret %q not found — store it with 'staircase secret set %s'", name, name)
+		return "", fmt.Errorf("secret %q not found - store it with 'staircase secret set %s'", name, name)
 	}
 	plain, err := crypto.Decrypt(h.aesKey, sec.EncryptedValue)
 	if err != nil {

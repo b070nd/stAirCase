@@ -24,10 +24,10 @@ func TopoSort(projects []domain.Project, deps []domain.ProjectDependency) ([]dom
 	adjacency := make(map[int64][]int64)
 	for _, dep := range deps {
 		if _, ok := inDegree[dep.SourceProjectID]; !ok {
-			continue // source outside the current set — ignore
+			continue // source outside the current set - ignore
 		}
 		if _, ok := byID[dep.TargetProjectID]; !ok {
-			continue // target outside the current set — ignore external dep
+			continue // target outside the current set - ignore external dep
 		}
 		inDegree[dep.SourceProjectID]++
 		adjacency[dep.TargetProjectID] = append(adjacency[dep.TargetProjectID], dep.SourceProjectID)
@@ -65,7 +65,7 @@ func TopoSort(projects []domain.Project, deps []domain.ProjectDependency) ([]dom
 				}
 			}
 		}
-		return nil, fmt.Errorf("cycle detected in project dependency graph — involved projects: %v", cycled)
+		return nil, fmt.Errorf("cycle detected in project dependency graph - involved projects: %v", cycled)
 	}
 
 	return sorted, nil

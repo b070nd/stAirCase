@@ -69,7 +69,7 @@ func (*caseHasStoriesGate) Run(ctx Context) Result {
 	}
 	if pending == 0 {
 		return fail(name, "structural", SeverityBlock,
-			fmt.Sprintf("no PENDING user stories — use 'staircase story add %d <desc>'", ctx.CaseID))
+			fmt.Sprintf("no PENDING user stories - use 'staircase story add %d <desc>'", ctx.CaseID))
 	}
 	return pass(name, "structural", SeverityBlock, fmt.Sprintf("%d PENDING user stories", pending))
 }
@@ -90,7 +90,7 @@ func (*caseHasPRDGate) Run(ctx Context) Result {
 	}
 	if c.PrdJSON == "" {
 		return warn(name, "structural",
-			"no PRD context — agents run without product requirements; use 'staircase case set-prd'")
+			"no PRD context - agents run without product requirements; use 'staircase case set-prd'")
 	}
 	return pass(name, "structural", SeverityWarn, "PRD context present")
 }
@@ -115,7 +115,7 @@ func (*topologyExistsGate) Run(ctx Context) Result {
 	}
 	if topo == nil {
 		return fail(name, "structural", SeverityBlock,
-			"no topology — use 'staircase topology register'")
+			"no topology - use 'staircase topology register'")
 	}
 	return pass(name, "structural", SeverityBlock,
 		fmt.Sprintf("topology v%d (id=%d, supervisor=%q)", topo.Version, topo.ID, topo.SupervisorName))
@@ -145,7 +145,7 @@ func (*topologyHasAgentsGate) Run(ctx Context) Result {
 	}
 	if len(agents) == 0 {
 		return fail(name, "structural", SeverityBlock,
-			"topology has no agents — use 'staircase topology agent add'")
+			"topology has no agents - use 'staircase topology agent add'")
 	}
 	return pass(name, "structural", SeverityBlock, fmt.Sprintf("%d agent nodes", len(agents)))
 }
@@ -237,7 +237,7 @@ var implementedRuntimes = map[string]bool{"langgraph": true}
 
 // recognisedRuntimes are accepted by the schema CHECK constraint, but staircase
 // runs every topology with its built-in agent runtime. Allowing them silently
-// would be a false affordance — we emit a WARN so the operator sees it first.
+// would be a false affordance - we emit a WARN so the operator sees it first.
 var recognisedRuntimes = map[string]bool{"crewai": true, "autogen": true}
 
 type topologyRuntimeValidGate struct{}
@@ -262,12 +262,12 @@ func (*topologyRuntimeValidGate) Run(ctx Context) Result {
 	}
 	if recognisedRuntimes[t.RuntimeType] {
 		return warn(name, "structural",
-			fmt.Sprintf("runtime_type=%q is registered but not yet executable — "+
+			fmt.Sprintf("runtime_type=%q is registered but not yet executable - "+
 				"the code generator will raise NotImplementedError at run time; "+
 				"only 'langgraph' is currently supported", t.RuntimeType))
 	}
 	return fail(name, "structural", SeverityBlock,
-		fmt.Sprintf("unknown runtime_type %q — valid values: langgraph (implemented), crewai/autogen (future)", t.RuntimeType))
+		fmt.Sprintf("unknown runtime_type %q - valid values: langgraph (implemented), crewai/autogen (future)", t.RuntimeType))
 }
 
 // ─── topology.no_orphan_agents ────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# lib.sh — helpers shared by run-demo.sh and smoke.sh (sourced, not run).
+# lib.sh - helpers shared by run-demo.sh and smoke.sh (sourced, not run).
 
 say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 note() { printf '  \033[2m%s\033[0m\n' "$*"; }

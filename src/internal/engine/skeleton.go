@@ -87,7 +87,7 @@ func TokenEstimate(text string) int {
 func WarnTokenBudget(text string) string {
 	est := TokenEstimate(text)
 	if est > tokenBudgetWarn {
-		return fmt.Sprintf("⚠️  Context is ~%dk tokens (exceeds 100k) — this may be slow or costly.", est/1000)
+		return fmt.Sprintf("⚠️  Context is ~%dk tokens (exceeds 100k) - this may be slow or costly.", est/1000)
 	}
 	return ""
 }
@@ -116,7 +116,7 @@ func loadIgnorePatterns(repoPath string) ([]string, error) {
 		f, err := os.Open(filepath.Join(repoPath, name))
 		if err != nil {
 			if !os.IsNotExist(err) {
-				// File exists but is unreadable — record the error so the
+				// File exists but is unreadable - record the error so the
 				// caller can surface it rather than silently skipping patterns.
 				errs = append(errs, fmt.Sprintf("%s: %v", name, err))
 			}

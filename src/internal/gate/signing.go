@@ -1,6 +1,6 @@
 package gate
 
-// gates.json integrity (MCP signed tool ecosystem — P3 precursor).
+// gates.json integrity (MCP signed tool ecosystem - P3 precursor).
 //
 // Plugin gate definitions in $wsDir/gates.json are loaded and executed as
 // subprocesses.  Without a signature the operator cannot detect whether an
@@ -10,8 +10,8 @@ package gate
 //
 // Workflow:
 //
-//	staircase gate sign   — signs gates.json → gates.json.sig
-//	staircase gate verify — verifies the signature, exits non-zero on failure
+//	staircase gate sign   - signs gates.json → gates.json.sig
+//	staircase gate verify - verifies the signature, exits non-zero on failure
 //
 // RunAll warns when the signature is absent and returns a gate failure when
 // the signature is present but invalid.
@@ -33,13 +33,13 @@ const GatesSigFile = "gates.json.sig"
 // against the current gates.json content using the workspace signing public key.
 //
 // Returns (false, nil) when either gates.json or the signature sidecar are
-// absent — caller should warn but continue.  Returns (true, nil) when valid.
+// absent - caller should warn but continue.  Returns (true, nil) when valid.
 // Returns (true, err) when the sidecar is present but the signature is invalid.
 func VerifyGatesSignature(wsDir string) (sigPresent bool, err error) {
 	gatesPath := filepath.Join(wsDir, "gates.json")
 	data, err := os.ReadFile(gatesPath)
 	if os.IsNotExist(err) {
-		return false, nil // no gates file — nothing to verify
+		return false, nil // no gates file - nothing to verify
 	}
 	if err != nil {
 		return false, fmt.Errorf("read gates.json for verification: %w", err)
@@ -48,7 +48,7 @@ func VerifyGatesSignature(wsDir string) (sigPresent bool, err error) {
 	sigPath := filepath.Join(wsDir, GatesSigFile)
 	sigHex, err := os.ReadFile(sigPath)
 	if os.IsNotExist(err) {
-		return false, nil // unsigned — caller warns
+		return false, nil // unsigned - caller warns
 	}
 	if err != nil {
 		return true, fmt.Errorf("read gates signature: %w", err)
@@ -71,7 +71,7 @@ func checkGatesSignature(wsDir string, report *Report) {
 	if err != nil {
 		report.Gates = append(report.Gates, fail(
 			"gates.json-integrity", "security", SeverityBlock,
-			fmt.Sprintf("gates.json tampered — re-sign with 'staircase gate sign': %v", err),
+			fmt.Sprintf("gates.json tampered - re-sign with 'staircase gate sign': %v", err),
 		))
 		report.Summary.Fail++
 		report.Overall = StatusFail // must be set here; RunAll checks this before executing plugins
@@ -86,13 +86,13 @@ func checkGatesSignature(wsDir string, report *Report) {
 		if _, keyErr := os.Stat(filepath.Join(wsDir, crypto.SigningPubFile)); keyErr == nil {
 			report.Gates = append(report.Gates, fail(
 				"gates.json-integrity", "security", SeverityBlock,
-				"gates.json is unsigned but this workspace has a signing key — run 'staircase gate sign'",
+				"gates.json is unsigned but this workspace has a signing key - run 'staircase gate sign'",
 			))
 			report.Summary.Fail++
 			report.Overall = StatusFail
-			obs.Log.Error("gates.json unsigned in a signing-enabled workspace — plugin gates blocked")
+			obs.Log.Error("gates.json unsigned in a signing-enabled workspace - plugin gates blocked")
 			return
 		}
-		obs.Log.Warn("gates.json is unsigned — run 'staircase gate sign' to enable tamper detection")
+		obs.Log.Warn("gates.json is unsigned - run 'staircase gate sign' to enable tamper detection")
 	}
 }

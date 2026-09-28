@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh — dispatcher for fixture repository builders.
+# build.sh - dispatcher for fixture repository builders.
 #
 # Usage: bash build.sh <fixture-name>
 #        SOURCE_DATE_EPOCH=1700000000 bash build.sh all

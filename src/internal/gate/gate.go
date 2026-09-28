@@ -1,10 +1,10 @@
 // Package gate implements the stAirCase pre-run quality gate system.
 //
 // Architecture:
-//   - Gate     — interface each check implements (Name, Category, Severity, Run)
-//   - Register — adds a gate to the global registry (called from each file's init)
-//   - RunAll   — executes every registered gate and returns a Report
-//   - Report   — JSON-serialisable, machine- and human-readable result set
+//   - Gate     - interface each check implements (Name, Category, Severity, Run)
+//   - Register - adds a gate to the global registry (called from each file's init)
+//   - RunAll   - executes every registered gate and returns a Report
+//   - Report   - JSON-serialisable, machine- and human-readable result set
 //
 // New gates: implement the Gate interface and call Register(&myGate{}) in an init()
 // function inside any file in this package. No other wiring required.
@@ -143,7 +143,7 @@ func fail(name, category string, sev Severity, msg string) Result {
 	return Result{Name: name, Category: category, Severity: sev, Status: StatusFail, Message: msg}
 }
 
-// warn always uses SeverityWarn — advisory failures never block a run.
+// warn always uses SeverityWarn - advisory failures never block a run.
 func warn(name, category, msg string) Result {
 	return Result{Name: name, Category: category, Severity: SeverityWarn, Status: StatusWarn, Message: msg}
 }

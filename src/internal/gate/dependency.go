@@ -60,7 +60,7 @@ func (*depDepsCompletedGate) Run(ctx Context) Result {
 	var stale, missing []string
 	for _, dep := range deps {
 		// Fetch the upstream project's *current* topology version so we can
-		// verify that a SUCCESS run was executed against it — not an outdated topology.
+		// verify that a SUCCESS run was executed against it - not an outdated topology.
 		upstreamTopo, _ := ctx.Store.GetLatestTopology(dep.TargetProjectID)
 		if upstreamTopo == nil {
 			missing = append(missing, fmt.Sprintf("project %d (no topology)", dep.TargetProjectID))

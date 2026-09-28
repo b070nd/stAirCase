@@ -151,7 +151,7 @@ func TestRotateKey_resume_pending_already_committed(t *testing.T) {
 		NewKeyPath: tmpPath,
 	}))
 
-	// tryDecryptAny returns true for committedKey — DB already committed.
+	// tryDecryptAny returns true for committedKey - DB already committed.
 	require.NoError(t, RotateKey(dir, noopReencrypt, func(key []byte) bool {
 		return len(key) == 32 && key[0] == 0xCC
 	}))

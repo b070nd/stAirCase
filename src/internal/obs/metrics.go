@@ -3,7 +3,7 @@ package obs
 import "github.com/prometheus/client_golang/prometheus"
 
 // Prometheus metrics exposed by stAirCase (CHECK 10.2.1).
-// Labels are bounded-cardinality only — no run_id, user_id, or UUID-typed values (CHECK 10.2.2).
+// Labels are bounded-cardinality only - no run_id, user_id, or UUID-typed values (CHECK 10.2.2).
 var (
 	// YieldsTotal counts yield_request outcomes by action type and operator decision.
 	YieldsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{

@@ -40,7 +40,7 @@ var caseNewCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create case: %w", err)
 		}
-		fmt.Printf("✅ Case #%d created (project #%d) — status: %s\n", c.ID, projectID, c.Status)
+		fmt.Printf("✅ Case #%d created (project #%d) - status: %s\n", c.ID, projectID, c.Status)
 		fmt.Printf("   Set a PRD with: staircase case set-prd %d <prd.json>\n", c.ID)
 		return nil
 	},
@@ -102,7 +102,7 @@ var caseListCmd = &cobra.Command{
 
 		rows := make([][]string, len(cases))
 		for i, c := range cases {
-			prd := "—"
+			prd := "-"
 			if c.PrdJSON != "" {
 				prd = fmt.Sprintf("%d bytes", len(c.PrdJSON))
 			}
@@ -186,7 +186,7 @@ var caseRollbackCmd = &cobra.Command{
 	Short: "Discard the latest run of a case: remove its worktree and delete its branch",
 	Long: `Discards the most recent run of a case: removes its worktree (kept after a
 failed run) and deletes its staircase/run-N branch. Your checkout is not
-touched — runs never modify it. The run record and its audit chain are kept;
+touched - runs never modify it. The run record and its audit chain are kept;
 a rolled_back event records who discarded it, and the case returns to PENDING
 so it can be run again. A RUNNING run must be stopped first.`,
 	Args: cobra.ExactArgs(1),
@@ -214,7 +214,7 @@ so it can be run again. A RUNNING run must be stopped first.`,
 		}
 		lastRun := runs[0] // ListRunsByCase orders by id DESC
 		if lastRun.Status == persistence.RunStatusRunning {
-			return fmt.Errorf("run #%d is still RUNNING — stop it first (Ctrl-C in its terminal); "+
+			return fmt.Errorf("run #%d is still RUNNING - stop it first (Ctrl-C in its terminal); "+
 				"stale records are reaped by 'staircase run --reconcile'", lastRun.ID)
 		}
 		project, err := store.GetProject(caseRec.ProjectID)
@@ -222,7 +222,7 @@ so it can be run again. A RUNNING run must be stopped first.`,
 			return fmt.Errorf("project #%d not found", caseRec.ProjectID)
 		}
 		if project.SourcePath == "" {
-			return fmt.Errorf("project #%d has no source_path configured — nothing to roll back", project.ID)
+			return fmt.Errorf("project #%d has no source_path configured - nothing to roll back", project.ID)
 		}
 
 		wt := filepath.Join(viper.GetString("STAIRCASE_DIR"), "worktrees", fmt.Sprintf("run-%d", lastRun.ID))

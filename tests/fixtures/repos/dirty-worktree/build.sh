@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh — build the dirty-worktree fixture repository tarball.
+# build.sh - build the dirty-worktree fixture repository tarball.
 #
 # Creates a git repository that has an uncommitted staged file.
 # Used by pre-flight tests (E2E-009) to verify that staircase refuses to
@@ -49,7 +49,7 @@ pre-flight tests can verify the dirty-tree refusal code path (E2E-009).
 DIRTY
 
 git -C "$REPO" add DIRTY.md
-# Do NOT commit — the point is that it stays staged.
+# Do NOT commit - the point is that it stays staged.
 
 # Verify the repo is dirty.
 STATUS="$(git -C "$REPO" status --porcelain)"

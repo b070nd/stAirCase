@@ -8,7 +8,7 @@ import (
 // Using typed string constants rather than bare literals prevents silent typos
 // from being stored in the database (e.g. "COMPLTEED" instead of "COMPLETED").
 
-// Case status values — enforced by CHECK constraint on new databases.
+// Case status values - enforced by CHECK constraint on new databases.
 const (
 	CaseStatusPending   = "PENDING"
 	CaseStatusRunning   = "RUNNING"
@@ -16,7 +16,7 @@ const (
 	CaseStatusFailed    = "FAILED"
 )
 
-// Run status values — enforced by CHECK constraint on new databases.
+// Run status values - enforced by CHECK constraint on new databases.
 const (
 	RunStatusRunning = "RUNNING"
 	RunStatusSuccess = "SUCCESS"
@@ -24,7 +24,7 @@ const (
 	RunStatusKilled  = "KILLED"
 )
 
-// UserStory status values — enforced by CHECK constraint on new databases.
+// UserStory status values - enforced by CHECK constraint on new databases.
 const (
 	StoryStatusPending     = "PENDING"
 	StoryStatusImplemented = "IMPLEMENTED"

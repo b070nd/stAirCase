@@ -71,7 +71,7 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 // called by LoadKey so that any command that reads the workspace key
 // self-heals a crash that left the DB committed but the key file unreplaced.
 //
-// "pending" journals are not touched here — their resolution requires
+// "pending" journals are not touched here - their resolution requires
 // tryDecryptAny and is handled exclusively by RotateKey.
 func ResumeIfCommitted(wsDir string) error {
 	journalPath := filepath.Join(wsDir, rotateJournalFile)

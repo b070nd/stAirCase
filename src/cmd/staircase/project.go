@@ -42,7 +42,7 @@ var projectAddCmd = &cobra.Command{
 			return fmt.Errorf("lookup vendor: %w", err)
 		}
 		if vendor == nil {
-			return fmt.Errorf("vendor %q not found — register it first with 'staircase vendor add %s'", vendorName, vendorName)
+			return fmt.Errorf("vendor %q not found - register it first with 'staircase vendor add %s'", vendorName, vendorName)
 		}
 
 		p, err := store.CreateProject(vendor.ID, projectName, projectSourcePath)
@@ -137,7 +137,7 @@ var projectSetWebhookCmd = &cobra.Command{
 	Short: "Set (or clear) the HITL webhook URL for a project",
 	Long: `Set (or clear) the HITL webhook URL for a project.
 
-To authenticate the webhook channel (strongly recommended — otherwise a network
+To authenticate the webhook channel (strongly recommended - otherwise a network
 attacker can forge approvals), store a shared HMAC secret under the reserved key:
 
     printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <project-id>
@@ -246,7 +246,7 @@ var projectConfigShowCmd = &cobra.Command{
 		}
 
 		if model == "" {
-			model = "(unset — falls back to CLI default)"
+			model = "(unset - falls back to CLI default)"
 		}
 		budgetStr := "(no cap)"
 		if budget > 0 {

@@ -165,7 +165,7 @@ type violation struct{ event, file, detail string }
 
 // verify compares the worktree with the approved state: HEAD is still the
 // base commit (the agent made no commits of its own), every approved path
-// holds exactly its approved bytes (or is gone), and nothing else changed —
+// holds exactly its approved bytes (or is gone), and nothing else changed -
 // in the working tree or the index.
 func (a *approvals) verify() ([]violation, error) {
 	var out []violation

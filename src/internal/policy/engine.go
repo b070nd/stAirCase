@@ -18,12 +18,12 @@
 //
 // Rule semantics (all conditions are AND-ed within a rule):
 //
-//	ActionTypes     — if non-empty, the yield's ActionType must be in the list.
-//	MinConfidence   — if non-zero, the yield's ConfidenceScore must be >= this.
-//	AllowedExtensions — if non-empty, every file in ProposedEdits must have an
+//	ActionTypes     - if non-empty, the yield's ActionType must be in the list.
+//	MinConfidence   - if non-zero, the yield's ConfidenceScore must be >= this.
+//	AllowedExtensions - if non-empty, every file in ProposedEdits must have an
 //	                    extension from this list (prevents auto-approval of e.g.
 //	                    go/py source from a high-confidence shell_exec rule).
-//	Effect          — "approve" or "reject".  Defaults to "approve" when absent.
+//	Effect          - "approve" or "reject".  Defaults to "approve" when absent.
 package policy
 
 import (
@@ -154,7 +154,7 @@ func LoadEngine(wsDir string) (*Engine, error) {
 				len(r.AllowedExtensions) == 0 &&
 				len(r.AgentNames) == 0 {
 				return nil, fmt.Errorf(
-					"policy rule #%d is a blanket-deny (rejects everything) — "+
+					"policy rule #%d is a blanket-deny (rejects everything) - "+
 						"set allow_blanket_deny: true to permit this", i,
 				)
 			}
@@ -170,14 +170,14 @@ const PolicySigFile = "policy.json.sig"
 // against the current policy.json content using the workspace signing public key.
 //
 // Returns (false, nil) when either policy.json or the signature sidecar are
-// absent — the caller should warn the operator but continue.  Returns
+// absent - the caller should warn the operator but continue.  Returns
 // (true, nil) when the signature is present and valid.  Returns (true, err)
 // when the signature is present but invalid (tamper detected).
 func VerifyPolicySignature(wsDir string) (sigPresent bool, err error) {
 	policyPath := filepath.Join(wsDir, "policy.json")
 	data, err := os.ReadFile(policyPath)
 	if os.IsNotExist(err) {
-		return false, nil // no policy file — nothing to verify
+		return false, nil // no policy file - nothing to verify
 	}
 	if err != nil {
 		return false, fmt.Errorf("read policy.json for verification: %w", err)
@@ -186,7 +186,7 @@ func VerifyPolicySignature(wsDir string) (sigPresent bool, err error) {
 	sigPath := filepath.Join(wsDir, PolicySigFile)
 	sigHex, err := os.ReadFile(sigPath)
 	if os.IsNotExist(err) {
-		return false, nil // no sig sidecar — unsigned policy
+		return false, nil // no sig sidecar - unsigned policy
 	}
 	if err != nil {
 		return true, fmt.Errorf("read policy signature: %w", err)
@@ -205,18 +205,18 @@ func VerifyPolicySignature(wsDir string) (sigPresent bool, err error) {
 // CheckLimits returns (true, reason) when the supplied counters have reached or
 // exceeded one of the Engine's session limits (CHECK 7.2.1).
 // Returns (false, "") when no limit is breached.
-// Callers must route to human operator review when the result is true — the
+// Callers must route to human operator review when the result is true - the
 // limit exhaustion must never be silently allowed or silently denied (CHECK 7.2.2).
 func (e *Engine) CheckLimits(autoApproved, totalYields int) (exhausted bool, reason string) {
 	if e.Limits.MaxAutoApproved > 0 && autoApproved >= e.Limits.MaxAutoApproved {
 		return true, fmt.Sprintf(
-			"auto-approval limit reached (%d/%d) — operator review required",
+			"auto-approval limit reached (%d/%d) - operator review required",
 			autoApproved, e.Limits.MaxAutoApproved,
 		)
 	}
 	if e.Limits.MaxTotalYields > 0 && totalYields >= e.Limits.MaxTotalYields {
 		return true, fmt.Sprintf(
-			"total yield limit reached (%d/%d) — operator review required",
+			"total yield limit reached (%d/%d) - operator review required",
 			totalYields, e.Limits.MaxTotalYields,
 		)
 	}
@@ -245,7 +245,7 @@ type PolicyDecision struct {
 // review and approve every shell command regardless of policy configuration.
 func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 	// Hard invariant: shell commands must always reach a human operator.
-	// No policy rule can override this — a broad auto-approve rule could
+	// No policy rule can override this - a broad auto-approve rule could
 	// otherwise silently execute arbitrary OS commands.
 	if req.ActionType == domain.ActionShellExec {
 		return PolicyDecision{}

@@ -4,8 +4,8 @@ package crypto
 //
 // Key files:
 //
-//	$STAIRCASE_DIR/.signing.key  — 64-byte Ed25519 private key (seed+public, mode 0600)
-//	$STAIRCASE_DIR/.signing.pub  — 32-byte Ed25519 public  key (mode 0644)
+//	$STAIRCASE_DIR/.signing.key  - 64-byte Ed25519 private key (seed+public, mode 0600)
+//	$STAIRCASE_DIR/.signing.pub  - 32-byte Ed25519 public  key (mode 0644)
 //
 // Both are stored as raw bytes (not PEM/base64) to keep the code simple and the
 // file sizes predictable.  The key pair is generated once by `staircase init`.
@@ -68,7 +68,7 @@ func LoadSigningKey(wsDir string) (ed25519.PrivateKey, error) {
 		}
 		if perm := info.Mode().Perm(); perm&0o177 != 0 {
 			return nil, fmt.Errorf(
-				"signing key %q has insecure permissions %04o (expected 0600) — fix with: chmod 600 %q",
+				"signing key %q has insecure permissions %04o (expected 0600) - fix with: chmod 600 %q",
 				keyPath, perm, keyPath,
 			)
 		}

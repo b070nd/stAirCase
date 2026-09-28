@@ -8,7 +8,7 @@ type ModelPricing struct {
 	OutputPer1M float64
 }
 
-// pricingTable — prices approximate, last updated 2026-03-25.
+// pricingTable - prices approximate, last updated 2026-03-25.
 var pricingTable = map[string]ModelPricing{
 	// Anthropic Claude
 	"claude-opus-4-6":   {15.00, 75.00},

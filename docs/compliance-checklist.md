@@ -1,4 +1,4 @@
-# stAirCase — Implementation Protocol Checklist
+# stAirCase - Implementation Protocol Checklist
 
 > **Written for the earlier Python/LangGraph runtime.** Agents now run in-process
 > in the `staircase` binary: there is no Python process, venv, IPC socket or
@@ -8,7 +8,7 @@
 
 **Module:** `github.com/b070nd/stAirCase`
 **Origin:** internal requirement notes (not published). The `CHECK x.y.z` ids in code comments refer to the items below.
-**Last audited:** 2026-05-21 — a historical record: statuses and evidence are as of that audit and are not updated per change.
+**Last audited:** 2026-05-21 - a historical record: statuses and evidence are as of that audit and are not updated per change.
 
 ---
 
@@ -20,7 +20,7 @@
 
 ---
 
-## §1 — System Identity & Zero-Trace Policy
+## §1 - System Identity & Zero-Trace Policy
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -31,12 +31,12 @@
 
 ---
 
-## §2 — Environment & Toolchain
+## §2 - Environment & Toolchain
 
 ### 2.1 Go Requirements
 | Requirement | Status | Evidence |
 |---|---|---|
-| Go 1.22+ | ⚠️ | `go.mod: go 1.26.1`; govulncheck reports 6 active CVEs fixed in 1.26.2/1.26.3 — upgrade pending |
+| Go 1.22+ | ⚠️ | `go.mod: go 1.26.1`; govulncheck reports 6 active CVEs fixed in 1.26.2/1.26.3 - upgrade pending |
 | `CGO_ENABLED=0` | ✅ | `modernc.org/sqlite v1.47.0` |
 | Cobra CLI framework | ✅ | All cmd handlers |
 | Viper config | ✅ | `STAIRCASE_DIR` lookup |
@@ -73,7 +73,7 @@
 
 ---
 
-## §3 — Data & State Management
+## §3 - Data & State Management
 
 ### 3.1 SQLite Schema
 | Table | Status | Notes |
@@ -115,7 +115,7 @@
 
 ---
 
-## §4 — Execution & Business Logic
+## §4 - Execution & Business Logic
 
 ### 4.1 Compile Pipeline (Context-Hub Pattern)
 | Requirement | Status | Evidence |
@@ -123,7 +123,7 @@
 | DAG resolution (topological sort) | ✅ | `engine.TopoSort` (Kahn's algorithm) |
 | Cycle detection with named projects | ✅ | `TestTopoSort_cycle_error_names_involved_projects` |
 | Multi-project transitive compilation | ✅ | `resolveProjectSet` in `compile.go` |
-| Repo Skeletonization (`RepoMap`) | ✅ | `engine.RepoMap` — directory tree + function signatures |
+| Repo Skeletonization (`RepoMap`) | ✅ | `engine.RepoMap` - directory tree + function signatures |
 | `.gitignore` / `.staircaseignore` respect | ✅ | `loadIgnorePatterns` |
 | `**` glob support in ignore files | ✅ | `matchGlob` with multi-segment `**` expansion |
 | Semantic XML packing (`<repo>…</repo>`) | ✅ | `PackXML`; `<context>` wrapper in `compile.go` |
@@ -165,7 +165,7 @@
 ### 4.3 Maintenance & Graceful Teardown
 | Requirement | Status | Evidence |
 |---|---|---|
-| `staircase clean` — GC `tmp/` scripts + sockets | ✅ | `cleanHandler`: removes `*.py` + `*.sock` |
+| `staircase clean` - GC `tmp/` scripts + sockets | ✅ | `cleanHandler`: removes `*.py` + `*.sock` |
 | `staircase clean --aggressive` | ✅ | Venv prune + stale branches + flagged cases |
 | Stale `staircase/run-*` branches older than 30 days | ✅ | `pruneRepoBranches` with 30-day cutoff |
 | `--keep-failed` forensic preservation | ✅ | `preservedRunIDs` set in `cleanHandler` |
@@ -177,7 +177,7 @@
 
 ---
 
-## §5 — Security Model
+## §5 - Security Model
 
 | Control | Status | Notes |
 |---|---|---|
@@ -207,7 +207,7 @@
 
 ---
 
-## §6 — Quality Gate System (17 gates)
+## §6 - Quality Gate System (17 gates)
 
 ### Structural (9)
 | Gate | Severity | Status |
@@ -247,7 +247,7 @@
 
 ---
 
-## §7 — Test Coverage
+## §7 - Test Coverage
 
 | Package | Coverage | Type | Notes |
 |---|---|---|---|
@@ -266,12 +266,12 @@
 | `internal/audit` | 90.9% | Unit | Checkpoint NDJSON, signing, verify |
 | `internal/monitor` | 95.7% | Unit | Monitor display |
 | `cmd/staircase` | 22.4% | E2E | Workspace bootstrap, compile+sidecar, gate blocking/passing, secret lifecycle |
-| `tests/conformance` | — | Conformance | IPC schema corpus (Go + Python) |
+| `tests/conformance` | - | Conformance | IPC schema corpus (Go + Python) |
 | **Total** | **76.6%** | | **538 tests · 0 failures · 0 skips** |
 
 ---
 
-## §8 — Known Gaps & Future Work
+## §8 - Known Gaps & Future Work
 
 | ID | Priority | Description |
 |---|---|---|
@@ -290,7 +290,7 @@
 
 ---
 
-## §9 — Implementation Protocol (New Feature Checklist)
+## §9 - Implementation Protocol (New Feature Checklist)
 
 When adding a new feature to stAirCase, verify each item before marking the feature complete:
 

@@ -128,7 +128,7 @@ func (p Plan) Validate() error {
 		}
 		for _, t := range a.Tools {
 			if !builtinTools[t] {
-				errs = append(errs, fmt.Errorf("agent %q: unknown tool %q — only the built-in tools exist", a.Name, t))
+				errs = append(errs, fmt.Errorf("agent %q: unknown tool %q - only the built-in tools exist", a.Name, t))
 			}
 		}
 	}
@@ -174,10 +174,10 @@ func Load(path string) (Plan, error) {
 	}
 	want, err := os.ReadFile(path + ".sha256")
 	if err != nil {
-		return p, fmt.Errorf("plan has no checksum — recompile: %w", err)
+		return p, fmt.Errorf("plan has no checksum - recompile: %w", err)
 	}
 	if sum := sha256.Sum256(b); hex.EncodeToString(sum[:]) != strings.TrimSpace(string(want)) {
-		return p, errors.New("plan was modified after compile — recompile")
+		return p, errors.New("plan was modified after compile - recompile")
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -186,7 +186,7 @@ func Load(path string) (Plan, error) {
 	}
 	p.Digest = strings.TrimSpace(string(want))
 	if p.Version != Version {
-		return p, fmt.Errorf("plan version %d, this staircase runs version %d — recompile", p.Version, Version)
+		return p, fmt.Errorf("plan version %d, this staircase runs version %d - recompile", p.Version, Version)
 	}
 	return p, p.Validate()
 }

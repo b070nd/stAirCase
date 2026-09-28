@@ -101,7 +101,7 @@ func TestTools_refusals_reach_the_model(t *testing.T) {
 }
 
 // TestTools_read_and_list_stay_inside_the_project catches reads escaping the
-// worktree — by "..", or by a symlink pointing outside it.
+// worktree - by "..", or by a symlink pointing outside it.
 func TestTools_read_and_list_stay_inside_the_project(t *testing.T) {
 	root, outside := t.TempDir(), filepath.Join(t.TempDir(), "secret.txt")
 	require.NoError(t, os.WriteFile(outside, []byte("outside"), 0o644))

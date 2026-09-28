@@ -17,7 +17,7 @@ import (
 
 // pathEscapeAgent is a hostile agent: it proposes creating relFile, a path
 // outside the project root, and fails the run if that is ever approved. The
-// orchestrator is the trust boundary — no agent can be relied on to police paths.
+// orchestrator is the trust boundary - no agent can be relied on to police paths.
 func pathEscapeAgent(relFile string) orchestrator.AgentFunc {
 	return func(ctx context.Context, env *orchestrator.AgentEnv) error {
 		ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",

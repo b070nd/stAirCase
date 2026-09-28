@@ -69,8 +69,8 @@ func TestOpenAI_speaks_chat_completions(t *testing.T) {
 	assert.JSONEq(t, `"not json"`, string(resp.Message.ToolCalls[1].Arguments), "malformed arguments stay representable")
 }
 
-// TestAnthropic_speaks_messages catches a request the Messages API rejects —
-// system prompt placement, tool results as user blocks, one turn per role —
+// TestAnthropic_speaks_messages catches a request the Messages API rejects -
+// system prompt placement, tool results as user blocks, one turn per role -
 // and a reply mapped wrong.
 func TestAnthropic_speaks_messages(t *testing.T) {
 	srv := fakeAPI(t, "/v1/messages", func(r *http.Request, body map[string]any) {

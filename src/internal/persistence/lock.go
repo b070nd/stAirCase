@@ -1,6 +1,6 @@
 //go:build !windows
 
-// Package persistence — RotationLock provides a filesystem advisory lock that
+// Package persistence - RotationLock provides a filesystem advisory lock that
 // prevents concurrent key-rotation operations (CHECK 4.3.3).
 package persistence
 

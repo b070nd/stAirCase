@@ -31,22 +31,22 @@ func (*runtimePlanCompiledGate) Category() string   { return "runtime" }
 func (*runtimePlanCompiledGate) Severity() Severity { return SeverityBlock }
 
 // Run checks that the case has a plan that will run as compiled: present,
-// unmodified, of this staircase's plan version, valid, for this case — and
+// unmodified, of this staircase's plan version, valid, for this case - and
 // warns when the topology changed after compile.
 func (*runtimePlanCompiledGate) Run(ctx Context) Result {
 	const name = "runtime.plan_compiled"
 	p, err := plan.Load(filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID)))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("no compiled plan — run 'staircase compile %d'", ctx.CaseID))
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("no compiled plan - run 'staircase compile %d'", ctx.CaseID))
 	case err != nil:
-		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan cannot run: %v — run 'staircase compile %d --force'", err, ctx.CaseID))
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan cannot run: %v - run 'staircase compile %d --force'", err, ctx.CaseID))
 	case p.CaseID != ctx.CaseID:
-		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was compiled for case #%d — run 'staircase compile %d --force'", p.CaseID, ctx.CaseID))
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was compiled for case #%d - run 'staircase compile %d --force'", p.CaseID, ctx.CaseID))
 	}
 	if c, _ := ctx.Store.GetCase(ctx.CaseID); c != nil {
 		if cur, _ := ctx.Store.GetLatestTopology(c.ProjectID); cur != nil && p.TopologyVersion < cur.Version {
-			return warn(name, "runtime", fmt.Sprintf("plan was compiled for topology v%d but current topology is v%d — re-run 'staircase compile %d --force'",
+			return warn(name, "runtime", fmt.Sprintf("plan was compiled for topology v%d but current topology is v%d - re-run 'staircase compile %d --force'",
 				p.TopologyVersion, cur.Version, ctx.CaseID))
 		}
 	}
@@ -81,7 +81,7 @@ func (*runtimePlanPinnedGate) Run(ctx Context) Result {
 		return skip(name, "runtime", SeverityBlock, "no usable plan (see runtime.plan_compiled)")
 	}
 	if p.BlueprintHash != hash {
-		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was not compiled from blueprint %.12s — run 'staircase compile %d --force' to recompile", hash, ctx.CaseID))
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("plan was not compiled from blueprint %.12s - run 'staircase compile %d --force' to recompile", hash, ctx.CaseID))
 	}
 	stored, err := ctx.Store.FindBlueprint(hash)
 	if err != nil {
@@ -95,7 +95,7 @@ func (*runtimePlanPinnedGate) Run(ctx Context) Result {
 		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("blueprint %.12s: %v", hash, err))
 	}
 	if err := b.Check(p, slug); err != nil {
-		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("case #%d drifted from blueprint %s %.12s (%v) — re-bind the project with 'staircase project bind'", ctx.CaseID, b.Name, hash, err))
+		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("case #%d drifted from blueprint %s %.12s (%v) - re-bind the project with 'staircase project bind'", ctx.CaseID, b.Name, hash, err))
 	}
 	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan is blueprint %s %.12s, case %s", b.Name, hash, slug))
 }
@@ -143,7 +143,7 @@ func (*runtimeNoConcurrentRunGate) Run(ctx Context) Result {
 	for _, r := range runs {
 		if r.Status == persistence.RunStatusRunning {
 			return fail(name, "runtime", SeverityBlock,
-				fmt.Sprintf("run #%d is already RUNNING for this case — wait or kill it", r.ID))
+				fmt.Sprintf("run #%d is already RUNNING for this case - wait or kill it", r.ID))
 		}
 	}
 	return pass(name, "runtime", SeverityBlock, "no concurrent runs")
@@ -165,12 +165,12 @@ func (*runtimeGitAvailableGate) Run(ctx Context) Result {
 	}
 	p, _ := ctx.Store.GetProject(c.ProjectID)
 	if p == nil || p.SourcePath == "" {
-		// No source path — git not required for this project.
+		// No source path - git not required for this project.
 		return pass(name, "runtime", SeverityBlock, "no source path, git not required")
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		return fail(name, "runtime", SeverityBlock,
-			"git not found in PATH — install git or set source_path to empty")
+			"git not found in PATH - install git or set source_path to empty")
 	}
 	return pass(name, "runtime", SeverityBlock, "git found in PATH")
 }

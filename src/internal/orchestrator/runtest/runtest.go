@@ -62,7 +62,7 @@ func (r Result) OnBranch(file string) (string, error) {
 func Run(t testing.TB, o Options) Result {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
+		t.Skip("integration test - skipped in -short mode")
 	}
 	wsDir, err := os.MkdirTemp("", "strc-rt-") // short: some paths derive from it
 	must(t, err)

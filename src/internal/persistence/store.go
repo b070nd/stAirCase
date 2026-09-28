@@ -987,7 +987,7 @@ func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseS
 	err = tx.QueryRow(`SELECT id, COALESCE(git_commit_hash,'') FROM runs WHERE case_id = ? AND status = ? ORDER BY id DESC LIMIT 1`,
 		caseID, RunStatusSuccess).Scan(&runID, &commit)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, "", fmt.Errorf("case %d has no successful run — accept stories only after verifying delivered work", caseID)
+		return 0, "", fmt.Errorf("case %d has no successful run - accept stories only after verifying delivered work", caseID)
 	} else if err != nil {
 		return 0, "", fmt.Errorf("accept story: load run: %w", err)
 	}
@@ -1100,7 +1100,7 @@ func ComputeEventHash(payload, prevHash, gitCommitHash string) string {
 
 // AppendEventLog writes a tamper-proof entry: hash = SHA-256(payload + prevHash + gitCommitHash).
 // gitCommitHash is stored per-entry so that inspect log can verify each entry
-// with the exact value that was current when the entry was written — the hash
+// with the exact value that was current when the entry was written - the hash
 // changes from "" to the real commit hash at teardown, so a single run-level
 // value cannot be used for verification of all entries.
 func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCommitHash string) (*domain.RunEventLog, error) {
@@ -1171,7 +1171,7 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 // position (1-based) where the stored hash does not match the recomputed value.
 // Returns nil when the chain is intact.
 //
-// This is CHECK 9.1.2 — used by "staircase audit verify" and the tamper test.
+// This is CHECK 9.1.2 - used by "staircase audit verify" and the tamper test.
 func (s *Store) VerifyChain(runID int64) error {
 	logs, err := s.ListEventLogs(runID)
 	if err != nil {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh — build the tiny-go fixture repository tarball.
+# build.sh - build the tiny-go fixture repository tarball.
 #
 # Creates a minimal Go repository (200 LoC, 5 files) with a deterministic
 # git history.  Reproducible given the same SOURCE_DATE_EPOCH.

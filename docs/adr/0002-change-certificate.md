@@ -8,7 +8,7 @@
 Today a run's evidence is its hash-chained event log, exported as a signed checkpoint.
 It is complete, but specific to stAirCase, large, and full of content: prompts,
 reasoning and code. Anchoring it publicly would publish all of that (F87). The people
-who need to trust a change — a CI check, a maintainer, an auditor — need something
+who need to trust a change - a CI check, a maintainer, an auditor - need something
 small, standard and tied to the commit.
 
 ## Decision

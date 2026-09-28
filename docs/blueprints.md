@@ -96,7 +96,7 @@ staircase run 1
 ## Runs are pinned to the blueprint
 
 The `runtime.plan_pinned` [gate](gates.md) stops a run when the compiled plan no
-longer matches the blueprint — for example after someone added an agent to the
+longer matches the blueprint - for example after someone added an agent to the
 bound topology with `topology agent add` and recompiled. To change a bound case,
 change the blueprint, import it and bind it again.
 

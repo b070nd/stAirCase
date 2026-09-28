@@ -37,7 +37,7 @@ type scenarioResult struct {
 }
 
 // scriptedAgent is an in-process agent driven by a scenario: it proposes edits
-// and touches the worktree the way a runtime — or an approved shell command —
+// and touches the worktree the way a runtime - or an approved shell command -
 // can. It reports failures with t.Errorf because it runs off the test goroutine.
 type scriptedAgent struct {
 	t       *testing.T
@@ -80,7 +80,7 @@ func (a *scriptedAgent) git(args ...string) {
 func runApprovalScenario(t *testing.T, baseFiles map[string]baseFile, agent func(context.Context, *scriptedAgent), prepare func(*testing.T, *sql.DB)) scenarioResult {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
+		t.Skip("integration test - skipped in -short mode")
 	}
 	wsDir, err := os.MkdirTemp("", "strc-ap-")
 	require.NoError(t, err)
@@ -326,8 +326,8 @@ func TestApproval_orchestrator_binds_the_exact_bytes(t *testing.T) {
 
 // TestApproval_commit_is_built_from_the_approvals catches finalize committing
 // whatever is on disk (or on the branch) at commit time rather than what was
-// approved: a process still running after verify — started by an approved
-// shell command, say — must not be able to change the commit.
+// approved: a process still running after verify - started by an approved
+// shell command, say - must not be able to change the commit.
 func TestApproval_commit_is_built_from_the_approvals(t *testing.T) {
 	t.Run("file_swapped_after_verify", func(t *testing.T) {
 		repo := initGitRepo(t)

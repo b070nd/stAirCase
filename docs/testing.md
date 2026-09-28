@@ -28,7 +28,7 @@ gates, the event hash chain, crypto and redaction.
 
 **Run integration tests** drive a whole run in-process:
 `orchestrator/runtest.Run` creates a throwaway workspace and git repository and
-runs a scripted Go agent (`orchestrator.AgentFunc`) through the real runner —
+runs a scripted Go agent (`orchestrator.AgentFunc`) through the real runner -
 decision loop, worktree, finalize, commit, audit chain (verified on every run).
 Operators are played by a webhook `httptest` server or the approval API.
 Adversarial cases are agents that write files directly, run git, commit on their
@@ -39,7 +39,7 @@ checkout's invariance is checked on a fixture repository with staged and
 unstaged work (`runner_isolation_test.go`, `tests/fixtures/repos/`).
 
 **Agent runtime tests** (`src/internal/agent`) run the graph executor against a
-scripted model, and the tools and the Claude Code adapter through real runs —
+scripted model, and the tools and the Claude Code adapter through real runs -
 the adapter with a fake `claude` (the test binary re-executed) that calls the
 real hook commands.
 
@@ -48,7 +48,7 @@ against a temporary workspace: compile, gates, blueprint import → bind →
 compile → pinned gate, story scope, audit export/verify; `tests/integration.bats`
 runs the built binary.
 
-**Acceptance** — `demo/run-demo.sh` (`make demo`) is the offline end-to-end run
+**Acceptance** - `demo/run-demo.sh` (`make demo`) is the offline end-to-end run
 on the real binary and runtime with a stand-in model (`demo/demotool`): it
 checks the run branch holds exactly the approved create/edit/delete, the
 developer's checkout is byte-identical, the stories complete the case and the
@@ -68,11 +68,11 @@ UPDATE_DOCS=1 go test ./src/cmd/staircase -run TestCLIReference
 `demo/smoke.sh` needs credentials and costs money, so `make check` never runs
 it; both modes skip with a message when credentials are missing.
 
-- `make smoke` — a real model through the LLM gateway (`AI_GATEWAY_API_KEY`,
+- `make smoke` - a real model through the LLM gateway (`AI_GATEWAY_API_KEY`,
   model `SMOKE_MODEL`) records a small run; a second run replays the recording
   with the gateway unreachable and must commit the same bytes; the recording
   must not contain the key.
-- `make smoke-claude` — the same case with `--agent claude-code`; the first
+- `make smoke-claude` - the same case with `--agent claude-code`; the first
   approval is held 40 s, past Claude Code's default hook timeout.
 
 ## Conventions

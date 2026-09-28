@@ -10,7 +10,7 @@ import (
 )
 
 // TestHookCommand_is_stable_and_holds_no_secret: every run writes the same
-// hook command — no token, no address, no curl (F81) — so an agent that
+// hook command - no token, no address, no curl (F81) - so an agent that
 // trusts a hook by its hash trusts it once. The program path is quoted for
 // the shell that runs the hook.
 func TestHookCommand_is_stable_and_holds_no_secret(t *testing.T) {

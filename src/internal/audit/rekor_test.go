@@ -104,7 +104,7 @@ func sha256NewSum(b []byte) []byte {
 
 // TestRekor_anchor_verify_roundtrip: anchor a record against a mock Rekor that
 // verifies our signature server-side, persist the sidecar, then verify the
-// record against the log — and prove a tampered record is rejected.
+// record against the log - and prove a tampered record is rejected.
 func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 	mock := &mockRekor{t: t, entries: map[string]string{}}
 	srv := httptest.NewServer(mock.handler())
@@ -152,7 +152,7 @@ func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 }
 
 // TestRekor_anchor_rejects_bad_signature: the mock (like real Rekor) refuses
-// entries whose signature does not verify — exercised by signing with one key
+// entries whose signature does not verify - exercised by signing with one key
 // and presenting another. AnchorRecord must surface the 400.
 func TestRekor_anchor_rejects_server_error(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

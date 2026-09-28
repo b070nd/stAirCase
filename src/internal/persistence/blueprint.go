@@ -71,11 +71,11 @@ func (s *Store) FindBlueprint(prefix string) (*domain.Blueprint, error) {
 	}
 	switch len(found) {
 	case 0:
-		return nil, fmt.Errorf("no blueprint with hash %s — import it with 'staircase blueprint import'", prefix)
+		return nil, fmt.Errorf("no blueprint with hash %s - import it with 'staircase blueprint import'", prefix)
 	case 1:
 		return &found[0], nil
 	}
-	return nil, fmt.Errorf("blueprint hash %s is ambiguous — give more characters", prefix)
+	return nil, fmt.Errorf("blueprint hash %s is ambiguous - give more characters", prefix)
 }
 
 // Binding is what binding a project to a blueprint creates.

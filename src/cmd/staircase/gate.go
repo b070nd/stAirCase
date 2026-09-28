@@ -27,7 +27,7 @@ var gateCmd = &cobra.Command{
 
 Gates are grouped by category (structural, security, runtime, dependency).
 BLOCK gates must pass for 'staircase run' to proceed.
-WARN  gates are advisory — they surface issues but do not block execution.
+WARN  gates are advisory - they surface issues but do not block execution.
 
 Exit codes:
   0  all BLOCK gates passed (overall PASS or WARN)
@@ -84,7 +84,7 @@ gates.json has not been modified since it was last signed.`,
 			return fmt.Errorf("gates signature invalid: %w", err)
 		}
 		if !sigPresent {
-			return fmt.Errorf("no gates.json.sig found — run 'staircase gate sign' first")
+			return fmt.Errorf("no gates.json.sig found - run 'staircase gate sign' first")
 		}
 		fmt.Println("✅ gates.json signature verified.")
 		return nil
@@ -146,7 +146,7 @@ func runGateHandler(_ *cobra.Command, args []string) error {
 //nolint:errcheck // fmt.Fprint* to an io.Writer; errors are not actionable in a CLI reporter.
 func printGateReport(w io.Writer, r gate.Report) {
 	// ── Header ───────────────────────────────────────────────────────────────
-	fmt.Fprintf(w, "\nQuality Gate Report — case #%d\n", r.CaseID)
+	fmt.Fprintf(w, "\nQuality Gate Report - case #%d\n", r.CaseID)
 	fmt.Fprintf(w, "Run at: %s\n\n", r.RunAt.Format(time.RFC3339))
 
 	// ── Column widths ────────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ func printGateReport(w io.Writer, r gate.Report) {
 	if r.Blocking() {
 		fmt.Fprintln(w, "\n❌  BLOCK failures must be resolved before running.")
 	} else if r.Overall == gate.StatusWarn {
-		fmt.Fprintln(w, "\n⚠   Warnings detected — review before running.")
+		fmt.Fprintln(w, "\n⚠   Warnings detected - review before running.")
 	} else {
 		fmt.Fprintln(w, "\n✅  All BLOCK gates passed. Safe to run.")
 	}

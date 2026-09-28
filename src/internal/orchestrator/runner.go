@@ -2,7 +2,7 @@
 //
 // The orchestrator is the single authoritative coordinator of a run:
 // it sequences pre-flight checks, the run's git worktree, the in-process agent,
-// the decision (HITL) loop, finalize and teardown — each labelled
+// the decision (HITL) loop, finalize and teardown - each labelled
 // by a [RunPhase] constant so that crash recovery and tests can reason about
 // where execution stopped.
 package orchestrator
@@ -87,7 +87,7 @@ type RunOptions struct {
 	// without it such a case does not run again.
 	AckDrift bool
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
-	// Defaults to false — operators must explicitly pass --allow-shell-exec.
+	// Defaults to false - operators must explicitly pass --allow-shell-exec.
 	AllowShellExec bool
 }
 
@@ -185,7 +185,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("load topology: %w", err)
 	}
 	if topology == nil {
-		return fmt.Errorf("no swarm topology registered for project %q — run 'staircase topology register' first", project.Name)
+		return fmt.Errorf("no swarm topology registered for project %q - run 'staircase topology register' first", project.Name)
 	}
 	topoVersion := topology.Version
 	if opts.Plan != nil {
@@ -218,7 +218,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return err
 	}
 	if haltedRun != 0 && !opts.AckDrift {
-		return fmt.Errorf("run #%d of case #%d was halted for drift — review it ('staircase inspect log %d'), then run again with --ack-drift", haltedRun, caseID, haltedRun)
+		return fmt.Errorf("run #%d of case #%d was halted for drift - review it ('staircase inspect log %d'), then run again with --ack-drift", haltedRun, caseID, haltedRun)
 	}
 
 	// ── Create run record ─────────────────────────────────────────────────────
@@ -339,11 +339,11 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 
 	// Per-project HMAC secret for authenticating webhook approvals. When a
-	// webhook is configured without a secret the channel is unauthenticated —
+	// webhook is configured without a secret the channel is unauthenticated -
 	// warn loudly so operators know to store one under __webhook_hmac_secret__.
 	webhookSecret := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
 	if project.WebhookURL != "" && len(webhookSecret) == 0 {
-		obs.Log.Warn(`webhook approvals are UNAUTHENTICATED — store an HMAC secret to prevent forged approvals: printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <id>`,
+		obs.Log.Warn(`webhook approvals are UNAUTHENTICATED - store an HMAC secret to prevent forged approvals: printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <id>`,
 			"project_id", caseRec.ProjectID)
 	}
 
@@ -372,9 +372,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	// P2: verify Ed25519 signature on policy.json when sidecar is present.
 	// Absent signature warns (backward compat); invalid signature is fatal.
 	if sigPresent, sigErr := policy.VerifyPolicySignature(r.wsDir); sigErr != nil {
-		return fmt.Errorf("policy integrity check failed — re-sign with 'staircase policy sign': %w", sigErr)
+		return fmt.Errorf("policy integrity check failed - re-sign with 'staircase policy sign': %w", sigErr)
 	} else if !sigPresent {
-		obs.Log.Warn("policy.json is unsigned — run 'staircase policy sign' to enable tamper detection")
+		obs.Log.Warn("policy.json is unsigned - run 'staircase policy sign' to enable tamper detection")
 	}
 
 	approvalSrv, err := startApprovalServer(ctx, opts)
@@ -488,14 +488,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if !display.BudgetExceeded() {
 			return false
 		}
-		fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded — killing run #%d\n", run.ID)
+		fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded - killing run #%d\n", run.ID)
 		cancelled()
 		return true
 	}
 	driftHalt := func(reason string) {
 		sup.Halt(reason)
 		_ = r.audit(run.ID, "drift_halt", map[string]any{"reason": reason})
-		fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s — halting run #%d\n", reason, run.ID)
+		fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s - halting run #%d\n", reason, run.ID)
 		cancelled()
 	}
 
@@ -588,12 +588,12 @@ runLoop:
 			return err
 		}
 		if !approved {
-			fmt.Fprintf(os.Stdout, "   ✋ Final review rejected — nothing committed\n")
+			fmt.Fprintf(os.Stdout, "   ✋ Final review rejected - nothing committed\n")
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
 	if finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
-		hash, err := appr.commit(runBranch, fmt.Sprintf("staircase: run #%d — case #%d", run.ID, caseID))
+		hash, err := appr.commit(runBranch, fmt.Sprintf("staircase: run #%d - case #%d", run.ID, caseID))
 		if err != nil {
 			return err
 		}
@@ -653,7 +653,7 @@ func (r *Runner) runGates(caseID int64) error {
 		Store:  r.store,
 	})
 	if report.Blocking() {
-		return fmt.Errorf("quality gate check failed — %d BLOCK failure(s); run 'staircase gate %d' for details",
+		return fmt.Errorf("quality gate check failed - %d BLOCK failure(s); run 'staircase gate %d' for details",
 			report.Summary.Fail, caseID)
 	}
 	return nil
@@ -665,7 +665,7 @@ func (r *Runner) runGates(caseID int64) error {
 var webhookClient = &http.Client{Timeout: 30 * time.Second}
 
 // loadWebhookSecret returns the decrypted per-project webhook HMAC secret, or
-// nil when none is configured. A missing secret is not an error — it means the
+// nil when none is configured. A missing secret is not an error - it means the
 // webhook channel runs unauthenticated (legacy behaviour, warned about once).
 func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
 	sec, err := r.store.GetSecret(webhookauth.SecretKeyName, &projectID)
@@ -674,7 +674,7 @@ func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
 	}
 	plaintext, err := crypto.Decrypt(aesKey, sec.EncryptedValue)
 	if err != nil {
-		obs.Log.Warn("webhook secret decrypt failed — treating channel as unauthenticated", "err", err)
+		obs.Log.Warn("webhook secret decrypt failed - treating channel as unauthenticated", "err", err)
 		return nil
 	}
 	return []byte(plaintext)
@@ -690,7 +690,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 		return domain.Decide(false, msg)
 	}
 	// A fresh yield_id makes every request unique, so an approval captured for
-	// one request never matches another — not even an identical re-proposal.
+	// one request never matches another - not even an identical re-proposal.
 	yieldID := rand.Text()
 	body, _ := json.Marshal(struct {
 		YieldID string `json:"yield_id"`
@@ -700,7 +700,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 
 	httpReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
-		obs.Log.Warn("webhook request build failed — auto-rejecting", "err", err)
+		obs.Log.Warn("webhook request build failed - auto-rejecting", "err", err)
 		return reject("webhook error: " + err.Error())
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -713,14 +713,14 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 
 	resp, err := webhookClient.Do(httpReq)
 	if err != nil {
-		obs.Log.Warn("webhook POST failed — auto-rejecting", "err", err)
+		obs.Log.Warn("webhook POST failed - auto-rejecting", "err", err)
 		return reject("webhook error: " + err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		obs.Log.Warn("webhook response read failed — auto-rejecting", "err", err)
+		obs.Log.Warn("webhook response read failed - auto-rejecting", "err", err)
 		return reject("webhook read error: " + err.Error())
 	}
 
@@ -730,7 +730,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 			resp.Header.Get(webhookauth.HeaderTimestamp),
 			resp.Header.Get(webhookauth.HeaderSignature),
 			respBody, time.Now(), webhookauth.DefaultMaxSkew); verr != nil {
-			obs.Log.Error("webhook response signature INVALID — rejecting (possible forgery)", "err", verr)
+			obs.Log.Error("webhook response signature INVALID - rejecting (possible forgery)", "err", verr)
 			return reject("webhook response failed signature verification: " + verr.Error())
 		}
 	}
@@ -741,13 +741,13 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 		YieldID       string `json:"yield_id"`
 	}
 	if err := json.Unmarshal(respBody, &yieldResp); err != nil {
-		obs.Log.Warn("webhook response decode failed — auto-rejecting", "err", err)
+		obs.Log.Warn("webhook response decode failed - auto-rejecting", "err", err)
 		return reject("webhook decode error: " + err.Error())
 	}
 	// Authenticated channel: the signed body must name the request it answers,
 	// or a captured approval could be replayed against another pending yield.
 	if len(secret) > 0 && (yieldResp.RequestSHA256 != reqHash || yieldResp.YieldID != yieldID) {
-		obs.Log.Error("webhook response answers a different request — rejecting (possible replay)")
+		obs.Log.Error("webhook response answers a different request - rejecting (possible replay)")
 		return reject("webhook response does not echo this request's yield_id and request_sha256 (possible replay)")
 	}
 	if yieldResp.Type == "" {
@@ -762,7 +762,7 @@ func timePtr(t time.Time) *time.Time { return &t }
 // "<REDACTED>" across all operator-visible fields before the yield request
 // is presented via TUI, webhook, or HTTP approval server (CHECK 4.4.3 / 7.4.2).
 // Scrubbing covers: ReasoningTrace, and every proposed edit's File, SearchBlock,
-// and ReplaceBlock — agents can embed plaintext secrets in any of these.
+// and ReplaceBlock - agents can embed plaintext secrets in any of these.
 func scrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRequest {
 	if len(activeValues) == 0 {
 		return req
@@ -879,8 +879,8 @@ func (r *Runner) reportDrift(runID int64, sup *policy.Supervisor) {
 }
 
 // verifyWorktree checks that the worktree holds exactly the approved state on
-// the base commit — approved paths with their approved bytes, no other change
-// in the files or the index, no commits of the agent's own — and audits every
+// the base commit - approved paths with their approved bytes, no other change
+// in the files or the index, no commits of the agent's own - and audits every
 // violation. It reports whether the run may commit.
 func (r *Runner) verifyWorktree(runID int64, appr *approvals, display *monitor.Display) (bool, error) {
 	violations, err := appr.verify()
@@ -893,7 +893,7 @@ func (r *Runner) verifyWorktree(runID int64, appr *approvals, display *monitor.D
 			event["file"] = v.file
 		}
 		_ = r.audit(runID, v.event, event)
-		obs.Log.Error("worktree does not match the approvals — refusing to commit",
+		obs.Log.Error("worktree does not match the approvals - refusing to commit",
 			"event", v.event, "file", v.file, "detail", v.detail, "run_id", runID)
 		display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", v.file, v.detail))
 	}

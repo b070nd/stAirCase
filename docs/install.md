@@ -11,7 +11,7 @@ database server).
 
 ## Choose a way to install
 
-**Homebrew** (macOS, Linux) — also installs shell completion:
+**Homebrew** (macOS, Linux) - also installs shell completion:
 
 ```bash
 brew install b070nd/staircase/staircase
@@ -48,7 +48,7 @@ staircase doctor    # checks the workspace, keys, database and git
 Every release is built from its tag by a public GitHub workflow. The build is
 reproducible: the same tag always gives the same bytes. Each release includes:
 
-- `checksums.txt` — the SHA-256 of every archive;
+- `checksums.txt` - the SHA-256 of every archive;
 - a signature over `checksums.txt`, made with [Sigstore](https://www.sigstore.dev/)
   cosign "keyless" signing (no key to manage: the signature proves which workflow
   made it);

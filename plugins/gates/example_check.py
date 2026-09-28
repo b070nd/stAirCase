@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""example_check.py — stAirCase plugin gate example (Python).
+"""example_check.py - stAirCase plugin gate example (Python).
 
 Input  (stdin):  {"case_id": 42, "ws_dir": "/path/to/ws"}
 Output (stdout): {"status": "PASS", "message": "..."}

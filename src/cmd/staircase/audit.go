@@ -1,6 +1,6 @@
 package main
 
-// audit — tamper-proof checkpoint export and verification.
+// audit - tamper-proof checkpoint export and verification.
 //
 // Commands:
 //
@@ -77,7 +77,7 @@ var (
 
 func init() {
 	auditExportCmd.Flags().BoolVar(&auditAnchor, "anchor", false,
-		"Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record — reasoning, paths, proposed changes — to a public, permanent log")
+		"Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record - reasoning, paths, proposed changes - to a public, permanent log")
 	auditExportCmd.Flags().StringVar(&auditRekorURL, "rekor-url", audit.DefaultRekorURL,
 		"Rekor server URL used by --anchor / --check-anchor")
 	auditVerifyCmd.Flags().BoolVar(&auditCheckAnchor, "check-anchor", false,
@@ -195,7 +195,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 // auditVerifyHandler reads a checkpoint file that may contain one or more
 // NDJSON records (one JSON object per line) and verifies each independently.
 // AppendCheckpoint writes one object per export call; older files may have a
-// single object without a trailing newline — both formats are handled.
+// single object without a trailing newline - both formats are handled.
 func auditVerifyHandler(_ *cobra.Command, args []string) error {
 	cpPath := args[0]
 	wsDir := viper.GetString("STAIRCASE_DIR")
@@ -232,7 +232,7 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 			fmt.Printf("❌ %v\n", err)
 			anyFailed = true
 		} else {
-			fmt.Printf("✅ Checkpoint %s (record %d) OK — run_id=%d entries=%d exported=%s\n",
+			fmt.Printf("✅ Checkpoint %s (record %d) OK - run_id=%d entries=%d exported=%s\n",
 				cpPath, lineNum, cp.RunID, len(cp.Entries), cp.Exported.Format(time.RFC3339))
 		}
 
@@ -250,7 +250,7 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 					fmt.Printf("❌ record %d: %v\n", lineNum, vErr)
 					anyFailed = true
 				} else {
-					fmt.Printf("🪨 record %d anchored OK — uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
+					fmt.Printf("🪨 record %d anchored OK - uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
 				}
 			}
 		}
@@ -297,8 +297,8 @@ func marshalEntries(entries []domain.RunEventLog) ([]byte, error) {
 }
 
 // verifyHashChain re-derives each entry's event_hash using
-// persistence.ComputeEventHash — the single source of truth for the algorithm
-// — and confirms it matches the stored value.
+// persistence.ComputeEventHash - the single source of truth for the algorithm
+// - and confirms it matches the stored value.
 func verifyHashChain(entries []domain.RunEventLog) error {
 	prevHash := ""
 	for i, e := range entries {

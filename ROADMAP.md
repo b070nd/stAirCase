@@ -20,8 +20,8 @@ From the certificate and the approved proposals, anyone can rebuild the commit a
 the same bytes.
 
 stAirCase does both halves:
-- **Gate** — it puts itself in front of any agent and produces the certificate.
-- **Verify** — it lets a repository, a CI pipeline or an auditor require the
+- **Gate** - it puts itself in front of any agent and produces the certificate.
+- **Verify** - it lets a repository, a CI pipeline or an auditor require the
   certificate.
 
 The certificate uses open standards ([in-toto](https://in-toto.io/),
@@ -86,7 +86,7 @@ Six contracts stay stable and versioned while everything around them may change:
 
 ## The plan
 
-### Phase 0 — Foundations (in progress)
+### Phase 0 - Foundations (in progress)
 
 - This roadmap and the first architecture decisions ([docs/adr](docs/adr/)).
 - **One hook bridge for every agent:** `staircase hook <agent>`. There is no longer a
@@ -94,7 +94,7 @@ Six contracts stay stable and versioned while everything around them may change:
   agent ([ADR 0003](docs/adr/0003-hook-bridge.md)).
 - Fuzz tests for the trusted core.
 
-### Phase 1 — v0.3: put `staircase` in front of your agent
+### Phase 1 - v0.3: put `staircase` in front of your agent
 
 - **Zero setup:** `staircase claude "add a health endpoint"` in any git repository. No
   vendor, topology or case to create first. You get a branch with exactly the approved
@@ -106,7 +106,7 @@ Six contracts stay stable and versioned while everything around them may change:
   - a GitHub Action that requires certificates;
   - public anchoring of digests only, never content.
 
-### Phase 2 — v0.4: any agent, anywhere
+### Phase 2 - v0.4: any agent, anywhere
 
 - **Gemini CLI** and **OpenCode** support.
 - **Review-after** capture, used for **Cursor** (CAL 2).
@@ -116,7 +116,7 @@ Six contracts stay stable and versioned while everything around them may change:
 - An evaluation of fast decision models, such as Jev or the open-source Laya, on our own
   test cases. The numbers get published.
 
-### Phase 3 — v0.5: scale human attention
+### Phase 3 - v0.5: scale human attention
 
 - **Approve the task, not every step:** you approve the scope, the kinds of change and
   the budget up front. Inside that, changes can be approved on evidence; anything
@@ -130,7 +130,7 @@ Six contracts stay stable and versioned while everything around them may change:
   proven themselves on your own history.
 - `staircase policy test`: see what a new rule would have decided on past runs.
 
-### Phase 4 — v0.6 to v0.9: teams without servers
+### Phase 4 - v0.6 to v0.9: teams without servers
 
 - A **local background service**, so long runs survive restarts and you can approve
   from a browser. Approvals there are signed with a passkey.
@@ -140,7 +140,7 @@ Six contracts stay stable and versioned while everything around them may change:
   - evidence is kept under git refs;
   - a report spans many repositories.
 
-### Phase 5 — v1.0: a standard others can implement
+### Phase 5 - v1.0: a standard others can implement
 
 - A written specification of the certificate and of how a commit is rebuilt, with test
   vectors.

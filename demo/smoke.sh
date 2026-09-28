@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke.sh — opt-in acceptance runs against real agents (they cost money and
+# smoke.sh - opt-in acceptance runs against real agents (they cost money and
 # need credentials; `make check` never runs them).
 #
 #   ./demo/smoke.sh model    a real model through the LLM gateway records a small

@@ -99,7 +99,7 @@ func checkoutSnapshot(t *testing.T, repo string) string {
 }
 
 // isolationAgent proposes target.txt and writes it into the worktree it is
-// given — or, were none given, into the developer checkout (repo), which the
+// given - or, were none given, into the developer checkout (repo), which the
 // checkout snapshot would catch. "hang" waits until the run is cancelled and
 // "fail" fails after writing.
 func isolationAgent(mode, content, repo string) orchestrator.AgentFunc {
@@ -130,7 +130,7 @@ func isolationAgent(mode, content, repo string) orchestrator.AgentFunc {
 
 func TestRun_isolation_developer_checkout_is_never_touched(t *testing.T) {
 	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
+		t.Skip("integration test - skipped in -short mode")
 	}
 	for _, mode := range []string{"success", "fail", "hang", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {

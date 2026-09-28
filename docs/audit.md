@@ -80,7 +80,7 @@ staircase audit verify run-7.checkpoint.json --check-anchor
 ```
 
 > **Warning: anchoring makes the evidence public, permanently.** The whole signed
-> record is uploaded to the log — every event of the run, including the agents'
+> record is uploaded to the log - every event of the run, including the agents'
 > reasoning, file paths and the proposed changes themselves. The public Rekor log
 > cannot delete entries. Anchor only runs whose content may be public (for example
 > open-source work), or use `--rekor-url` to anchor in a Rekor instance you run

@@ -25,7 +25,7 @@ staircase audit export <run-id> [flags]
 Flags:
 
 ```
-      --anchor             Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record — reasoning, paths, proposed changes — to a public, permanent log
+      --anchor             Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record - reasoning, paths, proposed changes - to a public, permanent log
       --rekor-url string   Rekor server URL used by --anchor / --check-anchor (default "https://rekor.sigstore.dev")
 ```
 
@@ -94,7 +94,7 @@ staircase case rollback <case-id>
 
 Discards the most recent run of a case: removes its worktree (kept after a
 failed run) and deletes its staircase/run-N branch. Your checkout is not
-touched — runs never modify it. The run record and its audit chain are kept;
+touched - runs never modify it. The run record and its audit chain are kept;
 a rolled_back event records who discarded it, and the case returns to PENDING
 so it can be run again. A RUNNING run must be stopped first.
 
@@ -214,7 +214,7 @@ Executes all registered quality gates against a case before running.
 
 Gates are grouped by category (structural, security, runtime, dependency).
 BLOCK gates must pass for 'staircase run' to proceed.
-WARN  gates are advisory — they surface issues but do not block execution.
+WARN  gates are advisory - they surface issues but do not block execution.
 
 Exit codes:
   0  all BLOCK gates passed (overall PASS or WARN)
@@ -421,7 +421,7 @@ staircase project set-webhook <project-id> <url>
 
 Set (or clear) the HITL webhook URL for a project.
 
-To authenticate the webhook channel (strongly recommended — otherwise a network
+To authenticate the webhook channel (strongly recommended - otherwise a network
 attacker can forge approvals), store a shared HMAC secret under the reserved key:
 
     printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <project-id>
@@ -468,7 +468,7 @@ staircase replay <run-id>
 
 Verify the audit chain of a run and print every approval decision in order.
 
-Replay refuses to proceed if the hash chain is broken — this prevents
+Replay refuses to proceed if the hash chain is broken - this prevents
 replaying a tampered run log.
 
 ## staircase run
@@ -484,7 +484,7 @@ Flags:
 ```
       --ack-drift               Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
       --agent string            Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental) (default "built-in")
-      --allow-shell-exec        Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
+      --allow-shell-exec        Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int       Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string   Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
       --debug                   Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
@@ -518,8 +518,8 @@ Generates a fresh AES-256 key, re-encrypts every stored secret in a
 single atomic DB transaction, then replaces the old key file.
 
 The operation holds an exclusive non-blocking advisory lock on the workspace
-key file.  It fails fast (does not wait) if any concurrent process — an active
-run or a 'secret set' command — already holds a shared lock on the key.
+key file.  It fails fast (does not wait) if any concurrent process - an active
+run or a 'secret set' command - already holds a shared lock on the key.
 
 ## staircase secret set
 

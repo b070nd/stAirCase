@@ -63,7 +63,7 @@ func (*secretProviderKeysGate) Run(ctx Context) Result {
 			return fail(name, "security", SeverityBlock, "store error: "+err.Error())
 		}
 		if sec == nil {
-			problems = append(problems, fmt.Sprintf("%s missing — printf 'value' | staircase secret set %s", key, key))
+			problems = append(problems, fmt.Sprintf("%s missing - printf 'value' | staircase secret set %s", key, key))
 			continue
 		}
 		scope := "global"
@@ -92,7 +92,7 @@ func (*secretKeyFileGate) Run(ctx Context) Result {
 	info, err := os.Stat(keyPath)
 	if err != nil {
 		return fail(name, "security", SeverityBlock,
-			fmt.Sprintf(".key missing at %s — run 'staircase init'", keyPath))
+			fmt.Sprintf(".key missing at %s - run 'staircase init'", keyPath))
 	}
 	if info.Size() != 32 {
 		return fail(name, "security", SeverityBlock,
@@ -100,7 +100,7 @@ func (*secretKeyFileGate) Run(ctx Context) Result {
 	}
 	if perm := info.Mode().Perm(); perm&0o177 != 0 {
 		return warn(name, "security",
-			fmt.Sprintf(".key permissions are %04o; should be 0600 — run: chmod 0600 %s", perm, keyPath))
+			fmt.Sprintf(".key permissions are %04o; should be 0600 - run: chmod 0600 %s", perm, keyPath))
 	}
 	return pass(name, "security", SeverityBlock, ".key present, 32 bytes, mode 0600")
 }
@@ -135,7 +135,7 @@ func (*secretNoDuplicatesGate) Run(ctx Context) Result {
 	}
 	if len(dups) > 0 {
 		return warn(name, "security",
-			fmt.Sprintf("duplicate project-scoped keys: %v — only the first will be used", dups))
+			fmt.Sprintf("duplicate project-scoped keys: %v - only the first will be used", dups))
 	}
 	return pass(name, "security", SeverityWarn, "no duplicate secret keys")
 }

@@ -91,7 +91,7 @@ func TestView_multiple_edits(t *testing.T) {
 	assert.Contains(t, v, "util.go")
 }
 
-// ─── Update tests — approve ───────────────────────────────────────────────────
+// ─── Update tests - approve ───────────────────────────────────────────────────
 
 func TestUpdate_approve_lowercase_y(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -108,7 +108,7 @@ func TestUpdate_approve_uppercase_Y(t *testing.T) {
 	assert.True(t, resp.Approved)
 }
 
-// ─── Update tests — reject flow ───────────────────────────────────────────────
+// ─── Update tests - reject flow ───────────────────────────────────────────────
 
 func TestUpdate_reject_key_n_enters_feedback_state(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -182,7 +182,7 @@ func TestUpdate_feedback_esc_returns_to_reviewing(t *testing.T) {
 	assert.Equal(t, 0, tui.StateOf(back), "Esc in feedback state should return to reviewing")
 }
 
-// ─── Update tests — window resize ─────────────────────────────────────────────
+// ─── Update tests - window resize ─────────────────────────────────────────────
 
 func TestUpdate_window_size_msg(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())

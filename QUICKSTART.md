@@ -3,12 +3,12 @@
 In about 15 minutes you will:
 
 1. watch the whole flow once, offline, with no API key;
-2. let AI agents make a real change in one of your repositories — with you
+2. let AI agents make a real change in one of your repositories - with you
    approving every step;
 3. review the result, accept it, and keep signed evidence of what happened.
 
 New to the words used here (case, story, topology, proposal)? Read
-[Concepts](docs/concepts.md) first — it takes five minutes.
+[Concepts](docs/concepts.md) first - it takes five minutes.
 
 ## 1. Install
 
@@ -96,7 +96,7 @@ staircase story scope 1 --allow 'src/**' --allow README.md   # 1 = the story
 ```
 
 The scope lists the paths this story may change. A change anywhere else is shown to
-you as *drift* — see [Drift supervision](docs/drift.md).
+you as *drift* - see [Drift supervision](docs/drift.md).
 
 ### Compile and check
 
@@ -117,8 +117,8 @@ touched; agents see your **last commit**, so commit what they should see first.
 Each time an agent wants to change a file, a screen shows you **exactly** what would
 change:
 
-- press **`y`** to approve — only these bytes will be committed;
-- press **`n`**, type a reason and press **Enter** to reject — the agent gets your
+- press **`y`** to approve - only these bytes will be committed;
+- press **`n`**, type a reason and press **Enter** to reject - the agent gets your
   reason and can try again (**Esc** goes back).
 
 To approve from another terminal, a script or a service instead, see
@@ -136,7 +136,7 @@ staircase inspect runs                               # all runs and their status
 staircase inspect log 1                              # every event of run 1
 ```
 
-A commit does not prove that a story is done — you decide that. Check the work,
+A commit does not prove that a story is done - you decide that. Check the work,
 then accept each story:
 
 ```bash
@@ -165,9 +165,9 @@ More, including anchoring the evidence in a public transparency log:
 
 ## Next steps
 
-- [Approvals](docs/approvals.md) — approve from a script or service, auto-approve
+- [Approvals](docs/approvals.md) - approve from a script or service, auto-approve
   with rules, or let a model review changes.
-- [Blueprints](docs/blueprints.md) — keep your agent setup in its own repository.
-- [Drift supervision](docs/drift.md) — keep runs on their stories.
-- [Safety boundary](docs/safety.md) — what stAirCase does and does not protect.
-- [Troubleshooting](docs/troubleshooting.md) — when something does not work.
+- [Blueprints](docs/blueprints.md) - keep your agent setup in its own repository.
+- [Drift supervision](docs/drift.md) - keep runs on their stories.
+- [Safety boundary](docs/safety.md) - what stAirCase does and does not protect.
+- [Troubleshooting](docs/troubleshooting.md) - when something does not work.

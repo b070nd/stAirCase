@@ -1,4 +1,4 @@
-// Rekor transparency-log anchoring (B3 — external audit anchoring).
+// Rekor transparency-log anchoring (B3 - external audit anchoring).
 //
 // A signed checkpoint record proves integrity, but a workspace-local file can
 // still be deleted or silently regenerated together with its signature by
@@ -7,7 +7,7 @@
 // record's existence at a point in time can be proven to a third party.
 //
 // Entry type: `rekord` (artifact inline) rather than `hashedrekord`, because
-// plain Ed25519 signs the full message — hashedrekord verifies over a digest,
+// plain Ed25519 signs the full message - hashedrekord verifies over a digest,
 // which requires ed25519ph. Checkpoint records are small NDJSON lines, so
 // inlining the artifact is cheap and keeps verification sound server-side.
 //
@@ -34,7 +34,7 @@ import (
 const DefaultRekorURL = "https://rekor.sigstore.dev"
 
 // rekorHTTP is the client used for all Rekor calls. Anchoring is an
-// enterprise-evidence step, not a hot path — a generous timeout is fine.
+// enterprise-evidence step, not a hot path - a generous timeout is fine.
 var rekorHTTP = &http.Client{Timeout: 30 * time.Second}
 
 // Anchor records where one checkpoint record landed in a Rekor log.
@@ -65,7 +65,7 @@ type rekordData struct {
 }
 
 type rekordSig struct {
-	Format    string       `json:"format"` // "x509" — PKIX public key, raw sig
+	Format    string       `json:"format"` // "x509" - PKIX public key, raw sig
 	Content   string       `json:"content"`
 	PublicKey rekordPubKey `json:"publicKey"`
 }
@@ -74,7 +74,7 @@ type rekordPubKey struct {
 	Content string `json:"content"` // base64 of PEM-encoded PKIX key
 }
 
-// logEntryBody is the decoded base64 `body` of a fetched Rekor entry —
+// logEntryBody is the decoded base64 `body` of a fetched Rekor entry -
 // the same shape as proposedEntry; only the artifact content is compared.
 type logEntryBody struct {
 	Spec struct {
@@ -161,7 +161,7 @@ func AppendAnchor(path string, a Anchor) error {
 }
 
 // LoadAnchors reads all anchor records from the NDJSON sidecar at path.
-// A missing file returns (nil, nil) — absence of anchors is not an error.
+// A missing file returns (nil, nil) - absence of anchors is not an error.
 func LoadAnchors(path string) ([]Anchor, error) {
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {

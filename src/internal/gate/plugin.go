@@ -42,7 +42,7 @@ func (p *PluginGate) Severity() Severity {
 
 // Run executes the plugin script and returns the gate result.
 // If the script times out, produces malformed output, or exits non-zero,
-// Run returns StatusFail — it never panics on unexpected output (CHECK 11.5).
+// Run returns StatusFail - it never panics on unexpected output (CHECK 11.5).
 func (p *PluginGate) Run(ctx Context) Result {
 	timeout := time.Duration(p.def.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
@@ -61,8 +61,8 @@ func (p *PluginGate) Run(ctx Context) Result {
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, p.def.Script) //nolint:gosec
-	cmd.Env = []string{}                             // CHECK 11.3, 11.6 — no env inherited
-	cmd.Dir = tmpDir                                 // CHECK 11.3 — fresh cwd
+	cmd.Env = []string{}                             // CHECK 11.3, 11.6 - no env inherited
+	cmd.Dir = tmpDir                                 // CHECK 11.3 - fresh cwd
 	// WaitDelay ensures cmd.Output() returns promptly after context cancellation
 	// even when child processes keep I/O pipes open (e.g. a shell spawning sleep).
 	cmd.WaitDelay = timeout
@@ -70,7 +70,7 @@ func (p *PluginGate) Run(ctx Context) Result {
 	// Write JSON input to stdin (CHECK 11.6).
 	// ws_dir is intentionally included so gate scripts can inspect topology and
 	// config files without needing env access.  Secrets and the IPC socket are
-	// NOT included — the plugin receives no credentials beyond the workspace path.
+	// NOT included - the plugin receives no credentials beyond the workspace path.
 	input, _ := json.Marshal(map[string]any{
 		"case_id": ctx.CaseID,
 		"ws_dir":  ctx.WsDir,
@@ -91,7 +91,7 @@ func (p *PluginGate) Run(ctx Context) Result {
 			fmt.Sprintf("plugin error: %s", detail))
 	}
 
-	// Decode output — malformed output must not crash (CHECK 11.5).
+	// Decode output - malformed output must not crash (CHECK 11.5).
 	var pluginResult struct {
 		Status  string `json:"status"`
 		Message string `json:"message"`
@@ -111,7 +111,7 @@ func (p *PluginGate) Run(ctx Context) Result {
 }
 
 // loadPluginGates reads $wsDir/gates.json and returns one PluginGate per entry.
-// Returns nil (no plugin gates) when the file is absent — not an error.
+// Returns nil (no plugin gates) when the file is absent - not an error.
 // Invalid JSON is logged as a warning and treated as zero plugin gates.
 func loadPluginGates(wsDir string) []Gate {
 	path := filepath.Join(wsDir, "gates.json")

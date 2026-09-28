@@ -145,7 +145,7 @@ func TestAcceptUserStory_is_atomic(t *testing.T) {
 // TestFinishRun_concurrent_runs_never_hit_sqlite_busy: runs of different
 // cases finish concurrently (two terminals, one workspace). A deferred
 // transaction that reads and then writes gets SQLITE_BUSY immediately when
-// another writer committed in between — busy_timeout cannot help — so a run
+// another writer committed in between - busy_timeout cannot help - so a run
 // that succeeded would be recorded as failed.
 func TestFinishRun_concurrent_runs_never_hit_sqlite_busy(t *testing.T) {
 	s := newTestStore(t)

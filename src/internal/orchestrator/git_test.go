@@ -26,7 +26,7 @@ func TestGitRepo_open_bare_repo_returns_error(t *testing.T) {
 
 	// A bare repository has no worktree, so OpenGitRepo must fail.
 	_, err = orchestrator.OpenGitRepo(dir)
-	assert.Error(t, err, "bare repo has no worktree — must return error")
+	assert.Error(t, err, "bare repo has no worktree - must return error")
 }
 
 // ─── CurrentBranch ───────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ func TestGitRepo_DeleteBranch_removes_branch(t *testing.T) {
 	assert.False(t, gr.BranchExists("staircase/run-88"))
 }
 
-// ─── CurrentBranch — detached HEAD ───────────────────────────────────────────
+// ─── CurrentBranch - detached HEAD ───────────────────────────────────────────
 
 func TestGitRepo_CurrentBranch_on_detached_HEAD(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -191,7 +191,7 @@ func TestGitRepo_ListBranches_empty_when_no_match(t *testing.T) {
 	assert.Empty(t, branches)
 }
 
-// ─── Commit — default author fallback ────────────────────────────────────────
+// ─── Commit - default author fallback ────────────────────────────────────────
 
 func TestApprovedCommit_falls_back_to_default_author_when_no_global_config(t *testing.T) {
 	// Point HOME at an empty directory and give the repo no local user, so no

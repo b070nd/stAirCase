@@ -448,7 +448,7 @@ func TestSecretNoDuplicatesGate_no_duplicates(t *testing.T) {
 
 // TestSecretNoDuplicatesGate_duplicate_warns is removed:
 // the unique index on secrets(key_name, scoped_to_project_id) now enforces
-// this at the DB level — the scenario is no longer reachable via the public API.
+// this at the DB level - the scenario is no longer reachable via the public API.
 
 // ─── Runtime gates ────────────────────────────────────────────────────────────
 
@@ -642,7 +642,7 @@ func TestDepDepsCompletedGate_stale_topology_warns(t *testing.T) {
 	run, _ := ctx.Store.CreateRun(upCase.ID, topoV1.Version, "main")
 	ctx.Store.UpdateRunStatus(run.ID, "SUCCESS", nil, "abc123")
 
-	ctx.Store.CreateSwarmTopology(upstream.ID, "sup2", "memory", "langgraph") // v2 — bumps version
+	ctx.Store.CreateSwarmTopology(upstream.ID, "sup2", "memory", "langgraph") // v2 - bumps version
 
 	c, _ := ctx.Store.CreateCase(downstream.ID)
 	ctx.CaseID = c.ID
@@ -670,7 +670,7 @@ func TestTopologyRuntimeValidGate_invalid_runtime(t *testing.T) {
 	assert.Contains(t, r.Message, "tensorflow")
 }
 
-// crewai and autogen are recognised future runtimes — gate must WARN (not pass,
+// crewai and autogen are recognised future runtimes - gate must WARN (not pass,
 // not block) so the operator is aware before wasting a run.
 func TestTopologyRuntimeValidGate_crewai_warns(t *testing.T) {
 	ctx, _ := newGateEnv(t)
@@ -703,11 +703,11 @@ func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
 	assert.Contains(t, r.Message, "deleted")
 }
 
-// ─── deps.deps_completed — upstream has no topology ───────────────────────────
+// ─── deps.deps_completed - upstream has no topology ───────────────────────────
 
 func TestDepDepsCompletedGate_upstream_no_topology_warns(t *testing.T) {
 	// Upstream project exists and is a declared dependency but has never had a
-	// topology registered — the gate should warn, not panic.
+	// topology registered - the gate should warn, not panic.
 	ctx, _ := newGateEnv(t)
 	v, _ := ctx.Store.CreateVendor(t.Name())
 	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "") // no topology
@@ -825,7 +825,7 @@ func TestPluginMalformedOutput(t *testing.T) {
 }
 
 // TestPluginIsolation verifies CHECK 11.6: the plugin subprocess cannot read
-// $STAIRCASE_DIR from its environment — the env is cleared before exec.
+// $STAIRCASE_DIR from its environment - the env is cleared before exec.
 func TestPluginIsolation(t *testing.T) {
 	t.Setenv("STAIRCASE_DIR", "/secret/workspace/path")
 	wsDir := t.TempDir()
@@ -869,7 +869,7 @@ func TestPlugin_timeout(t *testing.T) {
 		Category:       "test",
 		Severity:       "WARN",
 		Script:         scriptPath,
-		TimeoutSeconds: 1, // 1-second timeout — script sleeps for 99 s
+		TimeoutSeconds: 1, // 1-second timeout - script sleeps for 99 s
 	}})
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"), raw, 0o644))
 

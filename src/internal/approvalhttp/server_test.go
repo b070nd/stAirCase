@@ -454,7 +454,7 @@ func TestStartTLS_serves_https(t *testing.T) {
 	require.NoError(t, srv.StartTLS(ctx, certFile, keyFile, approvalhttp.MozillaTLSConfig()))
 	assert.NotEmpty(t, srv.ListenAddr(), "ListenAddr must be set after StartTLS")
 
-	// Make an HTTPS GET request — skip TLS verification for self-signed cert.
+	// Make an HTTPS GET request - skip TLS verification for self-signed cert.
 	client := &http.Client{Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
 	}}

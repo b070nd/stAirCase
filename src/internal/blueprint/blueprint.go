@@ -1,6 +1,6 @@
-// Package blueprint reads a blueprint — a project's automation (agents,
+// Package blueprint reads a blueprint - a project's automation (agents,
 // prompts, routing, cases, stories and their scope) kept as files in its own
-// repository — into an immutable snapshot identified by its content hash.
+// repository - into an immutable snapshot identified by its content hash.
 package blueprint
 
 import (

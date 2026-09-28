@@ -69,7 +69,7 @@ confirm that policy.json has not been modified since it was last signed.`,
 			return fmt.Errorf("policy signature invalid: %w", err)
 		}
 		if !sigPresent {
-			return fmt.Errorf("no policy.json.sig found — run 'staircase policy sign' first")
+			return fmt.Errorf("no policy.json.sig found - run 'staircase policy sign' first")
 		}
 
 		fmt.Println("✅ policy.json signature verified.")

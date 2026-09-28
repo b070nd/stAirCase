@@ -28,7 +28,7 @@ var blueprintImportCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("blueprint %s: %w", dir, err)
 		}
-		// The source commit makes the snapshot reproducible — only if the
+		// The source commit makes the snapshot reproducible - only if the
 		// blueprint's files are exactly that commit.
 		gitSHA := ""
 		if dirty, err := gitOutput(dir, "status", "--porcelain", "--", "."); err == nil && dirty == "" {
