@@ -54,7 +54,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	if err != nil {
 		return err
 	}
-	h := &hookServer{env: env, root: root, token: rand.Text(), codex: true, pending: map[string]orchestrator.Approval{}}
+	h := &hookServer{env: env, root: root, token: rand.Text(), codex: true, pending: map[string]orchestrator.Approval{}, calls: map[string]*hookCall{}}
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
@@ -76,7 +76,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 		}
 	}
 	hook := fmt.Sprintf(`[{matcher="*",hooks=[{type="command",command=%s,timeout=%d}]}]`,
-		tomlString(hookCommand(bin, "codex")), hookTimeout)
+		tomlString(HookCommand(bin, "codex", "--governed")), hookTimeout)
 	args := []string{"exec", "-s", "workspace-write", "-c", `approval_policy="never"`, "--dangerously-bypass-hook-trust",
 		"-c", "hooks.SessionStart=" + hook, "-c", "hooks.PreToolUse=" + hook, "-c", "hooks.PostToolUse=" + hook}
 	if c.Model != "" {
