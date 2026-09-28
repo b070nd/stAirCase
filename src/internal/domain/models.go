@@ -188,6 +188,11 @@ type YieldRequest struct {
 	// proposal to a human (outside the stories' scope, a limit, a checkpoint).
 	Drift string `json:"drift,omitempty"`
 
+	// Guard, set by the orchestrator, says why a person must decide this
+	// change even if a rule or the validator would approve it: it adds hidden
+	// Unicode, changes dependencies or writes what looks like a secret.
+	Guard string `json:"guard,omitempty"`
+
 	// Review, set by the orchestrator, is the automated validator's note when
 	// a human decides in its place (a sampled approval, repeated rejections,
 	// a sensitive path, the validator unavailable).

@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Guards: a file change that adds hidden Unicode (Trojan Source), changes
+  dependencies (go.mod, package.json, lock files and others) or writes what
+  looks like a secret goes to a person even when a policy rule or the
+  validator would approve it. Only what the change adds counts; the reason is
+  shown as `CHECK:` and recorded as `guard` with the decision.
+- `make check` fails when any tracked file contains hidden Unicode.
+
 - The run is an explicit state machine: one table lists every phase and the
   moves allowed between them, the runner refuses any other move, and every
   run's evidence ends with `run_path`, the phases it went through.

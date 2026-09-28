@@ -113,6 +113,10 @@ func (m yieldModel) View() string {
 
 	sb.WriteString(styleHeader.Render("⚠  HITL Yield Request"))
 	sb.WriteString("\n\n")
+	if m.req.Guard != "" {
+		sb.WriteString(styleReject.Render("CHECK: " + m.req.Guard))
+		sb.WriteString("\n")
+	}
 	if m.req.Drift != "" {
 		sb.WriteString(styleReject.Render("DRIFT: " + m.req.Drift))
 		sb.WriteString("\n\n")
