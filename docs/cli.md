@@ -256,6 +256,28 @@ content and the workspace public key (.signing.pub).
 Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
 gates.json has not been modified since it was last signed.
 
+## staircase hook
+
+Pass an agent's hook call to the run that governs it (used by agent adapters)
+
+```
+staircase hook <agent> [--governed]
+```
+
+Coding agents such as Claude Code call this command before and after each
+tool call. It reads the call on standard input, passes it to the stAirCase run
+that started the agent, and prints the run's answer.
+
+Exit code 2 blocks the tool call. Every failure blocks: a missing or invalid
+session, a run that does not answer or refuses the token, an unknown agent.
+
+--governed is set whenever stAirCase starts the agent: without the run's
+session file (STAIRCASE_HOOK_FILE) the call is blocked. Without --governed, as
+in a hook installed once for a user or a company, calls pass through when no
+governed session is running.
+
+Supported agents: claude-code.
+
 ## staircase init
 
 Initialize the stAirCase workspace: database and keys

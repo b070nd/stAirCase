@@ -95,8 +95,9 @@ These are documented, not hidden:
   through its hooks (a hook that fails or times out blocks the call), but your
   own user and project Claude Code settings still load, including their hooks
   and MCP servers — changes they make inside the worktree fail the run, effects
-  elsewhere are not contained. The hook endpoint's token is visible to local
-  processes of your user.
+  elsewhere are not contained. The hooks reach the run through `staircase hook`,
+  which blocks on every failure; the run's token sits in a file only your user
+  can read, never on a command line.
 - The `--validator` reviewer is a model and can be misled by what it reviews;
   it only ever decides in-scope, non-sensitive edits, and a human approves the
   run's final change whenever it decided anything.

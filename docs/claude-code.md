@@ -18,12 +18,14 @@ staircase run 1 --agent claude-code
 - the `claude` command on your `PATH`;
 - Claude Code **already logged in** on this machine. stAirCase starts it with a
   clean environment that holds no API keys, so it uses its own login;
-- a POSIX shell and `curl` (the hooks use them), so macOS or Linux.
+- macOS or Linux (Windows is untested).
 
 ## How it works
 
 stAirCase starts Claude Code in the run's worktree with a settings file (kept
-outside the repository) that sends every tool call to stAirCase before it happens:
+outside the repository). Its hooks call `staircase hook claude-code --governed`
+before and after every tool call, which asks the run and passes on its answer
+([how the hook bridge works](adr/0003-hook-bridge.md)):
 
 | Claude Code tool | What stAirCase does |
 |---|---|
@@ -43,8 +45,9 @@ Some edits are refused before you see them:
 - an `Edit` with `replace_all` — Claude Code is asked to change each place on its
   own.
 
-If the connection between the hook and stAirCase fails, the tool call is blocked,
-never allowed.
+If the hook cannot reach the run, or anything else goes wrong, the tool call is
+blocked, never allowed. The run's address and token are in a file only you can
+read, removed when the run ends; they never appear on a command line.
 
 ## Limits
 
@@ -52,8 +55,6 @@ never allowed.
   hooks and MCP servers. Changes they make inside the worktree fail the run; effects
   elsewhere are not contained. Use a Claude Code setup without extra hooks or MCP
   servers for governed runs.
-- The token that protects the hook endpoint is visible to other processes of your
-  user.
 
 ## What is recorded
 

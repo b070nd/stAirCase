@@ -28,9 +28,10 @@ import (
 // written again, so Claude Code's edit semantics cannot change what is
 // committed; finalize verify stays the backstop.
 type ClaudeCode struct {
-	Prompt string
-	Model  string // optional --model
-	Bin    string // default "claude"
+	Prompt  string
+	Model   string // optional --model
+	Bin     string // default "claude"
+	HookBin string // the staircase program the hooks call; default: this program
 }
 
 // hookTimeout outlives any human approval: Claude Code lets the tool call
@@ -57,8 +58,21 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		return err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
+	// The hooks find this run through a file only the user can read, so the
+	// token never appears on a command line (see `staircase hook`).
+	session, _ := json.Marshal(map[string]string{"url": "http://" + ln.Addr().String() + "/hook", "token": h.token})
+	hookFile := filepath.Join(dir, "hook.json")
+	if err := os.WriteFile(hookFile, session, 0o600); err != nil {
+		return err
+	}
+	bin := c.HookBin
+	if bin == "" {
+		if bin, err = os.Executable(); err != nil {
+			return err
+		}
+	}
 	settings := filepath.Join(dir, "settings.json")
-	if err := os.WriteFile(settings, hookSettings("http://"+ln.Addr().String()+"/hook", h.token), 0o600); err != nil {
+	if err := os.WriteFile(settings, hookSettings(hookCommand(bin, "claude-code")), 0o600); err != nil {
 		return err
 	}
 
@@ -69,7 +83,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	cmd := exec.CommandContext(ctx, orDefault(c.Bin, "claude"), args...)
 	// ponytail: shellEnv carries no LLM key, so Claude Code must be logged in
 	// (keychain under HOME); pass ANTHROPIC_API_KEY via a secret if needed.
-	cmd.Dir, cmd.Env = root, shellEnv()
+	cmd.Dir, cmd.Env = root, append(shellEnv(), HookFileEnv+"="+hookFile)
 	cmd.WaitDelay = 5 * time.Second
 	killProcessGroup(cmd)
 	var stdout bytes.Buffer
@@ -98,17 +112,17 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	return nil
 }
 
-// hookCommand is the command a hook runs: it posts the hook input to url and
-// prints the answer. Any failure exits 2, which blocks the tool call.
-func hookCommand(url, token string) string {
-	return fmt.Sprintf("curl -sSf -H 'Authorization: Bearer %s' --data-binary @- %s || exit 2", token, url)
+// hookCommand is the command a hook runs: `staircase hook`, which passes the
+// call to the run and blocks (exit 2) on every failure. It is the same on
+// every run and holds no secret. The shell that runs hooks gets the program
+// path quoted.
+func hookCommand(bin, agentName string) string {
+	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "' hook " + agentName + " --governed"
 }
 
-// hookSettings is the settings file that routes Claude Code's tool calls to
-// url. Every hook failure exits 2, which blocks the tool call: any other
-// non-zero exit would let it proceed.
-func hookSettings(url, token string) []byte {
-	cmd := hookCommand(url, token)
+// hookSettings is the settings file that routes Claude Code's tool calls
+// through cmd.
+func hookSettings(cmd string) []byte {
 	hook := func(matcher string) []map[string]any {
 		return []map[string]any{{"matcher": matcher,
 			"hooks": []map[string]any{{"type": "command", "command": cmd, "timeout": hookTimeout}}}}

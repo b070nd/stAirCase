@@ -6,7 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- `staircase hook <agent>`: one command that passes an agent's hook calls to the
+  run that governs it, and blocks the call on every failure (exit code 2).
+- `ROADMAP.md` and the first architecture decisions in `docs/adr/`.
+
 ### Changed
+
+- Claude Code runs (`--agent claude-code`) call `staircase hook claude-code
+  --governed` instead of `curl`. The run's token is no longer on a command line
+  (it is in a file only you can read), and curl is no longer needed.
 
 - Release checksums are signed into one Sigstore bundle,
   `checksums.txt.sigstore.json` (the format cosign 3 writes), instead of

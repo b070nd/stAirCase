@@ -4,19 +4,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// TestClaudeCode_hook_failure_blocks: when staircase cannot answer, the hook
-// must exit 2 (Claude Code lets the tool run on any other failure).
-func TestClaudeCode_hook_failure_blocks(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", hookCommand("http://127.0.0.1:1/hook", "tok"))
-	cmd.Stdin = strings.NewReader("{}")
-	_ = cmd.Run()
-	assert.Equal(t, 2, cmd.ProcessState.ExitCode())
+// TestHookCommand_is_stable_and_holds_no_secret: every run writes the same
+// hook command — no token, no address, no curl (F81) — so an agent that
+// trusts a hook by its hash trusts it once. The program path is quoted for
+// the shell that runs the hook.
+func TestHookCommand_is_stable_and_holds_no_secret(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "it's here")
+	assert.NoError(t, os.MkdirAll(dir, 0o755))
+	bin := filepath.Join(dir, "staircase")
+	assert.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s ' \"$@\"\n"), 0o755))
+
+	cmd := hookCommand(bin, "claude-code")
+	out, err := exec.Command("/bin/sh", "-c", cmd).Output()
+	assert.NoError(t, err)
+	assert.Equal(t, "hook claude-code --governed ", string(out))
+
+	settings := string(hookSettings(cmd))
+	assert.Contains(t, settings, "hook claude-code --governed")
+	for _, secret := range []string{"curl", "Bearer", "127.0.0.1"} {
+		assert.NotContains(t, settings, secret)
+	}
 }
 
 // TestReadInside_refuses_symlinks_out_of_the_worktree: the Edit pre-check

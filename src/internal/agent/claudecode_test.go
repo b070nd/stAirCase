@@ -19,8 +19,14 @@ import (
 
 // TestMain lets the test binary stand in for `claude`: with FAKE_CLAUDE naming a script
 // file it plays those tool calls through the real hook commands
-// from --settings, the way Claude Code does, and logs each decision.
+// from --settings, the way Claude Code does, and logs each decision. Called
+// as `<binary> hook …` it stands in for `staircase hook`, which the adapter's
+// hooks call (the adapter names the running program). Hooks inherit the
+// fake's environment, so the hook check comes first.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		os.Exit(agent.RunHook(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	if os.Getenv("FAKE_CLAUDE") != "" {
 		os.Exit(fakeClaude())
 	}
