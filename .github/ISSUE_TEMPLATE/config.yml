@@ -2,7 +2,7 @@ blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
     url: https://github.com/b070nd/stAirCase/security/advisories/new
-    about: Privately — never in a public issue.
+    about: Privately - never in a public issue.
   - name: Getting started
     url: https://github.com/b070nd/stAirCase/blob/master/QUICKSTART.md
     about: Installation, a first run, approvals and evidence export.

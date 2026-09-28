@@ -1,19 +1,21 @@
 // Package gate implements the stAirCase pre-run quality gate system.
 //
 // Architecture:
-//   - Gate     — interface each check implements (Name, Category, Severity, Run)
-//   - Register — adds a gate to the global registry (called from each file's init)
-//   - RunAll   — executes every registered gate and returns a Report
-//   - Report   — JSON-serialisable, machine- and human-readable result set
+//   - Gate     - interface each check implements (Name, Category, Severity, Run)
+//   - Register - adds a gate to the global registry (called from each file's init)
+//   - RunAll   - executes every registered gate and returns a Report
+//   - Report   - JSON-serialisable, machine- and human-readable result set
 //
 // New gates: implement the Gate interface and call Register(&myGate{}) in an init()
 // function inside any file in this package. No other wiring required.
 package gate
 
 import (
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
 // ─── Core types ───────────────────────────────────────────────────────────────
@@ -50,6 +52,9 @@ type Context struct {
 	CaseID int64
 	WsDir  string
 	Store  *persistence.Store
+	// Harness is the agent harness the case's plan runs ("" = the built-in
+	// agents). RunAll reads it from the compiled plan.
+	Harness string
 }
 
 // Gate is the interface every quality check must implement.
@@ -102,8 +107,19 @@ func RunAll(ctx Context) Report {
 			return report
 		}
 	}
+	if ctx.Harness == "" {
+		if p, err := plan.Load(planPath(ctx)); err == nil && p.CaseID == ctx.CaseID {
+			ctx.Harness = p.Harness
+		}
+	}
 	for _, g := range allGates {
-		res := g.Run(ctx)
+		var res Result
+		if ctx.Harness != "" && strings.HasPrefix(g.Name(), "topology.") {
+			// A harness brings its own agent: the case needs no topology.
+			res = skip(g.Name(), g.Category(), g.Severity(), "the case runs "+ctx.Harness+"; no topology needed")
+		} else {
+			res = g.Run(ctx)
+		}
 		report.Gates = append(report.Gates, res)
 		switch res.Status {
 		case StatusPass:
@@ -143,7 +159,7 @@ func fail(name, category string, sev Severity, msg string) Result {
 	return Result{Name: name, Category: category, Severity: sev, Status: StatusFail, Message: msg}
 }
 
-// warn always uses SeverityWarn — advisory failures never block a run.
+// warn always uses SeverityWarn - advisory failures never block a run.
 func warn(name, category, msg string) Result {
 	return Result{Name: name, Category: category, Severity: SeverityWarn, Status: StatusWarn, Message: msg}
 }

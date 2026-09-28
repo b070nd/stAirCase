@@ -108,7 +108,7 @@ func serve(urlFile, mode string) error {
 				"reasoning": "The first story asks for a greeting file."})
 		case results == 1:
 			msg = call(2, "request_edit", map[string]string{"file": "README.md", "search_block": "Status: draft",
-				"replace_block": "Status: greeted — see " + target, "reasoning": "The second story: point the README at the greeting."})
+				"replace_block": "Status: greeted - see " + target, "reasoning": "The second story: point the README at the greeting."})
 		case results == 2:
 			msg = call(3, "delete_file", map[string]string{"path": "OLD_NOTES.md", "reasoning": "The second story: the notes are obsolete."})
 		case mode == "tamper" && results == 3:

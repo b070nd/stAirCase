@@ -1,0 +1,177 @@
+package main
+
+import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var (
+	verifyMinCAL      int
+	verifyKey         string
+	verifyFile        string
+	verifyCheckAnchor bool
+	verifyAll         bool
+)
+
+var verifyCmd = &cobra.Command{
+	Use:   "verify <commit | range>",
+	Short: "Check that a commit, or every agent commit in a range, carries a valid change certificate",
+	Long: `Checks the change certificate of a commit in the git repository you are in:
+it must be signed by the trusted key, be about exactly this commit, and reach
+the required change assurance level (--min-cal, see docs/adr/0001).
+
+The certificate is read from the commit's git note (refs/notes/staircase),
+which a run writes; fetch notes from a remote with
+  git fetch origin refs/notes/staircase:refs/notes/staircase
+or pass the certificate file with --certificate.
+
+The trusted key is the workspace's public signing key (.signing.pub), or the
+file given with --key: that file is all a reviewer needs.
+
+A range (main..HEAD) checks every commit in it that names an agent in an
+Assisted-by: trailer; --all checks every commit. This is what a CI check on a
+pull request runs.`,
+	Args: cobra.ExactArgs(1),
+	RunE: verifyHandler,
+}
+
+func init() {
+	verifyCmd.Flags().IntVar(&verifyMinCAL, "min-cal", 0, "Fail below this change assurance level (1-4)")
+	verifyCmd.Flags().StringVar(&verifyKey, "key", "", "Public signing key to trust (default: the workspace's .signing.pub)")
+	verifyCmd.Flags().StringVar(&verifyFile, "certificate", "", "Read the certificate from this file instead of the git note")
+	verifyCmd.Flags().BoolVar(&verifyAll, "all", false, "In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)")
+	verifyCmd.Flags().BoolVar(&verifyCheckAnchor, "check-anchor", false,
+		"Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace")
+	rootCmd.AddCommand(verifyCmd)
+}
+
+func verifyHandler(_ *cobra.Command, args []string) error {
+	if verifyMinCAL < 0 || verifyMinCAL > 4 {
+		return errors.New("--min-cal is a level from 1 to 4")
+	}
+	if strings.Contains(args[0], "..") {
+		return verifyRange(args[0])
+	}
+	out, err := exec.Command("git", "rev-parse", "--verify", "-q", args[0]+"^{commit}").Output()
+	if err != nil {
+		return fmt.Errorf("%q is not a commit in this repository", args[0])
+	}
+	return verifyCommit(strings.TrimSpace(string(out)))
+}
+
+// verifyRange checks every commit of a range such as main..HEAD: a commit
+// that says an agent helped (an Assisted-by: trailer) must carry a valid
+// certificate; with --all every commit must. A commit made with an agent but
+// not marked as such cannot be told apart from a person's.
+func verifyRange(rng string) error {
+	out, err := exec.Command("git", "rev-list", "--reverse", rng).Output()
+	if err != nil {
+		return fmt.Errorf("%q is not a commit range in this repository", rng)
+	}
+	commits := strings.Fields(string(out))
+	var failed []string
+	for _, c := range commits {
+		trailer, _ := exec.Command("git", "log", "-1", "--format=%(trailers:key=Assisted-by,valueonly,separator=%x2C )", c).Output()
+		assisted := strings.TrimSpace(string(trailer))
+		if assisted == "" && !verifyAll {
+			fmt.Printf("·  Commit %.12s: no agent declared, no certificate needed\n", c)
+			continue
+		}
+		if err := verifyCommit(c); err != nil {
+			if assisted != "" {
+				err = fmt.Errorf("%w (the commit says an agent helped: %s)", err, assisted)
+			}
+			fmt.Printf("❌ %v\n", err)
+			failed = append(failed, err.Error())
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d commit(s) in %s failed:\n  %s", len(failed), len(commits), rng, strings.Join(failed, "\n  "))
+	}
+	fmt.Printf("✅ %s: %d commit(s) checked\n", rng, len(commits))
+	return nil
+}
+
+// verifyCommit checks one commit's change certificate.
+func verifyCommit(commit string) error {
+	var raw []byte
+	var err error
+	if verifyFile != "" {
+		raw, err = os.ReadFile(verifyFile)
+	} else {
+		raw, err = exec.Command("git", "notes", "--ref=staircase", "show", commit).Output()
+		if err != nil {
+			return fmt.Errorf("commit %.12s has no change certificate (no git note in refs/notes/staircase)", commit)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	var env certificate.Envelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return fmt.Errorf("the change certificate is not valid JSON: %w", err)
+	}
+
+	var pub ed25519.PublicKey
+	if verifyKey != "" {
+		b, err := os.ReadFile(verifyKey)
+		if err != nil {
+			return err
+		}
+		if len(b) != ed25519.PublicKeySize {
+			return fmt.Errorf("%s is not an Ed25519 public key (%d bytes)", verifyKey, len(b))
+		}
+		pub = b
+	} else if pub, err = crypto.LoadSigningPublicKey(viper.GetString("STAIRCASE_DIR")); err != nil {
+		return err
+	}
+
+	s, err := certificate.Open(env, pub)
+	if err != nil {
+		return fmt.Errorf("commit %.12s: %w", commit, err)
+	}
+	if s.Commit() != commit {
+		return fmt.Errorf("the certificate is about commit %.12s, not %.12s", s.Commit(), commit)
+	}
+	p := s.Predicate
+	if p.CAL < verifyMinCAL {
+		why := ""
+		if len(p.Notes) > 0 {
+			why = ": " + strings.Join(p.Notes, "; ")
+		}
+		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d%s", commit, p.CAL, verifyMinCAL, why)
+	}
+	if verifyCheckAnchor {
+		sidecar := verifyFile + ".anchor"
+		if verifyFile == "" {
+			sidecar = certificatePath(viper.GetString("STAIRCASE_DIR"), p.Run) + ".anchor"
+		}
+		payload, err := base64.StdEncoding.DecodeString(env.Payload)
+		if err != nil {
+			return err
+		}
+		if err := checkAnchor(sidecar, payload); err != nil {
+			return fmt.Errorf("commit %.12s: %w", commit, err)
+		}
+	}
+	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, p.CAL)
+	fmt.Printf("   run #%d from %.12s, assisted by %s\n", p.Run, p.BaseCommit, strings.Join(p.Agents, ", "))
+	for source, n := range p.Decisions {
+		fmt.Printf("   %d decision(s) by %s\n", n, source)
+	}
+	for _, n := range p.Notes {
+		fmt.Printf("   note: %s\n", n)
+	}
+	return nil
+}

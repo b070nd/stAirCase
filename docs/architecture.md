@@ -4,8 +4,8 @@ This page is for contributors and reviewers: how stAirCase is built inside. To
 *use* stAirCase you do not need it; start with [Concepts](concepts.md).
 
 stAirCase is one Go binary (`staircase`, no CGo) with a local SQLite workspace
-(`$STAIRCASE_DIR`). It keeps the automation that changes a product — agents,
-prompts, plans, run evidence — **outside** the product's repository, and it is
+(`$STAIRCASE_DIR`). It keeps the automation that changes a product - agents,
+prompts, plans, run evidence - **outside** the product's repository, and it is
 the only path by which an agent's change reaches that repository.
 
 ```
@@ -25,21 +25,21 @@ the only path by which an agent's change reaches that repository.
 
 ## Flow of a run
 
-1. **Blueprint** (`internal/blueprint`) — `blueprint import` reads a directory's
+1. **Blueprint** (`internal/blueprint`) - `blueprint import` reads a directory's
    `blueprint.yaml` strictly, resolves prompt/PRD files confined to it
    (`os.Root`), and stores canonical JSON named by its SHA-256. `project bind`
    creates a new topology version, cases and stories in one transaction.
    Projects can also be set up with the imperative CLI (`topology`, `case`,
    `story`).
-2. **Compile** (`cmd/staircase/compile.go`, `internal/plan`) — the case's PRD,
+2. **Compile** (`cmd/staircase/compile.go`, `internal/plan`) - the case's PRD,
    stories with their scope, topology, blueprint and limits, and a repository
    map (`internal/engine`) become `tmp/plan_case<N>.json` with a sha256 sidecar.
    A run executes exactly this plan.
-3. **Gates** (`internal/gate`) — pre-run checks: structure, provider secrets,
-   the plan (present, unmodified, and for a bound case exactly its blueprint's —
+3. **Gates** (`internal/gate`) - pre-run checks: structure, provider secrets,
+   the plan (present, unmodified, and for a bound case exactly its blueprint's -
    `runtime.plan_pinned`), git, dependencies, plus signed plugin gates
    (`gates.json`).
-4. **Run** (`internal/orchestrator`) — records `run_bound` (base commit, plan
+4. **Run** (`internal/orchestrator`) - records `run_bound` (base commit, plan
    digest, blueprint, topology version) as the first chain event, creates a git
    worktree on `staircase/run-N` at the base commit, and starts the agent in a
    goroutine:
@@ -47,20 +47,20 @@ the only path by which an agent's change reaches that repository.
      supervisor and its agents, one step at a time, routed by `ROUTE:` lines;
    - or Claude Code (`agent.ClaudeCode`, experimental), whose tool calls reach
      the same loop through PreToolUse/PostToolUse hooks.
-5. **Decision loop** — every edit, file creation or deletion and shell command
+5. **Decision loop** - every edit, file creation or deletion and shell command
    is a proposal. The orchestrator derives the exact resulting bytes from the
    base commit and what was shown (`approval.go`), then decides in order:
    refusal (bad path, text not found, too large) → drift halt → human for drift
    or limits (`policy.Supervisor`) → policy rules → validator → human. The
    decision is appended to the chain **before** the agent sees it; tools then
    write exactly the derived bytes.
-6. **Finalize** — the worktree must equal the approved state (no other change,
+6. **Finalize** - the worktree must equal the approved state (no other change,
    no index edits, no agent commits, the branch where it started); the commit is
    built from the approved bytes with git plumbing on a private index and
    `update-ref` compare-and-swap. A human approves the whole change once when the
    validator decided anything. `drift_report` and `summary.json` close the run;
    a successful run's worktree is removed, a failed one's kept for inspection.
-7. **Evidence** — `story accept` records acceptance and completes the case;
+7. **Evidence** - `story accept` records acceptance and completes the case;
    `audit export` writes an Ed25519-signed checkpoint of the chain to an
    append-only file (`internal/audit`), optionally anchored in a Rekor
    transparency log; `audit verify` checks both.
@@ -92,7 +92,7 @@ the only path by which an agent's change reaches that repository.
 - **The agent is untrusted.** It changes nothing except through proposals; the
   orchestrator never trusts what it claims (hashes, what it wrote) and verifies
   the worktree before committing. Tools and approved shell commands run as your
-  OS user — there is no OS sandbox ([SECURITY.md](../SECURITY.md)).
+  OS user - there is no OS sandbox ([SECURITY.md](../SECURITY.md)).
 - **Models see** the plan's brief, the repository map, files the agents read,
   and nothing else; keys are decrypted only to call the model, never shown to
   it, and scrubbed from every log and audit record. Shell commands get an

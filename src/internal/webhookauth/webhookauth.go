@@ -17,7 +17,7 @@
 //
 // and the approver must echo both, as "yield_id" and "request_sha256", in its
 // signed response body, so a captured approval cannot be replayed against
-// another request — not even an identical one.
+// another request - not even an identical one.
 package webhookauth
 
 import (

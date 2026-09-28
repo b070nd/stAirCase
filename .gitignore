@@ -16,7 +16,7 @@ vendor/
 /staircase
 /staircase-*
 
-# Python bytecode and cache (CHECK 2.2.3 — no compiled artifacts in VCS)
+# Python bytecode and cache (CHECK 2.2.3 - no compiled artifacts in VCS)
 __pycache__/
 *.pyc
 *.pyo
@@ -28,7 +28,7 @@ src/staircase
 
 # Note: tests/fixtures/repos/*.tar.gz are intentional test fixtures (pre-built
 # git repository snapshots required by the orchestrator integration tests).
-# They are exempt from CHECK 2.2.3 because they are not build outputs —
+# They are exempt from CHECK 2.2.3 because they are not build outputs -
 # they cannot be regenerated without the original repo history.
 
 # Local development ledger and delete-candidate quarantine (not part of the product)

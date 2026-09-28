@@ -37,7 +37,7 @@ GOOS=windows go build ./...  # the Windows build must keep compiling
   `fix(orchestrator): …`, `feat(audit): …`, `docs: …`, with a body that explains
   the *why*.
 - **No new dependencies without discussion.** `go.mod` is the supply-chain
-  surface — model clients use the standard library, and it should stay that way.
+  surface - model clients use the standard library, and it should stay that way.
 
 ## Writing documentation
 
@@ -58,7 +58,7 @@ lists every page.
 ## Releasing (maintainers)
 
 1. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
-   `## [X.Y.Z] — date` heading; it becomes the release notes.
+   `## [X.Y.Z] - date` heading; it becomes the release notes.
 2. Merge to `master` with CI green, then tag from `master`:
    `git tag -a vX.Y.Z -m "stAirCase vX.Y.Z" && git push origin vX.Y.Z`.
 3. The release workflow builds the archives reproducibly, signs the
@@ -71,7 +71,7 @@ version may contain breaking changes, listed under "Changed (breaking)".
 
 ## Reporting security issues
 
-Do not use public issues for vulnerabilities — see [SECURITY.md](SECURITY.md).
+Do not use public issues for vulnerabilities - see [SECURITY.md](SECURITY.md).
 
 ## Conduct
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# record-replay.sh — record a real-model run once, then replay it offline.
+# record-replay.sh - record a real-model run once, then replay it offline.
 #
 # Recording talks to the real model and costs money. Store the provider key as
 # a workspace secret first, e.g. for the LLM gateway (provider/model names):
@@ -19,5 +19,5 @@ echo "Recording model exchanges for case #$CASE_ID → $OUT (real API calls)"
 staircase run "$CASE_ID" --record-llm "$OUT"
 
 echo
-echo "✅ Recorded $OUT — replay it offline with:"
+echo "✅ Recorded $OUT - replay it offline with:"
 echo "    staircase run $CASE_ID --replay-llm $OUT"

@@ -98,7 +98,7 @@ func SecretFor(model string) string {
 func New(model string, secret func(name string) (string, error)) (Model, error) {
 	p, ok := providerFor(model)
 	if !ok {
-		return nil, fmt.Errorf("unknown LLM provider for model %q — supported: claude-, gpt-, o1-, o3-, o4-, gemini-, grok-, or provider/model (LLM gateway)", model)
+		return nil, fmt.Errorf("unknown LLM provider for model %q - supported: claude-, gpt-, o1-, o3-, o4-, gemini-, grok-, or provider/model (LLM gateway)", model)
 	}
 	key, err := secret(p.secret)
 	if err != nil {

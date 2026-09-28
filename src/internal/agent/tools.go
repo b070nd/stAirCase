@@ -232,7 +232,7 @@ func runShell(ctx context.Context, root, dir, command string) string {
 }
 
 // shellEnv is what an approved shell command inherits: nothing that could
-// carry credentials (SSH agent, cloud or LLM keys) — only what tools need to
+// carry credentials (SSH agent, cloud or LLM keys) - only what tools need to
 // run, find certificates and reach a proxy.
 func shellEnv() []string {
 	keep := func(k string) bool {

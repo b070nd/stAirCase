@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke.sh — opt-in acceptance runs against real agents (they cost money and
+# smoke.sh - opt-in acceptance runs against real agents (they cost money and
 # need credentials; `make check` never runs them).
 #
 #   ./demo/smoke.sh model    a real model through the LLM gateway records a small
@@ -8,15 +8,18 @@
 #                            Needs AI_GATEWAY_API_KEY (model: SMOKE_MODEL,
 #                            default openai/gpt-6-astra; SMOKE_GATEWAY_URL
 #                            overrides the gateway).
-#   ./demo/smoke.sh claude   the same case with --agent claude-code; the first
-#                            approval is held 40 s (longer than Claude Code's
-#                            default hook timeout). Needs a logged-in `claude`.
+#   ./demo/smoke.sh claude   the same task as a `staircase claude` session; the
+#                            first approval is held 40 s (longer than Claude
+#                            Code's default hook timeout). Needs a logged-in `claude`.
+#   ./demo/smoke.sh codex    the same task as a `staircase codex` session with
+#                            SMOKE_CODEX_MODEL (default gpt-6-luna). Needs a
+#                            logged-in codex (on PATH or in the ChatGPT app).
 #
-# Both skip (exit 0) when their credentials are missing. Approvals are given
+# Each skips (exit 0) when its credentials are missing. Approvals are given
 # through the approval API; the key is passed on stdin and never printed.
 set -euo pipefail
 
-MODE="${1:?usage: smoke.sh model|claude}"
+MODE="${1:?usage: smoke.sh model|claude|codex}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SMOKE_MODEL="${SMOKE_MODEL:-openai/gpt-6-astra}"
 
@@ -25,7 +28,10 @@ case "$MODE" in
   claude) AUTH="$(claude auth status 2>/dev/null || true)"   # captured: grep -q in a pipe would SIGPIPE it
           [[ "$AUTH" =~ \"loggedIn\":\ *true ]] \
             || { echo "⏭  smoke claude skipped: the claude CLI is not installed or not logged in"; exit 0; } ;;
-  *) echo "usage: smoke.sh model|claude"; exit 2 ;;
+  codex)  CODEX="$(command -v codex || echo /Applications/ChatGPT.app/Contents/Resources/codex)"
+          "$CODEX" login status >/dev/null 2>&1 \
+            || { echo "⏭  smoke codex skipped: codex is not installed or not logged in"; exit 0; } ;;
+  *) echo "usage: smoke.sh model|claude|codex"; exit 2 ;;
 esac
 
 # shellcheck source=demo/lib.sh
@@ -76,11 +82,14 @@ staircase blueprint import "$BP" >/dev/null
 staircase project bind 1 "$(staircase blueprint list | awk 'NR==3 {print $1}')" >/dev/null
 staircase compile 1 >/dev/null
 
-# run <run-id> <hold-first-approval-seconds> <staircase run flags...>
+TASK="Create GREETING.md containing one short, friendly line of greeting. Do not change any other file."
+
+# run <run-id> <hold-first-approval-seconds> <staircase command and flags...>:
+# approvals come through the approval API, the first one held.
 run() {
   local id="$1" hold="$2"; shift 2
   local port; port="$("$DEMOTOOL" freeport)"
-  staircase run 1 --approval-port "$port" --approval-token t "$@" >"$WORK/run$id.log" 2>&1 &
+  (cd "$REPO" && staircase "$@" --approval-port "$port" --approval-token t) >"$WORK/run$id.log" 2>&1 &
   RUN_PID=$!
   local api="http://127.0.0.1:$port/v1/yields" n=0 y
   while kill -0 "$RUN_PID" 2>/dev/null; do
@@ -104,17 +113,20 @@ run() {
 case "$MODE" in
   model)
     say "Recording a real run ($SMOKE_MODEL)"
-    run 1 0 --record-llm "$WORK/llm.jsonl"
+    run 1 0 run 1 --record-llm "$WORK/llm.jsonl"
     ! grep -qF "$AI_GATEWAY_API_KEY" "$WORK/llm.jsonl" || die "the recording contains the gateway key"
     echo "  ✓ recording holds $(wc -l < "$WORK/llm.jsonl" | tr -d ' ') exchanges and no key"
     say "Replaying it offline (gateway URL made unreachable)"
     printf 'http://127.0.0.1:9/v1' | staircase secret set LLM_GATEWAY_URL >/dev/null
-    run 2 0 --replay-llm "$WORK/llm.jsonl"
+    run 2 0 run 1 --replay-llm "$WORK/llm.jsonl"
     [ "$(git -C "$REPO" rev-parse staircase/run-1:GREETING.md)" = "$(git -C "$REPO" rev-parse staircase/run-2:GREETING.md)" ] \
       || die "the replay committed different bytes"
     echo "  ✓ the replay committed the same bytes, offline" ;;
   claude)
     say "Claude Code, every tool call governed by hooks"
-    run 1 40 --agent claude-code ;;
+    run 1 40 claude --allow GREETING.md "$TASK" ;;
+  codex)
+    say "Codex, edits decided first, command changes reviewed after"
+    run 1 0 codex --model "${SMOKE_CODEX_MODEL:-gpt-6-luna}" --allow GREETING.md "$TASK" ;;
 esac
 echo "✅ smoke $MODE passed"

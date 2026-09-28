@@ -64,7 +64,7 @@ func TestLoadEngine_invalid_json_returns_error(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// ─── Evaluate — empty engine ──────────────────────────────────────────────────
+// ─── Evaluate - empty engine ──────────────────────────────────────────────────
 
 func TestEvaluate_empty_engine_never_approves(t *testing.T) {
 	e := &policy.Engine{}
@@ -137,7 +137,7 @@ func TestEvaluate_empty_action_types_matches_any(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: nil, Effect: policy.EffectApprove},
 	}}
-	for _, at := range []string{"file_edit", "custom"} { // shell_exec is blocked at policy level — tested separately
+	for _, at := range []string{"file_edit", "custom"} { // shell_exec is blocked at policy level - tested separately
 		dec := e.Evaluate(fileEditReq(at, 0.5))
 		assert.True(t, dec.Matched, "expected match for %q", at)
 		assert.True(t, dec.Approved, "expected approve for %q", at)
@@ -317,7 +317,7 @@ func TestEvaluate_reason_contains_rule_index(t *testing.T) {
 // ─── approvalhttp integration (uses domain.YieldRequest directly) ─────────────
 
 // TestEvaluate_type_compatible_with_domain verifies that domain.YieldRequest
-// (the canonical type) is accepted by Evaluate without any conversion — i.e.
+// (the canonical type) is accepted by Evaluate without any conversion - i.e.
 // that engine.go imports domain, not ipc.
 func TestEvaluate_type_compatible_with_domain(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -398,7 +398,7 @@ func TestBlanketDenyRequiresFlag(t *testing.T) {
 }
 
 // TestLimitExhaustionAsksOperator verifies that CheckLimits returns exhausted=true
-// when a counter reaches its cap, signalling that the operator must be consulted —
+// when a counter reaches its cap, signalling that the operator must be consulted -
 // the limit must NEVER be silently allowed or silently denied (CHECK 7.2.2).
 func TestLimitExhaustionAsksOperator(t *testing.T) {
 	e := &policy.Engine{Limits: policy.Limits{MaxAutoApproved: 5}}
@@ -437,7 +437,7 @@ func setupSignedPolicy(t *testing.T) (wsDir string, policyData []byte) {
 }
 
 // TestPolicyEngine_shell_exec_never_auto_approved verifies the hard invariant:
-// no policy rule — even a broad auto-approve wildcard — can auto-approve a
+// no policy rule - even a broad auto-approve wildcard - can auto-approve a
 // shell_exec yield.  The operator must always personally review shell commands.
 func TestPolicyEngine_shell_exec_never_auto_approved(t *testing.T) {
 	// Wildcard rule: approve anything from any agent with any confidence.

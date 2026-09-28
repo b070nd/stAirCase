@@ -50,7 +50,7 @@ func TestGenerateSigningKey_idempotent(t *testing.T) {
 	orig, err := os.ReadFile(filepath.Join(dir, crypto.SigningKeyFile))
 	require.NoError(t, err)
 
-	// Call again — should not overwrite.
+	// Call again - should not overwrite.
 	require.NoError(t, crypto.GenerateSigningKey(dir))
 	after, err := os.ReadFile(filepath.Join(dir, crypto.SigningKeyFile))
 	require.NoError(t, err)

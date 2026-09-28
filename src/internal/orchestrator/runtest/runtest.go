@@ -30,6 +30,9 @@ type Options struct {
 	Setup func(s *persistence.Store, wsDir string, projectID int64)
 	Agent orchestrator.Agent
 	Run   orchestrator.RunOptions // Agent and SkipGates are set by Run
+	// NoTopology leaves the project without a topology, as for a case run by
+	// an agent harness.
+	NoTopology bool
 }
 
 // Result is what a run left behind.
@@ -62,7 +65,7 @@ func (r Result) OnBranch(file string) (string, error) {
 func Run(t testing.TB, o Options) Result {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("integration test — skipped in -short mode")
+		t.Skip("integration test - skipped in -short mode")
 	}
 	wsDir, err := os.MkdirTemp("", "strc-rt-") // short: some paths derive from it
 	must(t, err)
@@ -92,8 +95,10 @@ func Run(t testing.TB, o Options) Result {
 	must(t, err)
 	p, err := s.CreateProject(v.ID, "P", repo)
 	must(t, err)
-	_, err = s.CreateSwarmTopology(p.ID, "sup", "memory", "langgraph")
-	must(t, err)
+	if !o.NoTopology {
+		_, err = s.CreateSwarmTopology(p.ID, "sup", "memory", "langgraph")
+		must(t, err)
+	}
 	c, err := s.CreateCase(p.ID)
 	must(t, err)
 	if o.Setup != nil {

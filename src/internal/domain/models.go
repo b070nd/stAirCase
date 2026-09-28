@@ -8,7 +8,7 @@ import (
 // Using typed string constants rather than bare literals prevents silent typos
 // from being stored in the database (e.g. "COMPLTEED" instead of "COMPLETED").
 
-// Case status values — enforced by CHECK constraint on new databases.
+// Case status values - enforced by CHECK constraint on new databases.
 const (
 	CaseStatusPending   = "PENDING"
 	CaseStatusRunning   = "RUNNING"
@@ -16,7 +16,7 @@ const (
 	CaseStatusFailed    = "FAILED"
 )
 
-// Run status values — enforced by CHECK constraint on new databases.
+// Run status values - enforced by CHECK constraint on new databases.
 const (
 	RunStatusRunning = "RUNNING"
 	RunStatusSuccess = "SUCCESS"
@@ -24,7 +24,7 @@ const (
 	RunStatusKilled  = "KILLED"
 )
 
-// UserStory status values — enforced by CHECK constraint on new databases.
+// UserStory status values - enforced by CHECK constraint on new databases.
 const (
 	StoryStatusPending     = "PENDING"
 	StoryStatusImplemented = "IMPLEMENTED"
@@ -178,6 +178,11 @@ type YieldRequest struct {
 	// BatchID and present them as a single approval screen. For now the field
 	// is accepted on the wire and displayed by the TUI but not yet batched.
 	BatchID string `json:"batch_id,omitempty"`
+
+	// ReviewAfter marks changes that already happened in the worktree (a
+	// command made them): the orchestrator fills ProposedEdits with them,
+	// approving keeps them and rejecting reverts them.
+	ReviewAfter bool `json:"review_after,omitempty"`
 
 	// Drift, set by the orchestrator, says why drift supervision sends this
 	// proposal to a human (outside the stories' scope, a limit, a checkpoint).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# homebrew-formula.sh <version> <checksums.txt> <out.rb> — write the Homebrew formula
+# homebrew-formula.sh <version> <checksums.txt> <out.rb> - write the Homebrew formula
 # for a release from its checksums.txt (archive names as goreleaser writes them),
 # for the b070nd/homebrew-staircase tap:
 #   gh release download v0.2.0 -R b070nd/stAirCase -p checksums.txt -D /tmp/sc

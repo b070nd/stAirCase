@@ -1,11 +1,11 @@
-// export_test.go — compiled only during `go test`.
+// export_test.go - compiled only during `go test`.
 // Exposes unexported gate implementations and internal state to the
 // black-box test package (package gate_test).
 package gate
 
 import "testing"
 
-// Individual gate singletons — one per registered gate implementation.
+// Individual gate singletons - one per registered gate implementation.
 var (
 	CaseProjectExistsGate            Gate = &caseProjectExistsGate{}
 	CaseHasStoriesGate               Gate = &caseHasStoriesGate{}
@@ -29,7 +29,7 @@ var (
 )
 
 // ReplaceRegistry swaps the global gate registry for the duration of a test
-// and restores it via t.Cleanup — safe for parallel tests that each call this.
+// and restores it via t.Cleanup - safe for parallel tests that each call this.
 func ReplaceRegistry(t testing.TB, gates []Gate) {
 	t.Helper()
 	saved := registry

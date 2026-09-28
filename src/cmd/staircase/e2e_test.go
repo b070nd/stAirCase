@@ -7,7 +7,7 @@ package main
 // standard `go test` without a pre-built binary or a Python venv.
 //
 // Coverage targets (from docs/architecture.md §6 "What is not tested"):
-//   - cmd/staircase/* — all CLI command handlers
+//   - cmd/staircase/* - all CLI command handlers
 //   - Full data-flow: persistence → gate → compile → inspect
 //
 // Tests that require Python (BootstrapVenv) are explicitly skipped so that CI
@@ -191,7 +191,7 @@ func TestE2E_Compile_GeneratesPlan(t *testing.T) {
 	assert.Equal(t, []plan.Agent{{Name: "supervisor", Role: "Routes tasks", Model: "claude-sonnet-4-5"}}, pl.Agents)
 }
 
-// ─── Scenario 3: Gate — incomplete setup blocks ───────────────────────────────
+// ─── Scenario 3: Gate - incomplete setup blocks ───────────────────────────────
 
 // TestE2E_Gate_BlocksOnMissingTopology verifies that running gate checks on a
 // case that has stories but no registered topology produces a blocking report.
@@ -241,7 +241,7 @@ func TestE2E_Gate_BlocksOnNoStories(t *testing.T) {
 	t.Fatal("case.has_stories gate not found in report")
 }
 
-// ─── Scenario 4: Gate — full structural setup passes ─────────────────────────
+// ─── Scenario 4: Gate - full structural setup passes ─────────────────────────
 
 // TestE2E_Gate_StructuralGatesAllPass sets up every entity required by the
 // structural gate category and verifies that all structural BLOCK gates pass.
@@ -326,7 +326,7 @@ func TestE2E_SecretGate_AnthropicKeyPresentPasses(t *testing.T) {
 	t.Fatal("secret.provider_keys gate not found in report")
 }
 
-// ─── Scenario 6: Inspect — runs and event log ─────────────────────────────────
+// ─── Scenario 6: Inspect - runs and event log ─────────────────────────────────
 
 // TestE2E_Inspect_RunsLifecycle verifies the full run lifecycle:
 // create → list → update → list again, checking that status transitions
@@ -515,7 +515,7 @@ func TestAudit_Export_unknown_run_returns_error(t *testing.T) {
 // fails gracefully when the signing key has not been initialised.
 func TestAudit_Export_missing_signing_key_returns_error(t *testing.T) {
 	_, s := e2eWorkspace(t)
-	// Do NOT call GenerateSigningKey — key is absent.
+	// Do NOT call GenerateSigningKey - key is absent.
 	runID := seedRunWithLogs(t, s, 1)
 
 	err := auditExportHandler(nil, []string{strconv.FormatInt(runID, 10)})
@@ -657,30 +657,7 @@ func TestAudit_Export_anchor_and_verify_checkAnchor(t *testing.T) {
 	require.NoError(t, crypto.GenerateSigningKey(wsDir))
 	runID := seedRunWithLogs(t, s, 2)
 
-	// Minimal mock Rekor: accepts any entry, serves it back by uuid.
-	entries := map[string]string{}
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			var e map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&e)
-			raw, _ := json.Marshal(e)
-			sum := sha256.Sum256(raw)
-			uuid := hex.EncodeToString(sum[:])
-			entries[uuid] = base64.StdEncoding.EncodeToString(raw)
-			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				uuid: map[string]any{"logIndex": 1, "logID": "mock", "integratedTime": 1750000000},
-			})
-			return
-		}
-		uuid := strings.TrimPrefix(r.URL.Path, "/api/v1/log/entries/")
-		if b, ok := entries[uuid]; ok {
-			_ = json.NewEncoder(w).Encode(map[string]any{uuid: map[string]any{"body": b}})
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	t.Cleanup(mock.Close)
+	mock := fakeRekor(t)
 
 	// Export with anchoring enabled.
 	auditAnchor, auditRekorURL = true, mock.URL
@@ -761,4 +738,37 @@ func TestCaseRollback_discards_the_run_but_keeps_history_truthful(t *testing.T) 
 	cs, err := s.GetCase(c.ID)
 	require.NoError(t, err)
 	assert.Equal(t, persistence.CaseStatusPending, cs.Status, "discarded work leaves the case to be run again")
+}
+
+// fakeRekor accepts any entry and, like the real log, keeps the artifact's
+// hash instead of the artifact; it serves entries back by uuid.
+func fakeRekor(t *testing.T) *httptest.Server {
+	entries := map[string]string{}
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var e map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&e)
+			spec := e["spec"].(map[string]any)
+			artifact, _ := base64.StdEncoding.DecodeString(spec["data"].(map[string]any)["content"].(string))
+			sum := sha256.Sum256(artifact)
+			spec["data"] = map[string]any{"hash": map[string]string{"algorithm": "sha256", "value": hex.EncodeToString(sum[:])}}
+			raw, _ := json.Marshal(e)
+			sum = sha256.Sum256(raw)
+			uuid := hex.EncodeToString(sum[:])
+			entries[uuid] = base64.StdEncoding.EncodeToString(raw)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				uuid: map[string]any{"logIndex": 1, "logID": "mock", "integratedTime": 1750000000},
+			})
+			return
+		}
+		uuid := strings.TrimPrefix(r.URL.Path, "/api/v1/log/entries/")
+		if b, ok := entries[uuid]; ok {
+			_ = json.NewEncoder(w).Encode(map[string]any{uuid: map[string]any{"body": b}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(mock.Close)
+	return mock
 }

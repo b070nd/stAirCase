@@ -14,6 +14,27 @@ Global flag, accepted by every command:
 
 The workspace directory can also be set with the `STAIRCASE_DIR` environment variable.
 
+## staircase audit anchor
+
+Anchor a run's change certificate in a Rekor transparency log (digests only)
+
+```
+staircase audit anchor <run-id> [flags]
+```
+
+Puts the run's change certificate in a Rekor transparency log, an outside
+witness that it existed at this time. Only the certificate is sent: commit
+hashes, digests, counts and the level, never code, prompts or reasoning.
+The log keeps its hash, the signature and your public key.
+
+Check it later with: staircase verify <commit> --check-anchor
+
+Flags:
+
+```
+      --rekor-url string   Rekor server URL (default "https://rekor.sigstore.dev")
+```
+
 ## staircase audit export
 
 Export a signed audit checkpoint for a completed run
@@ -25,7 +46,7 @@ staircase audit export <run-id> [flags]
 Flags:
 
 ```
-      --anchor             Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record — reasoning, paths, proposed changes — to a public, permanent log
+      --anchor             Also anchor the signed checkpoint in a Rekor transparency log (external witness). The whole record is sent to the Rekor service; its public, permanent log keeps the record's SHA-256, the signature and your public key
       --rekor-url string   Rekor server URL used by --anchor / --check-anchor (default "https://rekor.sigstore.dev")
 ```
 
@@ -94,7 +115,7 @@ staircase case rollback <case-id>
 
 Discards the most recent run of a case: removes its worktree (kept after a
 failed run) and deletes its staircase/run-N branch. Your checkout is not
-touched — runs never modify it. The run record and its audit chain are kept;
+touched - runs never modify it. The run record and its audit chain are kept;
 a rolled_back event records who discarded it, and the case returns to PENDING
 so it can be run again. A RUNNING run must be stopped first.
 
@@ -112,6 +133,35 @@ Show detailed status of a Case
 
 ```
 staircase case status <case-id>
+```
+
+## staircase claude
+
+Run Claude Code on a task in this repository, with every change decided by you
+
+```
+staircase claude <task> [flags]
+```
+
+Runs Claude Code on the task in a separate worktree of the git repository you
+are in. Every file change and command it wants to make comes to you first. At
+the end, exactly the approved changes are committed on a new branch,
+staircase/run-N; your checkout is not touched.
+
+No setup is needed: the workspace, a project for this repository and a case for
+the task are created when missing. Claude Code must be installed and logged in.
+
+--allow limits the paths the task may change; changes elsewhere come to you as
+drift (see docs/drift.md).
+
+Flags:
+
+```
+      --allow stringArray       A path (glob) the task may change; repeat for more
+      --allow-shell-exec        Let Claude Code propose shell commands (each still needs your approval)
+      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --model string            Model for Claude Code (default: its own)
 ```
 
 ## staircase clean
@@ -140,6 +190,33 @@ Flags:
       --keep-failed   Preserve branches/logs for FAILED runs
 ```
 
+## staircase codex
+
+Run Codex on a task in this repository, with every change decided by you
+
+```
+staircase codex <task> [flags]
+```
+
+Runs OpenAI's Codex CLI on the task in a separate worktree of the git
+repository you are in. Every file edit it wants to make comes to you first.
+Its shell commands run in Codex's sandbox (no network, writes only in the
+worktree), and the files a command changes come to you afterwards: kept if
+you approve, reverted if not. At the end, exactly the approved changes are
+committed on a new branch, staircase/run-N; your checkout is not touched.
+
+No setup is needed. Codex must be installed (the ChatGPT app for macOS
+includes it) and logged in.
+
+Flags:
+
+```
+      --allow stringArray       A path (glob) the task may change; repeat for more
+      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --model string            Model for Codex (default: its own)
+```
+
 ## staircase compile
 
 Compile a Case into the plan staircase run executes
@@ -151,7 +228,8 @@ staircase compile <case-id> [flags]
 Flags:
 
 ```
-      --force   Overwrite an existing plan
+      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex (default "built-in")
+      --force          Overwrite an existing plan
 ```
 
 ## staircase component add
@@ -214,7 +292,7 @@ Executes all registered quality gates against a case before running.
 
 Gates are grouped by category (structural, security, runtime, dependency).
 BLOCK gates must pass for 'staircase run' to proceed.
-WARN  gates are advisory — they surface issues but do not block execution.
+WARN  gates are advisory - they surface issues but do not block execution.
 
 Exit codes:
   0  all BLOCK gates passed (overall PASS or WARN)
@@ -255,6 +333,28 @@ content and the workspace public key (.signing.pub).
 
 Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
 gates.json has not been modified since it was last signed.
+
+## staircase hook
+
+Pass an agent's hook call to the run that governs it (used by agent adapters)
+
+```
+staircase hook <agent> [--governed]
+```
+
+Coding agents such as Claude Code call this command before and after each
+tool call. It reads the call on standard input, passes it to the stAirCase run
+that started the agent, and prints the run's answer.
+
+Exit code 2 blocks the tool call. Every failure blocks: a missing or invalid
+session, a run that does not answer or refuses the token, an unknown agent.
+
+--governed is set whenever stAirCase starts the agent: without the run's
+session file (STAIRCASE_HOOK_FILE) the call is blocked. Without --governed, as
+in a hook installed once for a user or a company, calls pass through when no
+governed session is running.
+
+Supported agents: claude-code.
 
 ## staircase init
 
@@ -399,7 +499,7 @@ staircase project set-webhook <project-id> <url>
 
 Set (or clear) the HITL webhook URL for a project.
 
-To authenticate the webhook channel (strongly recommended — otherwise a network
+To authenticate the webhook channel (strongly recommended - otherwise a network
 attacker can forge approvals), store a shared HMAC secret under the reserved key:
 
     printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <project-id>
@@ -446,7 +546,7 @@ staircase replay <run-id>
 
 Verify the audit chain of a run and print every approval decision in order.
 
-Replay refuses to proceed if the hash chain is broken — this prevents
+Replay refuses to proceed if the hash chain is broken - this prevents
 replaying a tampered run log.
 
 ## staircase run
@@ -461,13 +561,14 @@ Flags:
 
 ```
       --ack-drift               Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
-      --agent string            Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental) (default "built-in")
-      --allow-shell-exec        Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
+      --agent string            Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental) (default "built-in")
+      --allow-shell-exec        Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int       Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string   Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
       --debug                   Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
       --dry-run                 Validate and print the execution plan without running
       --metrics-addr string     Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.
+      --model string            Model for an agent harness (claude-code, codex); default: the harness's own
       --otel-endpoint string    OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.
       --reconcile               Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
       --record-llm string       Record every model exchange of this run to this file (JSON lines) for offline replay.
@@ -496,8 +597,8 @@ Generates a fresh AES-256 key, re-encrypts every stored secret in a
 single atomic DB transaction, then replaces the old key file.
 
 The operation holds an exclusive non-blocking advisory lock on the workspace
-key file.  It fails fast (does not wait) if any concurrent process — an active
-run or a 'secret set' command — already holds a shared lock on the key.
+key file.  It fails fast (does not wait) if any concurrent process - an active
+run or a 'secret set' command - already holds a shared lock on the key.
 
 ## staircase secret set
 
@@ -658,6 +759,40 @@ List all registered vendors
 
 ```
 staircase vendor list
+```
+
+## staircase verify
+
+Check that a commit, or every agent commit in a range, carries a valid change certificate
+
+```
+staircase verify <commit | range> [flags]
+```
+
+Checks the change certificate of a commit in the git repository you are in:
+it must be signed by the trusted key, be about exactly this commit, and reach
+the required change assurance level (--min-cal, see docs/adr/0001).
+
+The certificate is read from the commit's git note (refs/notes/staircase),
+which a run writes; fetch notes from a remote with
+  git fetch origin refs/notes/staircase:refs/notes/staircase
+or pass the certificate file with --certificate.
+
+The trusted key is the workspace's public signing key (.signing.pub), or the
+file given with --key: that file is all a reviewer needs.
+
+A range (main..HEAD) checks every commit in it that names an agent in an
+Assisted-by: trailer; --all checks every commit. This is what a CI check on a
+pull request runs.
+
+Flags:
+
+```
+      --all                  In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)
+      --certificate string   Read the certificate from this file instead of the git note
+      --check-anchor         Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
+      --key string           Public signing key to trust (default: the workspace's .signing.pub)
+      --min-cal int          Fail below this change assurance level (1-4)
 ```
 
 ## staircase version

@@ -1,4 +1,4 @@
-.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude
+.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
@@ -68,9 +68,20 @@ demo:
 	./demo/run-demo.sh --auto --tamper
 	./demo/run-demo.sh --auto --drift
 
+# ─── Fuzzing the trusted core ─────────────────────────────────────────────────
+# `go test` (and check) runs the seeds; this explores. A failing input is saved
+# under testdata/fuzz/ - commit it as a regression test.
+FUZZTIME ?= 1m
+fuzz:
+	@for t in FuzzDerive FuzzCleanApprovedPath FuzzUniversalNewlines; do \
+		go test ./src/internal/orchestrator -run '^$$' -fuzz "^$$t\$$" -fuzztime $(FUZZTIME) || exit 1; \
+	done
+
 # ─── Real-agent smoke runs (opt-in: cost money, need credentials) ────────────
 # Skipped with a message when the credentials are missing. Not part of check.
 smoke:
 	./demo/smoke.sh model
 smoke-claude:
 	./demo/smoke.sh claude
+smoke-codex:
+	./demo/smoke.sh codex

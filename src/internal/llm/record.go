@@ -59,7 +59,7 @@ func (r *Recorder) Chat(ctx context.Context, req Request) (Response, error) {
 func (r *Recorder) Close() error { return r.f.Close() }
 
 // Replayer answers from a recording, offline: each request gets the response
-// recorded for the identical request — in recorded order when one repeats —
+// recorded for the identical request - in recorded order when one repeats -
 // so concurrent agents replay deterministically. An unrecorded request is an
 // error: a changed prompt, topology or file content fails loudly.
 type Replayer struct {
@@ -97,7 +97,7 @@ func (r *Replayer) Chat(_ context.Context, req Request) (Response, error) {
 	k := requestKey(req)
 	queue := r.byKey[k]
 	if len(queue) == 0 {
-		return Response{}, fmt.Errorf("replay: no recorded response for this %s request (key %s) — the prompts, tools or files differ from the recording", req.Model, k[:12])
+		return Response{}, fmt.Errorf("replay: no recorded response for this %s request (key %s) - the prompts, tools or files differ from the recording", req.Model, k[:12])
 	}
 	r.byKey[k] = queue[1:]
 	return queue[0], nil

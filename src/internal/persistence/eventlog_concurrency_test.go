@@ -10,7 +10,7 @@ import (
 )
 
 // TestAppendEventLogChained_concurrent_no_fork proves the SOC2 audit chain stays
-// unbroken when many goroutines append to the same run concurrently — the bug
+// unbroken when many goroutines append to the same run concurrently - the bug
 // the serialized AppendEventLogChained fixes (two appenders reading the same
 // prevHash and forking the chain).
 func TestAppendEventLogChained_concurrent_no_fork(t *testing.T) {

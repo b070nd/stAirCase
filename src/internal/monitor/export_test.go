@@ -1,4 +1,4 @@
-// export_test.go — exposes unexported monitor helpers for whitebox testing.
+// export_test.go - exposes unexported monitor helpers for whitebox testing.
 package monitor
 
 // ExportedFormatElapsed exposes the unexported formatElapsed function.

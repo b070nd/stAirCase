@@ -48,7 +48,7 @@ var inspectRunsCmd = &cobra.Command{
 
 		rows := make([][]string, len(runs))
 		for i, r := range runs {
-			dur := "—"
+			dur := "-"
 			if r.EndTime != nil {
 				dur = r.EndTime.Sub(r.StartTime).Round(1e9).String()
 			}
@@ -111,7 +111,7 @@ var inspectLogCmd = &cobra.Command{
 		}
 
 		// Re-derive hash chain and flag any breaks.
-		// Each entry carries its own git_commit_hash — the value that was
+		// Each entry carries its own git_commit_hash - the value that was
 		// current when the entry was logged. Entries written before the
 		// teardown commit have "" here; entries written after have the real
 		// hash. Using the per-entry value is the only way to verify correctly.
@@ -135,7 +135,7 @@ var inspectLogCmd = &cobra.Command{
 			}
 			fmt.Printf("%s #%-4d  %-14s  %s  %s\n",
 				mark, l.ID, l.EventType, l.Timestamp.Format("15:04:05"), hashSnip)
-			// Payload preview — truncated by default to avoid terminal flooding (C-4).
+			// Payload preview - truncated by default to avoid terminal flooding (C-4).
 			if inspectLogFull {
 				fmt.Printf("     %s\n", l.Payload)
 			} else if len(l.Payload) > 0 {
@@ -152,7 +152,7 @@ var inspectLogCmd = &cobra.Command{
 		if chainOK {
 			fmt.Printf("✅ Hash chain intact (%d entries).\n", len(logs))
 		} else {
-			fmt.Printf("❌ Hash chain BROKEN — log may have been tampered with!\n")
+			fmt.Printf("❌ Hash chain BROKEN - log may have been tampered with!\n")
 		}
 		return nil
 	},

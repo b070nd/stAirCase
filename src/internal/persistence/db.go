@@ -21,13 +21,13 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 
 	// Inject SQLite pragmas in the connection string so the driver applies them
 	// to EVERY pooled connection, not just the first one.
-	//   busy_timeout(5000) — wait out brief write locks instead of erroring.
-	//   journal_mode(WAL) & synchronous(NORMAL) — high-throughput durability.
-	//   foreign_keys(1) — FK enforcement is per-connection in SQLite; a one-shot
+	//   busy_timeout(5000) - wait out brief write locks instead of erroring.
+	//   journal_mode(WAL) & synchronous(NORMAL) - high-throughput durability.
+	//   foreign_keys(1) - FK enforcement is per-connection in SQLite; a one-shot
 	//     `PRAGMA foreign_keys=ON` only covered the single connection it ran on,
 	//     leaving other pooled connections unenforced. Setting it in the DSN
 	//     guarantees every connection enforces referential integrity.
-	//   _txlock=immediate — transactions take the write lock at BEGIN, where
+	//   _txlock=immediate - transactions take the write lock at BEGIN, where
 	//     busy_timeout applies. A deferred transaction that reads, then writes
 	//     gets SQLITE_BUSY at once if another writer committed in between, so a
 	//     concurrent run could be recorded as failed after succeeding.
@@ -59,7 +59,7 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("count schema_migrations: %w", err)
 	}
 	if freshSchema && recorded == 0 && len(Migrations) > 0 {
-		// Fresh database: Schema already contains all columns — mark all as applied.
+		// Fresh database: Schema already contains all columns - mark all as applied.
 		for i := range Migrations {
 			if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations(idx) VALUES (?)`, i); err != nil {
 				return nil, fmt.Errorf("seed migration %d: %w", i, err)

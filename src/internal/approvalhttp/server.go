@@ -4,7 +4,7 @@
 //
 // When an operator configures an approval webhook URL (project.WebhookURL), the
 // old implementation POST-ed the yield synchronously and waited for the HTTP
-// response — meaning the entire swarm stalled while the webhook provider
+// response - meaning the entire swarm stalled while the webhook provider
 // processed the request.
 //
 // This package provides an inbound HTTP server that the operator's tooling can
@@ -96,7 +96,7 @@ type Server struct {
 
 // NewServer creates a server that will listen on addr (e.g. "127.0.0.1:0").
 // token is the shared Bearer secret required on every request.  Pass an empty
-// string to disable authentication — only appropriate for tests or isolated
+// string to disable authentication - only appropriate for tests or isolated
 // local dev environments where the listener is not reachable by other users.
 // Call [Start] to begin accepting connections.
 func NewServer(addr, token string) *Server {
@@ -216,7 +216,7 @@ func (s *Server) PendYield(req domain.YieldRequest) (id string, ch <-chan domain
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
 
-// GET /v1/yields — list all pending yields.
+// GET /v1/yields - list all pending yields.
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

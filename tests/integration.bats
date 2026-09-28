@@ -66,3 +66,26 @@ sc() {
   [ "$(grep -c 'case #999 not found' <<<"$output")" -eq 1 ]
   [[ "$output" != *"Usage:"* ]]
 }
+
+@test "hook: blocks a governed call when no run is found (fail closed)" {
+  run bash -c 'echo "{}" | "$STAIRCASE_BIN" hook claude-code --governed'
+  [ "$status" -eq 2 ]
+}
+
+@test "hook: lets calls through outside a governed session" {
+  run bash -c 'echo "{}" | "$STAIRCASE_BIN" hook claude-code'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "hook: blocks even without HOME (it runs before workspace setup)" {
+  run env -i "$STAIRCASE_BIN" hook claude-code --governed </dev/null
+  [ "$status" -eq 2 ]
+}
+
+@test "claude: outside a git repository says so" {
+  cd "$WORK_DIR"
+  run sc claude "add a health endpoint"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not inside a git repository"* ]]
+}

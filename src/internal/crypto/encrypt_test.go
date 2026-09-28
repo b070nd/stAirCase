@@ -156,7 +156,7 @@ func TestLoadKey_insecure_permissions_rejected(t *testing.T) {
 	}
 	dir := t.TempDir()
 	require.NoError(t, crypto.GenerateKey(dir))
-	// Widen the key file permissions to 0644 — simulates accidental chmod.
+	// Widen the key file permissions to 0644 - simulates accidental chmod.
 	keyPath := filepath.Join(dir, ".key")
 	require.NoError(t, os.Chmod(keyPath, 0o644))
 
@@ -228,7 +228,7 @@ func TestDecrypt_bad_key_size_returns_error(t *testing.T) {
 
 func TestDecrypt_ciphertext_too_short_returns_error(t *testing.T) {
 	key := randomKey(t) // 32-byte key → valid AES + GCM nonce size is 12
-	// base64 of a single byte decodes to 1 byte — less than the 12-byte GCM nonce.
+	// base64 of a single byte decodes to 1 byte - less than the 12-byte GCM nonce.
 	oneByteB64 := "Wg==" // base64 of 0x5A
 	_, err := crypto.Decrypt(key, oneByteB64)
 	require.Error(t, err)

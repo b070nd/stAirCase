@@ -9,15 +9,20 @@ stAirCase does not trust what the agent says it will do. For every file proposal
 computes **itself** what the file will contain after the change, starting from the
 commit the run began on. You approve those exact bytes. When the run ends,
 stAirCase checks that the worktree holds exactly what was approved and commits
-only that. Anything else — a file nobody approved, a change after the approval, a
-commit made by the agent — fails the run, and nothing is committed.
+only that. Anything else - a file nobody approved, a change after the approval, a
+commit made by the agent - fails the run, and nothing is committed.
+
+An edit changes only the lines it shows you, in the file's own line endings (LF,
+or CRLF for a Windows-style file). The one exception is a file that already mixes
+both: there an edit also turns every line ending into LF, a change the proposal
+screen does not show line by line.
 
 ## Who decides, in order
 
 1. **stAirCase refuses** a proposal it cannot apply as shown: a path outside the
    repository or inside `.git`, a symlink, text to replace that is not in the file,
    or a new file larger than 200 KiB.
-2. **Drift supervision** can stop the run, or send the proposal to a person — for a
+2. **Drift supervision** can stop the run, or send the proposal to a person - for a
    change outside the stories' scope, too many files, or a checkpoint. See
    [Drift supervision](drift.md).
 3. **Your policy** rules (`policy.json`) can approve or reject it automatically.
@@ -43,7 +48,11 @@ replaces and the new text. Press:
 | `y` | approve |
 | `n` (or `q`, `Esc`) | reject: type a reason and press `Enter`; `Esc` goes back |
 
-The agent receives your reason and can try again.
+The agent receives your reason and can try again. Your reason also teaches later
+sessions: when a case of the same project is compiled, the plan lists the changes
+people rejected before, with their reasons (the ten most recent), and every agent
+reads them in its brief. They come from the audit chain, so nothing is stored in
+your repository; rejections without a reason are not listed.
 
 ### From another terminal or a script: the approval API
 
@@ -78,7 +87,7 @@ staircase project set-webhook 1 https://review.example.com/staircase   # 1 = the
 staircase project set-webhook 1                                        # remove it again
 ```
 
-For each proposal, stAirCase sends a `POST` with the proposal as JSON — the same
+For each proposal, stAirCase sends a `POST` with the proposal as JSON - the same
 fields the approval API shows, plus a fresh `yield_id`. Your service must answer
 **within 30 seconds** with:
 
@@ -131,7 +140,7 @@ goes on to the validator or a person.
 | `effect` | `approve` (default) or `reject` |
 
 `limits.max_auto_approved` and `limits.max_total_yields` send every later proposal to
-a person once reached. The drift limits also live here — see
+a person once reached. The drift limits also live here - see
 [Drift supervision](drift.md#limits).
 
 The file is strict: if it does not parse, or has a field stAirCase does not know,
@@ -154,10 +163,10 @@ staircase run 1 --validator claude-haiku-4-5
 The validator is a model (any model stAirCase supports, with its key stored as a
 secret) that decides file changes the policy leaves open, in place of a person.
 
-- It sees only the change (each file before and after) and the case's stories —
+- It sees only the change (each file before and after) and the case's stories -
   never the agent's own explanation.
 - Its rejection goes back to the agent as review feedback.
-- A person decides instead — and sees the validator's note — for drift, shell
+- A person decides instead - and sees the validator's note - for drift, shell
   commands, sensitive files (CI, build, dependency, `.env` and shell files), files
   over 32 KiB, an unclear answer, after two rejections in a row, and for every fifth
   validator approval, as a spot check.

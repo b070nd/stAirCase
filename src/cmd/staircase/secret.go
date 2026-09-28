@@ -41,7 +41,7 @@ rotated API key) and counts its version.`,
 		var value string
 		stat, _ := os.Stdin.Stat()
 		if stat != nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-			// Interactive terminal — suppress echo so the value isn't visible.
+			// Interactive terminal - suppress echo so the value isn't visible.
 			fmt.Fprint(os.Stderr, "Enter secret value: ")
 			raw, err := term.ReadPassword(int(os.Stdin.Fd()))
 			fmt.Fprintln(os.Stderr) // restore newline after hidden input
@@ -50,7 +50,7 @@ rotated API key) and counts its version.`,
 			}
 			value = string(raw)
 		} else {
-			// Piped / redirected — read until EOF and strip trailing newline.
+			// Piped / redirected - read until EOF and strip trailing newline.
 			raw, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return fmt.Errorf("read secret: %w", err)
@@ -69,7 +69,7 @@ rotated API key) and counts its version.`,
 		// could commit under the new key between our Encrypt call and the DB
 		// insert, stranding the new ciphertext (it would be encrypted under the
 		// now-superseded key).  The exclusive rotate lock (LOCK_NB) fails fast if
-		// we hold the shared lock — it does not wait, it refuses
+		// we hold the shared lock - it does not wait, it refuses
 		// (CHECK 4.3.3 extension to write path).
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
@@ -77,7 +77,7 @@ rotated API key) and counts its version.`,
 		}
 		defer func() { _ = lockF.Close() }()
 		if err := flockShared(lockF.Fd()); err != nil {
-			return fmt.Errorf("workspace is locked by another process — is a rotate active?: %w", err)
+			return fmt.Errorf("workspace is locked by another process - is a rotate active?: %w", err)
 		}
 
 		key, err := crypto.LoadKey(wsDir)
@@ -133,7 +133,7 @@ var secretListCmd = &cobra.Command{
 		}
 		defer func() { _ = db.Close() }()
 
-		// Query all secrets directly — the store GetSecret is for lookup by name.
+		// Query all secrets directly - the store GetSecret is for lookup by name.
 		// Use the DB directly via a raw list query.
 		db2 := db
 		rows, err := db2.Query(
@@ -193,8 +193,8 @@ var secretRotateCmd = &cobra.Command{
 single atomic DB transaction, then replaces the old key file.
 
 The operation holds an exclusive non-blocking advisory lock on the workspace
-key file.  It fails fast (does not wait) if any concurrent process — an active
-run or a 'secret set' command — already holds a shared lock on the key.`,
+key file.  It fails fast (does not wait) if any concurrent process - an active
+run or a 'secret set' command - already holds a shared lock on the key.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		keyPath := filepath.Join(wsDir, crypto.KeyFile)
@@ -208,7 +208,7 @@ run or a 'secret set' command — already holds a shared lock on the key.`,
 		}
 		defer func() { _ = lockF.Close() }()
 		if err := flockExclusive(lockF.Fd()); err != nil {
-			return fmt.Errorf("workspace key is locked — is a run or 'secret set' active?: %w", err)
+			return fmt.Errorf("workspace key is locked - is a run or 'secret set' active?: %w", err)
 		}
 		defer func() { _ = flockUnlock(lockF.Fd()) }()
 
@@ -220,7 +220,7 @@ run or a 'secret set' command — already holds a shared lock on the key.`,
 
 		// reencrypt re-encrypts every secret in a single DB transaction (CHECK 4.3.2).
 		// Opens a pinned *sql.Conn, sets synchronous=FULL on it, then runs the
-		// rotation transaction on the same connection — guaranteeing that the PRAGMA
+		// rotation transaction on the same connection - guaranteeing that the PRAGMA
 		// and the transaction share the underlying SQLite connection and the WAL
 		// write is fsynced before COMMIT returns (power-loss durable).
 		reencrypt := func(oldKey, newKey []byte) error {

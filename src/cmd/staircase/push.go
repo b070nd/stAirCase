@@ -66,10 +66,10 @@ is skipped and the PR URL is printed for manual use.`,
 			return fmt.Errorf("run %d not found", runID)
 		}
 		if run.Status != domain.RunStatusSuccess {
-			return fmt.Errorf("run %d status is %q — only successful runs can be pushed", runID, run.Status)
+			return fmt.Errorf("run %d status is %q - only successful runs can be pushed", runID, run.Status)
 		}
 		if run.GitCommitHash == "" {
-			return fmt.Errorf("run %d has no commit hash — nothing to push", runID)
+			return fmt.Errorf("run %d has no commit hash - nothing to push", runID)
 		}
 
 		// ── Open git repo ─────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ is skipped and the PR URL is printed for manual use.`,
 		owner, repo, isGitHub := parseGitHubOwnerRepo(remoteURL)
 		pushToken := token
 		if !isGitHub && pushToken != "" {
-			fmt.Printf("   ⚠️  Remote %q is not github.com — pushing without the GitHub token\n", redactRemote(remoteURL))
+			fmt.Printf("   ⚠️  Remote %q is not github.com - pushing without the GitHub token\n", redactRemote(remoteURL))
 			pushToken = ""
 		}
 
@@ -116,12 +116,12 @@ is skipped and the PR URL is printed for manual use.`,
 
 		// ── GitHub PR creation ────────────────────────────────────────────────
 		if !isGitHub {
-			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL — create the PR manually:\n", redactRemote(remoteURL))
+			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL - create the PR manually:\n", redactRemote(remoteURL))
 			fmt.Printf("   %s\n", manualPRURL(remoteURL, runBranch, run.GitBranch))
 			return nil
 		}
 		if token == "" {
-			fmt.Printf("   ℹ️  No --github-token provided — create the PR manually:\n")
+			fmt.Printf("   ℹ️  No --github-token provided - create the PR manually:\n")
 			fmt.Printf("   https://github.com/%s/%s/compare/%s?expand=1\n", owner, repo, runBranch)
 			return nil
 		}
@@ -156,7 +156,7 @@ is skipped and the PR URL is printed for manual use.`,
 //
 // Anchored (^) so a malicious URL embedding "github.com" in its path
 // (e.g. https://evil.example/https://github.com/o/r) is never treated as
-// a GitHub remote — that decision also gates token attachment on push.
+// a GitHub remote - that decision also gates token attachment on push.
 var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://(?:[^@/]+@)?github\.com/([^/]+)/([^/.]+)`)
 var reGitHubSSH = regexp.MustCompile(`^(?i)git@github\.com:([^/]+)/([^/.]+)`)
 

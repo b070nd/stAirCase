@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -107,14 +109,25 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 			if f == nil || f.deleted {
 				return nil, fmt.Errorf("%s: cannot edit a file that does not exist", p)
 			}
-			// Edits apply to the file's text with universal newlines (\r\n and a
-			// lone \r read as \n); only \r\n is normalized in the blocks.
-			src := universalNewlines(f.content)
+			// The blocks are read with \n line breaks and the file keeps its own:
+			// an LF file is edited as is, the blocks' lines end in \r\n in a CRLF
+			// file, so an edit changes only its own lines (F89). Only a file
+			// with mixed line breaks is read with universal newlines (\r\n and a
+			// lone \r as \n) and saved with \n throughout.
+			src := f.content
 			search := []byte(strings.ReplaceAll(e.SearchBlock, "\r\n", "\n"))
+			replace := []byte(strings.ReplaceAll(e.ReplaceBlock, "\r\n", "\n"))
+			switch {
+			case bytes.IndexByte(src, '\r') < 0:
+			case allCRLF(src):
+				search = bytes.ReplaceAll(search, []byte("\n"), []byte("\r\n"))
+				replace = bytes.ReplaceAll(replace, []byte("\n"), []byte("\r\n"))
+			default:
+				src = universalNewlines(src)
+			}
 			if !bytes.Contains(src, search) {
 				return nil, fmt.Errorf("%s: search_block not found in the approved content", p)
 			}
-			replace := []byte(strings.ReplaceAll(e.ReplaceBlock, "\r\n", "\n"))
 			next[p] = &approvedFile{content: bytes.Replace(src, search, replace, 1), mode: f.mode}
 		}
 	}
@@ -160,12 +173,72 @@ func (a *approvals) fromBase(p string) (*approvedFile, error) {
 	return &approvedFile{content: []byte(content), mode: mode}, nil
 }
 
+// worktreeChanges are the worktree's changes that were not approved, as
+// whole-file edits: a changed or new file with its current content, a
+// missing file as a deletion. They are what a review-after proposal decides.
+func (a *approvals) worktreeChanges() ([]domain.ProposedEdit, error) {
+	paths := map[string]bool{}
+	st, err := a.repo.w.Status()
+	if err != nil {
+		return nil, fmt.Errorf("read worktree status: %w", err)
+	}
+	for p, s := range st {
+		if s.Staging != gogit.Unmodified || s.Worktree != gogit.Unmodified {
+			paths[p] = true
+		}
+	}
+	for p := range a.files { // an approved file changed back to its base content
+		paths[p] = true
+	}
+	var edits []domain.ProposedEdit
+	for _, p := range slices.Sorted(maps.Keys(paths)) {
+		want, err := a.current(p)
+		if err != nil {
+			return nil, err
+		}
+		got, err := os.ReadFile(filepath.Join(a.repo.path, filepath.FromSlash(p)))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			if want != nil && !want.deleted {
+				edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerDeleteFile})
+			}
+		case err != nil:
+			return nil, err
+		case want == nil || want.deleted || !bytes.Equal(got, want.content):
+			edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerNewFile, ReplaceBlock: string(got)})
+		}
+	}
+	return edits, nil
+}
+
+// restore puts paths back to their approved state: approved content, or the
+// base commit's, or no file at all.
+func (a *approvals) restore(paths []string) error {
+	for _, p := range paths {
+		full := filepath.Join(a.repo.path, filepath.FromSlash(p))
+		f, err := a.current(p)
+		if err != nil {
+			return err
+		}
+		if f == nil || f.deleted {
+			if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			continue
+		}
+		if err := writeAtomic(full, f.content, f.mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // violation is a reason finalize refuses to commit, recorded as an audit event.
 type violation struct{ event, file, detail string }
 
 // verify compares the worktree with the approved state: HEAD is still the
 // base commit (the agent made no commits of its own), every approved path
-// holds exactly its approved bytes (or is gone), and nothing else changed —
+// holds exactly its approved bytes (or is gone), and nothing else changed -
 // in the working tree or the index.
 func (a *approvals) verify() ([]violation, error) {
 	var out []violation
@@ -301,6 +374,12 @@ func digest(files map[string]*approvedFile) map[string]string {
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// allCRLF reports whether every line break in b is \r\n.
+func allCRLF(b []byte) bool {
+	n := bytes.Count(b, []byte("\r\n"))
+	return n > 0 && bytes.Count(b, []byte("\r")) == n && bytes.Count(b, []byte("\n")) == n
 }
 
 func universalNewlines(b []byte) []byte {

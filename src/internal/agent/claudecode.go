@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
@@ -28,9 +29,10 @@ import (
 // written again, so Claude Code's edit semantics cannot change what is
 // committed; finalize verify stays the backstop.
 type ClaudeCode struct {
-	Prompt string
-	Model  string // optional --model
-	Bin    string // default "claude"
+	Prompt  string
+	Model   string // optional --model
+	Bin     string // default "claude"
+	HookBin string // the staircase program the hooks call; default: this program
 }
 
 // hookTimeout outlives any human approval: Claude Code lets the tool call
@@ -57,19 +59,36 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		return err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
+	// The hooks find this run through a file only the user can read, so the
+	// token never appears on a command line (see `staircase hook`).
+	session, _ := json.Marshal(map[string]string{"url": "http://" + ln.Addr().String() + "/hook", "token": h.token})
+	hookFile := filepath.Join(dir, "hook.json")
+	if err := os.WriteFile(hookFile, session, 0o600); err != nil {
+		return err
+	}
+	bin := c.HookBin
+	if bin == "" {
+		if bin, err = os.Executable(); err != nil {
+			return err
+		}
+	}
 	settings := filepath.Join(dir, "settings.json")
-	if err := os.WriteFile(settings, hookSettings("http://"+ln.Addr().String()+"/hook", h.token), 0o600); err != nil {
+	if err := os.WriteFile(settings, hookSettings(hookCommand(bin, "claude-code")), 0o600); err != nil {
 		return err
 	}
 
-	args := []string{"-p", c.Prompt, "--settings", settings, "--output-format", "json"}
+	// Only staircase's settings load: user, project and local settings could
+	// bring hooks and MCP servers that act outside governance (F82). Checked
+	// against Claude Code 2.1.236: "" loads none of them, --settings still loads.
+	args := []string{"-p", c.Prompt, "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+		"--output-format", "json"}
 	if c.Model != "" {
 		args = append(args, "--model", c.Model)
 	}
 	cmd := exec.CommandContext(ctx, orDefault(c.Bin, "claude"), args...)
 	// ponytail: shellEnv carries no LLM key, so Claude Code must be logged in
 	// (keychain under HOME); pass ANTHROPIC_API_KEY via a secret if needed.
-	cmd.Dir, cmd.Env = root, shellEnv()
+	cmd.Dir, cmd.Env = root, append(shellEnv(), HookFileEnv+"="+hookFile)
 	cmd.WaitDelay = 5 * time.Second
 	killProcessGroup(cmd)
 	var stdout bytes.Buffer
@@ -98,17 +117,17 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	return nil
 }
 
-// hookCommand is the command a hook runs: it posts the hook input to url and
-// prints the answer. Any failure exits 2, which blocks the tool call.
-func hookCommand(url, token string) string {
-	return fmt.Sprintf("curl -sSf -H 'Authorization: Bearer %s' --data-binary @- %s || exit 2", token, url)
+// hookCommand is the command a hook runs: `staircase hook`, which passes the
+// call to the run and blocks (exit 2) on every failure. It is the same on
+// every run and holds no secret. The shell that runs hooks gets the program
+// path quoted.
+func hookCommand(bin, agentName string) string {
+	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "' hook " + agentName + " --governed"
 }
 
-// hookSettings is the settings file that routes Claude Code's tool calls to
-// url. Every hook failure exits 2, which blocks the tool call: any other
-// non-zero exit would let it proceed.
-func hookSettings(url, token string) []byte {
-	cmd := hookCommand(url, token)
+// hookSettings is the settings file that routes Claude Code's tool calls
+// through cmd.
+func hookSettings(cmd string) []byte {
 	hook := func(matcher string) []map[string]any {
 		return []map[string]any{{"matcher": matcher,
 			"hooks": []map[string]any{{"type": "command", "command": cmd, "timeout": hookTimeout}}}}
@@ -124,6 +143,9 @@ type hookServer struct {
 	env   *orchestrator.AgentEnv
 	root  string // the worktree, symlinks resolved
 	token string
+	codex bool // Codex's tools and rules instead of Claude Code's (see codex.go)
+
+	started atomic.Bool // a SessionStart hook arrived: the agent runs staircase's hooks
 
 	mu      sync.Mutex
 	pending map[string]orchestrator.Approval // tool_use_id → approved edit, until PostToolUse
@@ -147,8 +169,15 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch in.Event {
+	case "SessionStart":
+		h.started.Store(true)
+		_, _ = w.Write([]byte("{}"))
 	case "PreToolUse":
-		reason := h.pre(r.Context(), in)
+		pre := h.pre
+		if h.codex {
+			pre = h.preCodex
+		}
+		reason := pre(r.Context(), in)
 		decision := "allow"
 		if reason != "" {
 			decision = "deny"
@@ -163,6 +192,12 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if ok {
 			if err := ap.Apply(h.root); err != nil { // finalize verify fails the run on any divergence
 				_ = json.NewEncoder(w).Encode(map[string]any{"decision": "block", "reason": "staircase: " + err.Error()})
+				return
+			}
+		}
+		if h.codex && in.Tool == "Bash" {
+			if reason := h.postCodexCommand(r.Context(), in); reason != "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"decision": "block", "reason": reason})
 				return
 			}
 		}
@@ -244,7 +279,7 @@ func (h *hookServer) proposeEdit(ctx context.Context, in hookInput, e domain.Pro
 }
 
 // readInside reads a worktree file through os.Root, which refuses any path
-// leaving the worktree when the file is opened — so a symlink swapped in after
+// leaving the worktree when the file is opened - so a symlink swapped in after
 // rel checked the path cannot redirect the read.
 func (h *hookServer) readInside(rel string) ([]byte, error) {
 	root, err := os.OpenRoot(h.root)

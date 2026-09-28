@@ -16,7 +16,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-var compileForce bool
+var (
+	compileForce bool
+	compileAgent string
+)
 
 var compileCmd = &cobra.Command{
 	Use:   "compile <case-id>",
@@ -27,6 +30,8 @@ var compileCmd = &cobra.Command{
 
 func init() {
 	compileCmd.Flags().BoolVar(&compileForce, "force", false, "Overwrite an existing plan")
+	compileCmd.Flags().StringVar(&compileAgent, "agent", "built-in",
+		"Who runs the case: built-in (the project's topology) or an agent harness: "+strings.Join(plan.Harnesses, ", "))
 	rootCmd.AddCommand(compileCmd)
 }
 
@@ -37,23 +42,31 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	}
 
 	wsDir := viper.GetString("STAIRCASE_DIR")
-
-	// ── 1. Database ───────────────────────────────────────────────────────────
 	db, err := persistence.InitDB(wsDir)
 	if err != nil {
 		return fmt.Errorf("db init: %w", err)
 	}
 	defer func() { _ = db.Close() }()
-	store := persistence.NewStore(db)
+	harness := compileAgent
+	if harness == "built-in" {
+		harness = ""
+	}
+	_, err = compileCase(persistence.NewStore(db), wsDir, caseID, harness, compileForce)
+	return err
+}
 
-	// ── 2. Load Case + Project ────────────────────────────────────────────────
+// compileCase writes the plan staircase run executes for caseID and returns
+// its path. harness names the agent harness that runs the case; "" means the
+// built-in agents of the project's topology.
+func compileCase(store *persistence.Store, wsDir string, caseID int64, harness string, force bool) (string, error) {
+	// ── Load Case + Project ───────────────────────────────────────────────────
 	caseRec, err := store.GetCase(caseID)
 	if err != nil || caseRec == nil {
-		return fmt.Errorf("case %d not found", caseID)
+		return "", fmt.Errorf("case %d not found", caseID)
 	}
 	project, err := store.GetProject(caseRec.ProjectID)
 	if err != nil || project == nil {
-		return fmt.Errorf("project %d not found", caseRec.ProjectID)
+		return "", fmt.Errorf("project %d not found", caseRec.ProjectID)
 	}
 
 	fmt.Printf("⚙️  Compiling case #%d  project=%q\n", caseID, project.Name)
@@ -61,16 +74,16 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	// ── 3. DAG Resolution (spec §4.1) ─────────────────────────────────────────
 	allDeps, err := store.ListAllProjectDependencies()
 	if err != nil {
-		return fmt.Errorf("load deps: %w", err)
+		return "", fmt.Errorf("load deps: %w", err)
 	}
 
 	projectSet, err := resolveProjectSet(store, project.ID, allDeps)
 	if err != nil {
-		return fmt.Errorf("resolve project set: %w", err)
+		return "", fmt.Errorf("resolve project set: %w", err)
 	}
 	ordered, err := engine.TopoSort(projectSet, allDeps)
 	if err != nil {
-		return fmt.Errorf("dependency cycle: %w", err)
+		return "", fmt.Errorf("dependency cycle: %w", err)
 	}
 
 	names := make([]string, len(ordered))
@@ -87,7 +100,7 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 		}
 		repoMap, err := engine.RepoMap(p.SourcePath)
 		if err != nil {
-			return fmt.Errorf("repo map for %q: %w", p.Name, err)
+			return "", fmt.Errorf("repo map for %q: %w", p.Name, err)
 		}
 		repoParts = append(repoParts, fmt.Sprintf("<repo project=%q>\n%s</repo>", p.Name, repoMap))
 	}
@@ -102,7 +115,67 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 		fmt.Printf("   Agents will use read_file for lazy context fetching.\n")
 	}
 
-	// ── 6. Swarm Topology ─────────────────────────────────────────────────────
+	// ── 6. Who runs it: an agent harness, or the topology's agents ──────────
+	pl := plan.Plan{CaseID: caseID, Harness: harness, PRD: caseRec.PrdJSON, RepoContext: repoContext}
+	if pl.Lessons, err = projectLessons(store, project.ID); err != nil {
+		return "", fmt.Errorf("load earlier reviews: %w", err)
+	}
+	if harness != "" {
+		fmt.Printf("   🤖 Agent: %s (brings its own model; no topology needed)\n", harness)
+	} else if err := addTopology(store, project, &pl); err != nil {
+		return "", err
+	}
+	stories, err := store.ListUserStoriesByCase(caseID)
+	if err != nil {
+		return "", fmt.Errorf("load stories: %w", err)
+	}
+	for _, st := range stories {
+		ps := plan.Story{ID: st.ID, Text: st.Description}
+		if st.CustomConfig != "" { // a story's scope: {"allow": [...], "max_files": N}
+			if err := json.Unmarshal([]byte(st.CustomConfig), &ps); err != nil {
+				return "", fmt.Errorf("story #%d scope: %w", st.ID, err)
+			}
+			ps.ID, ps.Text = st.ID, st.Description
+		}
+		pl.Stories = append(pl.Stories, ps)
+	}
+	if pl.BlueprintHash, _, err = store.CaseBlueprint(caseID); err != nil {
+		return "", fmt.Errorf("load case binding: %w", err)
+	}
+	if pl.BlueprintHash != "" { // a bound case runs under its blueprint's limits
+		stored, err := store.FindBlueprint(pl.BlueprintHash)
+		if err != nil {
+			return "", err
+		}
+		b, err := blueprint.Parse([]byte(stored.Content))
+		if err != nil {
+			return "", fmt.Errorf("blueprint %.12s: %w", pl.BlueprintHash, err)
+		}
+		pl.Limits = b.Limits
+	}
+
+	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────
+	tmpDir := filepath.Join(wsDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
+		return "", fmt.Errorf("mkdir tmp: %w", err)
+	}
+	outPath := filepath.Join(tmpDir, fmt.Sprintf("plan_case%d.json", caseID))
+	if !force {
+		if _, err := os.Stat(outPath); err == nil {
+			return "", fmt.Errorf("plan already exists: %s\n  → use --force to overwrite", outPath)
+		}
+	}
+	if err := plan.Write(outPath, pl); err != nil {
+		return "", fmt.Errorf("compile plan: %w", err)
+	}
+
+	fmt.Printf("   ✅ Generated: %s\n", outPath)
+	fmt.Printf("   🚀 Run with:  staircase run %d\n", caseID)
+	return outPath, nil
+}
+
+// addTopology puts the project's latest topology (its agents and edges) into pl.
+func addTopology(store *persistence.Store, project *domain.Project, pl *plan.Plan) error {
 	topology, err := store.GetLatestTopology(project.ID)
 	if err != nil {
 		return fmt.Errorf("load topology: %w", err)
@@ -122,9 +195,7 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("load edges: %w", err)
 	}
 
-	// ── 7. Build the plan ─────────────────────────────────────────────────────
-	pl := plan.Plan{CaseID: caseID, TopologyVersion: topology.Version, Supervisor: topology.SupervisorName,
-		PRD: caseRec.PrdJSON, RepoContext: repoContext}
+	pl.TopologyVersion, pl.Supervisor = topology.Version, topology.SupervisorName
 	for _, n := range agentNodes {
 		tools, _ := store.ListAgentTools(n.ID)
 		toolNames := make([]string, len(tools))
@@ -140,52 +211,6 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	for _, e := range edges {
 		pl.Edges = append(pl.Edges, plan.Edge{From: e.FromNode, To: e.ToNode, Condition: e.Condition})
 	}
-	stories, err := store.ListUserStoriesByCase(caseID)
-	if err != nil {
-		return fmt.Errorf("load stories: %w", err)
-	}
-	for _, st := range stories {
-		ps := plan.Story{ID: st.ID, Text: st.Description}
-		if st.CustomConfig != "" { // a story's scope: {"allow": [...], "max_files": N}
-			if err := json.Unmarshal([]byte(st.CustomConfig), &ps); err != nil {
-				return fmt.Errorf("story #%d scope: %w", st.ID, err)
-			}
-			ps.ID, ps.Text = st.ID, st.Description
-		}
-		pl.Stories = append(pl.Stories, ps)
-	}
-	if pl.BlueprintHash, _, err = store.CaseBlueprint(caseID); err != nil {
-		return fmt.Errorf("load case binding: %w", err)
-	}
-	if pl.BlueprintHash != "" { // a bound case runs under its blueprint's limits
-		stored, err := store.FindBlueprint(pl.BlueprintHash)
-		if err != nil {
-			return err
-		}
-		b, err := blueprint.Parse([]byte(stored.Content))
-		if err != nil {
-			return fmt.Errorf("blueprint %.12s: %w", pl.BlueprintHash, err)
-		}
-		pl.Limits = b.Limits
-	}
-
-	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────
-	tmpDir := filepath.Join(wsDir, "tmp")
-	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
-		return fmt.Errorf("mkdir tmp: %w", err)
-	}
-	outPath := filepath.Join(tmpDir, fmt.Sprintf("plan_case%d.json", caseID))
-	if !compileForce {
-		if _, err := os.Stat(outPath); err == nil {
-			return fmt.Errorf("plan already exists: %s\n  → use --force to overwrite", outPath)
-		}
-	}
-	if err := plan.Write(outPath, pl); err != nil {
-		return fmt.Errorf("compile plan: %w", err)
-	}
-
-	fmt.Printf("   ✅ Generated: %s\n", outPath)
-	fmt.Printf("   🚀 Run with:  staircase run %d\n", caseID)
 	return nil
 }
 

@@ -117,7 +117,7 @@ func TestListUserStoriesByCase_returns_all_statuses(t *testing.T) {
 
 	stories, err := s.ListUserStoriesByCase(caseID)
 	require.NoError(t, err)
-	// Both stories returned regardless of status — caller filters.
+	// Both stories returned regardless of status - caller filters.
 	assert.Len(t, stories, 2)
 }
 
@@ -137,7 +137,7 @@ func TestCreateRun_default_status_is_running(t *testing.T) {
 func TestCreateRun_invalid_topology_version_rejected(t *testing.T) {
 	s := newTestStore(t)
 	_, _, caseID := scaffold(t, s)
-	// No topology created for this project — version 99 does not exist.
+	// No topology created for this project - version 99 does not exist.
 	_, err := s.CreateRun(caseID, 99, "main")
 	require.Error(t, err, "CreateRun with unknown topology version must return an error")
 	assert.Contains(t, err.Error(), "topology version 99 does not exist")
@@ -438,7 +438,7 @@ func TestKillStaleRuns_fresh_run_not_killed(t *testing.T) {
 	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
 	_, _ = s.CreateRun(caseID, topo.Version, "main")
 
-	// 2h maxAge — a just-created run is well within that window.
+	// 2h maxAge - a just-created run is well within that window.
 	n, err := s.KillStaleRuns(caseID, 2*time.Hour)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n, "freshly created run should not be killed")
@@ -490,7 +490,7 @@ func TestAppendEventLog_payload_capped_at_store_level(t *testing.T) {
 	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
 	run, _ := s.CreateRun(caseID, topo.Version, "main")
 
-	bigPayload := string(make([]byte, 128*1024)) // 128 KiB — above the 64 KiB cap
+	bigPayload := string(make([]byte, 128*1024)) // 128 KiB - above the 64 KiB cap
 	entry, err := s.AppendEventLog(run.ID, "state_emit", bigPayload, "", "")
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(entry.Payload), 64*1024, "store must cap payload at 64 KiB")
@@ -554,7 +554,7 @@ func TestUpdateCaseStatus_invalid_status_rejected(t *testing.T) {
 	// This test documents the expected behaviour: new DBs enforce the constraint.
 	err := s.UpdateCaseStatus(caseID, "BOGUS_STATUS")
 	// The CHECK constraint only applies to fresh schemas; on migrated DBs the
-	// column may lack the constraint. We accept both outcomes — the important
+	// column may lack the constraint. We accept both outcomes - the important
 	// thing is that valid transitions still work.
 	if err != nil {
 		assert.Contains(t, err.Error(), "CHECK")
@@ -609,7 +609,7 @@ func TestHasSuccessfulRunAtTopologyVersion_wrong_version_returns_false(t *testin
 	run, _ := s.CreateRun(caseID, topo.Version, "main")
 	s.UpdateRunStatus(run.ID, "SUCCESS", nil, "abc")
 
-	// Ask for v2 — which has never been run.
+	// Ask for v2 - which has never been run.
 	ok, err := s.HasSuccessfulRunAtTopologyVersion(pID, topo.Version+1)
 	require.NoError(t, err)
 	assert.False(t, ok, "SUCCESS run at v1 must not satisfy query for v2")
@@ -702,13 +702,13 @@ func TestAtUseAuditCounts_nil_run_id(t *testing.T) {
 func TestRotateSecrets_re_encrypts_all(t *testing.T) {
 	s := newTestStore(t)
 
-	// Minimal key and codec stubs — just ensure the round-trip works.
+	// Minimal key and codec stubs - just ensure the round-trip works.
 	oldKey := make([]byte, 32)
 	newKey := make([]byte, 32)
 	newKey[0] = 1 // different from oldKey
 
 	encryptFn := func(key []byte, pt string) (string, error) {
-		// XOR with first key byte — deterministic stub, not real crypto.
+		// XOR with first key byte - deterministic stub, not real crypto.
 		out := make([]byte, len(pt))
 		for i, b := range []byte(pt) {
 			out[i] = b ^ key[0]

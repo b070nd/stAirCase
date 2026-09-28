@@ -47,7 +47,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 	tmpDir := filepath.Join(wsDir, "tmp")
 
 	if cleanDryRun {
-		fmt.Println("🔍 Dry-run mode — nothing will be deleted.")
+		fmt.Println("🔍 Dry-run mode - nothing will be deleted.")
 	}
 
 	// ── 1. Tmp: Python-era scripts and their sidecars, IPC sockets ────────────
@@ -88,7 +88,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 	venvPath := filepath.Join(wsDir, "venv")
 	if info, err := os.Lstat(venvPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			// Never follow a symlink — it could point outside the workspace.
+			// Never follow a symlink - it could point outside the workspace.
 			fmt.Printf("   ⚠️  Skipping venv removal: %s is a symlink.\n", venvPath)
 		} else {
 			removeTarget(venvPath)

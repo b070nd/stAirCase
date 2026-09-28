@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-demo.sh — fully offline, no-API-key walkthrough of stAirCase, end to end:
+# run-demo.sh - fully offline, no-API-key walkthrough of stAirCase, end to end:
 # a blueprint imported from its own repository and bound to a project, a run on
 # the real Go agent runtime with every change approved by a human, exactly the
 # approved bytes committed on the run's branch, the developer's checkout left
@@ -9,7 +9,7 @@
 # gateway that plays the two agents deterministically. See
 # demo/record-replay.sh for a real-model run.
 #
-# Usage:  ./demo/run-demo.sh            (interactive — you approve each proposal)
+# Usage:  ./demo/run-demo.sh            (interactive - you approve each proposal)
 #         ./demo/run-demo.sh --auto     (auto-approves via curl; used by CI)
 #         ./demo/run-demo.sh --tamper   (an approved shell command changes a
 #                                        file after its approval → run FAILS)
@@ -125,7 +125,7 @@ for _ in $(seq 1 1200); do
   kill -0 "$RUN_PID" 2>/dev/null || break
   YIELD_ID="$(curl -s "${AUTH[@]}" "$API" 2>/dev/null | "$DEMOTOOL" first-yield || true)"
   if [ -z "$YIELD_ID" ]; then sleep 0.1; continue; fi
-  say "Pending approval — exactly what would be applied"
+  say "Pending approval - exactly what would be applied"
   curl -s "${AUTH[@]}" "$API/$YIELD_ID" | "$DEMOTOOL" show-yield
   DECISION=approve
   if [ "$AUTO" = "1" ]; then
@@ -151,7 +151,7 @@ case "$MODE" in
     say "Checking the tamper was refused"
     [ "$STATUS" = "FAILED" ] || die "expected the tampered run to FAIL (got $STATUS)"
     [ "$RUN_EXIT" -ne 0 ] || die "a failed run must exit non-zero"
-    ok "run FAILED and exited $RUN_EXIT — the post-approval change was refused"
+    ok "run FAILED and exited $RUN_EXIT - the post-approval change was refused"
     if git -C "$TARGET_REPO" log --oneline staircase/run-1 2>/dev/null | grep -q "staircase: run"; then
       die "tampered content must NOT be committed"
     fi
@@ -184,7 +184,13 @@ ok "HEAD, branch, index, status and every file are exactly as before"
 [ "$(git -C "$TARGET_REPO" worktree list | wc -l | tr -d ' ')" = "1" ] || [ "$MODE" != "" ] || die "a worktree was left behind"
 BRANCHES="$(git -C "$TARGET_REPO" branch --format='%(refname:short)' | paste -sd, -)"
 [ "$BRANCHES" = "main,staircase/run-1" ] || die "unexpected branches: $BRANCHES"
-ok "the product repository gained only the run branch ($BRANCHES); no harness files"
+ok "the product repository gained only the run branch ($BRANCHES) and its certificate note; no harness files"
+if [ -z "$MODE" ]; then
+  say "Checking the change certificate of the run's commit"
+  (cd "$TARGET_REPO" && staircase verify staircase/run-1 --min-cal 3) | sed 's/^/    /'
+  git -C "$TARGET_REPO" log -1 --format=%B staircase/run-1 | grep -q '^Assisted-by: ' || die "no Assisted-by trailer"
+  ok "signed, about exactly this commit, CAL 3; the commit names the agents that helped"
+fi
 
 say "The tamper-evident audit chain"
 staircase inspect runs || true
@@ -199,6 +205,6 @@ else
 fi
 
 say "Done."
-note "Every decision above — the approvals, who made them, the committed bytes,"
-note "the blueprint and plan the run executed — is on a signed, hash-chained"
+note "Every decision above - the approvals, who made them, the committed bytes,"
+note "the blueprint and plan the run executed - is on a signed, hash-chained"
 note "audit log. Nothing the agents wrote reached the repo without a human."

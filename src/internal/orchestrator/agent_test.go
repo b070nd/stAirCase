@@ -26,7 +26,7 @@ func runInProcess(t *testing.T, setup func(s *persistence.Store, wsDir string, p
 
 // TestAgentEnv_secret_delivery catches a secret leaking out of the run: the
 // orchestrator's reserved keys must stay unreachable, and a delivered value
-// must never reach the audit log or the run branch — even when the agent
+// must never reach the audit log or the run branch - even when the agent
 // writes it into a file it proposes.
 func TestAgentEnv_secret_delivery(t *testing.T) {
 	const secret = "sk-test-SECRET-4711"

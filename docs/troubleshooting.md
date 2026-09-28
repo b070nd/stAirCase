@@ -11,12 +11,12 @@ Below are the messages you are most likely to see, and what to do.
 
 ## Before the run starts
 
-**`quality gate check failed — N BLOCK failure(s)`**
+**`quality gate check failed - N BLOCK failure(s)`**
 
 A check failed. Run `staircase gate <case-id>`; each failed line says how to fix
 it. See [Gates](gates.md).
 
-**`ANTHROPIC_API_KEY missing — printf 'value' | staircase secret set ANTHROPIC_API_KEY`**
+**`ANTHROPIC_API_KEY missing - printf 'value' | staircase secret set ANTHROPIC_API_KEY`**
 
 A model in the team has no key. Store it as shown. Each model needs its provider's
 key: see [Models and API keys](models.md).
@@ -26,7 +26,7 @@ key: see [Models and API keys](models.md).
 The model name does not start with a known prefix. Use `claude-…`, `gpt-…`,
 `o1-…`/`o3-…`/`o4-…`, `gemini-…`, `grok-…`, or `provider/model` for a gateway.
 
-**`no compiled plan — run 'staircase compile 1'`**
+**`no compiled plan - run 'staircase compile 1'`**
 
 Compile the case. Compile again after every change to the case, its stories or
 its topology (`staircase compile 1 --force`).
@@ -69,7 +69,7 @@ workspace. Wait for it to finish.
 Not an error. The agents work on a separate copy of your **last commit**. Commit
 first if they should see your latest changes.
 
-**`Budget cap exceeded — killing run #N`**
+**`Budget cap exceeded - killing run #N`**
 
 The estimated cost reached the project's cap. Raise it with
 `staircase project config set <project-id> --budget-cap <dollars>`, or use a
@@ -96,7 +96,7 @@ which file differed. The failed run's worktree is kept in the workspace
 
 **The case stays `PENDING` after a successful run**
 
-A commit does not mark a story as done — you do. Accept each story with
+A commit does not mark a story as done - you do. Accept each story with
 `staircase story accept <story-id>`.
 
 **I want to throw a run away**

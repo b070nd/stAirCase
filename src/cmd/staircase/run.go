@@ -37,6 +37,7 @@ var (
 	runReplayLLM      string
 	runAllowShellExec bool
 	runAgent          string
+	runModel          string
 	runAckDrift       bool
 	runValidator      string
 )
@@ -79,15 +80,16 @@ func init() {
 	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",
 		"File path to replay recorded LLM exchanges instead of calling the real API.")
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
-		"Enable run_shell for this run — agents may request OS-level shell execution subject to HITL approval. "+
+		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
 	runCmd.Flags().StringVar(&runValidator, "validator", "",
 		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
 			"a human approves the run's final change once")
+	runCmd.Flags().StringVar(&runModel, "model", "", "Model for an agent harness (claude-code, codex); default: the harness's own")
 	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
-		"Agent to run: built-in (the compiled topology) or claude-code (Claude Code with every tool call governed by hooks; experimental)")
+		"Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -96,7 +98,11 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	return runCase(caseID)
+}
 
+// runCase runs a compiled case with the run flags.
+func runCase(caseID int64) error {
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
 	db, err := persistence.InitDB(wsDir)
@@ -138,20 +144,32 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	pl, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID)))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return fmt.Errorf("case #%d is not compiled — run 'staircase compile %d' first", caseID, caseID)
+		return fmt.Errorf("case #%d is not compiled - run 'staircase compile %d' first", caseID, caseID)
 	case err != nil:
 		return fmt.Errorf("plan for case #%d: %w", caseID, err)
 	case pl.CaseID != caseID:
-		return fmt.Errorf("the plan was compiled for case #%d — run 'staircase compile %d --force'", pl.CaseID, caseID)
+		return fmt.Errorf("the plan was compiled for case #%d - run 'staircase compile %d --force'", pl.CaseID, caseID)
 	}
 
+	// The plan says who runs the case; --agent can only choose a harness for a
+	// plan compiled for the built-in agents.
+	who := runAgent
+	if pl.Harness != "" {
+		if runAgent != "built-in" && runAgent != pl.Harness {
+			return fmt.Errorf("case #%d is compiled to run %s, not %s - recompile with 'staircase compile %d --force --agent %s'",
+				caseID, pl.Harness, runAgent, caseID, runAgent)
+		}
+		who = pl.Harness
+	}
 	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}
-	switch runAgent {
+	switch who {
 	case "built-in":
 	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.Brief()}
+		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel}
+	case "codex":
+		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
 	default:
-		return fmt.Errorf("unknown --agent %q: use built-in or claude-code", runAgent)
+		return fmt.Errorf("unknown --agent %q: use built-in, claude-code or codex", who)
 	}
 
 	var validator *orchestrator.Validator

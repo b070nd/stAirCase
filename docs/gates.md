@@ -42,7 +42,7 @@ problem.
 | `runtime.no_concurrent_run` | BLOCK | no other run of the case is active |
 
 A failing gate says how to fix it, for example
-`no compiled plan — run 'staircase compile 1'`.
+`no compiled plan - run 'staircase compile 1'`.
 
 ## Add your own gates
 
@@ -123,7 +123,7 @@ Without a signature, `staircase gate` warns. With a signature that does not matc
 
 ### What the script can see
 
-- **No environment variables** — no `PATH`, no API keys, no secrets. Use absolute
+- **No environment variables** - no `PATH`, no API keys, no secrets. Use absolute
   paths for any program you call.
 - **An empty, temporary working folder**, deleted afterwards.
 - **Your user account.** The script runs as you and can read the workspace folder

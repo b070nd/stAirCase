@@ -1,4 +1,4 @@
-# .goreleaser.yml — stAirCase release configuration
+# .goreleaser.yml - stAirCase release configuration
 # Run: goreleaser release --clean
 # Or:  goreleaser build --snapshot --clean (local test build)
 version: 2

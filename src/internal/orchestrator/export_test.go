@@ -1,4 +1,4 @@
-// export_test.go — exposes unexported orchestrator functions for whitebox testing.
+// export_test.go - exposes unexported orchestrator functions for whitebox testing.
 package orchestrator
 
 import (
@@ -44,8 +44,8 @@ func SetLostGraceForTest(d time.Duration) (restore func()) {
 
 // CommitApprovedForTest drives finalize's commit step on repoPath's current
 // branch: it approves creating file with content through the real derivation,
-// writes it like an honest agent, checks it with verify, then runs tamper — a
-// process still alive after verify — before committing the approvals.
+// writes it like an honest agent, checks it with verify, then runs tamper - a
+// process still alive after verify - before committing the approvals.
 func CommitApprovedForTest(repoPath, file, content string, tamper func()) (string, error) {
 	gr, err := OpenGitRepo(repoPath)
 	if err != nil {

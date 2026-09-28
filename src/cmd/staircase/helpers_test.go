@@ -45,7 +45,7 @@ func TestFilterSubgraph_returns_root_and_reachable_deps(t *testing.T) {
 	ps, ds := filterSubgraph(1, projects, deps)
 	require.Len(t, ps, 2)
 	require.Len(t, ds, 1)
-	assert.Equal(t, int64(3), projects[2].ID) // project 3 unreachable — not in result
+	assert.Equal(t, int64(3), projects[2].ID) // project 3 unreachable - not in result
 }
 
 func TestFilterSubgraph_single_node_no_deps(t *testing.T) {

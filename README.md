@@ -1,7 +1,7 @@
 <h1 align="center">stAirCase</h1>
 
 <p align="center">
-  <strong>AI agents propose. You approve. Only what you approved is committed — and you can prove it.</strong>
+  <strong>AI agents propose. You approve. Only what you approved is committed - and you can prove it.</strong>
 </p>
 
 <p align="center">
@@ -23,19 +23,42 @@ agreed to it, and whether what was committed is what was reviewed.
 **stAirCase** sits between AI agents and your repository:
 
 - the agents work in a **separate copy** of your repository, never in your checkout;
-- every change they want to make is a **proposal** that waits for a decision — by
+- every change they want to make is a **proposal** that waits for a decision - by
   you, or by a rule you wrote;
 - at the end, stAirCase commits **exactly the approved bytes** on a new branch, and
   nothing else;
-- every decision is recorded on a **tamper-evident audit chain** that you can
-  export, sign and hand to someone else to verify.
+- every decision is recorded on a **tamper-evident audit chain**, and the commit
+  carries a signed **change certificate** that anyone can verify.
 
 It is one program with no dependencies except git. Your agent setup, plans and
 evidence live in a workspace outside your repositories.
 
+## Put `staircase` in front of your agent
+
+In any git repository, with nothing to set up:
+
+```bash
+staircase claude "add a /health endpoint that returns 200"   # or: staircase codex "..."
+```
+
+Every change the agent wants to make comes to you first. At the end, exactly what
+you approved is on a new branch, with a certificate you can check:
+
+```bash
+staircase verify staircase/run-1
+```
+
+```
+✅ Commit 8a4ae8705334: valid change certificate, CAL 3
+   run #1 from 1ec6a66040cc, assisted by Claude Code
+```
+
+A pull request can be required to carry such certificates with the
+[stAirCase GitHub Action](docs/audit.md#require-certificates-on-pull-requests).
+
 ## See it work in one minute
 
-No API key and no network needed — the demo uses a stand-in model:
+No API key and no network needed - the demo uses a stand-in model:
 
 ```bash
 git clone https://github.com/b070nd/stAirCase.git
@@ -75,9 +98,9 @@ minutes.
 | **Approve your way** | in the terminal, from a script (local HTTP API), from a service (signed webhook), with rules, or with a reviewer model. |
 | **Runs stay on task** | give each story the paths it may change; anything else comes to you, and a run that keeps wandering is stopped. |
 | **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |
-| **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway — mixed in one team. Budget caps per project. |
+| **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway - mixed in one team. Budget caps per project. |
 | **Shell off by default** | agents can only ask to run commands when you allow it, and a person approves each one. |
-| **Claude Code, governed** | run Claude Code as the agent, with every tool call going through the same approvals (experimental). |
+| **Claude Code and Codex, governed** | `staircase claude "task"` or `staircase codex "task"`: the agents you already use, with every change going through the same approvals (experimental). |
 
 ## Know the limits
 
@@ -88,7 +111,7 @@ stAirCase is pre-1.0.
 
 ## Documentation
 
-Everything is in **[docs/](docs/README.md)** — start with [Concepts](docs/concepts.md)
+Everything is in **[docs/](docs/README.md)** - start with [Concepts](docs/concepts.md)
 (five minutes) and [Getting started](QUICKSTART.md).
 
 ## Security
@@ -98,9 +121,10 @@ vulnerability privately: [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- An OS sandbox for approved shell commands.
-- Audit records in the standard DSSE envelope format, for supply-chain tools.
-- A separate identity per agent, with its own credentials.
+Where stAirCase is going: every change an AI agent makes carries a signed, verifiable
+**change certificate**. Next up: `staircase claude "task"` with no setup, more agents
+(Codex, Gemini CLI, OpenCode, Cursor), and a CI check that requires certificates. The
+full plan and its reasoning are in **[ROADMAP.md](ROADMAP.md)**.
 
 ## Contributing
 

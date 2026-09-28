@@ -1,5 +1,5 @@
 #!/bin/sh
-# example_check.sh — stAirCase plugin gate example (shell)
+# example_check.sh - stAirCase plugin gate example (shell)
 #
 # Input  (stdin):  {"case_id": 42, "ws_dir": "/path/to/ws"}
 # Output (stdout): {"status": "PASS", "message": "..."}

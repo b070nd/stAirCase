@@ -27,7 +27,7 @@ const KeyFile = ".key"
 func GenerateKey(wsDir string) error {
 	keyPath := filepath.Join(wsDir, KeyFile)
 	if _, err := os.Stat(keyPath); err == nil {
-		return nil // already exists — init is idempotent
+		return nil // already exists - init is idempotent
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
@@ -82,7 +82,7 @@ func LoadKey(wsDir string) ([]byte, error) {
 		}
 		if perm := info.Mode().Perm(); perm&0o177 != 0 {
 			return nil, fmt.Errorf(
-				"workspace key %q has insecure permissions %04o (expected 0600) — fix with: chmod 600 %q",
+				"workspace key %q has insecure permissions %04o (expected 0600) - fix with: chmod 600 %q",
 				keyPath, perm, keyPath,
 			)
 		}

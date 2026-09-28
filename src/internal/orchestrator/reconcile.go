@@ -22,7 +22,7 @@ type ReconcileResult struct {
 // Reconcile detects orphan staircase/run-* branches
 // in sourcePath and stale RUNNING run records for caseID.
 //
-// A run is considered stale if it has been RUNNING for more than 2 hours — the
+// A run is considered stale if it has been RUNNING for more than 2 hours - the
 // same heuristic used by [persistence.Store.KillStaleRuns] in the normal path.
 //
 // Completed-run branches are delivery evidence, not orphans. Other inactive
@@ -68,7 +68,7 @@ func (r *Runner) killStaleRunRecords(caseID int64) ([]int64, error) {
 			continue
 		}
 		if run.StartTime.After(cutoff) {
-			continue // started recently — may still be running legitimately
+			continue // started recently - may still be running legitimately
 		}
 		now := time.Now()
 		if err := r.store.UpdateRunStatus(run.ID, persistence.RunStatusKilled, &now, ""); err != nil {

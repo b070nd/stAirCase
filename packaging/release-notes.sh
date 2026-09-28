@@ -1,5 +1,5 @@
 #!/bin/sh
-# release-notes.sh <version> — print the CHANGELOG.md section of a version,
+# release-notes.sh <version> - print the CHANGELOG.md section of a version,
 # used as the GitHub release notes. Fails when the section is missing or empty.
 set -eu
 version="${1:?usage: release-notes.sh <version, e.g. 0.2.0>}"

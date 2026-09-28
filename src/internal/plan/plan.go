@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/llm"
@@ -31,6 +32,12 @@ type Plan struct {
 	PRD             string  `json:"prd"`
 	RepoContext     string  `json:"repo_context"`
 	Stories         []Story `json:"stories,omitempty"`
+	// Lessons are what reviewers of the project rejected before, with their
+	// reasons, newest first: the agents read them in the brief.
+	Lessons []string `json:"lessons,omitempty"`
+	// Harness is the external agent that runs the case (see Harnesses); empty
+	// means the built-in agents above. A harness plan has no agents of its own.
+	Harness string `json:"harness,omitempty"`
 	// BlueprintHash is the blueprint the case was bound from, if any.
 	BlueprintHash string `json:"blueprint_hash,omitempty"`
 	// Limits are the blueprint's run limits (drift supervision); zero = none.
@@ -83,6 +90,12 @@ func (p Plan) Brief() string {
 		}
 		b.WriteString("\n\nChanges outside these paths go to a human reviewer and can halt the run.")
 	}
+	if len(p.Lessons) > 0 {
+		b.WriteString("\n\nReviewers of this project rejected before - do not repeat:")
+		for _, l := range p.Lessons {
+			fmt.Fprintf(&b, "\n- %s", l)
+		}
+	}
 	return strings.TrimSpace(b.String())
 }
 
@@ -117,8 +130,22 @@ func IsEnd(node string) bool { return node == "END" || node == "__end__" }
 var builtinTools = map[string]bool{"read_file": true, "list_dir": true, "request_edit": true,
 	"create_file": true, "delete_file": true, "run_shell": true}
 
+// Harnesses are the external agents a case can be run by instead of the
+// built-in agents: they bring their own model and login, and every tool
+// call goes through the run's hooks.
+var Harnesses = []string{"claude-code", "codex"}
+
 // Validate reports what would make the plan fail to run.
 func (p Plan) Validate() error {
+	if p.Harness != "" {
+		switch {
+		case !slices.Contains(Harnesses, p.Harness):
+			return fmt.Errorf("unknown harness %q - supported: %s", p.Harness, strings.Join(Harnesses, ", "))
+		case len(p.Agents) > 0 || len(p.Edges) > 0 || p.Supervisor != "":
+			return fmt.Errorf("the plan runs harness %q but also has agents of its own", p.Harness)
+		}
+		return nil
+	}
 	var errs []error
 	known := map[string]bool{}
 	for _, a := range p.Agents {
@@ -128,7 +155,7 @@ func (p Plan) Validate() error {
 		}
 		for _, t := range a.Tools {
 			if !builtinTools[t] {
-				errs = append(errs, fmt.Errorf("agent %q: unknown tool %q — only the built-in tools exist", a.Name, t))
+				errs = append(errs, fmt.Errorf("agent %q: unknown tool %q - only the built-in tools exist", a.Name, t))
 			}
 		}
 	}
@@ -174,10 +201,10 @@ func Load(path string) (Plan, error) {
 	}
 	want, err := os.ReadFile(path + ".sha256")
 	if err != nil {
-		return p, fmt.Errorf("plan has no checksum — recompile: %w", err)
+		return p, fmt.Errorf("plan has no checksum - recompile: %w", err)
 	}
 	if sum := sha256.Sum256(b); hex.EncodeToString(sum[:]) != strings.TrimSpace(string(want)) {
-		return p, errors.New("plan was modified after compile — recompile")
+		return p, errors.New("plan was modified after compile - recompile")
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -186,7 +213,7 @@ func Load(path string) (Plan, error) {
 	}
 	p.Digest = strings.TrimSpace(string(want))
 	if p.Version != Version {
-		return p, fmt.Errorf("plan version %d, this staircase runs version %d — recompile", p.Version, Version)
+		return p, fmt.Errorf("plan version %d, this staircase runs version %d - recompile", p.Version, Version)
 	}
 	return p, p.Validate()
 }

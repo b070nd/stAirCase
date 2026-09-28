@@ -129,10 +129,10 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files [
 		return "", resp, false
 	}
 	if f := sensitive(files); f != "" {
-		return "sensitive path " + f + " — a human decides", resp, false
+		return "sensitive path " + f + " - a human decides", resp, false
 	}
 	if v.rejectRun >= validatorRejectLimit {
-		return fmt.Sprintf("the validator rejected the last %d proposals — a human decides", v.rejectRun), resp, false
+		return fmt.Sprintf("the validator rejected the last %d proposals - a human decides", v.rejectRun), resp, false
 	}
 	before := map[string]*approvedFile{}
 	for p := range next {
@@ -147,7 +147,7 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files [
 		tracker.Record("validator", v.Model, llmResp.InputTokens, llmResp.OutputTokens)
 	}
 	if err != nil {
-		return "validator unavailable (" + err.Error() + ") — a human decides", resp, false
+		return "validator unavailable (" + err.Error() + ") - a human decides", resp, false
 	}
 	if !*vd.Approve {
 		v.rejectRun++
@@ -156,7 +156,7 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files [
 	v.rejectRun = 0
 	v.approvals++
 	if v.approvals%validatorSampleEvery == 0 {
-		return "the validator approved (" + vd.Reason + ") — sampled for human review", resp, false
+		return "the validator approved (" + vd.Reason + ") - sampled for human review", resp, false
 	}
 	v.unreviewed = true
 	return "", domain.Decide(true, "review: "+vd.Reason), true

@@ -139,12 +139,12 @@ func (d *Display) Render() {
 			nameS = dActive
 		}
 
-		agentTime := "—"
+		agentTime := "-"
 		if !a.FirstSeen.IsZero() && a.Steps > 0 {
 			agentTime = formatElapsed(a.LastActive.Sub(a.FirstSeen))
 		}
 
-		costStr := dMuted.Render("—")
+		costStr := dMuted.Render("-")
 		if cost > 0 {
 			costStr = dCost.Render(fmt.Sprintf("$%.4f", cost))
 		}
@@ -173,7 +173,7 @@ func (d *Display) Render() {
 	sb.WriteString(sep)
 	sb.WriteString("\n")
 
-	totalCostStr := dMuted.Render("—")
+	totalCostStr := dMuted.Render("-")
 	if totalCost > 0 {
 		cs := fmt.Sprintf("$%.4f", totalCost)
 		if budgetCap > 0 {
@@ -265,7 +265,7 @@ func formatElapsed(d time.Duration) string {
 
 func formatTokens(n int) string {
 	if n == 0 {
-		return "—"
+		return "-"
 	}
 	if n >= 1_000_000 {
 		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)

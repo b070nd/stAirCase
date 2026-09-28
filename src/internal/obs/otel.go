@@ -1,4 +1,4 @@
-// Package obs — OpenTelemetry integration (CHECK 10.3.1).
+// Package obs - OpenTelemetry integration (CHECK 10.3.1).
 //
 // InitOTel configures an OTLP/gRPC trace exporter when --otel-endpoint is
 // set.  Without an endpoint this is a cheap no-op; the flag is opt-in so
@@ -33,7 +33,7 @@ var Tracer trace.Tracer = noop.NewTracerProvider().Tracer("staircase")
 // on process exit to guarantee span delivery.
 //
 // The exporter connects lazily and asynchronously: an unreachable collector
-// never blocks or fails a run — spans are dropped after the batch timeout.
+// never blocks or fails a run - spans are dropped after the batch timeout.
 func InitOTel(endpoint string) (shutdown func()) {
 	OTelEndpoint = endpoint
 	if endpoint == "" {
@@ -46,7 +46,7 @@ func InitOTel(endpoint string) (shutdown func()) {
 		otlptracegrpc.WithInsecure(), // local collectors; TLS endpoints via OTEL_EXPORTER_OTLP_* env
 	)
 	if err != nil {
-		Log.Warn("otel exporter init failed — tracing disabled", "endpoint", endpoint, "err", err)
+		Log.Warn("otel exporter init failed - tracing disabled", "endpoint", endpoint, "err", err)
 		return func() {}
 	}
 

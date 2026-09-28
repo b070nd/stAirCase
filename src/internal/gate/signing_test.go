@@ -66,7 +66,7 @@ func TestVerifyGatesSignature_no_gates_file(t *testing.T) {
 
 // TestRunAll_unsigned_gates_blocked_when_key_present: a workspace that has
 // signing infrastructure must not execute plugin gates from an unsigned
-// gates.json — deleting the sidecar would otherwise bypass tamper detection.
+// gates.json - deleting the sidecar would otherwise bypass tamper detection.
 func TestRunAll_unsigned_gates_blocked_when_key_present(t *testing.T) {
 	gate.ReplaceRegistry(t, nil)
 	ctx, wsDir := newGateEnv(t)
@@ -93,7 +93,7 @@ func TestRunAll_unsigned_gates_warn_only_without_key(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"),
 		[]byte(`[{"name":"plugin-probe","category":"security","severity":"WARN","script":"/bin/true"}]`), 0o644))
-	// no signing key, no sig — legacy/unsigned workspace
+	// no signing key, no sig - legacy/unsigned workspace
 
 	r := gate.RunAll(ctx)
 

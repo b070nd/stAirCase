@@ -94,7 +94,7 @@ func TestValidator_final_review_rejected_commits_nothing(t *testing.T) {
 }
 
 // TestValidator_hands_over_to_a_human for sensitive paths, a rejection streak,
-// an unreadable verdict and every 5th approval — with the reason shown.
+// an unreadable verdict and every 5th approval - with the reason shown.
 func TestValidator_hands_over_to_a_human(t *testing.T) {
 	rv := &reviewer{replies: []string{
 		`{"approve": false, "reason": "no"}`, `{"approve": false, "reason": "no"}`, // streak → 3rd to human

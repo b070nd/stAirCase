@@ -39,7 +39,7 @@ var storyAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create story: %w", err)
 		}
-		fmt.Printf("✅ Story #%d added to Case #%d — status: %s\n", us.ID, caseID, us.Status)
+		fmt.Printf("✅ Story #%d added to Case #%d - status: %s\n", us.ID, caseID, us.Status)
 		return nil
 	},
 }
@@ -100,7 +100,7 @@ var storyInvalidateCmd = &cobra.Command{
 		if err := store.UpdateUserStoryStatus(storyID, persistence.StoryStatusInvalidated); err != nil {
 			return fmt.Errorf("invalidate story: %w", err)
 		}
-		fmt.Printf("✅ Story #%d marked INVALIDATED — verify the work again, then run 'staircase story accept %d'.\n", storyID, storyID)
+		fmt.Printf("✅ Story #%d marked INVALIDATED - verify the work again, then run 'staircase story accept %d'.\n", storyID, storyID)
 		return nil
 	},
 }
@@ -168,7 +168,7 @@ scope from the blueprint: change it there.`,
 		if hash, _, err := store.CaseBlueprint(st.CaseID); err != nil {
 			return err
 		} else if hash != "" {
-			return fmt.Errorf("story #%d belongs to case #%d, bound to blueprint %.12s — change the scope in the blueprint and bind again", id, st.CaseID, hash)
+			return fmt.Errorf("story #%d belongs to case #%d, bound to blueprint %.12s - change the scope in the blueprint and bind again", id, st.CaseID, hash)
 		}
 		for _, g := range storyScopeAllow {
 			if _, err := path.Match(g, ""); err != nil || g == "" || path.IsAbs(g) || strings.HasPrefix(g, "../") {
@@ -189,7 +189,7 @@ scope from the blueprint: change it there.`,
 		if scope == "" {
 			fmt.Printf("✅ Story #%d has no scope.\n", id)
 		} else {
-			fmt.Printf("✅ Story #%d scope: %s — recompile case #%d\n", id, scope, st.CaseID)
+			fmt.Printf("✅ Story #%d scope: %s - recompile case #%d\n", id, scope, st.CaseID)
 		}
 		return nil
 	},

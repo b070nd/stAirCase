@@ -32,6 +32,90 @@ Events you will see:
 A decision is written to the chain **before** the agent learns it. Secrets are
 removed from every event before it is stored.
 
+## The change certificate on every commit
+
+Each run that commits leaves a **change certificate** about exactly that commit: a
+small, signed statement of who helped, what was decided and by whom, and the
+[assurance level](adr/0001-core-promise-and-assurance-levels.md) the change reached.
+It holds digests only, never code or prompts.
+
+- It is attached to the commit as a git note (`refs/notes/staircase`) and saved as
+  `audit/run-N.certificate.json` in the workspace.
+- The commit message itself names the agents that helped (`Assisted-by:`) and where
+  the audit chain stood (`Staircase-Chain:`).
+
+Check a commit, in the repository:
+
+```bash
+staircase verify staircase/run-7
+staircase verify staircase/run-7 --min-cal 3     # fail below CAL 3
+```
+
+```
+✅ Commit 8a4ae8705334: valid change certificate, CAL 3
+   run #7 from 1ec6a66040cc, assisted by Claude Code
+   3 decision(s) by operator
+```
+
+A run reaches CAL 3 when every action was decided before it ran; it drops to CAL 2
+when shell commands were approved, because they run without a sandbox. The
+certificate format is described in [ADR 0002](adr/0002-change-certificate.md).
+
+**For a reviewer on another machine:** notes are not pushed or fetched by default.
+Push them with the branch:
+
+```bash
+git push origin staircase/run-7 refs/notes/staircase
+```
+
+The reviewer fetches them and verifies with your public key, the only file they need:
+
+```bash
+git fetch origin refs/notes/staircase:refs/notes/staircase
+staircase verify <commit> --key signing.pub
+```
+
+## Require certificates on pull requests
+
+A CI check can refuse pull requests with an agent's commit that is not properly
+certified. Commit your workspace's public key to the repository (it is public; copy
+`~/.staircase-workspace/.signing.pub`, for example to `.github/staircase.pub`), and
+add a workflow:
+
+```yaml
+name: stAirCase
+on: pull_request
+permissions:
+  contents: read
+  attestations: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: b070nd/stAirCase@v0.3.0
+        with:
+          key: .github/staircase.pub
+          min-cal: 3
+```
+
+The check installs that release of `staircase` after verifying how it was built,
+fetches the certificates (`refs/notes/staircase`) and checks every commit of the pull
+request that names an agent in an `Assisted-by:` trailer. With `all: true`, every
+commit needs a certificate. Push the certificates together with the branch:
+
+```bash
+git push origin staircase/run-7 refs/notes/staircase
+```
+
+What it cannot do: a commit made with an agent but not marked `Assisted-by:` looks
+like a person's commit. Use `all: true` where every change must come through
+stAirCase.
+
+The same check runs locally: `staircase verify main..HEAD --min-cal 3`.
+
 ## Look at a run
 
 ```bash
@@ -72,18 +156,30 @@ If any character of the evidence was changed, verification fails.
 A signature proves the evidence was not changed after signing, but whoever holds the
 signing key could create new, different evidence. To prove **when** the evidence
 existed, anchor it in [Rekor](https://docs.sigstore.dev/logging/overview/), Sigstore's
-public, append-only transparency log:
+public, append-only transparency log.
+
+**Anchor the change certificate (recommended).** Only the certificate is sent: commit
+hashes, digests, decision counts and the level. No code, prompts or reasoning leave
+your machine.
+
+```bash
+staircase audit anchor 7                              # writes run-7.certificate.json.anchor
+staircase verify staircase/run-7 --check-anchor
+```
+
+**Anchor the whole record.** This also covers every event of the run:
 
 ```bash
 staircase audit export 7 --anchor                   # also writes run-7.checkpoint.json.anchor
 staircase audit verify run-7.checkpoint.json --check-anchor
 ```
 
-> **Warning: anchoring makes the evidence public, permanently.** The whole signed
-> record is uploaded to the log — every event of the run, including the agents'
-> reasoning, file paths and the proposed changes themselves. The public Rekor log
-> cannot delete entries. Anchor only runs whose content may be public (for example
-> open-source work), or use `--rekor-url` to anchor in a Rekor instance you run
+> **What leaves your machine with `--anchor`.** The whole signed record - every event of the run,
+> including the agents' reasoning, file paths and the proposed changes - is sent to
+> the Rekor service, which checks the signature. The public log then keeps, for
+> good, only the record's SHA-256, the signature and your public key; it does not
+> store the record itself (checked on rekor.sigstore.dev). If the record must not
+> reach a third party at all, use `--rekor-url` with a Rekor instance you run
 > yourself.
 
 ## Accepting stories is evidence too

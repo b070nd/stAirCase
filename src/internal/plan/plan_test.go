@@ -77,3 +77,31 @@ func TestPlan_Brief(t *testing.T) {
 	assert.Contains(t, b, "- Anything")
 	assert.Equal(t, "Just the PRD.", plan.Plan{PRD: "Just the PRD."}.Brief())
 }
+
+// TestPlan_harness: a case can be run by an agent harness such as Claude
+// Code instead of the built-in agents. Such a plan names the harness and has
+// no agents of its own; only known harnesses run.
+func TestPlan_harness(t *testing.T) {
+	p := plan.Plan{CaseID: 1, Harness: "claude-code", PRD: "add a health endpoint"}
+	require.NoError(t, p.Validate())
+	path := filepath.Join(t.TempDir(), "plan_case1.json")
+	require.NoError(t, plan.Write(path, p))
+	got, err := plan.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "claude-code", got.Harness)
+
+	p.Harness = "no-such-harness"
+	assert.ErrorContains(t, p.Validate(), `unknown harness "no-such-harness"`)
+
+	mixed := quickstart()
+	mixed.Harness = "claude-code"
+	assert.ErrorContains(t, mixed.Validate(), "has agents")
+}
+
+// TestPlan_Brief_lessons: what reviewers rejected before in the project is
+// in the brief, so the agent does not propose it again.
+func TestPlan_Brief_lessons(t *testing.T) {
+	p := plan.Plan{PRD: "Add a health endpoint.", Lessons: []string{"src/api.go: no global variables, use the Server struct"}}
+	assert.Contains(t, p.Brief(), "Reviewers of this project rejected before - do not repeat:\n- src/api.go: no global variables, use the Server struct")
+	assert.NotContains(t, plan.Plan{PRD: "x"}.Brief(), "rejected before")
+}

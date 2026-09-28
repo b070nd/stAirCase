@@ -1,12 +1,12 @@
 version: "2"
 
 # Default enabled linters: errcheck, govet, ineffassign, staticcheck, unused.
-# No extras — additional linters to be enabled per-phase as code matures.
+# No extras - additional linters to be enabled per-phase as code matures.
 
 linters:
   exclusions:
     rules:
-      # Test files: t.Cleanup(func(){x.Close()}), defer Body.Close(), seed helpers —
+      # Test files: t.Cleanup(func(){x.Close()}), defer Body.Close(), seed helpers -
       # all idiomatic Go; errors are always nil in unit-test contexts.
       - path: "_test\\.go"
         linters:

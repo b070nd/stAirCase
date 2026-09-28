@@ -1,6 +1,6 @@
 package persistence_test
 
-// store_coverage_test.go — tests for store methods that had 0% coverage.
+// store_coverage_test.go - tests for store methods that had 0% coverage.
 // Each test is minimal: it exercises the code path and asserts the key
 // invariant. Happy-path focus; constraint violations are tested in store_test.go.
 
@@ -305,7 +305,7 @@ func TestListRunsByCase(t *testing.T) {
 	s := newTestStore(t)
 	_, _, topoID := scaffoldTopology(t, s)
 
-	// Need case_id — get it from topology's project.
+	// Need case_id - get it from topology's project.
 	topo, _ := s.GetTopology(topoID)
 	c, _ := s.CreateCase(topo.ProjectID)
 

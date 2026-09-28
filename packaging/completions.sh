@@ -1,5 +1,5 @@
 #!/bin/sh
-# completions.sh — generate the shell completions shipped in release archives
+# completions.sh - generate the shell completions shipped in release archives
 # (goreleaser before-hook; output is gitignored).
 set -eu
 rm -rf completions && mkdir completions
