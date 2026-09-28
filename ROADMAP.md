@@ -39,6 +39,8 @@ too. Agents come and go; the evidence format should outlast them.
 - **Use standards; don't invent them.**
 - **No new dependency without a real need.**
 - **A model never approves alone.** Every guarantee is written down.
+- **Explicit models over prompt rules.** What a run may do lives in code and tables
+  that can be read and tested, not in instructions to a model.
 
 ## Change assurance levels
 
@@ -113,27 +115,38 @@ Six contracts stay stable and versioned while everything around them may change:
 - `staircase review <pull request>` for cloud agents.
 - Templates for managed (company-wide) hook settings.
 - **Signed approvals** with your SSH key: *who* approved becomes provable.
+- **Agree on the task before it starts:** a session shows its scope (the paths it may
+  change), the kinds of change and the budget, and you approve them before the agent
+  runs. This is the first step of "approve the task, not every step" (phase 3).
 - An evaluation of fast decision models, such as Jev or the open-source Laya, on our own
-  test cases. The numbers get published.
+  test cases. The model never decides freely: it only picks among the next steps the
+  run allows, as a typed answer, and a wrong pick can only send a change to a person.
+  The numbers get published.
 
 ### Phase 3 - v0.5: scale human attention
 
-- **Approve the task, not every step:** you approve the scope, the kinds of change and
-  the budget up front. Inside that, changes can be approved on evidence; anything
-  outside comes to you. Some approvals are sampled for your review.
+- **The run as an explicit state machine:** every step of a run (checks, worktree,
+  deciding, final review, commit) and every allowed move between them in one table,
+  instead of spread through the code. Each run's path becomes testable and visible in
+  its evidence, and it is the ground for runs that can pause and resume (phase 4).
+- **Approve the task, not every step:** building on the up-front agreement from phase
+  2, changes inside the approved scope can be approved on evidence; anything outside
+  comes to you. Some approvals are sampled for your review.
 - **Verifiers:** tests run in a sandbox on the exact approved code, and their results
   become evidence.
 - **Guards:**
   - new or changed dependencies always come to you;
   - hidden Unicode ("Trojan Source") and secrets written into code are flagged.
-- **Decision models as signals:** they may only make decisions stricter until they have
-  proven themselves on your own history.
+- **Decision models as signals:** they pick among the transitions the run's state
+  machine allows, and may only make decisions stricter until they have proven
+  themselves on your own history.
 - `staircase policy test`: see what a new rule would have decided on past runs.
 
 ### Phase 4 - v0.6 to v0.9: teams without servers
 
-- A **local background service**, so long runs survive restarts and you can approve
-  from a browser. Approvals there are signed with a passkey.
+- A **local background service**, so long runs survive restarts (they resume from the
+  state machine's recorded state) and you can approve from a browser. Approvals there
+  are signed with a passkey.
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
 - **Git as the control plane:**
   - rules, blueprints and trusted keys come from a governance repository;
