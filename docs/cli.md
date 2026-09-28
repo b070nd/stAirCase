@@ -358,6 +358,32 @@ governed session is running.
 
 Supported agents: claude-code.
 
+## staircase hook-template
+
+Print the managed settings that make every agent session on a company's machines go through stAirCase
+
+```
+staircase hook-template <claude-code | codex> [flags]
+```
+
+Prints settings a company deploys through its device management so that every
+Claude Code or Codex session on its machines goes through stAirCase. The hook
+they install blocks every tool call outside a governed session (start one with
+staircase claude or staircase codex) and governs the calls inside one.
+
+  claude-code  managed-settings.json (it also sets allowManagedHooksOnly, so
+               user and repository hooks do not load)
+  codex        the [hooks] block of the managed Codex configuration
+
+--bin is where staircase is installed on those machines (default: this
+program). See docs/managed.md.
+
+Flags:
+
+```
+      --bin string   Path of staircase on the managed machines (default: this program)
+```
+
 ## staircase init
 
 Initialize the stAirCase workspace: database and keys

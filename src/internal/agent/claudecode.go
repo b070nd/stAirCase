@@ -49,7 +49,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	if err != nil {
 		return err
 	}
-	h := &hookServer{env: env, root: root, token: rand.Text(), pending: map[string]orchestrator.Approval{}}
+	h := &hookServer{env: env, root: root, token: rand.Text(), pending: map[string]orchestrator.Approval{}, calls: map[string]*hookCall{}}
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
@@ -73,7 +73,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		}
 	}
 	settings := filepath.Join(dir, "settings.json")
-	if err := os.WriteFile(settings, hookSettings(hookCommand(bin, "claude-code")), 0o600); err != nil {
+	if err := os.WriteFile(settings, hookSettings(HookCommand(bin, "claude-code", "--governed")), 0o600); err != nil {
 		return err
 	}
 
@@ -117,12 +117,13 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	return nil
 }
 
-// hookCommand is the command a hook runs: `staircase hook`, which passes the
-// call to the run and blocks (exit 2) on every failure. It is the same on
-// every run and holds no secret. The shell that runs hooks gets the program
-// path quoted.
-func hookCommand(bin, agentName string) string {
-	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "' hook " + agentName + " --governed"
+// HookCommand is the command a hook runs: `staircase hook`, which passes the
+// call to the run and blocks (exit 2) on every failure. mode is --governed
+// for the hooks a session brings and --require for a company's managed hook.
+// It is the same on every run and holds no secret; the shell that runs hooks
+// gets the program path quoted.
+func HookCommand(bin, agentName, mode string) string {
+	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "' hook " + agentName + " " + mode
 }
 
 // hookSettings is the settings file that routes Claude Code's tool calls
@@ -149,6 +150,7 @@ type hookServer struct {
 
 	mu      sync.Mutex
 	pending map[string]orchestrator.Approval // tool_use_id → approved edit, until PostToolUse
+	calls   map[string]*hookCall             // event/tool_use_id → its one answer
 }
 
 type hookInput struct {
@@ -168,21 +170,51 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if in.ToolUseID == "" {
+		_, _ = w.Write(h.answer(r.Context(), in))
+		return
+	}
+	// With a company's managed hook and the session's own both installed, the
+	// agent calls each for the same tool call: decide it once, answer both.
+	key := in.Event + "/" + in.ToolUseID
+	h.mu.Lock()
+	c, seen := h.calls[key]
+	if !seen {
+		c = &hookCall{done: make(chan struct{})}
+		h.calls[key] = c
+	}
+	h.mu.Unlock()
+	if !seen {
+		c.answer = h.answer(r.Context(), in)
+		close(c.done)
+	}
+	<-c.done
+	_, _ = w.Write(c.answer)
+}
+
+// hookCall is one tool call's answer, shared by every hook that asks for it.
+type hookCall struct {
+	done   chan struct{}
+	answer []byte
+}
+
+// answer decides one hook call and returns the reply in the agent's format.
+func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
+	reply := func(v any) []byte { b, _ := json.Marshal(v); return b }
 	switch in.Event {
 	case "SessionStart":
 		h.started.Store(true)
-		_, _ = w.Write([]byte("{}"))
 	case "PreToolUse":
 		pre := h.pre
 		if h.codex {
 			pre = h.preCodex
 		}
-		reason := pre(r.Context(), in)
+		reason := pre(ctx, in)
 		decision := "allow"
 		if reason != "" {
 			decision = "deny"
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"hookSpecificOutput": map[string]any{
+		return reply(map[string]any{"hookSpecificOutput": map[string]any{
 			"hookEventName": "PreToolUse", "permissionDecision": decision, "permissionDecisionReason": reason}})
 	case "PostToolUse":
 		h.mu.Lock()
@@ -191,20 +223,16 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.mu.Unlock()
 		if ok {
 			if err := ap.Apply(h.root); err != nil { // finalize verify fails the run on any divergence
-				_ = json.NewEncoder(w).Encode(map[string]any{"decision": "block", "reason": "staircase: " + err.Error()})
-				return
+				return reply(map[string]any{"decision": "block", "reason": "staircase: " + err.Error()})
 			}
 		}
 		if h.codex && in.Tool == "Bash" {
-			if reason := h.postCodexCommand(r.Context(), in); reason != "" {
-				_ = json.NewEncoder(w).Encode(map[string]any{"decision": "block", "reason": reason})
-				return
+			if reason := h.postCodexCommand(ctx, in); reason != "" {
+				return reply(map[string]any{"decision": "block", "reason": reason})
 			}
 		}
-		_, _ = w.Write([]byte("{}"))
-	default:
-		_, _ = w.Write([]byte("{}"))
 	}
+	return []byte("{}")
 }
 
 // pre decides one tool call; an empty reason allows it.

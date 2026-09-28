@@ -24,6 +24,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Governing Claude Code](claude-code.md) | use Claude Code as the agent (experimental) |
 | [Governing Codex](codex.md) | use OpenAI's Codex as the agent (experimental) |
 | [Reviewing changes made elsewhere](review.md) | certify what you accept from a cloud agent's pull request |
+| [Governing every session in a company](managed.md) | managed settings that send every Claude Code or Codex session through stAirCase |
 | [Troubleshooting](troubleshooting.md) | common messages and what to do |
 
 ## Reference

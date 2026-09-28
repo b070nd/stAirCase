@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Company-wide governance: `staircase hook-template claude-code|codex` prints
+  the managed settings a company deploys so that every session on its machines
+  goes through stAirCase. Their hook (`staircase hook <agent> --require`)
+  blocks tool calls outside a governed session and governs them inside one.
+- A session decides each tool call once, even when two hooks (a company's
+  managed hook and the session's own) ask for it at the same time.
+
 - `staircase review <branch | commit> --by "<who>"`: bring changes made elsewhere
   (a cloud agent's pull request) into a worktree of the current branch one file
   at a time, decide each file, and commit exactly the approved ones with a

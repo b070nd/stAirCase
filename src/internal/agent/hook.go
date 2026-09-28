@@ -38,11 +38,13 @@ func RunHook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	var name string
-	governed := false
+	governed, require := false, false
 	for _, a := range args {
 		switch {
 		case a == "--governed":
 			governed = true
+		case a == "--require":
+			require = true
 		case strings.HasPrefix(a, "-") || name != "":
 			return block("unexpected argument %q", a)
 		default:
@@ -54,6 +56,10 @@ func RunHook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	path := os.Getenv(HookFileEnv)
+	if require && path == "" { // a company's managed hook: no ungoverned sessions
+		return block("this organisation runs %s only through stAirCase: start a session with staircase %s \"<task>\"",
+			name, map[string]string{"claude-code": "claude", "codex": "codex"}[name])
+	}
 	if path == "" {
 		if governed {
 			return block("%s is not set: no governed run to ask", HookFileEnv)

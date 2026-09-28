@@ -102,3 +102,32 @@ func TestRunHook_outside_a_session_passes_through(t *testing.T) {
 	assert.Empty(t, out)
 	assert.Empty(t, errOut)
 }
+
+// TestRunHook_require: a company's managed hook (--require) blocks every tool
+// call outside a governed session; inside one it passes the call to the
+// session like the session's own hook (the session decides each call once).
+func TestRunHook_require(t *testing.T) {
+	var posts int
+	live := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		posts++
+		_, _ = w.Write([]byte(`{"hookSpecificOutput":{"permissionDecision":"allow"}}`))
+	})
+	gone := httptest.NewServer(http.NotFoundHandler())
+	gone.Close()
+
+	t.Setenv(agent.HookFileEnv, "")
+	code, out, errOut := runHook(`{"tool_name":"Bash"}`, "claude-code", "--require")
+	assert.Equal(t, 2, code, "no session: blocked")
+	assert.Empty(t, out)
+	assert.Contains(t, errOut, "staircase claude")
+
+	t.Setenv(agent.HookFileEnv, sessionFile(t, gone.URL+"/hook"))
+	code, _, _ = runHook(`{}`, "claude-code", "--require")
+	assert.Equal(t, 2, code, "a session file without a live session does not count")
+
+	t.Setenv(agent.HookFileEnv, sessionFile(t, live))
+	code, out, _ = runHook(`{"tool_name":"Bash"}`, "claude-code", "--require")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, `"allow"`, "the session's answer")
+	assert.Equal(t, 1, posts)
+}
