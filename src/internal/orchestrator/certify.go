@@ -26,6 +26,8 @@ func assistants(pl *plan.Plan) []string {
 	switch {
 	case pl == nil:
 		return []string{"stAirCase"}
+	case pl.Harness == "review" && pl.Review != nil:
+		return []string{pl.Review.By}
 	case pl.Harness != "":
 		if n, ok := harnessNames[pl.Harness]; ok {
 			return []string{n}

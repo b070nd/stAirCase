@@ -51,14 +51,14 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 	if harness == "built-in" {
 		harness = ""
 	}
-	_, err = compileCase(persistence.NewStore(db), wsDir, caseID, harness, compileForce)
+	_, err = compileCase(persistence.NewStore(db), wsDir, caseID, harness, nil, compileForce)
 	return err
 }
 
 // compileCase writes the plan staircase run executes for caseID and returns
 // its path. harness names the agent harness that runs the case; "" means the
 // built-in agents of the project's topology.
-func compileCase(store *persistence.Store, wsDir string, caseID int64, harness string, force bool) (string, error) {
+func compileCase(store *persistence.Store, wsDir string, caseID int64, harness string, review *plan.Review, force bool) (string, error) {
 	// ── Load Case + Project ───────────────────────────────────────────────────
 	caseRec, err := store.GetCase(caseID)
 	if err != nil || caseRec == nil {
@@ -116,7 +116,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 	}
 
 	// ── 6. Who runs it: an agent harness, or the topology's agents ──────────
-	pl := plan.Plan{CaseID: caseID, Harness: harness, PRD: caseRec.PrdJSON, RepoContext: repoContext}
+	pl := plan.Plan{CaseID: caseID, Harness: harness, Review: review, PRD: caseRec.PrdJSON, RepoContext: repoContext}
 	if pl.Lessons, err = projectLessons(store, project.ID); err != nil {
 		return "", fmt.Errorf("load earlier reviews: %w", err)
 	}

@@ -38,6 +38,9 @@ type Plan struct {
 	// Harness is the external agent that runs the case (see Harnesses); empty
 	// means the built-in agents above. A harness plan has no agents of its own.
 	Harness string `json:"harness,omitempty"`
+	// Review is, for the "review" harness, the change made elsewhere that the
+	// run reviews: its ref, the exact commit and who made it.
+	Review *Review `json:"review,omitempty"`
 	// BlueprintHash is the blueprint the case was bound from, if any.
 	BlueprintHash string `json:"blueprint_hash,omitempty"`
 	// Limits are the blueprint's run limits (drift supervision); zero = none.
@@ -133,7 +136,15 @@ var builtinTools = map[string]bool{"read_file": true, "list_dir": true, "request
 // Harnesses are the external agents a case can be run by instead of the
 // built-in agents: they bring their own model and login, and every tool
 // call goes through the run's hooks.
-var Harnesses = []string{"claude-code", "codex"}
+var Harnesses = []string{"claude-code", "codex", "review"}
+
+// Review is a change made elsewhere (for example a cloud agent's pull request)
+// that a run reviews file by file.
+type Review struct {
+	Ref    string `json:"ref"`
+	Commit string `json:"commit"`
+	By     string `json:"by"`
+}
 
 // Validate reports what would make the plan fail to run.
 func (p Plan) Validate() error {
@@ -143,6 +154,8 @@ func (p Plan) Validate() error {
 			return fmt.Errorf("unknown harness %q - supported: %s", p.Harness, strings.Join(Harnesses, ", "))
 		case len(p.Agents) > 0 || len(p.Edges) > 0 || p.Supervisor != "":
 			return fmt.Errorf("the plan runs harness %q but also has agents of its own", p.Harness)
+		case (p.Harness == "review") != (p.Review != nil && p.Review.Commit != ""):
+			return errors.New("only a review plan names the commit it reviews, and it must")
 		}
 		return nil
 	}

@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase review <branch | commit> --by "<who>"`: bring changes made elsewhere
+  (a cloud agent's pull request) into a worktree of the current branch one file
+  at a time, decide each file, and commit exactly the approved ones with a
+  certificate naming who made them and the exact commit reviewed (CAL 2). The
+  branch's own diff is applied, so newer work on the current branch is kept.
+
 - Two-person review (CAL 4): `staircase sign <commit>` adds a reviewer's SSH
   signature (ssh-keygen -Y sign) to the commit's change certificate;
   `staircase verify --allowed-signers <file>` counts it when the reviewer is in

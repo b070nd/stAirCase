@@ -13,14 +13,16 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
 
 var (
-	sessionAllow []string
-	sessionYes   bool
+	sessionAllow  []string
+	sessionYes    bool
+	sessionReview *plan.Review // set by staircase review
 )
 
 var claudeCmd = &cobra.Command{
@@ -145,7 +147,7 @@ func session(harness, name, command string, args []string) error {
 			}
 		}
 		fmt.Printf("🧭 Project %q (#%d), case #%d, story #%d\n", project.Name, project.ID, c.ID, story.ID)
-		if _, err := compileCase(store, wsDir, c.ID, harness, true); err != nil {
+		if _, err := compileCase(store, wsDir, c.ID, harness, sessionReview, true); err != nil {
 			return 0, err
 		}
 		return c.ID, nil
@@ -242,15 +244,25 @@ type sessionSetup struct {
 // the model and the budget.
 func agreement(s sessionSetup) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "stAirCase is about to run %s on:\n  %s\n", s.name, s.task)
+	if s.harness == "review" {
+		fmt.Fprintf(&b, "stAirCase is about to review changes made elsewhere:\n  %s\n", s.task)
+	} else {
+		fmt.Fprintf(&b, "stAirCase is about to run %s on:\n  %s\n", s.name, s.task)
+	}
 	fmt.Fprintf(&b, "in %s, from commit %.12s (your checkout is not touched)\n\n", s.root, s.base)
 	scope := "the whole repository"
 	if len(s.allow) > 0 {
 		scope = strings.Join(s.allow, ", ") + " (a change anywhere else comes to you as drift)"
 	}
 	fmt.Fprintf(&b, "  may change:  %s\n", scope)
-	fmt.Fprintf(&b, "  edits:       each one comes to you before it happens\n")
+	if s.harness == "review" {
+		fmt.Fprintf(&b, "  files:       each changed file comes to you, one at a time; rejected ones are left out\n")
+	} else {
+		fmt.Fprintf(&b, "  edits:       each one comes to you before it happens\n")
+	}
 	switch {
+	case s.harness == "review":
+		fmt.Fprintf(&b, "  commands:    none (the changes were made elsewhere)\n")
 	case s.harness == "codex":
 		fmt.Fprintf(&b, "  commands:    run in Codex's sandbox (no network); files they change come to you afterwards\n")
 	case s.shell:
