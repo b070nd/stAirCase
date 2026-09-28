@@ -98,9 +98,10 @@ vulnerability privately: [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- An OS sandbox for approved shell commands.
-- Audit records in the standard DSSE envelope format, for supply-chain tools.
-- A separate identity per agent, with its own credentials.
+Where stAirCase is going: every change an AI agent makes carries a signed, verifiable
+**change certificate**. Next up: `staircase claude "task"` with no setup, more agents
+(Codex, Gemini CLI, OpenCode, Cursor), and a CI check that requires certificates. The
+full plan and its reasoning are in **[ROADMAP.md](ROADMAP.md)**.
 
 ## Contributing
 

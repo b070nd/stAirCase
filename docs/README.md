@@ -31,12 +31,14 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [CLI reference](cli.md) | every command and flag (generated from the program) |
 | [Security](../SECURITY.md) | the security model, known limits, reporting a vulnerability |
 | [Changelog](../CHANGELOG.md) | what changed in each release |
+| [Roadmap](../ROADMAP.md) | where stAirCase is going, and why |
 
 ## For contributors
 
 | Page | What you find |
 |---|---|
 | [Architecture](architecture.md) | how the program is built inside |
+| [Architecture decisions](adr/) | the decisions that shape it: [the core promise and assurance levels](adr/0001-core-promise-and-assurance-levels.md), [the change certificate](adr/0002-change-certificate.md), [the hook bridge](adr/0003-hook-bridge.md) |
 | [Testing](testing.md) | the test layers and `make check` |
 | [Contributing](../CONTRIBUTING.md) | how to propose a change, and how to write docs |
 | [Demo](../demo/README.md) | what the offline demo checks, step by step |

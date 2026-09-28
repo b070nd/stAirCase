@@ -116,7 +116,7 @@ func anchors(file string) (map[string]bool, error) {
 // target file exists and, when the link names a heading, the heading does.
 func TestDocLinks(t *testing.T) {
 	var files []string
-	for _, pattern := range []string{"*.md", "docs/*.md", "demo/*.md"} {
+	for _, pattern := range []string{"*.md", "docs/*.md", "docs/adr/*.md", "demo/*.md"} {
 		m, err := filepath.Glob(filepath.Join(repoRoot, pattern))
 		require.NoError(t, err)
 		files = append(files, m...)
