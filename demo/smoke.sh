@@ -124,9 +124,9 @@ case "$MODE" in
     echo "  ✓ the replay committed the same bytes, offline" ;;
   claude)
     say "Claude Code, every tool call governed by hooks"
-    run 1 40 claude --allow GREETING.md "$TASK" ;;
+    run 1 40 claude --yes --allow GREETING.md "$TASK" ;;
   codex)
     say "Codex, edits decided first, command changes reviewed after"
-    run 1 0 codex --model "${SMOKE_CODEX_MODEL:-gpt-6-luna}" --allow GREETING.md "$TASK" ;;
+    run 1 0 codex --yes --model "${SMOKE_CODEX_MODEL:-gpt-6-luna}" --allow GREETING.md "$TASK" ;;
 esac
 echo "✅ smoke $MODE passed"

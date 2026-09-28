@@ -129,6 +129,8 @@ func sessionRepo(t *testing.T) (repo, ws string, git func(args ...string) string
 		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=1 exec %q \"$@\"\n", os.Args[0]), 0o755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Chdir(repo)
+	sessionYes = true // no terminal in tests: agree up front
+	t.Cleanup(func() { sessionYes = false })
 	return repo, ws, git
 }
 
@@ -139,4 +141,43 @@ func TestClaudeSession_outside_a_repository(t *testing.T) {
 	t.Chdir(t.TempDir())
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "not inside a git repository")
 	assert.ErrorContains(t, claudeSession(nil, nil), "what should Claude Code do")
+}
+
+// TestAgreement_says_what_will_happen: before an agent starts, the person
+// sees the task, where it may change files and how edits and commands are
+// governed for this agent.
+func TestAgreement_says_what_will_happen(t *testing.T) {
+	text := agreement(sessionSetup{harness: "codex", name: "Codex", task: "fix the date test", root: "/r/shop",
+		base: "0123456789abcdef", allow: []string{"src/**"}, model: "gpt-6-luna"})
+	for _, want := range []string{"Codex", "fix the date test", "/r/shop", "0123456789ab", "src/**",
+		"before", "sandbox", "afterwards", "gpt-6-luna", "no budget cap"} {
+		assert.Contains(t, text, want)
+	}
+	claude := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc"})
+	assert.Contains(t, claude, "the whole repository")
+	assert.Contains(t, claude, "not allowed")
+}
+
+// TestClaudeSession_needs_agreement: without a terminal to ask, a session
+// starts only with --yes, and the chain records who agreed to which plan.
+func TestClaudeSession_needs_agreement(t *testing.T) {
+	_, ws, _ := sessionRepo(t)
+	sessionYes = false
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--yes")
+	sessionYes = true
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	defer db.Close()
+	events, err := persistence.NewStore(db).ListEventLogs(1)
+	require.NoError(t, err)
+	var agreed map[string]any
+	for _, e := range events {
+		if e.EventType == "task_agreed" {
+			require.NoError(t, json.Unmarshal([]byte(e.Payload), &agreed))
+		}
+	}
+	require.NotNil(t, agreed, "task_agreed recorded")
+	assert.Equal(t, "--yes", agreed["by"])
+	assert.NotEmpty(t, agreed["plan_digest"])
 }

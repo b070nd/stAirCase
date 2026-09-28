@@ -8,7 +8,8 @@ stAirCase can run OpenAI's [Codex CLI](https://developers.openai.com/codex) as t
 agent. Codex does the work with its own tools, and every change still goes through
 stAirCase before it reaches your branch.
 
-In any git repository, with nothing to set up first:
+In any git repository, with nothing to set up first (it shows you the task, the
+scope and how commands are handled, and asks you to confirm; `--yes` in scripts):
 
 ```bash
 staircase codex "add a /health endpoint that returns 200 and the body ok"

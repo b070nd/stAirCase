@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +15,13 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
-var sessionAllow []string
+var (
+	sessionAllow []string
+	sessionYes   bool
+)
 
 var claudeCmd = &cobra.Command{
 	Use:   "claude <task>",
@@ -59,7 +64,9 @@ func init() {
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
 	claudeCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
+	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
+	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	codexCmd.Flags().StringVar(&runModel, "model", "", "Model for Codex (default: its own)")
 	codexCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
 	codexCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
@@ -110,6 +117,13 @@ func session(harness, name, command string, args []string) error {
 		}
 		project, err := sessionProject(store, root)
 		if err != nil {
+			return 0, err
+		}
+		_, budget, _ := store.GetProjectConfig(project.ID)
+		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
+			base: strings.TrimSpace(string(base)), allow: sessionAllow, model: runModel,
+			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
 		c, err := store.CreateCase(project.ID)
@@ -212,4 +226,65 @@ func samePath(a, b string) bool {
 	ra, errA := filepath.EvalSymlinks(a)
 	rb, errB := filepath.EvalSymlinks(b)
 	return errA == nil && errB == nil && ra == rb
+}
+
+// sessionSetup is what a session is about to do, for the person to agree to.
+type sessionSetup struct {
+	harness, name, task, root, base, model string
+	allow                                  []string
+	shell                                  bool
+	budget                                 float64
+	projectID                              int64
+}
+
+// agreement describes the session before its agent starts: the task, where
+// it may change files, how edits and commands are governed for this agent,
+// the model and the budget.
+func agreement(s sessionSetup) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "stAirCase is about to run %s on:\n  %s\n", s.name, s.task)
+	fmt.Fprintf(&b, "in %s, from commit %.12s (your checkout is not touched)\n\n", s.root, s.base)
+	scope := "the whole repository"
+	if len(s.allow) > 0 {
+		scope = strings.Join(s.allow, ", ") + " (a change anywhere else comes to you as drift)"
+	}
+	fmt.Fprintf(&b, "  may change:  %s\n", scope)
+	fmt.Fprintf(&b, "  edits:       each one comes to you before it happens\n")
+	switch {
+	case s.harness == "codex":
+		fmt.Fprintf(&b, "  commands:    run in Codex's sandbox (no network); files they change come to you afterwards\n")
+	case s.shell:
+		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs\n")
+	default:
+		fmt.Fprintf(&b, "  commands:    not allowed (--allow-shell-exec lets it ask)\n")
+	}
+	model := s.model
+	if model == "" {
+		model = s.name + "'s default"
+	}
+	fmt.Fprintf(&b, "  model:       %s\n", model)
+	if s.budget > 0 {
+		fmt.Fprintf(&b, "  budget:      at most $%.2f\n", s.budget)
+	} else {
+		fmt.Fprintf(&b, "  budget:      no budget cap (staircase project config set %d --budget-cap <dollars>)\n", s.projectID)
+	}
+	return b.String()
+}
+
+// agree shows the agreement and asks for it; with --yes it only shows it. It
+// returns who agreed, for the audit chain.
+func agree(s sessionSetup) (string, error) {
+	fmt.Print(agreement(s))
+	if sessionYes {
+		return "--yes", nil
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", errors.New("no terminal to confirm the task: add --yes to start without asking")
+	}
+	fmt.Print("\nStart? [y/N] ")
+	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
+		return "", errors.New("not started")
+	}
+	return "operator", nil
 }

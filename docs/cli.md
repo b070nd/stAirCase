@@ -162,6 +162,7 @@ Flags:
       --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
       --model string            Model for Claude Code (default: its own)
+  -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
 
 ## staircase clean
@@ -215,6 +216,7 @@ Flags:
       --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
       --model string            Model for Codex (default: its own)
+  -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
 
 ## staircase compile
