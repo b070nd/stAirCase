@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- The run is an explicit state machine: one table lists every phase and the
+  moves allowed between them, the runner refuses any other move, and every
+  run's evidence ends with `run_path`, the phases it went through.
+
 - Company-wide governance: `staircase hook-template claude-code|codex` prints
   the managed settings a company deploys so that every session on its machines
   goes through stAirCase. Their hook (`staircase hook <agent> --require`)

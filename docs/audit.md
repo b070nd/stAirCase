@@ -28,6 +28,15 @@ Events you will see:
 | `state_emit` | model usage of an agent step (tokens, cost) |
 | `agent_unresponsive` | an agent did not stop when asked |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
+| `task_agreed` | who agreed to the task before a session started, and the plan's digest |
+| `certificate_issued` | the change certificate was signed for the run's commit |
+| `run_path` | the phases the run went through, in order (see below) |
+
+A run moves through fixed phases - checks (`PRE_FLIGHT`), its worktree
+(`BRANCH_CREATE`), starting the agent (`AGENT_START`), deciding (`AGENT_LOOP`), the
+final checks and commit (`FINALIZE`) and cleanup (`BRANCH_RESTORE`) - and only along
+the moves the run's state machine allows. `run_path` records the way a run actually
+took, so a run that stopped early shows where.
 
 A decision is written to the chain **before** the agent learns it. Secrets are
 removed from every event before it is stored.
