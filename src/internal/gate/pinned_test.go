@@ -69,3 +69,13 @@ func TestRuntimePlanPinnedGate(t *testing.T) {
 	assert.Equal(t, gate.StatusFail, r.Status)
 	assert.Contains(t, r.Message, "recompile")
 }
+
+// TestRuntimePlanPinnedGate_unknown_case_skips like the other gates, instead
+// of failing with a database error.
+func TestRuntimePlanPinnedGate_unknown_case_skips(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	ctx.CaseID = 404
+	r := gate.RuntimePlanPinnedGate.Run(ctx)
+	assert.Equal(t, gate.StatusSkip, r.Status, r.Message)
+	assert.Equal(t, "case not found", r.Message)
+}

@@ -1,102 +1,90 @@
 # Drift supervision
 
-Drift supervision keeps a run on its stories. It never approves anything by
-itself: it decides which proposals a human must see, and when a run must stop.
-An optional [automated reviewer](#automated-reviewer) takes over in-scope edits.
+Agents sometimes wander: they "fix" a file nobody asked about, or keep going long
+after the job is done. Drift supervision keeps a run on its stories.
 
-## Scope
+It never approves anything itself. It only decides two things:
 
-Each story may name the paths its runs may change:
+- which proposals **a person must see**, even if a rule or a validator would
+  otherwise decide them;
+- when a run **must stop**.
+
+## Scope: where a story may make changes
+
+Give each story the paths it may change:
 
 ```bash
-staircase story scope <story-id> --allow 'docs/**' --allow README.md --max-files 5
+staircase story scope 1 --allow 'src/**' --allow README.md --max-files 5   # 1 = the story
 ```
 
-(or `scope:` in a [blueprint](blueprints.md) — stories of a bound case take
-their scope from the blueprint). A run's scope is the union of the `--allow`
-globs of the case's open stories (not yet accepted); `**` spans directories.
-Agents are told their stories and scope in their first message. A case whose
-stories set no scope has no scope check.
+In a [blueprint](blueprints.md), the same goes in each story's `scope:`.
 
-## What sends a proposal to a human
+- `**` matches any number of folders; `*` matches within one folder.
+- The run's scope is all the `--allow` paths of the case's open stories (the ones
+  not yet accepted), together.
+- Agents are told their stories and scope in their first message.
+- If no story of the case has a scope, there is no scope check.
 
-A proposal that the policy would otherwise decide goes to the operator, with a
-`DRIFT:` reason shown in the TUI and as `drift` in the approval API and webhook
-payloads, when:
+## When a person must decide
 
-- it touches a path outside the scope;
-- the run's approved changes would then touch more distinct files than
-  `max_files_changed`, or than the sum of the open stories' `--max-files`;
+A proposal goes to a person, marked as **drift** with the reason, when:
+
+- it changes a path outside the scope;
+- the run would then change more different files than `max_files_changed`, or than
+  the `--max-files` of the open stories added up;
 - it is a checkpoint: every `checkpoint_every`-th proposal.
 
-The operator's decision is audited in `yield_decided` with the drift reason, so
-every override is on the chain. Shell commands always go to the operator.
+The person's decision, with the drift reason, is written to the
+[audit chain](audit.md), so every override is on record.
 
-## What halts a run
+## When a run stops
 
-- More than `max_scope_violations` proposals reaching outside the scope;
-- the run lasting longer than `max_run_secs` seconds.
+A run stops (status `KILLED`) when:
 
-The run is stopped (`KILLED`), `drift_halt` is audited with the reason, and the
-case does not run again until the operator has reviewed it:
+- more than `max_scope_violations` proposals reached outside the scope, or
+- it ran longer than `max_run_secs` seconds.
+
+The event `drift_halt` records why. The case then does not run again until you
+confirm that you looked at what happened:
 
 ```bash
-staircase run <case-id> --ack-drift
+staircase run 1 --ack-drift
 ```
 
-The acknowledgement is recorded in the new run's `run_bound` event.
+The confirmation is recorded in the new run's first audit event.
 
 ## Limits
 
-Limits come from the blueprint of a bound case and from `limits` in
-`$STAIRCASE_DIR/policy.json`; where both set one, the stricter applies (zero or
-absent = no limit):
+Set the limits in the blueprint (`limits:`), or in `policy.json` in the workspace:
 
 ```json
 {
-  "rules": [{"action_types": ["file_edit"], "effect": "approve"}],
-  "limits": {"checkpoint_every": 5, "max_files_changed": 10,
-             "max_scope_violations": 2, "max_run_secs": 1800,
-             "max_auto_approved": 20, "max_total_yields": 50}
+  "rules": [],
+  "limits": {
+    "checkpoint_every": 5,
+    "max_files_changed": 10,
+    "max_scope_violations": 2,
+    "max_run_secs": 1800
+  }
 }
 ```
 
-`policy.json` fails closed: a file that does not parse, or has a field
-staircase does not know (a misspelt limit would silently not apply), stops the
-run before the agent starts.
+| Limit | Meaning |
+|---|---|
+| `checkpoint_every` | every Nth proposal goes to a person |
+| `max_files_changed` | more different files than this go to a person |
+| `max_scope_violations` | more out-of-scope proposals than this stop the run |
+| `max_run_secs` | a longer run is stopped |
+
+`0` or no value means no limit. If the blueprint and `policy.json` both set a limit,
+the stricter one counts. `policy.json` is strict: a misspelled limit stops the run
+before it starts, instead of being silently ignored. The other fields of
+`policy.json` are explained in [Approvals](approvals.md#approving-automatically-with-rules).
 
 ## The drift report
 
-Every run ends with a `drift_report` event — scope, files changed in and
-outside it, scope violations, human overrides, automatic and human decisions,
-and why the run halted — also written to `runs/<id>/summary.json` and
-summarized in the terminal.
-
-## Automated reviewer
-
-```bash
-staircase run <case-id> --validator openai/gpt-6-astra
-```
-
-A validator is a model (any model staircase serves; its key comes from the
-workspace secrets like the agents') that decides file edits the policy rules
-leave open, in place of a human:
-
-- it sees only the change as the orchestrator derived it — each file before and
-  after, as JSON data — and the case's stories; never the agent's reasoning;
-- its rejection goes back to the agent as review feedback; its decisions are
-  audited in `yield_decided` with source `validator:<model>`;
-- a human decides instead, with the validator's note shown (`review` in the
-  approval API and webhook): drift proposals, shell commands, sensitive paths
-  (CI, build, dependency, `.env` and shell files), files over 32 KiB, a reply
-  that is not a verdict, the proposal after 2 rejections in a row, and every
-  5th validator approval (sampling);
-- when the validator approved anything, a human approves the run's whole
-  change once (`final_review`) before it is committed; rejecting it commits
-  nothing.
-
-## Budget
-
-A model without a known price (a new model, a gateway name the table does not
-know, Claude Code) is counted at the highest known rate, so a budget cap still
-stops the run; `provider/model` names are priced by their model.
+Every run ends with a `drift_report`: the scope, the files changed inside and
+outside it, scope violations, overrides by a person, how many decisions were made
+automatically and by a person, and why the run stopped, if it did. You find it on
+the audit chain, in `runs/<run-id>/summary.json` in the workspace, and at the end
+of the run in the terminal.

@@ -77,7 +77,7 @@ var (
 
 func init() {
 	auditExportCmd.Flags().BoolVar(&auditAnchor, "anchor", false,
-		"Also anchor the signed checkpoint in a Rekor transparency log (external witness)")
+		"Also anchor the signed checkpoint in a Rekor transparency log (external witness). This uploads the whole record — reasoning, paths, proposed changes — to a public, permanent log")
 	auditExportCmd.Flags().StringVar(&auditRekorURL, "rekor-url", audit.DefaultRekorURL,
 		"Rekor server URL used by --anchor / --check-anchor")
 	auditVerifyCmd.Flags().BoolVar(&auditCheckAnchor, "check-anchor", false,

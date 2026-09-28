@@ -9,7 +9,7 @@
 | `gofmt -l src tests demo` | formatting |
 | `go mod tidy -diff` | module drift |
 | `GOOS=windows go build ./...` | platform build breaks (Windows is built, not run) |
-| `go test ./... -count=1` | every test, including the run integration tests |
+| `go test ./... -count=1` | every test, including the run integration tests and the docs tests |
 | `make race` | `go test -race` over `src/internal` |
 | `bats tests/integration.bats` | the built CLI from a shell |
 | `make demo` | the offline end-to-end acceptance run, in three modes |
@@ -53,6 +53,15 @@ on the real binary and runtime with a stand-in model (`demo/demotool`): it
 checks the run branch holds exactly the approved create/edit/delete, the
 developer's checkout is byte-identical, the stories complete the case and the
 audit chain verifies; `--tamper` must fail closed and `--drift` must halt.
+
+**Docs tests** (`src/cmd/staircase/docs_test.go`) keep the documentation honest:
+`TestCLIReference` fails when [cli.md](cli.md) no longer matches the commands' help
+text, and `TestDocLinks` fails on a relative link or `#anchor` in the Markdown files
+that points nowhere. After changing a command's help, regenerate the reference:
+
+```bash
+UPDATE_DOCS=1 go test ./src/cmd/staircase -run TestCLIReference
+```
 
 ## Real agents (opt-in)
 

@@ -9,7 +9,7 @@ import (
 
 var topologyCmd = &cobra.Command{
 	Use:   "topology",
-	Short: "Manage swarm topologies (agents, edges, tools)",
+	Short: "Manage agent topologies: agents, routing edges and tools",
 }
 
 // ── register ──────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ var (
 
 var topoRegisterCmd = &cobra.Command{
 	Use:   "register <project-id> <supervisor-name>",
-	Short: "Create a new versioned swarm topology for a project",
+	Short: "Create a new version of a project's agent topology",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()
@@ -179,7 +179,7 @@ var toolAddCmd = &cobra.Command{
 
 var topoShowCmd = &cobra.Command{
 	Use:   "show <project-id>",
-	Short: "Show the latest swarm topology for a project",
+	Short: "Show the latest agent topology of a project",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()

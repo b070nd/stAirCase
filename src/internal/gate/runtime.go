@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -66,6 +67,9 @@ func (*runtimePlanPinnedGate) Severity() Severity { return SeverityBlock }
 func (*runtimePlanPinnedGate) Run(ctx Context) Result {
 	const name = "runtime.plan_pinned"
 	hash, slug, err := ctx.Store.CaseBlueprint(ctx.CaseID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return skip(name, "runtime", SeverityBlock, "case not found")
+	}
 	if err != nil {
 		return fail(name, "runtime", SeverityBlock, fmt.Sprintf("read case binding: %v", err))
 	}

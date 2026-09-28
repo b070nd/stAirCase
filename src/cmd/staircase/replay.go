@@ -13,11 +13,11 @@ import (
 
 var replayCmd = &cobra.Command{
 	Use:   "replay <run-id>",
-	Short: "Replay yield decisions for a completed run",
-	Long: `Verify the SOC2 audit chain for a run and print every yield decision in order.
+	Short: "Print the approval decisions of a finished run, after verifying its audit chain",
+	Long: `Verify the audit chain of a run and print every approval decision in order.
 
 Replay refuses to proceed if the hash chain is broken — this prevents
-replaying a tampered run log (CHECK 9.3.2).`,
+replaying a tampered run log.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		store, db, err := openStore()
