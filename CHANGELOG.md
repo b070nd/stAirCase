@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Two-person review (CAL 4): `staircase sign <commit>` adds a reviewer's SSH
+  signature (ssh-keygen -Y sign) to the commit's change certificate;
+  `staircase verify --allowed-signers <file>` counts it when the reviewer is in
+  the git allowed_signers file and is not the person the run was made for
+  (the certificate now records `requestedBy`, the run's git email).
+
 - Agree on the task before it starts: `staircase claude` and `staircase codex`
   show the task, the repository and commit, where the agent may change files,
   how edits and commands are handled, the model and the budget, and start only

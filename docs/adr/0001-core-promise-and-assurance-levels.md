@@ -45,6 +45,13 @@ never shown as a higher one.
 **5. Requirements.** A repository can require a minimum level per branch or path. The
 verifier enforces it.
 
+## Update, 2026-09-28
+
+CAL 4 is reachable: `staircase sign` adds a reviewer's SSH signature to the
+certificate, and `staircase verify --allowed-signers` counts it when the reviewer is
+trusted and is not the git identity the run was made under (`requestedBy` in the
+certificate). Signing each decision, not only the whole change, comes later.
+
 ## Consequences
 
 - Every way in states the highest level it can reach, both in its documentation and in

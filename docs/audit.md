@@ -75,6 +75,31 @@ git fetch origin refs/notes/staircase:refs/notes/staircase
 staircase verify <commit> --key signing.pub
 ```
 
+## Two-person review (CAL 4)
+
+For changes that need a second pair of eyes, a reviewer signs the run's certificate
+with their SSH key after checking the change. It is the same mechanism git uses for
+SSH-signed commits, so any key they already use for GitHub works.
+
+```bash
+# the reviewer, in the repository, after fetching the notes:
+git fetch origin refs/notes/staircase:refs/notes/staircase
+staircase sign staircase/run-7 --key ~/.ssh/id_ed25519.pub --as bob@example.com
+git push origin refs/notes/staircase
+```
+
+Trusted reviewers are listed in git's `allowed_signers` format, one per line:
+`bob@example.com ssh-ed25519 AAAA...`. Anyone checking the change then runs:
+
+```bash
+staircase verify staircase/run-7 --allowed-signers .github/allowed_signers --min-cal 4
+```
+
+A CAL 3 change counts as **CAL 4** when a trusted reviewer signed it **and** the
+reviewer is not the person the run was made for: the certificate records the git
+email (`user.email`) the run was made under, and that person's own signature does
+not count as a second review.
+
 ## Require certificates on pull requests
 
 A CI check can refuse pull requests with an agent's commit that is not properly

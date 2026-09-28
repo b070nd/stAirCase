@@ -627,6 +627,29 @@ Flags:
       --project int   Scope secret to a specific project ID (0 = global)
 ```
 
+## staircase sign
+
+Sign a commit's change certificate as the person who reviewed it (two-party review)
+
+```
+staircase sign <commit> [flags]
+```
+
+After reviewing a run's change, a second person signs its change certificate
+with their SSH key (ssh-keygen -Y sign, as git does for SSH-signed commits).
+The signature is added to the certificate in the commit's git note.
+
+staircase verify --allowed-signers <file> then counts it: a CAL 3 change signed
+by a trusted person who did not request the run reaches CAL 4. The file has
+git's allowed_signers format: "<email> <public key>" per line.
+
+Flags:
+
+```
+      --as string    Who is signing, as in allowed_signers (default: git user.email)
+      --key string   SSH public key to sign with, its private key in ssh-agent or next to it (default: git user.signingkey, else ~/.ssh/id_ed25519.pub)
+```
+
 ## staircase story accept
 
 Record operator acceptance after independently verifying a story
@@ -790,11 +813,12 @@ pull request runs.
 Flags:
 
 ```
-      --all                  In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)
-      --certificate string   Read the certificate from this file instead of the git note
-      --check-anchor         Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
-      --key string           Public signing key to trust (default: the workspace's .signing.pub)
-      --min-cal int          Fail below this change assurance level (1-4)
+      --all                      In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)
+      --allowed-signers string   git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4
+      --certificate string       Read the certificate from this file instead of the git note
+      --check-anchor             Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
+      --key string               Public signing key to trust (default: the workspace's .signing.pub)
+      --min-cal int              Fail below this change assurance level (1-4)
 ```
 
 ## staircase version
