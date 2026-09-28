@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-28
+
+Put `staircase` in front of your agent. `staircase claude "task"` and
+`staircase codex "task"` govern Claude Code and OpenAI's Codex in any git
+repository with no setup, and every commit a run makes now carries a signed,
+verifiable change certificate that a pull request can be required to have.
+
 ### Added
 
 - Lessons from rejections: when a case is compiled, the plan lists the changes a

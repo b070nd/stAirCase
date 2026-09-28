@@ -27,11 +27,34 @@ agreed to it, and whether what was committed is what was reviewed.
   you, or by a rule you wrote;
 - at the end, stAirCase commits **exactly the approved bytes** on a new branch, and
   nothing else;
-- every decision is recorded on a **tamper-evident audit chain** that you can
-  export, sign and hand to someone else to verify.
+- every decision is recorded on a **tamper-evident audit chain**, and the commit
+  carries a signed **change certificate** that anyone can verify.
 
 It is one program with no dependencies except git. Your agent setup, plans and
 evidence live in a workspace outside your repositories.
+
+## Put `staircase` in front of your agent
+
+In any git repository, with nothing to set up:
+
+```bash
+staircase claude "add a /health endpoint that returns 200"   # or: staircase codex "..."
+```
+
+Every change the agent wants to make comes to you first. At the end, exactly what
+you approved is on a new branch, with a certificate you can check:
+
+```bash
+staircase verify staircase/run-1
+```
+
+```
+✅ Commit 8a4ae8705334: valid change certificate, CAL 3
+   run #1 from 1ec6a66040cc, assisted by Claude Code
+```
+
+A pull request can be required to carry such certificates with the
+[stAirCase GitHub Action](docs/audit.md#require-certificates-on-pull-requests).
 
 ## See it work in one minute
 
