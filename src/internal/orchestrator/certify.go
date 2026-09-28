@@ -74,24 +74,30 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if pl != nil {
 		p.PlanDigest, p.Blueprint = pl.Digest, pl.BlueprintHash
 	}
-	shell := false
+	shell, after := false, false
 	for _, e := range events {
 		if e.EventType != "yield_decided" {
 			continue
 		}
 		var d struct {
-			Source     string `json:"source"`
-			ActionType string `json:"action_type"`
-			Approved   bool   `json:"approved"`
+			Source      string `json:"source"`
+			ActionType  string `json:"action_type"`
+			Approved    bool   `json:"approved"`
+			ReviewAfter bool   `json:"review_after"`
 		}
 		if json.Unmarshal([]byte(e.Payload), &d) == nil {
 			p.Decisions[d.Source]++
 			shell = shell || (d.Approved && d.ActionType == domain.ActionShellExec)
+			after = after || (d.Approved && d.ReviewAfter)
 		}
 	}
 	if shell { // ADR 0001: CAL 3 runs no approved command outside a sandbox
 		p.CAL = 2
 		p.Notes = append(p.Notes, "shell commands were approved and ran without a sandbox")
+	}
+	if after { // ADR 0001: CAL 3 decides every action before it runs
+		p.CAL = 2
+		p.Notes = append(p.Notes, "commands changed files that were reviewed after the fact")
 	}
 
 	env, err := certificate.Sign(certificate.New(commit, p), priv)

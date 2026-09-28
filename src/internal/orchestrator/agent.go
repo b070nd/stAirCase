@@ -136,7 +136,9 @@ func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approva
 		e.host.audit("shell_exec_rejected", req)
 		return reject("shell_exec disabled - restart with --allow-shell-exec to enable")
 	}
-	e.host.audit("yield_request", req)
+	if !req.ReviewAfter { // the decision loop records it once it knows the changes
+		e.host.audit("yield_request", req)
+	}
 	p := proposal{req: req, reply: make(chan decision, 1)}
 	select {
 	case e.proposals <- p:
@@ -154,6 +156,15 @@ func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approva
 // ProposeEdit proposes one file change (see the Marker constants) for agent.
 func (e *AgentEnv) ProposeEdit(ctx context.Context, agent, reasoning string, edit domain.ProposedEdit) Approval {
 	return e.propose(ctx, agent, reasoning, domain.ActionFileEdit, edit)
+}
+
+// ProposeWorktreeChanges asks for a decision on every change in the
+// worktree that was not approved, such as files a command wrote. Approved,
+// they are kept; rejected, the worktree is put back to its approved state.
+// With no such change there is nothing to decide.
+func (e *AgentEnv) ProposeWorktreeChanges(ctx context.Context, agent, reasoning string) Approval {
+	return e.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: domain.ActionFileEdit,
+		ReasoningTrace: reasoning, ReviewAfter: true, ConfidenceScore: 0.9})
 }
 
 // ProposeShell proposes running command in dir, relative to the worktree.

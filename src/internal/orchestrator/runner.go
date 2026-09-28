@@ -523,6 +523,11 @@ runLoop:
 			display.Render()
 
 		case p := <-proposals:
+			if p.req.ReviewAfter { // the changes already happened: decide exactly them
+				if !reviewAfter(&p, appr, host) {
+					continue
+				}
+			}
 			// CHECK 4.4.3 / 7.4.2: scrub delivered secret values from all
 			// operator-visible fields before any HITL presentation path.
 			req := scrubSecrets(p.req, delivered())
@@ -552,6 +557,14 @@ runLoop:
 			if rl.resp.Approved && rl.next != nil {
 				appr.record(rl.next)
 				d.files = rl.next
+			} else if req.ReviewAfter && appr != nil { // rejected or refused: undo what the command did
+				paths := make([]string, len(req.ProposedEdits))
+				for i, e := range req.ProposedEdits {
+					paths[i] = e.File
+				}
+				if err := appr.restore(paths); err != nil {
+					d.resp = domain.Decide(false, d.resp.Feedback+"; reverting the changes failed: "+err.Error())
+				}
 			}
 			p.reply <- d
 			if rl.halt {
@@ -956,4 +969,26 @@ func (r *Runner) openDebugLog(runID int64) *os.File {
 	}
 	fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
 	return f
+}
+
+// reviewAfter fills a review-after proposal with the worktree's unapproved
+// changes and records it. With nothing to decide it answers the agent right
+// away and reports false.
+func reviewAfter(p *proposal, appr *approvals, host *agentHost) bool {
+	if appr == nil {
+		p.reply <- decision{resp: domain.Decide(false, "no worktree to review")}
+		return false
+	}
+	edits, err := appr.worktreeChanges()
+	if err != nil {
+		p.reply <- decision{resp: domain.Decide(false, "cannot read the worktree: "+err.Error())}
+		return false
+	}
+	if len(edits) == 0 {
+		p.reply <- decision{resp: domain.Decide(true, "no file changes to review")}
+		return false
+	}
+	p.req.ProposedEdits = edits
+	host.audit("yield_request", p.req)
+	return true
 }

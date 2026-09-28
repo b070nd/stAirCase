@@ -146,5 +146,8 @@ func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.Y
 	if drift != "" {
 		fields["drift"] = drift
 	}
+	if req.ReviewAfter {
+		fields["review_after"] = true
+	}
 	return fields
 }

@@ -23,17 +23,19 @@ import (
 
 // certified runs agent with a signing key in the workspace and returns the
 // run, its commit and the certificate the run left in the workspace.
-func certified(t *testing.T, agent orchestrator.AgentFunc, opts orchestrator.RunOptions, op *operator) (runtest.Result, string, certificate.Statement) {
+func certified(t *testing.T, agent orchestrator.AgentFunc, opts orchestrator.RunOptions, op *operator, base ...map[string]runtest.File) (runtest.Result, string, certificate.Statement) {
 	t.Helper()
-	r := runtest.Run(t, runtest.Options{Agent: agent, Run: opts, NoTopology: opts.Plan != nil && opts.Plan.Harness != "",
+	o := runtest.Options{Agent: agent, Run: opts, NoTopology: opts.Plan != nil && opts.Plan.Harness != "",
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
 			require.NoError(t, crypto.GenerateSigningKey(wsDir))
 			if op != nil { // a person answers what policy leaves open
-				srv := httptest.NewServer(op)
-				t.Cleanup(srv.Close)
-				require.NoError(t, s.UpdateProjectWebhook(projectID, srv.URL))
+				webhook(t, s, projectID, op)
 			}
-		}})
+		}}
+	if len(base) > 0 {
+		o.Base = base[0]
+	}
+	r := runtest.Run(t, o)
 	require.NoError(t, r.Err)
 	require.NotEmpty(t, r.Run.GitCommitHash)
 	b, err := os.ReadFile(filepath.Join(r.WsDir, "audit", "run-1.certificate.json"))
@@ -45,6 +47,13 @@ func certified(t *testing.T, agent orchestrator.AgentFunc, opts orchestrator.Run
 	s, err := certificate.Open(env, pub)
 	require.NoError(t, err)
 	return r, r.Run.GitCommitHash, s
+}
+
+// webhook makes op answer the project's proposals.
+func webhook(t *testing.T, s *persistence.Store, projectID int64, op *operator) {
+	srv := httptest.NewServer(op)
+	t.Cleanup(srv.Close)
+	require.NoError(t, s.UpdateProjectWebhook(projectID, srv.URL))
 }
 
 func git(t *testing.T, repo string, args ...string) string {

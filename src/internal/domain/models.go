@@ -179,6 +179,11 @@ type YieldRequest struct {
 	// is accepted on the wire and displayed by the TUI but not yet batched.
 	BatchID string `json:"batch_id,omitempty"`
 
+	// ReviewAfter marks changes that already happened in the worktree (a
+	// command made them): the orchestrator fills ProposedEdits with them,
+	// approving keeps them and rejecting reverts them.
+	ReviewAfter bool `json:"review_after,omitempty"`
+
 	// Drift, set by the orchestrator, says why drift supervision sends this
 	// proposal to a human (outside the stories' scope, a limit, a checkpoint).
 	Drift string `json:"drift,omitempty"`

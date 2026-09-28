@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -169,6 +171,66 @@ func (a *approvals) fromBase(p string) (*approvedFile, error) {
 		mode = 0o755
 	}
 	return &approvedFile{content: []byte(content), mode: mode}, nil
+}
+
+// worktreeChanges are the worktree's changes that were not approved, as
+// whole-file edits: a changed or new file with its current content, a
+// missing file as a deletion. They are what a review-after proposal decides.
+func (a *approvals) worktreeChanges() ([]domain.ProposedEdit, error) {
+	paths := map[string]bool{}
+	st, err := a.repo.w.Status()
+	if err != nil {
+		return nil, fmt.Errorf("read worktree status: %w", err)
+	}
+	for p, s := range st {
+		if s.Staging != gogit.Unmodified || s.Worktree != gogit.Unmodified {
+			paths[p] = true
+		}
+	}
+	for p := range a.files { // an approved file changed back to its base content
+		paths[p] = true
+	}
+	var edits []domain.ProposedEdit
+	for _, p := range slices.Sorted(maps.Keys(paths)) {
+		want, err := a.current(p)
+		if err != nil {
+			return nil, err
+		}
+		got, err := os.ReadFile(filepath.Join(a.repo.path, filepath.FromSlash(p)))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			if want != nil && !want.deleted {
+				edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerDeleteFile})
+			}
+		case err != nil:
+			return nil, err
+		case want == nil || want.deleted || !bytes.Equal(got, want.content):
+			edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerNewFile, ReplaceBlock: string(got)})
+		}
+	}
+	return edits, nil
+}
+
+// restore puts paths back to their approved state: approved content, or the
+// base commit's, or no file at all.
+func (a *approvals) restore(paths []string) error {
+	for _, p := range paths {
+		full := filepath.Join(a.repo.path, filepath.FromSlash(p))
+		f, err := a.current(p)
+		if err != nil {
+			return err
+		}
+		if f == nil || f.deleted {
+			if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			continue
+		}
+		if err := writeAtomic(full, f.content, f.mode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // violation is a reason finalize refuses to commit, recorded as an audit event.
