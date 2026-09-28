@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 - Release checksums are signed into one Sigstore bundle,
   `checksums.txt.sigstore.json` (the format cosign 3 writes), instead of
   separate `.sig` and `.pem` files; verify with `cosign verify-blob --bundle`.
+- The documentation is rewritten in plain English, with an index
+  (`docs/README.md`), a page per task, troubleshooting, and a CLI reference
+  generated from the program (`docs/cli.md`). `docs/plugin-gates.md` is now
+  `docs/gates.md`, and `docs/project-use.md` is now `docs/safety.md`.
+- `audit export --anchor` now warns in its help that the whole record is
+  uploaded to Rekor's public, permanent log.
+
+### Fixed
+
+- The `runtime.plan_pinned` gate skips a case that does not exist, instead of
+  failing with a database error.
 
 ## [0.2.0] — 2026-09-25
 
