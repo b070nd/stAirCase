@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -154,7 +154,12 @@ func TestRun_checks_the_commit_it_made(t *testing.T) {
 	assert.Equal(t, 0, c[0].ExitCode, "the check sees the committed tree")
 	assert.Equal(t, 3, c[1].ExitCode)
 	assert.Equal(t, sha256Hex("broken\n"), c[1].OutputSHA256)
-	assert.Equal(t, runtime.GOOS == "darwin", c[0].Sandboxed)
+	d := t.TempDir()
+	_, _, cleanup, noSandbox := sandbox.Command(context.Background(), d, d, "true", sandbox.Required)
+	if noSandbox == nil {
+		cleanup()
+	}
+	assert.Equal(t, noSandbox == nil, c[0].Sandboxed, "sandboxed wherever this machine has a sandbox")
 	assert.Equal(t, 3, s.Predicate.CAL, "checks are evidence, not decisions")
 	assert.Contains(t, r.Types(), "check_ran")
 	assert.NotContains(t, git(t, r.Repo, "worktree", "list"), "staircase-check")
