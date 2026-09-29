@@ -164,6 +164,7 @@ Flags:
       --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string            Model for Claude Code (default: its own)
+      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
@@ -221,6 +222,7 @@ Flags:
       --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string            Model for Codex (default: its own)
+      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
@@ -629,6 +631,7 @@ Flags:
       --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --by string               Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
       --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                     Start without asking to confirm (needed without a terminal)
 ```
@@ -659,6 +662,7 @@ Flags:
       --record-llm string       Record every model exchange of this run to this file (JSON lines) for offline replay.
       --replay-llm string       File path to replay recorded LLM exchanges instead of calling the real API.
       --sandbox string          Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
+      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --skip-gates              Bypass quality gate pre-flight (use with care)
       --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
 ```

@@ -124,7 +124,8 @@ Six contracts stay stable and versioned while everything around them may change:
 - An evaluation of fast decision models, such as Jev or the open-source Laya, on our own
   test cases. The model never decides freely: it only picks among the next steps the
   run allows, as a typed answer, and a wrong pick can only send a change to a person.
-  The numbers get published.
+  The numbers get published. *Built: `--signal typesafe-ai/jev` and `make eval-jev`
+  with 24 labelled changes; the numbers follow once the gateway account can run it.*
 
 ### Phase 3 - v0.5: scale human attention
 

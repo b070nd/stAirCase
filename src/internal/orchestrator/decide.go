@@ -25,6 +25,7 @@ type deciders struct {
 	policy    *policy.Engine
 	validator *Validator
 	task      bool // ApproveInScope with an agreed task
+	signal    *Signal
 	askHuman  func(domain.YieldRequest) domain.YieldResponse
 	display   *monitor.Display
 	tracker   *monitor.Tracker
@@ -50,8 +51,25 @@ type ruling struct {
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
-// Review).
+// Review). A signal can only turn an automatic approval into a person's
+// decision.
 func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling {
+	rl := d.rule(ctx, req)
+	if d.signal != nil && rl.resp.Approved && rl.source != "operator" && rl.next != nil {
+		before := map[string]*approvedFile{}
+		for p := range rl.next {
+			before[p], _ = d.approvals.current(p)
+		}
+		if why := d.signal.escalate(ctx, before, rl.next, d.audit); why != "" {
+			req.Review = why
+			return d.human(req, rl)
+		}
+	}
+	return rl
+}
+
+// rule decides req without the signal.
+func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 	d.total++
 	var rl ruling
 	// The orchestrator derives exactly what approving this proposal would

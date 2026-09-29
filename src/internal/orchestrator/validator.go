@@ -69,20 +69,24 @@ Reply with only a JSON object: {"approve": true or false, "reason": "<one senten
 
 // review asks the model about one change; before/after map each path to its
 // content (a nil after is a deletion). An error means a human must decide.
-func (v *Validator) review(ctx context.Context, model string, before, after map[string]*approvedFile) (verdict, llm.Response, error) {
-	type file struct {
-		Path    string  `json:"path"`
-		Before  *string `json:"before"` // null: the file does not exist yet
-		After   *string `json:"after"`  // null: the file is deleted
-		Mode    string  `json:"mode,omitempty"`
-		Deleted bool    `json:"deleted,omitempty"`
-	}
-	var change []file
+// changeFile is one file of a change as reviewers see it.
+type changeFile struct {
+	Path    string  `json:"path"`
+	Before  *string `json:"before"` // null: the file does not exist yet
+	After   *string `json:"after"`  // null: the file is deleted
+	Mode    string  `json:"mode,omitempty"`
+	Deleted bool    `json:"deleted,omitempty"`
+}
+
+// changeFiles is a change as reviewers (the validator, signals) see it:
+// each file before and after, as the orchestrator derived it.
+func changeFiles(before, after map[string]*approvedFile) ([]changeFile, error) {
+	var change []changeFile
 	for p, a := range after {
-		f := file{Path: p}
+		f := changeFile{Path: p}
 		if b := before[p]; b != nil && !b.deleted {
 			if len(b.content) > validatorMaxFile {
-				return verdict{}, llm.Response{}, fmt.Errorf("%s is too large for the validator", p)
+				return nil, fmt.Errorf("%s is too large for the validator", p)
 			}
 			s := string(b.content)
 			f.Before = &s
@@ -91,12 +95,20 @@ func (v *Validator) review(ctx context.Context, model string, before, after map[
 			f.Deleted = true
 		} else {
 			if len(a.content) > validatorMaxFile {
-				return verdict{}, llm.Response{}, fmt.Errorf("%s is too large for the validator", p)
+				return nil, fmt.Errorf("%s is too large for the validator", p)
 			}
 			s := string(a.content)
 			f.After, f.Mode = &s, fmt.Sprintf("%o", a.mode)
 		}
 		change = append(change, f)
+	}
+	return change, nil
+}
+
+func (v *Validator) review(ctx context.Context, model string, before, after map[string]*approvedFile) (verdict, llm.Response, error) {
+	change, err := changeFiles(before, after)
+	if err != nil {
+		return verdict{}, llm.Response{}, err
 	}
 	payload, err := json.Marshal(map[string]any{"stories": v.brief, "change": change})
 	if err != nil {

@@ -27,6 +27,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `--signal <model>` (for example `typesafe-ai/jev`) asks an evaluation model about
+  every change approved without you; it can only send the change to you (risky,
+  off the stories, or no answer), never approve or reject it. `make eval-jev`
+  measures a model on 24 labelled changes.
+
 - Approve the task, not every step: `--approve-in-scope` (with `--allow`) on
   `claude`, `codex` and `review` approves changes inside the agreed scope as part
   of the task. One in five, anything outside the scope, flagged or sensitive

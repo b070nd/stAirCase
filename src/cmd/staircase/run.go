@@ -44,6 +44,7 @@ var (
 	runAgreedBy       string // who agreed to the task before a session started
 	runAckDrift       bool
 	runValidator      []string
+	runSignal         string
 )
 
 var runCmd = &cobra.Command{
@@ -194,6 +195,10 @@ func runCase(caseID int64) error {
 	if len(runValidator) > 0 {
 		validator = &orchestrator.Validator{Models: runValidator}
 	}
+	var sig *orchestrator.Signal
+	if runSignal != "" {
+		sig = &orchestrator.Signal{Model: runSignal}
+	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
@@ -206,6 +211,7 @@ func runCase(caseID int64) error {
 		AllowShellExec: runAllowShellExec,
 		Sandbox:        runSandbox,
 		ApproveInScope: sessionInScope,
+		Signal:         sig,
 		Checks:         runChecks,
 		AckDrift:       runAckDrift,
 		Validator:      validator,
@@ -222,8 +228,11 @@ func checkFlag(cmd *cobra.Command) {
 			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")
 }
 
-// validatorFlag adds --validator to cmd.
+// validatorFlag adds --validator and --signal to cmd.
 func validatorFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&runSignal, "signal", "",
+		"Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; "+
+			"it can only send a change to you (risky, off the stories, or no answer), never approve one")
 	cmd.Flags().StringArrayVar(&runValidator, "validator", nil,
 		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
 			"a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides")

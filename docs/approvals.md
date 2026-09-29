@@ -204,6 +204,25 @@ of the agreed task, and recorded as decided by `task`. You still see:
 
 Your policy rules still come first. This works with `claude`, `codex` and `review`.
 
+## A decision model as a signal
+
+```bash
+staircase claude "add a /health endpoint" --allow "src/**" --approve-in-scope --signal typesafe-ai/jev
+```
+
+`--signal` asks an evaluation model, such as TypeSafe AI's Jev through the LLM
+gateway (`LLM_GATEWAY_API_KEY`), about every change that would be approved without
+you: by a rule, the agreed task or a validator. It answers typed questions with
+probabilities, not text: is the change risky, does it serve a story, what kind of
+change is it. It can only **send the change to you**: when it rates the change risky,
+doubts it serves a story, or cannot answer. It never approves or rejects anything.
+Every rating is recorded (`signal_rated`).
+
+The model sees the stories and the change, the same as a validator. Measure it on
+your own kind of changes before you rely on it: `make eval-jev` runs 24 labelled
+changes (secrets, exfiltration, weakened tests, prompt injection, Trojan Source,
+drift) and reports what it missed and what it flagged needlessly.
+
 ## Letting a model review changes: the validator
 
 ```bash

@@ -35,6 +35,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/policy"
+	"github.com/b070nd/stAirCase/src/internal/signal"
 	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/b070nd/stAirCase/src/internal/webhookauth"
 	"github.com/b070nd/stAirCase/src/internal/wslock"
@@ -127,6 +128,9 @@ type RunOptions struct {
 	// of the task (source "task"), with a checkpoint every few changes and a
 	// person's final review of the whole change. It needs Agreed.
 	ApproveInScope bool
+	// Signal, when set, is a decision model asked about every change
+	// approved without a person; it can only send it to a person.
+	Signal *Signal
 	// Checks are commands run on the commit the run made (--check), such as
 	// its tests; their results are evidence in the change certificate.
 	Checks []string
@@ -539,7 +543,18 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("mark case running: %w", err)
 	}
 
-	dec := &deciders{task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+	if opts.Signal != nil {
+		if opts.Signal.Eval == nil {
+			if key, err := host.secret("LLM_GATEWAY_API_KEY"); err == nil && key != "" {
+				base, _ := host.secret("LLM_GATEWAY_URL") // as for the gateway's models (llm.New)
+				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: strings.TrimSuffix(strings.TrimSuffix(base, "/"), "/v1")}
+			}
+		}
+		if opts.Plan != nil {
+			opts.Signal.brief = opts.Plan.Brief()
+		}
+	}
+	dec := &deciders{signal: opts.Signal, task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
