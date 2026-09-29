@@ -1,4 +1,4 @@
-package agent
+package sandbox
 
 import (
 	"context"
@@ -8,28 +8,29 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
-// Sandbox modes for approved shell commands (staircase run --sandbox).
+// Modes (staircase run --sandbox).
 const (
-	SandboxAuto     = "auto"     // sandbox when this machine can, else run and say so
-	SandboxRequired = "required" // refuse a command that cannot be sandboxed
-	SandboxOff      = "off"      // no sandbox
+	Auto     = "auto"     // sandbox when this machine can, else run and say so
+	Required = "required" // refuse a command that cannot be sandboxed
+	Off      = "off"      // no sandbox
 )
 
-// shellCommand builds an approved command to run in cwd inside the worktree
+// Command builds a command to run in cwd inside the worktree
 // root. In the sandbox (macOS sandbox-exec, Linux bwrap) it can write only in
 // root and in a temp folder of its own (its TMPDIR), and has no network, not
 // even to this machine. cleanup removes the temp folder.
-func shellCommand(ctx context.Context, root, cwd, command, mode string) (cmd *exec.Cmd, sandboxed bool, cleanup func(), err error) {
+func Command(ctx context.Context, root, cwd, command, mode string) (cmd *exec.Cmd, sandboxed bool, cleanup func(), err error) {
 	tmp, err := os.MkdirTemp("", "staircase-shell-")
 	if err != nil {
 		return nil, false, func() {}, err
 	}
 	cleanup = func() { _ = os.RemoveAll(tmp) }
 	var wrap []string
-	if mode != SandboxOff {
-		if wrap, err = sandboxWrapper(root, tmp); err != nil && mode == SandboxRequired {
+	if mode != Off {
+		if wrap, err = sandboxWrapper(root, tmp); err != nil && mode == Required {
 			cleanup()
 			return nil, false, func() {}, err
 		}
@@ -37,7 +38,7 @@ func shellCommand(ctx context.Context, root, cwd, command, mode string) (cmd *ex
 	args := append(wrap, "/bin/sh", "-c", command)
 	cmd = exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = append(shellEnv(), "TMPDIR="+tmp)
+	cmd.Env = append(Env(), "TMPDIR="+tmp)
 	return cmd, wrap != nil, cleanup, nil
 }
 
@@ -74,4 +75,25 @@ func sandboxWrapper(root, tmp string) ([]string, error) {
 			"--bind", root, root, "--bind", tmp, tmp, "--unshare-net", "--die-with-parent", "--"}, nil
 	}
 	return nil, fmt.Errorf("no sandbox on %s", runtime.GOOS)
+}
+
+// Env is what a command inherits: nothing that could
+// carry credentials (SSH agent, cloud or LLM keys) - only what tools need to
+// run, find certificates and reach a proxy.
+func Env() []string {
+	keep := func(k string) bool {
+		switch k {
+		case "PATH", "HOME", "TMPDIR", "LANG", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+			"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy":
+			return true
+		}
+		return strings.HasPrefix(k, "LC_")
+	}
+	var env []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); keep(k) {
+			env = append(env, kv)
+		}
+	}
+	return env
 }

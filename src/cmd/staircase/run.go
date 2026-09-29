@@ -17,6 +17,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/obs"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,6 +38,7 @@ var (
 	runReplayLLM      string
 	runAllowShellExec bool
 	runSandbox        string
+	runChecks         []string
 	runAgent          string
 	runModel          string
 	runAgreedBy       string // who agreed to the task before a session started
@@ -84,9 +86,10 @@ func init() {
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
-	runCmd.Flags().StringVar(&runSandbox, "sandbox", agent.SandboxAuto,
+	runCmd.Flags().StringVar(&runSandbox, "sandbox", sandbox.Auto,
 		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap), "+
 			"required (refuse commands that cannot be sandboxed) or off")
+	checkFlag(runCmd)
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
 	runCmd.Flags().StringVar(&runValidator, "validator", "",
@@ -104,7 +107,7 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 		return err
 	}
 	switch runSandbox {
-	case agent.SandboxAuto, agent.SandboxRequired, agent.SandboxOff:
+	case sandbox.Auto, sandbox.Required, sandbox.Off:
 	default:
 		return fmt.Errorf("--sandbox must be auto, required or off, not %q", runSandbox)
 	}
@@ -202,10 +205,18 @@ func runCase(caseID int64) error {
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
 		Sandbox:        runSandbox,
+		Checks:         runChecks,
 		AckDrift:       runAckDrift,
 		Validator:      validator,
 		Agreed:         runAgreedBy,
 		Agent:          ag,
 		Plan:           &pl,
 	})
+}
+
+// checkFlag adds --check to cmd.
+func checkFlag(cmd *cobra.Command) {
+	cmd.Flags().StringArrayVar(&runChecks, "check", nil,
+		"A command (such as your tests) to run on the commit once it is made, in the sandbox; "+
+			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")
 }

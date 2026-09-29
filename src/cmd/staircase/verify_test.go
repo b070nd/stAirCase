@@ -52,6 +52,18 @@ func TestVerify_checks_a_commits_certificate(t *testing.T) {
 	verifyKey, verifyFile = "", ""
 }
 
+// TestVerify_fails_a_failed_check: a commit whose recorded check failed does
+// not pass verify, whatever its level.
+func TestVerify_fails_a_failed_check(t *testing.T) {
+	sessionRepo(t)
+	runChecks = []string{"true", "exit 1"}
+	t.Cleanup(func() { runChecks = nil })
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+
+	verifyMinCAL, verifyKey, verifyFile = 0, "", ""
+	assert.ErrorContains(t, verifyHandler(nil, []string{"staircase/run-1"}), `check "exit 1" failed (exit 1)`)
+}
+
 // TestAnchorCertificate_sends_digests_only: anchoring a run's certificate
 // sends Rekor the certificate (digests), never the run's content, and
 // verify --check-anchor confirms the commit's certificate is in the log.

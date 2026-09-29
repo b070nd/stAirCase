@@ -123,6 +123,9 @@ type RunOptions struct {
 	// Sandbox is where approved commands run: "auto" (default: in the
 	// sandbox when this machine has one), "required" or "off".
 	Sandbox string
+	// Checks are commands run on the commit the run made (--check), such as
+	// its tests; their results are evidence in the change certificate.
+	Checks []string
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -685,7 +688,8 @@ runLoop:
 			commitHash = hash
 			// The commit is made; a certificate that cannot be written is reported
 			// and recorded, not a reason to call the run failed.
-			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr); err != nil {
+			checks := r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)
+			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, checks); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
 			}

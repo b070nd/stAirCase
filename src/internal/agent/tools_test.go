@@ -16,6 +16,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,7 +138,7 @@ func TestTools_run_shell(t *testing.T) {
 		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
 	}))
 	defer approver.Close()
-	r, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true, Sandbox: agent.SandboxOff}, // TestShellSandbox covers the sandbox
+	r, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true, Sandbox: sandbox.Off}, // TestShellSandbox covers the sandbox
 		func(s *persistence.Store, _ string, projectID int64) {
 			require.NoError(t, s.UpdateProjectWebhook(projectID, approver.URL))
 		}, func(ctx context.Context, env *orchestrator.AgentEnv) []string {

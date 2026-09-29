@@ -165,6 +165,11 @@ func verifyCommit(commit string) error {
 		}
 		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d%s", commit, level, verifyMinCAL, why)
 	}
+	for _, c := range p.Checks {
+		if c.ExitCode != 0 {
+			return fmt.Errorf("commit %.12s: check %q failed (exit %d)", commit, c.Command, c.ExitCode)
+		}
+	}
 	if verifyCheckAnchor {
 		sidecar := verifyFile + ".anchor"
 		if verifyFile == "" {
@@ -185,6 +190,13 @@ func verifyCommit(commit string) error {
 	fmt.Printf("   run #%d from %.12s, assisted by %s\n", p.Run, p.BaseCommit, strings.Join(p.Agents, ", "))
 	for source, n := range p.Decisions {
 		fmt.Printf("   %d decision(s) by %s\n", n, source)
+	}
+	for _, c := range p.Checks {
+		where := "in the sandbox"
+		if !c.Sandboxed {
+			where = "without a sandbox"
+		}
+		fmt.Printf("   check passed %s: %s\n", where, c.Command)
 	}
 	for _, n := range p.Notes {
 		fmt.Printf("   note: %s\n", n)

@@ -87,6 +87,27 @@ git fetch origin refs/notes/staircase:refs/notes/staircase
 staircase verify <commit> --key signing.pub
 ```
 
+## Checks on the commit
+
+`--check` runs a command, such as your tests, on the commit a run made, and puts the
+result in its certificate. It works with `run`, `claude`, `codex` and `review`, and
+can be repeated:
+
+```bash
+staircase claude "fix the date parser" --check "go test ./..." --check "go vet ./..."
+```
+
+Each check runs on a clean checkout of exactly that commit, in the same OS sandbox
+as approved commands (no network, writes only in the checkout and a temporary
+folder), for at most 15 minutes. The certificate records the command, its exit code,
+whether it ran sandboxed and the SHA-256 of its output, never the output itself.
+
+A failed check does not undo the commit, but `staircase verify` fails it, so a CI
+check that requires certificates also requires passing checks. Checks are evidence
+about the result; they do not change the level, which is about how the change was
+decided. Commands that need the network (downloading dependencies) fail in the
+sandbox: fetch them first, or pass `run --sandbox off` and say so in review.
+
 ## Two-person review (CAL 4)
 
 For changes that need a second pair of eyes, a reviewer signs the run's certificate

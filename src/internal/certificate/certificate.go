@@ -50,6 +50,17 @@ type Predicate struct {
 	// RequestedBy is the git identity (user.email) the run was made under:
 	// a second person's signature must come from someone else (CAL 4).
 	RequestedBy string `json:"requestedBy,omitempty"`
+	// Checks ran on a clean checkout of the commit after it was made.
+	Checks []Check `json:"checks,omitempty"`
+}
+
+// Check is one command run on the commit, such as its tests. It records the
+// output's digest, not the output.
+type Check struct {
+	Command      string `json:"command"`
+	ExitCode     int    `json:"exitCode"` // -1: it could not run
+	Sandboxed    bool   `json:"sandboxed"`
+	OutputSHA256 string `json:"outputSha256"`
 }
 
 // New is a statement about commit.

@@ -137,7 +137,9 @@ Six contracts stay stable and versioned while everything around them may change:
   comes to you. Some approvals are sampled for your review.
 - **Gates as evidence:** each checkpoint must pass its gates - tests run in a sandbox
   on the exact approved code, two independent reviewer models that must agree, and a
-  person - and every gate's result goes into the change certificate.
+  person - and every gate's result goes into the change certificate. *First part
+  done: `--check` runs tests in the sandbox on the exact commit and records the
+  result in the certificate.*
 - **A definition of done:** a session cannot end until its required gates pass. The
   agent's own "stop" hook is refused with the failures, so it keeps working inside
   governance until the result is right. ("An attempt is allowed to be wrong; it is not

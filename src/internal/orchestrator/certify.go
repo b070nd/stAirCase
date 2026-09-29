@@ -61,7 +61,7 @@ func commitMessage(runID, caseID int64, pl *plan.Plan, chainHead string) string 
 // writes it to audit/run-<id>.certificate.json and attaches it to the commit
 // as a git note (refs/notes/staircase). Without a signing key it only says
 // so: the certificate is evidence, not a gate.
-func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *plan.Plan, repo *GitRepo) error {
+func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *plan.Plan, repo *GitRepo, checks []certificate.Check) error {
 	priv, err := crypto.LoadSigningKey(r.wsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  No change certificate: %v\n", err)
@@ -72,7 +72,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		return err
 	}
 	p := certificate.Predicate{Run: runID, BaseCommit: baseSHA, Agents: assistants(pl), ChainHead: chainHead,
-		Decisions: map[string]int{}, CAL: 3}
+		Decisions: map[string]int{}, CAL: 3, Checks: checks}
 	if pl != nil {
 		p.PlanDigest, p.Blueprint = pl.Digest, pl.BlueprintHash
 	}
