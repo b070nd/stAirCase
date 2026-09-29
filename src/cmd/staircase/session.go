@@ -68,6 +68,8 @@ func init() {
 	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
 	checkFlag(claudeCmd)
 	checkFlag(codexCmd)
+	validatorFlag(claudeCmd)
+	validatorFlag(codexCmd)
 	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
 	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")

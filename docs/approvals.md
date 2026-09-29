@@ -202,3 +202,18 @@ secret) that decides file changes the policy leaves open, in place of a person.
 
 The validator is a model and can be wrong or misled by what it reads. It is a way to
 save your time on small in-scope changes, not a replacement for your final review.
+
+**Two models that must agree.** Repeat `--validator` to make a panel, ideally from
+different vendors, so one model's blind spot or one prompt injection that fools it
+is not enough:
+
+```bash
+staircase review pr-42 --by "Copilot coding agent" \
+  --validator openai/gpt-oss-20b --validator anthropic/claude-haiku-4.5
+```
+
+Each model reviews the change on its own. It is approved only if all of them
+approve and rejected only if all of them reject; when they disagree, you decide and
+see each model's reason. The decision is recorded as made by all of them
+(`validator:<model>+<model>`), also in the change certificate. `--validator` works
+with `run`, `claude`, `codex` and `review`.

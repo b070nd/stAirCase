@@ -163,6 +163,7 @@ Flags:
       --approval-token string   Token for the approval API (default: a new one, printed)
       --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string            Model for Claude Code (default: its own)
+      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -218,6 +219,7 @@ Flags:
       --approval-token string   Token for the approval API (default: a new one, printed)
       --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string            Model for Codex (default: its own)
+      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -624,6 +626,7 @@ Flags:
       --approval-token string   Token for the approval API (default: a new one, printed)
       --by string               Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
       --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                     Start without asking to confirm (needed without a terminal)
 ```
 
@@ -654,7 +657,7 @@ Flags:
       --replay-llm string       File path to replay recorded LLM exchanges instead of calling the real API.
       --sandbox string          Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
       --skip-gates              Bypass quality gate pre-flight (use with care)
-      --validator string        Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once
+      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
 ```
 
 ## staircase secret list

@@ -20,10 +20,12 @@ import (
 // shell commands, drift, sensitive paths, files too large to show it, every
 // sampleEvery-th approval, and anything after rejectLimit rejections in a row.
 // A run whose changes the validator approved is committed only after a human
-// approves the final aggregate change once.
+// approves the final aggregate change once. With several models, each reviews
+// the change: it is decided only when they all agree, otherwise a human
+// decides, seeing each one's reason.
 type Validator struct {
-	Model string
-	Chat  llm.Model // nil: the model is called with the project's secrets
+	Models []string
+	Chat   llm.Model // nil: the models are called with the project's secrets
 
 	approvals  int
 	rejectRun  int  // consecutive validator rejections
@@ -67,7 +69,7 @@ Reply with only a JSON object: {"approve": true or false, "reason": "<one senten
 
 // review asks the model about one change; before/after map each path to its
 // content (a nil after is a deletion). An error means a human must decide.
-func (v *Validator) review(ctx context.Context, before, after map[string]*approvedFile) (verdict, llm.Response, error) {
+func (v *Validator) review(ctx context.Context, model string, before, after map[string]*approvedFile) (verdict, llm.Response, error) {
 	type file struct {
 		Path    string  `json:"path"`
 		Before  *string `json:"before"` // null: the file does not exist yet
@@ -100,7 +102,7 @@ func (v *Validator) review(ctx context.Context, before, after map[string]*approv
 	if err != nil {
 		return verdict{}, llm.Response{}, err
 	}
-	resp, err := v.Chat.Chat(ctx, llm.Request{Model: v.Model, System: validatorSystem,
+	resp, err := v.Chat.Chat(ctx, llm.Request{Model: model, System: validatorSystem,
 		Messages: []llm.Message{{Role: "user", Content: string(payload)}}})
 	if err != nil {
 		return verdict{}, resp, fmt.Errorf("validator: %w", err)
@@ -142,25 +144,43 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files [
 		}
 		before[p] = f
 	}
-	vd, llmResp, err := v.review(ctx, before, next)
-	if llmResp.InputTokens+llmResp.OutputTokens > 0 {
-		tracker.Record("validator", v.Model, llmResp.InputTokens, llmResp.OutputTokens)
+	var yes, no []string // each model's reason, by its verdict
+	for _, m := range v.Models {
+		vd, llmResp, err := v.review(ctx, m, before, next)
+		if llmResp.InputTokens+llmResp.OutputTokens > 0 {
+			tracker.Record("validator", m, llmResp.InputTokens, llmResp.OutputTokens)
+		}
+		if err != nil {
+			return "validator unavailable (" + err.Error() + ") - a human decides", resp, false
+		}
+		reason := vd.Reason
+		if len(v.Models) > 1 {
+			reason = m + ": " + reason
+		}
+		if *vd.Approve {
+			yes = append(yes, reason)
+		} else {
+			no = append(no, reason)
+		}
 	}
-	if err != nil {
-		return "validator unavailable (" + err.Error() + ") - a human decides", resp, false
-	}
-	if !*vd.Approve {
+	switch {
+	case len(yes) > 0 && len(no) > 0:
+		return "the validators disagree: approve (" + strings.Join(yes, "; ") + "), reject (" + strings.Join(no, "; ") + ") - a human decides", resp, false
+	case len(no) > 0:
 		v.rejectRun++
-		return "", domain.Decide(false, "review: "+vd.Reason), true
+		return "", domain.Decide(false, "review: "+strings.Join(no, "; ")), true
 	}
 	v.rejectRun = 0
 	v.approvals++
 	if v.approvals%validatorSampleEvery == 0 {
-		return "the validator approved (" + vd.Reason + ") - sampled for human review", resp, false
+		return "the validator approved (" + strings.Join(yes, "; ") + ") - sampled for human review", resp, false
 	}
 	v.unreviewed = true
-	return "", domain.Decide(true, "review: "+vd.Reason), true
+	return "", domain.Decide(true, "review: "+strings.Join(yes, "; ")), true
 }
+
+// Name is the validator as a decision source: its models joined by "+".
+func (v *Validator) Name() string { return strings.Join(v.Models, "+") }
 
 // humanDecided records that a human decided in the validator's place, which
 // ends a run of rejections.

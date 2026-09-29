@@ -27,6 +27,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Two reviewer models that must agree: `--validator` can be repeated, on `run`,
+  `claude`, `codex` and `review`. A change is decided only when every model
+  agrees; when they disagree, a person decides and sees each model's reason. The
+  decision is recorded as made by all of them.
+
 - `staircase claude` sessions turn on Claude Code's own sandbox, strictly: it must
   be available, commands cannot retry outside it, they have no network and cannot
   read the workspace or credential folders. Approved commands then count as

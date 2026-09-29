@@ -33,6 +33,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewBy, "by", "", "Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)")
 	reviewCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
 	checkFlag(reviewCmd)
+	validatorFlag(reviewCmd)
 	reviewCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")
 	reviewCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")

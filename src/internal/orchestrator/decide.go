@@ -97,7 +97,7 @@ func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling 
 	note, resp, decided := d.validator.decide(ctx, *req, rl.files, rl.next, d.approvals, d.tracker)
 	if decided {
 		d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → %v (%s)", req.AgentName, req.ActionType, resp.Approved, resp.Feedback))
-		rl.resp, rl.source = resp, "validator:"+d.validator.Model
+		rl.resp, rl.source = resp, "validator:"+d.validator.Name()
 		return rl
 	}
 	req.Review = note

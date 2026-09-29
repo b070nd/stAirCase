@@ -43,7 +43,7 @@ var (
 	runModel          string
 	runAgreedBy       string // who agreed to the task before a session started
 	runAckDrift       bool
-	runValidator      string
+	runValidator      []string
 )
 
 var runCmd = &cobra.Command{
@@ -92,9 +92,7 @@ func init() {
 	checkFlag(runCmd)
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
-	runCmd.Flags().StringVar(&runValidator, "validator", "",
-		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
-			"a human approves the run's final change once")
+	validatorFlag(runCmd)
 	runCmd.Flags().StringVar(&runModel, "model", "", "Model for an agent harness (claude-code, codex); default: the harness's own")
 	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
 		"Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental)")
@@ -188,11 +186,13 @@ func runCase(caseID int64) error {
 	}
 
 	var validator *orchestrator.Validator
-	if runValidator != "" {
-		if llm.SecretFor(runValidator) == "" {
-			return fmt.Errorf("--validator %q: no provider serves this model", runValidator)
+	for _, m := range runValidator {
+		if llm.SecretFor(m) == "" {
+			return fmt.Errorf("--validator %q: no provider serves this model", m)
 		}
-		validator = &orchestrator.Validator{Model: runValidator}
+	}
+	if len(runValidator) > 0 {
+		validator = &orchestrator.Validator{Models: runValidator}
 	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
@@ -219,4 +219,11 @@ func checkFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&runChecks, "check", nil,
 		"A command (such as your tests) to run on the commit once it is made, in the sandbox; "+
 			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")
+}
+
+// validatorFlag adds --validator to cmd.
+func validatorFlag(cmd *cobra.Command) {
+	cmd.Flags().StringArrayVar(&runValidator, "validator", nil,
+		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
+			"a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides")
 }
