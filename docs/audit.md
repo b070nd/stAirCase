@@ -102,6 +102,13 @@ as approved commands (no network, writes only in the checkout and a temporary
 folder), for at most 15 minutes. The certificate records the command, its exit code,
 whether it ran sandboxed and the SHA-256 of its output, never the output itself.
 
+**The agent cannot finish until the checks pass.** In `staircase claude` and
+`staircase codex` sessions, when the agent wants to end, its Stop hook runs the
+checks on a copy of the approved changes so far. If one fails, the stop is refused
+and the agent gets the failure to work on. After 3 refused stops it may end anyway,
+and the result is recorded as it is. Each attempt is on the audit chain
+(`done_checked`).
+
 A failed check does not undo the commit, but `staircase verify` fails it, so a CI
 check that requires certificates also requires passing checks. Checks are evidence
 about the result; they do not change the level, which is about how the change was

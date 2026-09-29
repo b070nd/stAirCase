@@ -143,7 +143,8 @@ Six contracts stay stable and versioned while everything around them may change:
 - **A definition of done:** a session cannot end until its required gates pass. The
   agent's own "stop" hook is refused with the failures, so it keeps working inside
   governance until the result is right. ("An attempt is allowed to be wrong; it is not
-  allowed to ship until it isn't.")
+  allowed to ship until it isn't.") *Done for `--check` in Claude Code and Codex
+  sessions.*
 - **Guards:**
   - new or changed dependencies always come to you;
   - hidden Unicode ("Trojan Source") and secrets written into code are flagged.

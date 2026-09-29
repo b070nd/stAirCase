@@ -137,6 +137,7 @@ func hookSettings(cmd string) []byte {
 	b, _ := json.Marshal(map[string]any{"hooks": map[string]any{
 		"PreToolUse":  hook("*"),
 		"PostToolUse": hook("Edit|Write"),
+		"Stop":        hook(""),
 	}})
 	return b
 }
@@ -217,6 +218,10 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 		}
 		return reply(map[string]any{"hookSpecificOutput": map[string]any{
 			"hookEventName": "PreToolUse", "permissionDecision": decision, "permissionDecisionReason": reason}})
+	case "Stop": // the definition of done: the checks must pass first
+		if reason := h.env.Done(ctx); reason != "" {
+			return reply(map[string]any{"decision": "block", "reason": reason})
+		}
 	case "PostToolUse":
 		h.mu.Lock()
 		ap, ok := h.pending[in.ToolUseID]

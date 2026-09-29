@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
@@ -92,6 +93,13 @@ func fakeClaude() int {
 	log, _ := os.Create(os.Getenv("FAKE_CLAUDE_LOG"))
 	defer log.Close()
 	for i, c := range calls {
+		if c.Tool == "Stop" { // the agent wants to end the session
+			_, out := hook("Stop", i, c)
+			var d struct{ Decision, Reason string }
+			_ = json.Unmarshal([]byte(out), &d)
+			fmt.Fprintf(log, "Stop %s %s\n", orDefault(d.Decision, "allow"), strings.ReplaceAll(d.Reason, "\n", " "))
+			continue
+		}
 		code, out := hook("PreToolUse", i, c)
 		var d struct {
 			Out struct {
@@ -226,4 +234,49 @@ func TestClaudeCode_two_hooks_decide_once(t *testing.T) {
 		_, err := r.OnBranch(f)
 		assert.NoError(t, err)
 	}
+}
+
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// TestClaudeCode_cannot_stop_until_checks_pass: with --check, the session's
+// Stop is refused while a check fails on the approved state, with the
+// failure as the reason, and allowed once it passes. Checks run on a copy:
+// what they write never reaches the worktree or the commit.
+func TestClaudeCode_cannot_stop_until_checks_pass(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "decisions.log")
+	script, err := json.Marshal([]fakeCall{
+		{Tool: "Write", Input: map[string]any{"file_path": "$WT/health.txt", "content": "ok\n"}},
+		{Tool: "Stop"},
+		{Tool: "Edit", Input: map[string]any{"file_path": "$WT/health.txt", "old_string": "ok", "new_string": "done"}},
+		{Tool: "Stop"},
+	})
+	require.NoError(t, err)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.json"), script, 0o600))
+	bin := filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s exec %s \"$@\"\n",
+		filepath.Join(dir, "script.json"), logFile, os.Args[0]), 0o755))
+	r := runtest.Run(t, runtest.Options{
+		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
+		Run:   orchestrator.RunOptions{Checks: []string{"echo junk > junk.txt && grep -q done health.txt"}},
+	})
+	require.NoError(t, r.Err)
+	log, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	require.Len(t, lines, 4, string(log))
+	assert.True(t, strings.HasPrefix(lines[1], "Stop block"), lines[1])
+	assert.Contains(t, lines[1], "grep -q done health.txt")
+	assert.True(t, strings.HasPrefix(lines[3], "Stop allow"), lines[3])
+	got, err := r.OnBranch("health.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "done\n", got)
+	_, err = r.OnBranch("junk.txt")
+	assert.Error(t, err, "what a check writes stays in its copy")
+	assert.Contains(t, r.Types(), "done_checked")
 }

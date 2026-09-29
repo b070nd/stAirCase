@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- Codex from the ChatGPT app for macOS is found again after the app moved it
+  (`Resources/codex-cli/bin/codex`, Codex 0.158).
+
 ### Security
 
 - Linux: when bubblewrap is missing or not allowed to run (Ubuntu 24.04 restricts
@@ -21,6 +26,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   sandboxed command could read them, and its output reached the agent's model.
 
 ### Added
+
+- A definition of done: with `--check`, a Claude Code or Codex session cannot end
+  while a check fails. Its Stop hook runs the checks on a copy of the approved
+  changes and sends the failures back to the agent; after 3 refused stops the
+  session may end, and the certificate records the result.
 
 - `--check "<command>"` on `run`, `claude`, `codex` and `review`: runs a command,
   such as your tests, on a clean checkout of the commit the run made, in the

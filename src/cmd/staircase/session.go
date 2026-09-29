@@ -273,7 +273,7 @@ func agreement(s sessionSetup) string {
 		fmt.Fprintf(&b, "  commands:    not allowed (--allow-shell-exec lets it ask)\n")
 	}
 	if len(s.checks) > 0 {
-		fmt.Fprintf(&b, "  checks:      %s (on the commit, results in its certificate)\n", strings.Join(s.checks, "; "))
+		fmt.Fprintf(&b, "  checks:      %s (must pass before the agent may finish; results in the certificate)\n", strings.Join(s.checks, "; "))
 	}
 	model := s.model
 	if model == "" {
