@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -57,4 +58,38 @@ func TestShellSandbox_unavailable(t *testing.T) {
 	require.NoError(t, err)
 	cleanup()
 	assert.False(t, sandboxed)
+}
+
+// TestShellSandbox_hides_credentials: a command in the sandbox cannot read
+// credentials in the home folder or the stAirCase workspace (signing key,
+// secrets), only the run's own worktree inside it, and still reads the
+// rest of the system.
+func TestShellSandbox_hides_credentials(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("checked on macOS (sandbox-exec); Linux uses bwrap when installed")
+	}
+	home, ws := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	for _, f := range []string{".ssh/id_ed25519", ".aws/credentials", ".netrc", ".config/gh/hosts.yml", ".notes"} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(home, f)), 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(home, f), []byte("x"), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(ws, ".signing.key"), []byte("x"), 0o600))
+	wt := filepath.Join(ws, "worktrees", "run-1")
+	require.NoError(t, os.MkdirAll(wt, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "main.go"), []byte("x"), 0o644))
+	read := func(path string) bool {
+		cmd, sandboxed, cleanup, err := Command(context.Background(), wt, wt, "cat "+path, Required, ws)
+		require.NoError(t, err)
+		defer cleanup()
+		return cmd.Run() == nil && sandboxed
+	}
+
+	for _, f := range []string{".ssh/id_ed25519", ".aws/credentials", ".netrc", ".config/gh/hosts.yml"} {
+		assert.False(t, read(filepath.Join(home, f)), f)
+	}
+	assert.False(t, read(filepath.Join(ws, ".signing.key")), "the workspace")
+	assert.True(t, read("main.go"), "the run's worktree")
+	assert.True(t, read(filepath.Join(home, ".notes")), "the rest of home")
+	assert.True(t, read("/etc/hosts"), "the system")
 }

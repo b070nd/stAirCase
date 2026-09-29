@@ -80,8 +80,11 @@ These are documented, not hidden:
 - Approved shell commands (`--allow-shell-exec`, built-in agents) run in an OS
   sandbox by default (`--sandbox auto`): macOS `sandbox-exec`, Linux `bwrap`
   (bubblewrap). In it a command can write only in the worktree and its own
-  temporary folder, and has no network. It can still **read** anything the user
-  can. Without a sandbox tool, `auto` runs the command as the user and says so;
+  temporary folder, and has no network. It cannot read the stAirCase workspace
+  (signing key, secrets) or common credential locations in the home folder
+  (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.config/git`, `~/.netrc`,
+  `~/.npmrc`, keychains and others); it can still **read** the rest of what the
+  user can, and its output goes back to the agent's model. Without a sandbox tool, `auto` runs the command as the user and says so;
   `--sandbox required` refuses it instead. The Linux path is not yet tested on a
   real machine. Files a command changes in the worktree are decided after it
   ran: approved, they are kept; rejected, they are reverted. Use a restricted

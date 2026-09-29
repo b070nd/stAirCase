@@ -151,6 +151,14 @@ Six contracts stay stable and versioned while everything around them may change:
   machine allows, and may only make decisions stricter until they have proven
   themselves on your own history.
 - `staircase policy test`: see what a new rule would have decided on past runs.
+- **A deeper sandbox:** approved commands and checks already run without network,
+  write only in their worktree, and cannot read the workspace or common credential
+  folders. Next:
+  - the Linux sandbox tested in CI on a real kernel, with Landlock (built into the
+    kernel, nothing to install) where bubblewrap is missing or not allowed;
+  - the agents' own commands sandboxed too: Claude Code's built-in sandbox turned
+    on in `staircase claude` sessions, so they can reach CAL 3 like Codex's
+    sandboxed commands.
 
 ### Phase 4 - v0.6 to v0.9: teams without servers
 
@@ -168,7 +176,8 @@ Six contracts stay stable and versioned while everything around them may change:
 - A written specification of the certificate and of how a commit is rebuilt, with test
   vectors.
 - The certificate format proposed to in-toto, and its mapping to SLSA's source track
-  published.
+  published, together with a mapping to the OWASP Top 10 for LLM applications and
+  NIST's secure development profile for generative AI (SP 800-218A).
 - A compatibility promise for the six contracts.
 
 ## Waiting for demand
@@ -183,6 +192,7 @@ These are built only when their trigger happens:
 | connectors for SIEM or compliance tools | the existing OpenTelemetry and JSON output is not enough |
 | ACP or MCP integration | an agent makes its permission requests enforceable |
 | sharing blueprints | a community forms around them |
+| a container sandbox (`--sandbox docker`: own image, memory and process limits) | a user needs another OS image or resource limits for commands |
 
 ## Not planned
 

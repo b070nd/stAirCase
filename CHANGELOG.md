@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Security
+
+- The sandbox for approved commands and checks now hides the stAirCase
+  workspace (signing key, encrypted secrets and their key) and common credential
+  locations in the home folder (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`,
+  `~/.config/git`, `~/.netrc`, `~/.npmrc`, keychains and others). Before, a
+  sandboxed command could read them, and its output reached the agent's model.
+
 ### Added
 
 - `--check "<command>"` on `run`, `claude`, `codex` and `review`: runs a command,

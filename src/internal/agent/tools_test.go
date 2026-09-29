@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -157,4 +158,26 @@ func TestTools_run_shell(t *testing.T) {
 	assert.Equal(t, "gen\n", got, "a file the command wrote reaches the branch once decided")
 	assert.Equal(t, persistence.RunStatusSuccess, r.Run.Status)
 	assert.Contains(t, r.Types(), "yield_decided", "every command was decided before it ran")
+}
+
+// TestTools_run_shell_cannot_read_the_workspace: an approved command in the
+// sandbox cannot look into the workspace (keys, secrets) from its worktree
+// inside it.
+func TestTools_run_shell_cannot_read_the_workspace(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("checked on macOS (sandbox-exec)")
+	}
+	approver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
+	}))
+	defer approver.Close()
+	_, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true},
+		func(s *persistence.Store, _ string, projectID int64) {
+			require.NoError(t, s.UpdateProjectWebhook(projectID, approver.URL))
+		}, func(ctx context.Context, env *orchestrator.AgentEnv) []string {
+			return []string{call(ctx, env, "run_shell", map[string]string{"command": "ls ../..", "reasoning": "r"})}
+		})
+	require.Len(t, out, 1)
+	assert.NotContains(t, out[0], "worktrees", out[0])
+	assert.Contains(t, out[0], "not permitted", out[0])
 }

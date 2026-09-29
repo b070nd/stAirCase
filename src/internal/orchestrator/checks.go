@@ -39,7 +39,7 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 		c := certificate.Check{Command: command, ExitCode: -1}
 		var tail string
 		if err == nil {
-			c, tail = runCheck(ctx, dir, command, mode)
+			c, tail = runCheck(ctx, dir, command, mode, r.wsDir)
 		} else {
 			tail = "no checkout of the commit: " + err.Error()
 		}
@@ -61,11 +61,11 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 
 // runCheck runs one check in dir; it returns the result and the end of the
 // output, for the terminal only.
-func runCheck(ctx context.Context, dir, command, mode string) (certificate.Check, string) {
+func runCheck(ctx context.Context, dir, command, mode, workspace string) (certificate.Check, string) {
 	c := certificate.Check{Command: command, ExitCode: -1}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, dir, dir, command, mode)
+	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, dir, dir, command, mode, workspace)
 	if err != nil {
 		return c, err.Error()
 	}
