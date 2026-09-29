@@ -15,6 +15,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- A review page in your browser: with `--approval-port`, a run serves a page on
+  that port and prints its link. It shows each waiting proposal with the exact
+  change (a line diff for rewritten files) and its notes, and approves or rejects
+  it with feedback. Local only, no outside resources, the key kept out of the
+  server's view.
+- A person deciding a change that rewrites an existing file is shown what it
+  replaces (`before` in the proposal, filled in by stAirCase), and notes an agent
+  set on a proposal itself are cleared.
+
 - Review attention: the change certificate records how people decided (decisions,
   median time, and large changes approved within seconds), `verify` prints it and
   `report` lists certified commits with such quick approvals, so rubber-stamping

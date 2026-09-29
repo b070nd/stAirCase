@@ -169,7 +169,9 @@ Six contracts stay stable and versioned while everything around them may change:
 
 - A **local background service**, so long runs survive restarts (they resume from the
   state machine's recorded state) and you can approve from a browser. Approvals there
-  are signed with a passkey.
+  are signed with a passkey. *Started: every run with `--approval-port` serves a review page
+  (line diffs, notes, approve or reject); passkey signing and one page for all runs
+  come next.*
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
   *Done: `staircase attach` and `staircase seal` (CAL 2), which also covers Cursor.*
 - **Git as the control plane:**

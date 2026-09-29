@@ -27,6 +27,7 @@ type deciders struct {
 	validator *Validator
 	task      bool // ApproveInScope with an agreed task
 	signal    *Signal
+	redact    func(string) string // removes delivered secret values from what a person is shown
 	askHuman  func(domain.YieldRequest) domain.YieldResponse
 	display   *monitor.Display
 	tracker   *monitor.Tracker
@@ -58,6 +59,7 @@ type ruling struct {
 // Review). A signal can only turn an automatic approval into a person's
 // decision.
 func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling {
+	req.Drift, req.Guard, req.Review, req.Before = "", "", "", nil // the orchestrator's to fill, never the agent's
 	rl := d.rule(ctx, req)
 	if d.signal != nil && rl.resp.Approved && rl.source != "operator" && rl.next != nil {
 		before := map[string]*approvedFile{}
@@ -90,6 +92,17 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		}
 		rl.next = next
 		rl.files = slices.Sorted(maps.Keys(next))
+		for _, e := range req.ProposedEdits {
+			if e.SearchBlock != MarkerNewFile {
+				continue
+			}
+			if cur, _ := d.approvals.current(e.File); cur != nil && !cur.deleted && len(cur.content) <= validatorMaxFile {
+				if req.Before == nil {
+					req.Before = map[string]string{}
+				}
+				req.Before[e.File] = d.redact(string(cur.content))
+			}
+		}
 	}
 
 	// Drift supervision: a proposal reaching outside the stories' scope, past

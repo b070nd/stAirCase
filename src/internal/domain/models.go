@@ -201,6 +201,10 @@ type YieldRequest struct {
 	// a human decides in its place (a sampled approval, repeated rejections,
 	// a sensitive path, the validator unavailable).
 	Review string `json:"review,omitempty"`
+
+	// Before, set by the orchestrator, is the approved content of each file a
+	// whole-file change replaces, so a person sees what changes (a line diff).
+	Before map[string]string `json:"before,omitempty"`
 }
 
 // YieldResponse is the decision on a YieldRequest, returned to the agent.

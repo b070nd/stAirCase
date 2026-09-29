@@ -32,10 +32,13 @@ import (
 	"context"
 	"crypto/subtle"
 	"crypto/tls"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -109,8 +112,62 @@ func NewServer(addr, token string) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/yields", s.requireAuth(s.handleList))
 	mux.HandleFunc("/v1/yields/", s.requireAuth(s.handleYield))
-	s.httpSrv = &http.Server{Handler: mux}
+	mux.HandleFunc("/", servePage)
+	s.httpSrv = &http.Server{Handler: localOnly(mux), ReadHeaderTimeout: 10 * time.Second}
 	return s
+}
+
+// ReviewURL is the review page's link. The token is in the fragment, which
+// browsers never send to a server.
+func (s *Server) ReviewURL() string {
+	u := "http://" + s.ListenAddr() + "/"
+	if s.token != "" {
+		u += "#token=" + s.token
+	}
+	return u
+}
+
+//go:embed ui
+var ui embed.FS
+
+// servePage serves the review page (index.html, app.js, style.css). It may
+// load only itself and talk only to this server, and cannot be framed.
+func servePage(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	b, err := ui.ReadFile("ui/" + name)
+	if err != nil || r.Method != http.MethodGet {
+		http.NotFound(w, r)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "+
+		"img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Cache-Control", "no-store")
+	h.Set("Content-Type", mime.TypeByExtension(path.Ext(name)))
+	_, _ = w.Write(b)
+}
+
+// localOnly refuses requests addressed to any other host name than this
+// machine's: a web page on another site cannot reach the API by pointing its
+// own name at 127.0.0.1 (DNS rebinding).
+func localOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if hh, _, err := net.SplitHostPort(host); err == nil {
+			host = hh
+		}
+		switch strings.Trim(host, "[]") {
+		case "127.0.0.1", "localhost", "::1":
+			h.ServeHTTP(w, r)
+		default:
+			http.Error(w, "this server answers only to 127.0.0.1 and localhost", http.StatusMisdirectedRequest)
+		}
+	})
 }
 
 // requireAuth wraps h and enforces Bearer token authentication when s.token is

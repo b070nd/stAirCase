@@ -554,7 +554,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			opts.Signal.brief = opts.Plan.Brief()
 		}
 	}
-	dec := &deciders{signal: opts.Signal, task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+	dec := &deciders{redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
@@ -887,21 +887,23 @@ func scrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRe
 	if len(activeValues) == 0 {
 		return req
 	}
-	redact := func(s string) string {
-		for _, v := range activeValues {
-			if v != "" {
-				s = strings.ReplaceAll(s, v, "<REDACTED>")
-			}
-		}
-		return s
-	}
-	req.ReasoningTrace = redact(req.ReasoningTrace)
+	req.ReasoningTrace = redact(req.ReasoningTrace, activeValues)
 	for i := range req.ProposedEdits {
-		req.ProposedEdits[i].File = redact(req.ProposedEdits[i].File)
-		req.ProposedEdits[i].SearchBlock = redact(req.ProposedEdits[i].SearchBlock)
-		req.ProposedEdits[i].ReplaceBlock = redact(req.ProposedEdits[i].ReplaceBlock)
+		req.ProposedEdits[i].File = redact(req.ProposedEdits[i].File, activeValues)
+		req.ProposedEdits[i].SearchBlock = redact(req.ProposedEdits[i].SearchBlock, activeValues)
+		req.ProposedEdits[i].ReplaceBlock = redact(req.ProposedEdits[i].ReplaceBlock, activeValues)
 	}
 	return req
+}
+
+// redact removes the delivered secret values from s.
+func redact(s string, values []string) string {
+	for _, v := range values {
+		if v != "" {
+			s = strings.ReplaceAll(s, v, "<REDACTED>")
+		}
+	}
+	return s
 }
 
 // runAgent runs a; a panic becomes the run's error instead of the process's.
@@ -1038,6 +1040,7 @@ func startApprovalServer(ctx context.Context, opts RunOptions) (*approvalhttp.Se
 	if err := srv.Start(ctx); err != nil {
 		return nil, fmt.Errorf("approval http server: %w", err)
 	}
+	fmt.Fprintf(os.Stdout, "   🌐 Review in your browser: %s\n", srv.ReviewURL())
 	fmt.Fprintf(os.Stdout, "   🌐 Approval API: http://%s/v1/yields\n", srv.ListenAddr())
 	fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", token)
 	return srv, nil

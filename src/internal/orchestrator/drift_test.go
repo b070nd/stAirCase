@@ -231,3 +231,27 @@ func TestBudget_unpriced_model_is_not_free(t *testing.T) {
 	assert.Equal(t, persistence.RunStatusKilled, r.Run.Status)
 	assert.Less(t, time.Since(started), 10*time.Second, "killed by the budget, not by the test's deadline")
 }
+
+// TestDecide_shows_what_a_whole_file_change_replaces: a person deciding a
+// change that rewrites an existing file sees the file's approved content
+// before it (for a line diff), filled in by the orchestrator; notes an agent
+// might set itself are not shown as the orchestrator's.
+func TestDecide_shows_what_a_whole_file_change_replaces(t *testing.T) {
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{
+		Base:  map[string]runtest.File{"README.md": {Content: "Status: draft\n", Mode: 0o644}},
+		Setup: scoped(op, `{"rules":[]}`),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+				Review: "the validator approved this", Before: map[string]string{"README.md": "forged"},
+				ProposedEdits: []domain.ProposedEdit{{File: "README.md", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "Status: greeted\n"}}})
+			if ap.Approved {
+				return ap.Apply(env.Worktree)
+			}
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	require.NotEmpty(t, op.seen)
+	assert.Equal(t, map[string]string{"README.md": "Status: draft\n"}, op.seen[0].Before)
+	assert.NotContains(t, op.seen[0].Review, "the validator approved")
+}
