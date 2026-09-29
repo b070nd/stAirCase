@@ -171,7 +171,7 @@ Six contracts stay stable and versioned while everything around them may change:
 - **Git as the control plane:**
   - rules, blueprints and trusted keys come from a governance repository;
   - evidence is kept under git refs;
-  - a report spans many repositories.
+  - a report spans many repositories. *Done: `staircase report`.*
 
 ### Phase 5 - v1.0: a standard others can implement
 

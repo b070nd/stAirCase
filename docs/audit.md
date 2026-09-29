@@ -115,6 +115,20 @@ about the result; they do not change the level, which is about how the change wa
 decided. Commands that need the network (downloading dependencies) fail in the
 sandbox: fetch them first, or pass `run --sandbox off` and say so in review.
 
+## Report across repositories
+
+```bash
+staircase report ~/src/shop ~/src/billing --since 30.days --key team.pub
+```
+
+For each repository (default: the one you are in), `report` looks at the commits of
+its current branch and shows how many were made by people and how many with an
+agent, how many of those carry a valid certificate at each assurance level, which
+agents wrote them, and each agent commit whose certificate is missing, invalid or
+records a failed check. It decides certificates exactly as `staircase verify` does,
+but never fails; `--json` prints the same for a dashboard or a spreadsheet. Fetch the
+notes first (`git fetch origin refs/notes/staircase:refs/notes/staircase`).
+
 ## Two-person review (CAL 4)
 
 For changes that need a second pair of eyes, a reviewer signs the run's certificate

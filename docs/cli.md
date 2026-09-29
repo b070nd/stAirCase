@@ -602,6 +602,34 @@ Verify the audit chain of a run and print every approval decision in order.
 Replay refuses to proceed if the hash chain is broken - this prevents
 replaying a tampered run log.
 
+## staircase report
+
+Report how agent-written commits were governed, across one or more repositories
+
+```
+staircase report [repository...] [flags]
+```
+
+Looks at the commits on the current branch of each repository (default: the one
+you are in) and reports: how many were written with an agent (an Assisted-by:
+trailer or a change certificate), how many of those carry a valid certificate at
+each change assurance level, which agents wrote them, and which ones have a
+missing or invalid certificate or a failed check.
+
+Certificates are read from git notes (refs/notes/staircase); fetch them first:
+  git fetch origin refs/notes/staircase:refs/notes/staircase
+
+The report decides each certificate as staircase verify does, but never fails:
+use verify in CI to enforce.
+
+Flags:
+
+```
+      --json           Print the report as JSON
+      --key string     Public signing key to trust (default: the workspace's .signing.pub)
+      --since string   Only commits after this (anything git log --since takes); empty for all (default "90.days")
+```
+
 ## staircase review
 
 Review changes made elsewhere (a cloud agent's pull request) and certify what you approve

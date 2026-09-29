@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase report [repository...]`: how agent-written commits were governed
+  across one or more repositories: commits by people and with agents, valid
+  certificates by level, agents, and every agent commit with a missing or
+  invalid certificate or a failed check. `--json` for dashboards.
+
 - The change certificate's specification (`docs/spec/certificate-v1.md`) with 11
   conformance test vectors, checked by stAirCase's tests and, in CI, by an
   independent verifier written from the specification alone
