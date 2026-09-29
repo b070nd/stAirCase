@@ -169,3 +169,37 @@ func sha256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }
+
+// TestRun_certificate_shows_review_attention: the certificate records how
+// people decided: how many decisions, their median time, and how many large
+// changes were approved within seconds (a rubber stamp becomes visible).
+func TestRun_certificate_shows_review_attention(t *testing.T) {
+	big := strings.Repeat("line\n", 30)
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		if err := writeFile("big.txt", big)(ctx, env); err != nil {
+			return err
+		}
+		return writeFile("small.txt", "one\n")(ctx, env)
+	}
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent),
+		Setup: func(st *persistence.Store, wsDir string, projectID int64) {
+			require.NoError(t, crypto.GenerateSigningKey(wsDir))
+			require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{"rules":[]}`), 0o600)) // people decide
+			webhook(t, st, projectID, op)
+		}})
+	require.NoError(t, r.Err)
+	b, err := os.ReadFile(filepath.Join(r.WsDir, "audit", "run-1.certificate.json"))
+	require.NoError(t, err)
+	var env certificate.Envelope
+	require.NoError(t, json.Unmarshal(b, &env))
+	pub, err := crypto.LoadSigningPublicKey(r.WsDir)
+	require.NoError(t, err)
+	s, err := certificate.Open(env, pub)
+	require.NoError(t, err)
+	a := s.Predicate.Attention
+	require.NotNil(t, a)
+	assert.Equal(t, 2, a.HumanDecisions)
+	assert.Equal(t, 1, a.QuickApprovals, "30 lines approved at once by the test operator")
+	assert.GreaterOrEqual(t, a.MedianSeconds, 0.0)
+}

@@ -41,6 +41,7 @@ A change to any field means a new version in this URI.
 | `cal` | the assurance level reached ([ADR 0001](0001-core-promise-and-assurance-levels.md)) |
 | `notes` | why the level is not higher, for example approved shell commands without a sandbox |
 | `requestedBy` | the git identity the run was made under (a CAL 4 signer must be someone else) |
+| `attention` | how people decided: decisions, median seconds, and large changes approved within seconds (informative) |
 | `checks` | commands run on the commit (`--check`): command, exit code, sandboxed, SHA-256 of the output. `staircase verify` fails a commit with a failed check |
 
 **Planned for v2:** `ledger` (the SHA-256 of the ordered, approved proposals and their

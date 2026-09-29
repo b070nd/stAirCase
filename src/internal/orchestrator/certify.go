@@ -61,6 +61,13 @@ func commitMessage(runID, caseID int64, pl *plan.Plan, chainHead string) string 
 	return b.String()
 }
 
+// A quick approval: a change of at least quickLines lines approved by a
+// person in under quickMS milliseconds.
+const (
+	quickLines = 20
+	quickMS    = 5000
+)
+
 // certify signs a change certificate about commit with the workspace key,
 // writes it to audit/run-<id>.certificate.json and attaches it to the commit
 // as a git note (refs/notes/staircase). Without a signing key it only says
@@ -84,6 +91,8 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		p.RequestedBy = strings.TrimSpace(string(out))
 	}
 	shells, sandboxed, after := 0, 0, false
+	var decideMS []int64 // people's decisions
+	quick := 0
 	for _, e := range events {
 		var d struct {
 			Source      string `json:"source"`
@@ -91,6 +100,8 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			Approved    bool   `json:"approved"`
 			ReviewAfter bool   `json:"review_after"`
 			Sandboxed   bool   `json:"sandboxed"`
+			DecideMS    *int64 `json:"decide_ms"`
+			Lines       int    `json:"lines"`
 		}
 		if json.Unmarshal([]byte(e.Payload), &d) != nil {
 			continue
@@ -105,9 +116,21 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			if d.Approved && d.ActionType == domain.ActionShellExec {
 				shells++
 			}
+			if d.Source == "operator" && d.DecideMS != nil {
+				decideMS = append(decideMS, *d.DecideMS)
+				// ponytail: a fixed bar for "approved without reading"; tune once teams report numbers.
+				if d.Approved && d.Lines >= quickLines && *d.DecideMS < quickMS {
+					quick++
+				}
+			}
 			// a sandboxed command was decided before it ran; what it wrote is decided too
 			after = after || (d.Approved && d.ReviewAfter && !d.Sandboxed)
 		}
+	}
+	if len(decideMS) > 0 {
+		slices.Sort(decideMS)
+		p.Attention = &certificate.Attention{HumanDecisions: len(decideMS), QuickApprovals: quick,
+			MedianSeconds: float64(decideMS[len(decideMS)/2]) / 1000}
 	}
 	if shells > sandboxed { // ADR 0001: CAL 3 runs no approved command outside a sandbox
 		p.CAL = 2

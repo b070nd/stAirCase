@@ -6,7 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+
+- README, SECURITY.md and the safety boundary now say precisely what runs where:
+  edits and reads only through stAirCase's tools, commands and checks in an OS
+  sandbox, the agent program itself as your user. SECURITY.md still said approved
+  commands run without a sandbox, which stopped being true in 0.4.0.
+
 ### Added
+
+- Review attention: the change certificate records how people decided (decisions,
+  median time, and large changes approved within seconds), `verify` prints it and
+  `report` lists certified commits with such quick approvals, so rubber-stamping
+  becomes visible.
 
 - `staircase seal`: for agents that edit your checkout directly (Cursor, IDE
   assistants), use it instead of `git commit`. Each staged file is decided, and

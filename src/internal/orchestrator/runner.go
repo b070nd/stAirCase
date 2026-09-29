@@ -625,7 +625,11 @@ runLoop:
 			// Record the decision, with the exact approved content, before the
 			// runtime can act on it: an approval that is not on the audit chain
 			// is never released (CHECK 7.3.1).
-			if err := r.audit(run.ID, "yield_decided", yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)); err != nil {
+			decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
+			if rl.source == "operator" {
+				decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
+			}
+			if err := r.audit(run.ID, "yield_decided", decided); err != nil {
 				p.reply <- decision{resp: domain.Decide(false, "the orchestrator could not record this decision; the run is stopping")}
 				stopAgent()
 				agentFinished = true

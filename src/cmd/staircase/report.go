@@ -52,6 +52,7 @@ type repoReport struct {
 	Certified  map[int]int    `json:"certified"` // valid certificates by CAL
 	Agents     map[string]int `json:"agents"`    // commits per agent, from valid certificates
 	Problems   []problem      `json:"problems"`
+	Hurried    []problem      `json:"hurried"` // certified, but large changes were approved within seconds
 }
 
 type problem struct {
@@ -148,6 +149,10 @@ func report(repo, since string, keys []ed25519.PublicKey) (repoReport, error) {
 			continue
 		}
 		r.Certified[s.Predicate.CAL]++
+		if a := s.Predicate.Attention; a != nil && a.QuickApprovals > 0 {
+			r.Hurried = append(r.Hurried, problem{Commit: commit, Subject: subject,
+				Reason: fmt.Sprintf("%d large change(s) approved within seconds", a.QuickApprovals)})
+		}
 		for _, a := range s.Predicate.Agents {
 			r.Agents[a]++
 		}
@@ -163,6 +168,12 @@ func printReport(r repoReport) {
 	}
 	for _, a := range slices.Sorted(maps.Keys(r.Agents)) {
 		fmt.Printf("   %s: %d commit(s)\n", a, r.Agents[a])
+	}
+	if len(r.Hurried) > 0 {
+		fmt.Printf("   ⚠️  %d certified commit(s) where large changes were approved within seconds:\n", len(r.Hurried))
+		for _, p := range r.Hurried {
+			fmt.Printf("      %.12s %s: %s\n", p.Commit, p.Subject, p.Reason)
+		}
 	}
 	if len(r.Problems) == 0 {
 		if agentCommits > 0 {

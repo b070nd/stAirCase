@@ -53,6 +53,17 @@ type Predicate struct {
 	RequestedBy string `json:"requestedBy,omitempty"`
 	// Checks ran on a clean checkout of the commit after it was made.
 	Checks []Check `json:"checks,omitempty"`
+	// Attention is how people decided, when any did.
+	Attention *Attention `json:"attention,omitempty"`
+}
+
+// Attention makes review effort visible: how many decisions people made,
+// their median time, and how many large changes they approved within
+// seconds (QuickApprovals: a possible rubber stamp).
+type Attention struct {
+	HumanDecisions int     `json:"humanDecisions"`
+	MedianSeconds  float64 `json:"medianSeconds"`
+	QuickApprovals int     `json:"quickApprovals"`
 }
 
 // Check is one command run on the commit, such as its tests. It records the

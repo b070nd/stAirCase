@@ -47,7 +47,8 @@ func TestReport_counts_every_kind_of_commit(t *testing.T) {
 	agent := "\n\nAssisted-by: Claude Code"
 	commit("human work")
 	c3 := commit("cal 3" + agent)
-	certify(c3, c3, certificate.Predicate{CAL: 3, Agents: []string{"Claude Code"}})
+	certify(c3, c3, certificate.Predicate{CAL: 3, Agents: []string{"Claude Code"},
+		Attention: &certificate.Attention{HumanDecisions: 4, MedianSeconds: 1, QuickApprovals: 2}})
 	c2 := commit("cal 2" + agent)
 	certify(c2, c2, certificate.Predicate{CAL: 2, Agents: []string{"Codex"}, Notes: []string{"reviewed after"}})
 	failed := commit("tests fail" + agent)
@@ -70,4 +71,6 @@ func TestReport_counts_every_kind_of_commit(t *testing.T) {
 	assert.Contains(t, byCommit[missing], "no change certificate")
 	assert.Contains(t, byCommit[moved], "is about commit")
 	assert.Equal(t, map[string]int{"Claude Code": 1, "Codex": 1}, r.Agents)
+	require.Len(t, r.Hurried, 1, "certified, but possibly rubber-stamped")
+	assert.Equal(t, c3, r.Hurried[0].Commit)
 }

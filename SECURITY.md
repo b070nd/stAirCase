@@ -16,12 +16,17 @@ coordinate a fix and disclosure timeline with you.
 
 ## Security model
 
-The model is the untrusted party. Agents run inside the `staircase` process and
-act only through its tools: reads are confined to the run's worktree, and every
-change is a proposal the orchestrator decides and audits - the file tools can
-write nothing but the bytes it derived and approved. The remaining uncontained
-path is an **approved shell command**, which runs as your OS user without an OS
-sandbox. See the [safety boundary](docs/safety.md).
+The model is the untrusted party. Agents act only through tools stAirCase
+controls: reads are confined to the run's worktree, and every change is a proposal
+the orchestrator decides and audits - the file tools can write nothing but the
+bytes it derived and approved. Approved shell commands and checks run in an **OS
+sandbox** (macOS `sandbox-exec`, Linux bubblewrap or Landlock; Claude Code's own
+sandbox in its sessions): no network, writes only in the worktree, and no access
+to the stAirCase workspace or credential folders. What stays outside: the agent
+process itself (the Claude Code or Codex program, or stAirCase's own runtime) runs
+as your OS user, and agents that edit your checkout directly (`staircase seal`)
+are only governed from the moment you stage their changes. See the
+[safety boundary](docs/safety.md).
 
 - **Trust boundary at the orchestrator.** Model output never executes directly:
   tool calls become proposals (edits, or shell commands with

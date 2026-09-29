@@ -87,6 +87,16 @@ git fetch origin refs/notes/staircase:refs/notes/staircase
 staircase verify <commit> --key signing.pub
 ```
 
+## Review attention
+
+A signed approval proves someone clicked approve, not that they read the change. So
+the certificate also records how people decided: how many decisions they made,
+their median time, and how many changes of 20 lines or more they approved in under
+5 seconds. `staircase verify` prints it, and `staircase report` lists the certified
+commits with such quick approvals so a team can look at them again. It is
+information, not a gate: a quick approval can be right, for example after reading
+the same change elsewhere.
+
 ## Checks on the commit
 
 `--check` runs a command, such as your tests, on the commit a run made, and puts the
