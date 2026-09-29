@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Signed decisions.** `--sign-approvals <ssh key>` (with `--sign-as`) signs each
+  decision you make; the approval API also takes a `signer` and `signature`, over
+  the request's `decision_payload`. The signature covers the run, the exact request
+  and the decision (approve or reject); an invalid one never approves anything,
+  and `--require-signed-approvals` refuses unsigned decisions and signers that
+  the workspace's `allowed_signers` does not list. The certificate counts signed
+  decisions and names the trusted signers, and `verify` prints them.
+
 - **`staircase rebuild <commit>`:** reproducible, not just signed. Every run keeps a
   ledger (the base commit and every approved proposal, in order); the certificate
   carries its SHA-256 (and the digest of the policy in effect). `rebuild` replays it

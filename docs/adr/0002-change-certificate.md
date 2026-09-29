@@ -43,6 +43,7 @@ A change to any field means a new version in this URI.
 | `requestedBy` | the git identity the run was made under (a CAL 4 signer must be someone else) |
 | `ledger` | the SHA-256 of the run's ledger (base commit and every approved proposal, in order): `staircase rebuild` replays it and must find the commit's tree ([specification](../spec/certificate-v1.md#7-rebuilding-a-commit)) |
 | `policy` | the SHA-256 of the policy.json in effect |
+| `signed` | decisions people signed with SSH keys, and the trusted signers among them (informative) |
 | `attention` | how people decided: decisions, median seconds, and large changes approved within seconds (informative) |
 | `checks` | commands run on the commit (`--check`): command, exit code, sandboxed, SHA-256 of the output. `staircase verify` fails a commit with a failed check |
 

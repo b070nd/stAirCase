@@ -63,6 +63,38 @@ people rejected before, with their reasons (the ten most recent), and every agen
 reads them in its brief. They come from the audit chain, so nothing is stored in
 your repository; rejections without a reason are not listed.
 
+### Signing your decisions
+
+A decision can carry your SSH signature, so *who* decided is provable and not just
+"someone at the keyboard":
+
+```bash
+staircase claude "add a /health endpoint" --sign-approvals ~/.ssh/id_ed25519 --approval-port 8765
+```
+
+With `--sign-approvals <key>`, stAirCase signs each decision you make (in the
+terminal, the browser or the API) with your key, as `--sign-as` (default: your git
+`user.email`). A hardware-backed key (`ed25519-sk`) that needs a touch turns this
+into a real presence check. The signature covers the run, the exact request you saw
+(by its SHA-256) and your decision, so it cannot be moved to another decision, and
+a signature for "approve" is worthless as a rejection.
+
+Someone else can decide through the approval API and sign on their own machine: each
+pending request carries a `decision_payload`; they sign that text followed by
+`approve` or `reject` with `ssh-keygen -Y sign -n staircase-decision` and post
+`{"signer": "<name>", "signature": "<base64 of the armored signature>"}` with the
+decision.
+
+stAirCase checks every signature. An invalid one never approves anything. A valid one
+is *trusted* when the signer is listed for that key in the workspace's
+`allowed_signers` (git's format; [a team gets it from the governance
+repository](governance.md)). Trusted signers are named in the change certificate, and
+`staircase verify` prints them. With `--require-signed-approvals`, a person's
+decision that is unsigned or not from a trusted signer is refused.
+
+This is evidence of who decided each change. It is separate from
+[two-person review](audit.md#two-person-review-cal-4), which is what reaches CAL 4.
+
 ### In your browser
 
 ```bash

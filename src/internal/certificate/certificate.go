@@ -58,8 +58,17 @@ type Predicate struct {
 	Ledger string `json:"ledger,omitempty"`
 	// Policy is the SHA-256 of the policy.json in effect for the run.
 	Policy string `json:"policy,omitempty"`
+	// Signed counts the decisions people signed with their SSH keys.
+	Signed *SignedApprovals `json:"signed,omitempty"`
 	// Attention is how people decided, when any did.
 	Attention *Attention `json:"attention,omitempty"`
+}
+
+// SignedApprovals says how many human decisions carried a valid SSH
+// signature, and whose: only signers the team's allowed_signers file lists.
+type SignedApprovals struct {
+	Decisions int      `json:"decisions"`
+	Signers   []string `json:"signers,omitempty"`
 }
 
 // Attention makes review effort visible: how many decisions people made,

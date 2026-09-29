@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/governance"
+	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -187,6 +187,13 @@ func verifyCommit(commit string) error {
 		}
 		fmt.Printf("   check passed %s: %s\n", where, c.Command)
 	}
+	if sg := p.Signed; sg != nil {
+		fmt.Printf("   %d decision(s) signed with SSH keys", sg.Decisions)
+		if len(sg.Signers) > 0 {
+			fmt.Printf(", trusted signers: %s", strings.Join(sg.Signers, ", "))
+		}
+		fmt.Println()
+	}
 	if a := p.Attention; a != nil {
 		fmt.Printf("   %d decision(s) by people, median %.0f s", a.HumanDecisions, a.MedianSeconds)
 		if a.QuickApprovals > 0 {
@@ -219,21 +226,9 @@ func personSignatures(env certificate.Envelope, allowedSigners, requester string
 		if err != nil {
 			continue
 		}
-		f, err := os.CreateTemp("", "staircase-sig-*")
-		if err != nil {
-			return nil, err
+		if sshsig.Verify(allowedSigners, principal, certificate.SSHNamespace, pae, sig) == nil {
+			who = append(who, principal)
 		}
-		_, werr := f.Write(sig)
-		_ = f.Close()
-		if werr == nil {
-			cmd := exec.Command("ssh-keygen", "-Y", "verify", "-f", allowedSigners, "-I", principal,
-				"-n", certificate.SSHNamespace, "-s", f.Name())
-			cmd.Stdin = bytes.NewReader(pae)
-			if cmd.Run() == nil {
-				who = append(who, principal)
-			}
-		}
-		_ = os.Remove(f.Name())
 	}
 	return who, nil
 }

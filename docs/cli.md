@@ -177,16 +177,19 @@ drift (see docs/drift.md).
 Flags:
 
 ```
-      --allow stringArray       A path (glob) the task may change; repeat for more
-      --allow-shell-exec        Let Claude Code propose shell commands (each still needs your approval)
-      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
-      --approval-token string   Token for the approval API (default: a new one, printed)
-      --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
-      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
-      --model string            Model for Claude Code (default: its own)
-      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
-      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
-  -y, --yes                     Start without asking to confirm the task (needed without a terminal)
+      --allow stringArray          A path (glob) the task may change; repeat for more
+      --allow-shell-exec           Let Claude Code propose shell commands (each still needs your approval)
+      --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --model string               Model for Claude Code (default: its own)
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
 ## staircase clean
@@ -236,15 +239,18 @@ includes it) and logged in.
 Flags:
 
 ```
-      --allow stringArray       A path (glob) the task may change; repeat for more
-      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
-      --approval-token string   Token for the approval API (default: a new one, printed)
-      --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
-      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
-      --model string            Model for Codex (default: its own)
-      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
-      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
-  -y, --yes                     Start without asking to confirm the task (needed without a terminal)
+      --allow stringArray          A path (glob) the task may change; repeat for more
+      --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --model string               Model for Codex (default: its own)
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
 ## staircase compile
@@ -725,15 +731,18 @@ Fetch a pull request first, for example:
 Flags:
 
 ```
-      --allow stringArray       A path (glob) the changes may touch; a file elsewhere comes to you as drift
-      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
-      --approval-token string   Token for the approval API (default: a new one, printed)
-      --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
-      --by string               Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
-      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
-      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
-      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
-  -y, --yes                     Start without asking to confirm (needed without a terminal)
+      --allow stringArray          A path (glob) the changes may touch; a file elsewhere comes to you as drift
+      --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --by string                  Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 
 ## staircase run
@@ -747,24 +756,27 @@ staircase run <case-id> [flags]
 Flags:
 
 ```
-      --ack-drift               Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
-      --agent string            Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental) (default "built-in")
-      --allow-shell-exec        Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
-      --approval-port int       Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
-      --approval-token string   Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
-      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
-      --debug                   Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
-      --dry-run                 Validate and print the execution plan without running
-      --metrics-addr string     Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.
-      --model string            Model for an agent harness (claude-code, codex); default: the harness's own
-      --otel-endpoint string    OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.
-      --reconcile               Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
-      --record-llm string       Record every model exchange of this run to this file (JSON lines) for offline replay.
-      --replay-llm string       File path to replay recorded LLM exchanges instead of calling the real API.
-      --sandbox string          Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
-      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
-      --skip-gates              Bypass quality gate pre-flight (use with care)
-      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --ack-drift                  Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
+      --agent string               Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental) (default "built-in")
+      --allow-shell-exec           Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
+      --approval-port int          Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
+      --approval-token string      Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --debug                      Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
+      --dry-run                    Validate and print the execution plan without running
+      --metrics-addr string        Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.
+      --model string               Model for an agent harness (claude-code, codex); default: the harness's own
+      --otel-endpoint string       OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.
+      --reconcile                  Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
+      --record-llm string          Record every model exchange of this run to this file (JSON lines) for offline replay.
+      --replay-llm string          File path to replay recorded LLM exchanges instead of calling the real API.
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sandbox string             Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --skip-gates                 Bypass quality gate pre-flight (use with care)
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
 ```
 
 ## staircase seal
@@ -788,16 +800,19 @@ stage are left alone.
 Flags:
 
 ```
-      --allow stringArray       A path (glob) the changes may touch; a file elsewhere comes to you as drift
-      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
-      --approval-token string   Token for the approval API (default: a new one, printed)
-      --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
-      --by string               Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)
-      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
-  -m, --message string          The commit message (default: Changes by <agent>)
-      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
-      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
-  -y, --yes                     Start without asking to confirm (needed without a terminal)
+      --allow stringArray          A path (glob) the changes may touch; a file elsewhere comes to you as drift
+      --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --by string                  Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+  -m, --message string             The commit message (default: Changes by <agent>)
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 
 ## staircase secret list

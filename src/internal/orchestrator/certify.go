@@ -99,6 +99,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	shells, sandboxed, after := 0, 0, false
 	var decideMS []int64 // people's decisions
 	quick := 0
+	signed := certificate.SignedApprovals{}
 	for _, e := range events {
 		var d struct {
 			Source      string `json:"source"`
@@ -107,6 +108,9 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			ReviewAfter bool   `json:"review_after"`
 			Sandboxed   bool   `json:"sandboxed"`
 			DecideMS    *int64 `json:"decide_ms"`
+			Signature   string `json:"signature"`
+			SignedBy    string `json:"signed_by"`
+			Trusted     bool   `json:"trusted"`
 			Lines       int    `json:"lines"`
 		}
 		if json.Unmarshal([]byte(e.Payload), &d) != nil {
@@ -122,6 +126,12 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			if d.Approved && d.ActionType == domain.ActionShellExec {
 				shells++
 			}
+			if d.Source == "operator" && d.Signature != "" {
+				signed.Decisions++
+				if d.Trusted && !slices.Contains(signed.Signers, d.SignedBy) {
+					signed.Signers = append(signed.Signers, d.SignedBy)
+				}
+			}
 			if d.Source == "operator" && d.DecideMS != nil {
 				decideMS = append(decideMS, *d.DecideMS)
 				// ponytail: a fixed bar for "approved without reading"; tune once teams report numbers.
@@ -132,6 +142,10 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			// a sandboxed command was decided before it ran; what it wrote is decided too
 			after = after || (d.Approved && d.ReviewAfter && !d.Sandboxed)
 		}
+	}
+	if signed.Decisions > 0 {
+		slices.Sort(signed.Signers)
+		p.Signed = &signed
 	}
 	if len(decideMS) > 0 {
 		slices.Sort(decideMS)

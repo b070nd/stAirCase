@@ -69,6 +69,8 @@ func init() {
 	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
 	checkFlag(claudeCmd)
 	checkFlag(codexCmd)
+	signFlags(claudeCmd)
+	signFlags(codexCmd)
 	validatorFlag(claudeCmd)
 	validatorFlag(codexCmd)
 	inScopeFlag(claudeCmd)
@@ -134,7 +136,7 @@ func session(harness, name, command string, args []string) error {
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, model: runModel,
+			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, signed: runSignKey != "", requireSigned: runRequireSigned, model: runModel,
 			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
@@ -251,6 +253,7 @@ type sessionSetup struct {
 	harness, name, task, root, base, model string
 	allow, checks                          []string
 	inScope                                bool
+	signed, requireSigned                  bool
 	shell                                  bool
 	budget                                 float64
 	projectID                              int64
@@ -295,6 +298,12 @@ func agreement(s sessionSetup) string {
 	}
 	if len(s.checks) > 0 {
 		fmt.Fprintf(&b, "  checks:      %s (must pass before the agent may finish; results in the certificate)\n", strings.Join(s.checks, "; "))
+	}
+	switch {
+	case s.requireSigned:
+		fmt.Fprintf(&b, "  decisions:   must be signed with an SSH key of a trusted signer\n")
+	case s.signed:
+		fmt.Fprintf(&b, "  decisions:   signed with your SSH key as you decide\n")
 	}
 	model := s.model
 	if model == "" {

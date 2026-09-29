@@ -58,6 +58,7 @@ is always `commit`, so the certificate does not reveal the repository's name.
 | `requestedBy` | string | no | the git identity (e-mail) the run was made under |
 | `ledger` | string | no | hex SHA-256 of the run's ledger file (section 7): the base commit and every approved proposal, in order. With it the commit's tree can be rebuilt |
 | `policy` | string | no | hex SHA-256 of the `policy.json` in effect for the run |
+| `signed` | object | no | decisions people signed with SSH keys: `{"decisions": integer, "signers": [string]}`; `signers` are the principals a trusted `allowed_signers` file lists for the keys that signed. Informative: it does not change the level |
 | `attention` | object | no | how people decided, when any did: `{"humanDecisions": integer, "medianSeconds": number, "quickApprovals": integer}`; a quick approval is a change of 20 or more lines approved in under 5 seconds. Informative: it does not change the level |
 | `checks` | array | no | commands run on the commit after it was made, each `{"command": string, "exitCode": integer, "sandboxed": boolean, "outputSha256": string}`; `exitCode` -1 means it could not run |
 
