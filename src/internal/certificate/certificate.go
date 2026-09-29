@@ -174,3 +174,16 @@ func (s Statement) Accept(commit string, level, minCAL int) error {
 	}
 	return nil
 }
+
+// OpenAny is Open with a set of trusted keys (a team's): the certificate
+// must be signed by one of them.
+func OpenAny(env Envelope, keys []ed25519.PublicKey) (Statement, error) {
+	err := errors.New("no trusted key")
+	for _, k := range keys {
+		var s Statement
+		if s, err = Open(env, k); err == nil {
+			return s, nil
+		}
+	}
+	return Statement{}, err
+}

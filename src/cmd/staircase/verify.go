@@ -9,10 +9,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
-	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/governance"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -50,10 +51,11 @@ pull request runs.`,
 
 func init() {
 	verifyCmd.Flags().IntVar(&verifyMinCAL, "min-cal", 0, "Fail below this change assurance level (1-4)")
-	verifyCmd.Flags().StringVar(&verifyKey, "key", "", "Public signing key to trust (default: the workspace's .signing.pub)")
+	verifyCmd.Flags().StringVar(&verifyKey, "key", "", "Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)")
 	verifyCmd.Flags().StringVar(&verifyFile, "certificate", "", "Read the certificate from this file instead of the git note")
 	verifyCmd.Flags().StringVar(&verifySigners, "allowed-signers", "",
-		"git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4")
+		"git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4 "+
+			"(default: the team's, from staircase governance)")
 	verifyCmd.Flags().BoolVar(&verifyAll, "all", false, "In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)")
 	verifyCmd.Flags().BoolVar(&verifyCheckAnchor, "check-anchor", false,
 		"Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace")
@@ -127,21 +129,11 @@ func verifyCommit(commit string) error {
 		return fmt.Errorf("the change certificate is not valid JSON: %w", err)
 	}
 
-	var pub ed25519.PublicKey
-	if verifyKey != "" {
-		b, err := os.ReadFile(verifyKey)
-		if err != nil {
-			return err
-		}
-		if len(b) != ed25519.PublicKeySize {
-			return fmt.Errorf("%s is not an Ed25519 public key (%d bytes)", verifyKey, len(b))
-		}
-		pub = b
-	} else if pub, err = crypto.LoadSigningPublicKey(viper.GetString("STAIRCASE_DIR")); err != nil {
+	keys, err := trustedKeys(verifyKey)
+	if err != nil {
 		return err
 	}
-
-	s, err := certificate.Open(env, pub)
+	s, err := certificate.OpenAny(env, keys)
 	if err != nil {
 		return fmt.Errorf("commit %.12s: %w", commit, err)
 	}
@@ -150,8 +142,14 @@ func verifyCommit(commit string) error {
 	}
 	p := s.Predicate
 	level, signers := p.CAL, []string(nil)
-	if verifySigners != "" && p.CAL >= 3 { // ADR 0001: CAL 4 = CAL 3 + a second, identified person
-		if signers, err = personSignatures(env, verifySigners, p.RequestedBy); err != nil {
+	signersFile := verifySigners
+	if team := filepath.Join(viper.GetString("STAIRCASE_DIR"), governance.AllowedSigners); signersFile == "" {
+		if _, err := os.Stat(team); err == nil {
+			signersFile = team // the team's reviewers (staircase governance use)
+		}
+	}
+	if signersFile != "" && p.CAL >= 3 { // ADR 0001: CAL 4 = CAL 3 + a second, identified person
+		if signers, err = personSignatures(env, signersFile, p.RequestedBy); err != nil {
 			return err
 		}
 		if len(signers) > 0 {
@@ -231,4 +229,20 @@ func personSignatures(env certificate.Envelope, allowedSigners, requester string
 		_ = os.Remove(f.Name())
 	}
 	return who, nil
+}
+
+// trustedKeys are the keys certificates must be signed by: the file given
+// with --key, else the workspace's own key and its team's (governance).
+func trustedKeys(file string) ([]ed25519.PublicKey, error) {
+	if file == "" {
+		return governance.TrustedKeys(viper.GetString("STAIRCASE_DIR"))
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	if len(b) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("%s is not an Ed25519 public key (%d bytes)", file, len(b))
+	}
+	return []ed25519.PublicKey{b}, nil
 }

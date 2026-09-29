@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Teams: `staircase governance use <repository>` installs a team's `policy.json`,
+  `allowed_signers` and members' keys (`keys/*.pub`) from a governance
+  repository, pinned to an exact commit and checked first; `governance status`
+  shows when the source or the workspace changed since. `verify` and `report`
+  then accept certificates from every member, and `verify` counts the team's
+  reviewers for CAL 4.
+
+- `staircase report [repository...]`: how agent-written commits were governed
+  across one or more repositories: commits by people and with agents, valid
+  certificates by level, agents, and every agent commit with a missing or
+  invalid certificate or a failed check. `--json` for dashboards.
+
 - The change certificate's specification (`docs/spec/certificate-v1.md`) with 11
   conformance test vectors, checked by stAirCase's tests and, in CI, by an
   independent verifier written from the specification alone
