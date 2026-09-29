@@ -74,8 +74,14 @@ read, removed when the run ends; they never appear on a command line.
   manages centrally still apply.
 - The repository's `CLAUDE.md` files are still read. They are instructions for the
   model and cannot run anything themselves.
-- A shell command you approve runs as your user, without a sandbox, as in any run
-  with `--allow-shell-exec` (see the [safety boundary](safety.md)).
+- A shell command you approve (`--allow-shell-exec`) runs in Claude Code's own
+  sandbox, which the session turns on strictly: Claude Code does not start without
+  it and cannot retry a command outside it, commands have no network, and they
+  cannot read the stAirCase workspace or common credential folders. Files a command
+  changes come to you afterwards, as with any command. If your company's managed
+  settings turn the sandbox off or exempt commands, stAirCase counts the commands
+  as unsandboxed and the change reaches CAL 2. On Linux, Claude Code's sandbox needs
+  bubblewrap (see its [sandboxing guide](https://code.claude.com/docs/en/sandboxing)).
 
 ## What is recorded
 

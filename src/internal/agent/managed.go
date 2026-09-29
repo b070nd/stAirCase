@@ -13,7 +13,7 @@ import (
 // from loading. bin is where staircase is installed on those machines.
 func ManagedClaudeSettings(bin string) ([]byte, error) {
 	var s map[string]any
-	if err := json.Unmarshal(hookSettings(HookCommand(bin, "claude-code", "--require")), &s); err != nil {
+	if err := json.Unmarshal(hookSettings(HookCommand(bin, "claude-code", "--require"), nil), &s); err != nil {
 		return nil, err
 	}
 	s["allowManagedHooksOnly"] = true

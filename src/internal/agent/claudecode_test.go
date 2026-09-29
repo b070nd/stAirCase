@@ -2,8 +2,11 @@ package agent_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
@@ -53,6 +57,9 @@ func fakeClaude() int {
 	b, err := os.ReadFile(settings)
 	if err != nil {
 		return 1
+	}
+	if f := os.Getenv("FAKE_CLAUDE_SETTINGS"); f != "" {
+		_ = os.WriteFile(f, b, 0o600)
 	}
 	var s struct {
 		Hooks map[string][]struct {
@@ -127,8 +134,15 @@ func fakeClaude() int {
 			cur, _ := os.ReadFile(path)
 			_ = os.WriteFile(path, []byte(strings.Replace(string(cur), c.Input["old_string"].(string), c.Input["new_string"].(string), 1)), 0o644)
 		}
-		if c.Tool == "Write" || c.Tool == "Edit" {
-			hook("PostToolUse", i, c)
+		if c.Tool == "Bash" { // Claude Code runs it (in its sandbox), then reports it
+			_ = exec.Command("/bin/sh", "-c", c.Input["command"].(string)).Run()
+		}
+		if c.Tool == "Write" || c.Tool == "Edit" || c.Tool == "Bash" {
+			_, out := hook("PostToolUse", i, c)
+			var d struct{ Decision, Reason string }
+			if json.Unmarshal([]byte(out), &d) == nil && d.Decision == "block" {
+				fmt.Fprintf(log, "PostToolUse block %s\n", d.Reason)
+			}
 		}
 	}
 	fmt.Println(`{"type":"result","is_error":false,"result":"done","usage":{"input_tokens":10,"output_tokens":5}}`)
@@ -279,4 +293,82 @@ func TestClaudeCode_cannot_stop_until_checks_pass(t *testing.T) {
 	_, err = r.OnBranch("junk.txt")
 	assert.Error(t, err, "what a check writes stays in its copy")
 	assert.Contains(t, r.Types(), "done_checked")
+}
+
+// TestClaudeCode_commands_run_in_its_sandbox: a session turns on Claude Code's
+// own sandbox, strictly (no unsandboxed retry, no start without it, no
+// network), hiding the workspace and credentials like staircase's sandbox.
+// An approved command then counts as sandboxed: the files it wrote are
+// decided after it ran and the run keeps CAL 3. A command asking to leave
+// the sandbox is refused.
+func TestClaudeCode_commands_run_in_its_sandbox(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "decisions.log")
+	script, err := json.Marshal([]fakeCall{
+		{Tool: "Bash", Input: map[string]any{"command": "echo gen > gen.txt"}},
+		{Tool: "Bash", Input: map[string]any{"command": "curl example.com", "dangerouslyDisableSandbox": true}},
+	})
+	require.NoError(t, err)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.json"), script, 0o600))
+	bin, settingsFile := filepath.Join(dir, "claude"), filepath.Join(dir, "settings.json")
+	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s FAKE_CLAUDE_SETTINGS=%s exec %s \"$@\"\n",
+		filepath.Join(dir, "script.json"), logFile, settingsFile, os.Args[0]), 0o755))
+	r := runtest.Run(t, runtest.Options{
+		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
+		Run:   orchestrator.RunOptions{AllowShellExec: true},
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+			require.NoError(t, crypto.GenerateSigningKey(wsDir))
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
+			}))
+			t.Cleanup(srv.Close)
+			require.NoError(t, s.UpdateProjectWebhook(projectID, srv.URL))
+		},
+	})
+	require.NoError(t, r.Err)
+	log, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	require.Len(t, lines, 2, string(log))
+	assert.True(t, strings.HasPrefix(lines[0], "Bash allow"), lines[0])
+	assert.True(t, strings.HasPrefix(lines[1], "Bash deny"), lines[1])
+	got, err := r.OnBranch("gen.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "gen\n", got)
+	assert.Contains(t, r.Types(), "shell_ran")
+
+	var s struct {
+		Sandbox struct {
+			Enabled, FailIfUnavailable bool
+			AllowUnsandboxedCommands   *bool
+			Filesystem                 struct{ DenyRead, AllowRead []string }
+			Network                    struct {
+				AllowedDomains  []string
+				StrictAllowlist bool
+			}
+		}
+	}
+	b, err := os.ReadFile(settingsFile)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(b, &s))
+	sb := s.Sandbox
+	assert.True(t, sb.Enabled && sb.FailIfUnavailable && sb.Network.StrictAllowlist, string(b))
+	require.NotNil(t, sb.AllowUnsandboxedCommands)
+	assert.False(t, *sb.AllowUnsandboxedCommands)
+	assert.Empty(t, sb.Network.AllowedDomains)
+	assert.Contains(t, sb.Filesystem.DenyRead, "~/.ssh")
+	ws, _ := filepath.EvalSymlinks(r.WsDir)
+	assert.Contains(t, sb.Filesystem.DenyRead, ws, "the workspace")
+	assert.NotEmpty(t, sb.Filesystem.AllowRead, "the worktree inside the workspace")
+
+	b, err = os.ReadFile(filepath.Join(r.WsDir, "audit", "run-1.certificate.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(b), "payload") // signed
+	certs, err := exec.Command("git", "-C", r.Repo, "notes", "--ref=staircase", "show", "staircase/run-1").Output()
+	require.NoError(t, err)
+	var env struct{ Payload string }
+	require.NoError(t, json.Unmarshal(certs, &env))
+	payload, err := base64.StdEncoding.DecodeString(env.Payload)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"cal":3`, "a command in Claude Code's strict sandbox keeps CAL 3")
 }

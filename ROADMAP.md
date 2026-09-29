@@ -157,8 +157,7 @@ Six contracts stay stable and versioned while everything around them may change:
   folders, on macOS and on Linux (bubblewrap, or Landlock where bubblewrap is
   missing or not allowed; tested in CI). Next:
   - the agents' own commands sandboxed too: Claude Code's built-in sandbox turned
-    on in `staircase claude` sessions, so they can reach CAL 3 like Codex's
-    sandboxed commands.
+    on in `staircase claude` sessions, so they can reach CAL 3. *Done.*
 
 ### Phase 4 - v0.6 to v0.9: teams without servers
 

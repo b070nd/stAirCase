@@ -267,6 +267,8 @@ func agreement(s sessionSetup) string {
 		fmt.Fprintf(&b, "  commands:    none (the changes were made elsewhere)\n")
 	case s.harness == "codex":
 		fmt.Fprintf(&b, "  commands:    run in Codex's sandbox (no network); files they change come to you afterwards\n")
+	case s.shell && s.harness == "claude-code":
+		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs in Claude Code's sandbox (no network)\n")
 	case s.shell:
 		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs\n")
 	default:

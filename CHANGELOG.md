@@ -27,6 +27,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase claude` sessions turn on Claude Code's own sandbox, strictly: it must
+  be available, commands cannot retry outside it, they have no network and cannot
+  read the workspace or credential folders. Approved commands then count as
+  sandboxed, the files they change are decided afterwards, and the run can reach
+  CAL 3. A command asking to leave the sandbox is refused.
+
 - A definition of done: with `--check`, a Claude Code or Codex session cannot end
   while a check fails. Its Stop hook runs the checks on a copy of the approved
   changes and sends the failures back to the agent; after 3 refused stops the

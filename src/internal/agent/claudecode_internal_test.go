@@ -24,7 +24,7 @@ func TestHookCommand_is_stable_and_holds_no_secret(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "hook claude-code --governed ", string(out))
 
-	settings := string(hookSettings(cmd))
+	settings := string(hookSettings(cmd, nil))
 	assert.Contains(t, settings, "hook claude-code --governed")
 	for _, secret := range []string{"curl", "Bearer", "127.0.0.1"} {
 		assert.NotContains(t, settings, secret)
