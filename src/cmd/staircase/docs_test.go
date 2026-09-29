@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -179,6 +180,9 @@ func TestNoHiddenUnicode(t *testing.T) {
 		}
 		if loc := hidden.FindIndex(b); loc != nil {
 			t.Errorf("%s: hidden Unicode at byte %d", f, loc[0])
+		}
+		if i := bytes.Index(b, []byte("\ufffd")); i >= 0 { // text damaged by an encoding mix-up
+			t.Errorf("%s: replacement character (corrupted text) at byte %d", f, i)
 		}
 	}
 }

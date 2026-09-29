@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase policy test <file>`: replay the proposals of past runs against a
+  policy file and see what it would have decided differently, above all
+  changes a person rejected that it would approve.
+- `make check` also fails on replacement characters (text damaged by an
+  encoding mix-up); one such line in a code comment is fixed.
+
+### Added
+
 - Guards: a file change that adds hidden Unicode (Trojan Source), changes
   dependencies (go.mod, package.json, lock files and others) or writes what
   looks like a secret goes to a person even when a policy rule or the
