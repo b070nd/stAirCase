@@ -134,7 +134,9 @@ Six contracts stay stable and versioned while everything around them may change:
   its evidence, and it is the ground for runs that can pause and resume (phase 4).
 - **Approve the task, not every step:** building on the up-front agreement from phase
   2, changes inside the approved scope can be approved on evidence; anything outside
-  comes to you. Some approvals are sampled for your review.
+  comes to you. Some approvals are sampled for your review. *Done:
+  `--approve-in-scope`, with a checkpoint every fifth change and a final review.
+  Evidence-based approval (checks, reviewer models) inside the scope comes next.*
 - **Gates as evidence:** each checkpoint must pass its gates - tests run in a sandbox
   on the exact approved code, two independent reviewer models that must agree, and a
   person - and every gate's result goes into the change certificate. *Done:

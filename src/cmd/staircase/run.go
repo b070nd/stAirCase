@@ -205,6 +205,7 @@ func runCase(caseID int64) error {
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
 		Sandbox:        runSandbox,
+		ApproveInScope: sessionInScope,
 		Checks:         runChecks,
 		AckDrift:       runAckDrift,
 		Validator:      validator,

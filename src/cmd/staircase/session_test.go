@@ -157,6 +157,18 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 	assert.Contains(t, claude, "the whole repository")
 	assert.Contains(t, claude, "not allowed")
 	assert.NotContains(t, claude, "checks:")
+	inScope := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc",
+		allow: []string{"src/**"}, inScope: true})
+	assert.Contains(t, inScope, "approved as part of this task")
+	assert.Contains(t, inScope, "whole change at the end")
+}
+
+// TestSession_approve_in_scope_needs_a_scope: approving the task instead of
+// every step needs the paths it may change.
+func TestSession_approve_in_scope_needs_a_scope(t *testing.T) {
+	sessionInScope, sessionAllow = true, nil
+	t.Cleanup(func() { sessionInScope = false })
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow")
 }
 
 // TestClaudeSession_needs_agreement: without a terminal to ask, a session

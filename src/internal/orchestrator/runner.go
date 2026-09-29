@@ -123,6 +123,10 @@ type RunOptions struct {
 	// Sandbox is where approved commands run: "auto" (default: in the
 	// sandbox when this machine has one), "required" or "off".
 	Sandbox string
+	// ApproveInScope approves changes inside the agreed task's scope as part
+	// of the task (source "task"), with a checkpoint every few changes and a
+	// person's final review of the whole change. It needs Agreed.
+	ApproveInScope bool
 	// Checks are commands run on the commit the run made (--check), such as
 	// its tests; their results are evidence in the change certificate.
 	Checks []string
@@ -428,6 +432,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return err
 	}
 	limits = limits.Tighter(plan.Limits{MaxFilesChanged: maxFiles})
+	if opts.ApproveInScope {
+		limits = limits.Tighter(plan.Limits{CheckpointEvery: taskCheckpointEvery}) // spot checks inside the task
+	}
 	sup = policy.NewSupervisor(scope, limits)
 	var runDeadline <-chan time.Time
 	if limits.MaxRunSecs > 0 {
@@ -532,7 +539,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("mark case running: %w", err)
 	}
 
-	dec := &deciders{approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+	dec := &deciders{task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
@@ -665,7 +672,7 @@ runLoop:
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
-	if finalStatus == persistence.RunStatusSuccess && val != nil && val.unreviewed {
+	if finalStatus == persistence.RunStatusSuccess && (val != nil && val.unreviewed || dec.taskApproved) {
 		approved, err := dec.finalReview(baseSHA, delivered())
 		if err != nil {
 			return err

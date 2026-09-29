@@ -32,8 +32,11 @@ screen does not show line by line.
    keys, cloud and API keys, tokens). Only what the change adds counts. The reason
    is shown as `CHECK:` and recorded with the decision.
 4. **Your policy** rules (`policy.json`) can approve or reject it automatically.
-5. **A validator model**, if you turned one on, can decide in-scope file changes.
-6. **A person** decides everything else.
+5. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
+   that are not sensitive (see [below](#approving-the-task-not-every-step)).
+6. **A validator model** or a panel of them, if you turned one on, can decide
+   in-scope file changes.
+7. **A person** decides everything else.
 
 Shell commands always go to a person.
 
@@ -180,6 +183,26 @@ Protect the file against silent edits by signing it:
 staircase policy sign     # writes policy.json.sig; runs then refuse a changed file
 staircase policy verify
 ```
+
+## Approving the task, not every step
+
+```bash
+staircase claude "add a /health endpoint" --allow "src/**" --approve-in-scope
+```
+
+When you agree to a task with its scope (`--allow`), you can approve the task
+itself instead of each change. Changes inside the scope are then approved as part
+of the agreed task, and recorded as decided by `task`. You still see:
+
+- one in every five changes, as a spot check;
+- anything outside the scope, and anything a guard flags (dependencies, hidden
+  Unicode, secrets) or a limit stops;
+- sensitive files (CI, build, dependency, `.env` and shell files);
+- shell commands;
+- **the whole change once, at the end**, before anything is committed. Rejecting it
+  commits nothing.
+
+Your policy rules still come first. This works with `claude`, `codex` and `review`.
 
 ## Letting a model review changes: the validator
 

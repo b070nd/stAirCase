@@ -27,6 +27,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Approve the task, not every step: `--approve-in-scope` (with `--allow`) on
+  `claude`, `codex` and `review` approves changes inside the agreed scope as part
+  of the task. One in five, anything outside the scope, flagged or sensitive
+  changes and commands still come to you, and you approve the whole change once
+  before it is committed.
+
 - Two reviewer models that must agree: `--validator` can be repeated, on `run`,
   `claude`, `codex` and `review`. A change is decided only when every model
   agrees; when they disagree, a person decides and sees each model's reason. The
