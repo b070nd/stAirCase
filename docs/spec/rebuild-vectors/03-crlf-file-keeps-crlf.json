@@ -1,0 +1,45 @@
+{
+  "description": "The blocks' lines take the file's own CRLF line ends.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "crlf.txt",
+        "search_block": "y\n",
+        "replace_block": "Y\nZ\n"
+      }
+    ]
+  ],
+  "tree": "d9956f6d00776e5e6ad5cb3e1035868e59b9ce87"
+}

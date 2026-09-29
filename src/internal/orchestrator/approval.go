@@ -316,35 +316,7 @@ func (a *approvals) commit(branch, msg string) (string, error) {
 		return strings.TrimSpace(string(out)), nil
 	}
 	base := a.base.Hash.String()
-	if _, err := git(nil, "read-tree", base); err != nil {
-		return "", err
-	}
-	paths := make([]string, 0, len(a.files))
-	for p := range a.files {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-	for _, p := range paths {
-		f := a.files[p]
-		if f.deleted {
-			if _, err := git(nil, "update-index", "--force-remove", "--", p); err != nil {
-				return "", err
-			}
-			continue
-		}
-		blob, err := git(f.content, "hash-object", "-w", "--stdin")
-		if err != nil {
-			return "", err
-		}
-		mode := "100644"
-		if f.mode&0o111 != 0 {
-			mode = "100755"
-		}
-		if _, err := git(nil, "update-index", "--add", "--cacheinfo", mode, blob, p); err != nil {
-			return "", err
-		}
-	}
-	tree, err := git(nil, "write-tree")
+	tree, err := applyFiles(git, base, a.files)
 	if err != nil || tree == a.base.TreeHash.String() {
 		return "", err
 	}

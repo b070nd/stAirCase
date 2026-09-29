@@ -87,6 +87,24 @@ git fetch origin refs/notes/staircase:refs/notes/staircase
 staircase verify <commit> --key signing.pub
 ```
 
+## Rebuild a commit from its approvals
+
+```bash
+staircase rebuild staircase/run-7
+```
+
+`verify` shows who signed what was decided. `rebuild` shows that what was decided is
+what is in the commit, byte for byte: it takes the run's ledger (the base commit and
+every approved proposal, in order), replays it on the base commit with the same
+rules a run uses, and the git tree it produces must be identical to the commit's
+tree. A commit that holds anything nobody approved fails, even when its certificate
+is validly signed.
+
+The ledger holds the approved content, so it stays in your workspace
+(`audit/run-7.ledger.json`, readable only by you); the certificate carries its
+SHA-256. To let a reviewer rebuild, give them the ledger file, and they run
+`staircase rebuild <commit> --ledger run-7.ledger.json`. Runs from before this feature have no ledger.
+
 ## Review attention
 
 A signed approval proves someone clicked approve, not that they read the change. So

@@ -47,6 +47,7 @@ jobs:
           python3 -m venv /tmp/spec
           /tmp/spec/bin/pip install -q cryptography==50.0.1
           /tmp/spec/bin/python docs/spec/verify_vectors.py
+          python3 docs/spec/rebuild_vectors.py
 
       - name: Vulnerability scan
         if: runner.os == 'Linux'

@@ -34,7 +34,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | Page | What you find |
 |---|---|
 | [CLI reference](cli.md) | every command and flag (generated from the program) |
-| [Change certificate specification](spec/certificate-v1.md) | the certificate format and how to verify it, with [test vectors](spec/vectors) for other implementations |
+| [Change certificate specification](spec/certificate-v1.md) | the certificate format, how to verify it and how to rebuild a commit from its ledger, with [test vectors](spec/vectors) for other implementations |
 | [Security standards](standards.md) | how stAirCase relates to SLSA's source track, the OWASP Top 10 for LLM applications and NIST's SSDF |
 | [Compatibility](compatibility.md) | the six interfaces other tools build on, and what you can rely on |
 | [Security](../SECURITY.md) | the security model, known limits, reporting a vulnerability |

@@ -294,6 +294,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	worktree := "" // the run's checkout: the agent's project root, never the developer's
 	var wgr *GitRepo
 	var appr *approvals // trusted record of what the approvals mean, byte for byte
+	ledger := Ledger{Base: baseSHA}
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
 	var display *monitor.Display
@@ -647,6 +648,7 @@ runLoop:
 			d := decision{resp: rl.resp}
 			if rl.resp.Approved && rl.next != nil {
 				appr.record(rl.next)
+				ledger.add(dec.total, rl.source, req.ProposedEdits)
 				d.files = rl.next
 			} else if req.ReviewAfter && appr != nil { // rejected or refused: undo what the command did
 				paths := make([]string, len(req.ProposedEdits))
@@ -721,8 +723,14 @@ runLoop:
 			commitHash = hash
 			// The commit is made; a certificate that cannot be written is reported
 			// and recorded, not a reason to call the run failed.
-			checks := r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)
-			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, checks); err != nil {
+			ev := evidence{checks: r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)}
+			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
+				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
+			}
+			if b, rerr := os.ReadFile(filepath.Join(r.wsDir, "policy.json")); rerr == nil {
+				ev.policy = sha256Hex(b)
+			}
+			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
 			}

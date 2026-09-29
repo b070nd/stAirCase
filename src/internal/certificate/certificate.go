@@ -53,6 +53,11 @@ type Predicate struct {
 	RequestedBy string `json:"requestedBy,omitempty"`
 	// Checks ran on a clean checkout of the commit after it was made.
 	Checks []Check `json:"checks,omitempty"`
+	// Ledger is the SHA-256 of the run's ledger (the base commit and every
+	// approved proposal, in order): with it the commit's tree can be rebuilt.
+	Ledger string `json:"ledger,omitempty"`
+	// Policy is the SHA-256 of the policy.json in effect for the run.
+	Policy string `json:"policy,omitempty"`
 	// Attention is how people decided, when any did.
 	Attention *Attention `json:"attention,omitempty"`
 }

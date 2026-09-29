@@ -183,8 +183,9 @@ Six contracts stay stable and versioned while everything around them may change:
 ### Phase 5 - v1.0: a standard others can implement
 
 - A written specification of the certificate and of how a commit is rebuilt, with test
-  vectors. *The certificate is specified ([spec](docs/spec/certificate-v1.md)), with
-  11 vectors and an independent verifier; rebuilding a commit needs the v2 ledger.*
+  vectors. *Done: the certificate and the rebuild are specified
+  ([spec](docs/spec/certificate-v1.md)), with 11 + 14 vectors and independent
+  implementations; `staircase rebuild` reproduces a commit from its ledger.*
 - The certificate format proposed to in-toto, and its mapping to SLSA's source track
   published, together with a mapping to the OWASP Top 10 for LLM applications and
   NIST's secure development profile for generative AI (SP 800-218A). *Mappings

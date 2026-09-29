@@ -632,6 +632,35 @@ Flags:
       --remote string         Git remote name (default "origin")
 ```
 
+## staircase rebuild
+
+Check that a certified commit is exactly what its approved proposals produce
+
+```
+staircase rebuild <commit> [flags]
+```
+
+Rebuilds the commit's files from the run's ledger and compares them with the
+commit. The certificate (signed by a trusted key, about exactly this commit) names
+the ledger's SHA-256; the ledger lists the base commit and, in order, every
+approved proposal. stAirCase replays them on the base commit, with the same rules
+a run uses, and the git tree that results must be identical to the commit's tree.
+
+This is stronger than staircase verify: verify shows who signed what was decided;
+rebuild shows that what was decided is what is in the commit, byte for byte.
+
+The ledger holds the approved content, so it stays with the author
+(<workspace>/audit/run-N.ledger.json); a reviewer needs it, the certificate and
+the repository. Pass another location with --ledger.
+
+Flags:
+
+```
+      --certificate string   Read the certificate from this file instead of the git note
+      --key string           Public signing key to trust (default: the workspace's and its team's)
+      --ledger string        The run's ledger file (default: <workspace>/audit/run-N.ledger.json)
+```
+
 ## staircase replay
 
 Print the approval decisions of a finished run, after verifying its audit chain

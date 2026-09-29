@@ -68,11 +68,17 @@ const (
 	quickMS    = 5000
 )
 
+// evidence is what a run adds to its certificate besides its decisions.
+type evidence struct {
+	checks         []certificate.Check
+	ledger, policy string // SHA-256 digests
+}
+
 // certify signs a change certificate about commit with the workspace key,
 // writes it to audit/run-<id>.certificate.json and attaches it to the commit
 // as a git note (refs/notes/staircase). Without a signing key it only says
 // so: the certificate is evidence, not a gate.
-func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *plan.Plan, repo *GitRepo, checks []certificate.Check) error {
+func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *plan.Plan, repo *GitRepo, ev evidence) error {
 	priv, err := crypto.LoadSigningKey(r.wsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  No change certificate: %v\n", err)
@@ -83,7 +89,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		return err
 	}
 	p := certificate.Predicate{Run: runID, BaseCommit: baseSHA, Agents: assistants(pl), ChainHead: chainHead,
-		Decisions: map[string]int{}, CAL: 3, Checks: checks}
+		Decisions: map[string]int{}, CAL: 3, Checks: ev.checks, Ledger: ev.ledger, Policy: ev.policy}
 	if pl != nil {
 		p.PlanDigest, p.Blueprint = pl.Digest, pl.BlueprintHash
 	}

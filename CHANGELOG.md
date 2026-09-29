@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **`staircase rebuild <commit>`:** reproducible, not just signed. Every run keeps a
+  ledger (the base commit and every approved proposal, in order); the certificate
+  carries its SHA-256 (and the digest of the policy in effect). `rebuild` replays it
+  on the base commit with the same rules a run uses, and the git tree must be
+  identical to the commit's, so a commit that holds anything nobody approved fails
+  even with a valid signature. The specification describes the replay, with 14
+  conformance vectors and an independent Python implementation run in CI.
+
 ## [0.5.0] - 2026-09-29
 
 Review where you already work. Approve changes in your browser, on one page for

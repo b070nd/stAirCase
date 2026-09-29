@@ -56,6 +56,8 @@ is always `commit`, so the certificate does not reveal the repository's name.
 | `cal` | integer 1 to 3 | yes | the change assurance level the run reached (level 4 is only ever established by a verifier, section 5) |
 | `notes` | array of strings | no | why the level is not higher |
 | `requestedBy` | string | no | the git identity (e-mail) the run was made under |
+| `ledger` | string | no | hex SHA-256 of the run's ledger file (section 7): the base commit and every approved proposal, in order. With it the commit's tree can be rebuilt |
+| `policy` | string | no | hex SHA-256 of the `policy.json` in effect for the run |
 | `attention` | object | no | how people decided, when any did: `{"humanDecisions": integer, "medianSeconds": number, "quickApprovals": integer}`; a quick approval is a change of 20 or more lines approved in under 5 seconds. Informative: it does not change the level |
 | `checks` | array | no | commands run on the commit after it was made, each `{"command": string, "exitCode": integer, "sandboxed": boolean, "outputSha256": string}`; `exitCode` -1 means it could not run |
 
@@ -112,7 +114,48 @@ that is accepted. A verifier MAY require a certificate on every commit.
 - **Transparency log.** The envelope MAY be anchored in a Rekor log. Only the
   envelope's digest is logged.
 
-## 7. Conformance vectors
+## 7. Rebuilding a commit
+
+A certificate with a `ledger` lets anyone who has the ledger file check that the
+commit holds exactly what was approved. The ledger is JSON (kept by the author; it
+holds the approved content):
+
+```
+{"version": 1, "base": "<commit id>",
+ "proposals": [{"seq": 1, "source": "operator",
+                "edits": [{"file": "...", "search_block": "...", "replace_block": "..."}]}]}
+```
+
+**Checking.** A verifier MUST: (1) verify the certificate as in section 5; (2) refuse
+unless the SHA-256 of the ledger file's bytes equals `predicate.ledger`; (3) refuse
+unless `base` equals the certificate's `baseCommit` and the commit's parent; (4)
+replay the proposals as below on the tree of `base`; (5) accept only if the resulting
+git tree id equals the commit's tree id.
+
+**Replaying.** Keep a state of files, path to (bytes, mode), starting from the base
+tree (regular files only). For each proposal in order, apply its edits in order to a
+copy that sees the earlier edits of the same proposal; if any edit is refused, the
+ledger is refused. Then merge the copy into the state.
+
+For an edit, clean `file` first: refuse if it is empty or starts with `/`; take its
+normalized form (as `posixpath.normpath`); refuse if that is `.`, `..` or starts with
+`../`; refuse if any component equals `.git` ignoring case. Then, by `search_block`:
+
+- `(new file)`: the file becomes the UTF-8 bytes of `replace_block` (at most 204800
+  bytes), keeping the mode of the file it overwrites, else `100644`.
+- `(delete file)`: the file must exist, and is removed.
+- otherwise: the file must exist. Read both blocks with `\r\n` as `\n`. If the file
+  has no carriage return, use it and the blocks as they are. If every line end in
+  the file is `\r\n` (and there is at least one), turn `\n` in both blocks into
+  `\r\n`. Otherwise (mixed line ends) read the file with `\r\n` and `\r` as `\n`,
+  and save it with `\n` throughout. Refuse if the search text is not in the file.
+  Replace its first occurrence.
+
+The tree is built from the state: an entry is mode `100755` if the file is
+executable and `100644` otherwise, blobs and trees are hashed as git does (SHA-1
+object ids), directories that end up empty do not exist.
+
+## 8. Conformance vectors
 
 [`vectors/`](vectors) holds test cases, one JSON file each:
 
@@ -128,12 +171,15 @@ that is accepted. A verifier MAY require a certificate on every commit.
 | `error` | for a refused case, a phrase stAirCase's reason contains (informative) |
 
 An implementation conforms when it decides every vector as `valid` says, at level
-`cal`. The vectors do not cover person signatures (step 5), which need `ssh-keygen`.
+`cal`. [`rebuild-vectors/`](rebuild-vectors) does the same for section 7: each file
+has a base tree, approved proposals and either the git tree they produce or a phrase
+a refusal contains; [`rebuild_vectors.py`](rebuild_vectors.py) is an independent
+implementation (standard library only) that reproduces all of them. The vectors do not cover person signatures (step 5), which need `ssh-keygen`.
 stAirCase checks itself against these files in its tests, and
 [`verify_vectors.py`](verify_vectors.py) is an independent verifier written from this
 document alone that decides them the same way.
 
-## 8. Versions
+## 9. Versions
 
 This is version 1. A change to the meaning of a field, or a new required field, gets
 a new predicate type ending in `#v2`, and verifiers keep accepting v1.
