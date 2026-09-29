@@ -39,6 +39,7 @@ type AgentEnv struct {
 	Worktree   string // the run's git worktree: the agent's project root
 	AllowShell bool   // shell_exec may be proposed (--allow-shell-exec)
 	Sandbox    string // approved commands: "auto", "required" or "off" (--sandbox)
+	Workspace  string // the stAirCase workspace: keys and secrets, hidden from commands
 
 	proposals chan<- proposal
 	usage     chan<- Usage

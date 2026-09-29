@@ -111,7 +111,7 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				if ap := env.ProposeShell(ctx, agent, a.Reasoning, orDefault(a.WorkingDir, "."), a.Command); !ap.Approved {
 					return ap.Refusal()
 				}
-				out, sandboxed, err := runShell(ctx, root, a.WorkingDir, a.Command, env.Sandbox)
+				out, sandboxed, err := runShell(ctx, root, a.WorkingDir, a.Command, env.Sandbox, env.Workspace)
 				if err != nil {
 					return "error: " + err.Error()
 				}
@@ -212,14 +212,14 @@ func listDir(root, path string) string {
 // environment allowlist, returning the exit code and the tails of its output.
 // It reports whether the command ran in the sandbox, or an error when it
 // did not run at all.
-func runShell(ctx context.Context, root, dir, command, mode string) (string, bool, error) {
+func runShell(ctx context.Context, root, dir, command, mode, workspace string) (string, bool, error) {
 	cwd, err := inside(root, orDefault(dir, "."))
 	if err != nil {
 		return "", false, errors.New("working_dir escapes project root")
 	}
 	ctx, cancel := context.WithTimeout(ctx, shellTimeout)
 	defer cancel()
-	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, root, cwd, command, mode)
+	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, root, cwd, command, mode, workspace)
 	if err != nil {
 		return "", false, fmt.Errorf("%w (--sandbox required)", err)
 	}

@@ -28,7 +28,9 @@ stAirCase is **pre-1.0**.
 - **It is not a sandbox for the agents.** stAirCase and its agents run as **your
   user**. Approved shell commands of built-in agents run in an OS sandbox
   (`--sandbox auto`, the default): they can write only in the worktree and their
-  own temporary folder, and have no network, but they can read anything you can.
+  own temporary folder, have no network, and cannot read the stAirCase workspace
+  or common credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh` and others).
+  They can read the rest of your files, and what they print goes to the model.
   Where no sandbox tool is found (macOS `sandbox-exec`, Linux `bwrap`), `auto`
   runs them as you and says so, and `--sandbox required` refuses them. Files a
   command changes in the worktree come to you afterwards: approved, they are kept;
@@ -37,6 +39,10 @@ stAirCase is **pre-1.0**.
 - **It does not judge quality.** A successful run means "exactly what was approved
   was committed", not "the story is done". That is your decision:
   `staircase story accept`.
+- **It does not see inside the agent.** A model whose context was manipulated (a
+  prompt injection in a file, an issue or a web page it read) keeps proposing
+  changes that may look harmless one by one. stAirCase decides each change and flags
+  some risky ones ([guards](approvals.md#who-decides-in-order)), but it cannot tell why the agent wants it.
 - **It does not understand meaning.** [Drift supervision](drift.md) checks paths,
   file counts and time. An in-scope change can still do something no story asked
   for. The [validator](approvals.md#letting-a-model-review-changes-the-validator)
