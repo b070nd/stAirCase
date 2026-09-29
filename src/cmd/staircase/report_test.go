@@ -56,7 +56,7 @@ func TestReport_counts_every_kind_of_commit(t *testing.T) {
 	moved := commit("moved certificate" + agent)
 	certify(c3, moved, certificate.Predicate{CAL: 3})
 
-	r, err := report(repo, "", pub)
+	r, err := report(repo, "", []ed25519.PublicKey{pub})
 	require.NoError(t, err)
 	assert.Equal(t, 6, r.Commits)
 	assert.Equal(t, 1, r.Human)

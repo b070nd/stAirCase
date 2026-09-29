@@ -169,7 +169,8 @@ Six contracts stay stable and versioned while everything around them may change:
   are signed with a passkey.
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
 - **Git as the control plane:**
-  - rules, blueprints and trusted keys come from a governance repository;
+  - rules, blueprints and trusted keys come from a governance repository; *done for
+    rules and keys: `staircase governance`;*
   - evidence is kept under git refs;
   - a report spans many repositories. *Done: `staircase report`.*
 

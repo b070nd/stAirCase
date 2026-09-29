@@ -11,9 +11,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
-	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -67,25 +65,13 @@ func reportHandler(_ *cobra.Command, args []string) error {
 	if len(repos) == 0 {
 		repos = []string{"."}
 	}
-	var pub ed25519.PublicKey
-	if reportKey != "" {
-		b, err := os.ReadFile(reportKey)
-		if err != nil {
-			return err
-		}
-		if len(b) != ed25519.PublicKeySize {
-			return fmt.Errorf("%s is not an Ed25519 public key (%d bytes)", reportKey, len(b))
-		}
-		pub = b
-	} else {
-		var err error
-		if pub, err = crypto.LoadSigningPublicKey(viper.GetString("STAIRCASE_DIR")); err != nil {
-			return err
-		}
+	keys, err := trustedKeys(reportKey)
+	if err != nil {
+		return err
 	}
 	var all []repoReport
 	for _, repo := range repos {
-		r, err := report(repo, reportSince, pub)
+		r, err := report(repo, reportSince, keys)
 		if err != nil {
 			return fmt.Errorf("%s: %w", repo, err)
 		}
@@ -103,7 +89,7 @@ func reportHandler(_ *cobra.Command, args []string) error {
 }
 
 // report looks at the commits of repo's current branch since since.
-func report(repo, since string, pub ed25519.PublicKey) (repoReport, error) {
+func report(repo, since string, keys []ed25519.PublicKey) (repoReport, error) {
 	r := repoReport{Repository: repo, Certified: map[int]int{}, Agents: map[string]int{}}
 	git := func(args ...string) ([]byte, error) {
 		return exec.Command("git", append([]string{"-C", repo}, args...)...).Output()
@@ -153,7 +139,7 @@ func report(repo, since string, pub ed25519.PublicKey) (repoReport, error) {
 			fail("the change certificate is not valid JSON")
 			continue
 		}
-		s, err := certificate.Open(env, pub)
+		s, err := certificate.OpenAny(env, keys)
 		if err == nil {
 			err = s.Accept(commit, s.Predicate.CAL, 0)
 		}

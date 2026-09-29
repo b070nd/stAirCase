@@ -344,6 +344,29 @@ content and the workspace public key (.signing.pub).
 Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
 gates.json has not been modified since it was last signed.
 
+## staircase governance status
+
+Show the pinned governance commit, and whether the source or the workspace changed since
+
+```
+staircase governance status
+```
+
+## staircase governance use
+
+Install the rules and keys of a governance repository, pinned to its current commit
+
+```
+staircase governance use <repository> [flags]
+```
+
+Flags:
+
+```
+      --ref string   Branch, tag or commit of the governance repository (default "main")
+  -y, --yes          Replace without asking (needed without a terminal)
+```
+
 ## staircase hook
 
 Pass an agent's hook call to the run that governs it (used by agent adapters)
@@ -930,10 +953,10 @@ Flags:
 
 ```
       --all                      In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)
-      --allowed-signers string   git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4
+      --allowed-signers string   git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4 (default: the team's, from staircase governance)
       --certificate string       Read the certificate from this file instead of the git note
       --check-anchor             Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
-      --key string               Public signing key to trust (default: the workspace's .signing.pub)
+      --key string               Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)
       --min-cal int              Fail below this change assurance level (1-4)
 ```
 

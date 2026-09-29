@@ -15,8 +15,13 @@ import (
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/audit"
+	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/governance"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"os/exec"
 )
 
 // TestVerify_checks_a_commits_certificate: after a session, anyone with the
@@ -135,4 +140,41 @@ func TestVerify_range(t *testing.T) {
 
 	git("commit", "-q", "--allow-empty", "-m", "sneaky\n\nAssisted-by: Claude Code")
 	assert.ErrorContains(t, verifyHandler(nil, []string{"main..HEAD"}), "says an agent helped")
+}
+
+// TestVerify_trusts_the_team_keys: without --key, verify accepts a
+// certificate signed by any key the governance repository lists, and not
+// one signed by a key outside the team.
+func TestVerify_trusts_the_team_keys(t *testing.T) {
+	repo := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "T")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "f.txt"), []byte("x"), 0o644))
+	git("add", "-A")
+	git("commit", "-q", "-m", "teammate's run\n\nAssisted-by: Claude Code")
+	commit := git("rev-parse", "HEAD")
+	teammate, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	env, err := certificate.Sign(certificate.New(commit, certificate.Predicate{CAL: 3}), priv)
+	require.NoError(t, err)
+	b, _ := json.Marshal(env)
+	git("notes", "--ref=staircase", "add", "-m", string(b), commit)
+
+	ws := t.TempDir()
+	require.NoError(t, crypto.GenerateSigningKey(ws))
+	viper.Set("STAIRCASE_DIR", ws)
+	t.Cleanup(func() { viper.Set("STAIRCASE_DIR", "") })
+	t.Chdir(repo)
+	verifyMinCAL, verifyKey, verifyFile, verifySigners = 0, "", "", ""
+	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "signature", "the teammate is not trusted yet")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(ws, governance.TrustedKeysDir), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(ws, governance.TrustedKeysDir, "teammate.pub"), teammate, 0o644))
+	assert.NoError(t, verifyHandler(nil, []string{commit}), "the team's key is trusted")
 }
