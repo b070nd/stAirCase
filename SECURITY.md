@@ -77,11 +77,15 @@ sandbox. See the [safety boundary](docs/safety.md).
 
 These are documented, not hidden:
 
-- Approved shell commands (`--allow-shell-exec`) run as the orchestrator's OS user
-  **without** an OS-level sandbox: they can read and change anything that user
-  can. Files they change inside the worktree fail the run unless proposed as
-  edits, but effects elsewhere are not contained. Use a restricted container or
-  VM for untrusted workloads.
+- Approved shell commands (`--allow-shell-exec`, built-in agents) run in an OS
+  sandbox by default (`--sandbox auto`): macOS `sandbox-exec`, Linux `bwrap`
+  (bubblewrap). In it a command can write only in the worktree and its own
+  temporary folder, and has no network. It can still **read** anything the user
+  can. Without a sandbox tool, `auto` runs the command as the user and says so;
+  `--sandbox required` refuses it instead. The Linux path is not yet tested on a
+  real machine. Files a command changes in the worktree are decided after it
+  ran: approved, they are kept; rejected, they are reverted. Use a restricted
+  container or VM for untrusted workloads.
 - Each run works in its own git worktree on its own branch, so the developer's
   checkout is never touched - but a worktree is not a permission boundary for
   shell commands.

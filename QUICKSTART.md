@@ -34,8 +34,8 @@ cd stAirCase
 You will see an agent propose three changes (create, edit and delete a file). Each
 one stops and waits for you: press Enter to approve. At the end the demo checks that
 the new branch holds exactly the approved changes, that your checkout did not change,
-and that the signed audit chain verifies. Two more modes show the safety checks
-failing closed: `--tamper` and `--drift`. More in [the demo guide](demo/README.md).
+and that the signed audit chain verifies. Two more modes show the safety checks:
+`--tamper` and `--drift`. More in [the demo guide](demo/README.md).
 
 ## 3. The fastest way: Claude Code
 

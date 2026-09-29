@@ -5,7 +5,6 @@
 //	demotool freeport                     print a free local TCP port
 //	demotool first-yield                  print the first pending yield id (approval API JSON on stdin)
 //	demotool show-yield                   print a pending yield (approval API JSON on stdin)
-//	demotool show-mismatch <checkpoint>   print why finalize refused to commit (audit export)
 package main
 
 import (
@@ -28,7 +27,7 @@ const (
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: demotool serve|freeport|first-yield|show-yield|show-mismatch")
+		fatal("usage: demotool serve|freeport|first-yield|show-yield")
 	}
 	var err error
 	switch os.Args[1] {
@@ -47,8 +46,6 @@ func main() {
 		err = firstYield(os.Stdin)
 	case "show-yield":
 		err = showYield(os.Stdin)
-	case "show-mismatch":
-		err = showMismatch(os.Args[2])
 	default:
 		fatal("unknown command " + os.Args[1])
 	}
@@ -161,6 +158,7 @@ func showYield(in io.Reader) error {
 			AgentName     string `json:"agent_name"`
 			ActionType    string `json:"action_type"`
 			Reasoning     string `json:"reasoning_trace"`
+			ReviewAfter   bool   `json:"review_after"`
 			ProposedEdits []struct {
 				File         string `json:"file"`
 				SearchBlock  string `json:"search_block"`
@@ -173,6 +171,9 @@ func showYield(in io.Reader) error {
 	}
 	r := y.Request
 	fmt.Printf("  agent:      %s\n  action:     %s\n  reasoning:  %s\n", r.AgentName, r.ActionType, r.Reasoning)
+	if r.ReviewAfter {
+		fmt.Println("  already changed by the approved command: approve keeps it, reject puts it back")
+	}
 	for _, e := range r.ProposedEdits {
 		if r.ActionType == "shell_exec" {
 			fmt.Printf("  command:    %s\n", e.ReplaceBlock)
@@ -181,31 +182,6 @@ func showYield(in io.Reader) error {
 		fmt.Printf("  file:       %s %s\n", e.File, e.SearchBlock)
 		for _, line := range strings.Split(strings.TrimRight(e.ReplaceBlock, "\n"), "\n") {
 			fmt.Printf("    │ %s\n", line)
-		}
-	}
-	return nil
-}
-
-func showMismatch(checkpoint string) error {
-	b, err := os.ReadFile(checkpoint)
-	if err != nil {
-		return err
-	}
-	var cp struct {
-		Entries []struct {
-			EventType string `json:"event_type"`
-			Payload   string `json:"payload"`
-		} `json:"entries"`
-	}
-	if err := json.Unmarshal(b, &cp); err != nil {
-		return err
-	}
-	for _, e := range cp.Entries {
-		switch e.EventType {
-		case "approval_content_mismatch", "unapproved_worktree_change", "run_branch_moved":
-			var p struct{ File, Detail string }
-			_ = json.Unmarshal([]byte(e.Payload), &p)
-			fmt.Printf("    event: %s  file=%s\n    %s\n", e.EventType, p.File, p.Detail)
 		}
 	}
 	return nil

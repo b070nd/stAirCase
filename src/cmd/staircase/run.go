@@ -36,6 +36,7 @@ var (
 	runRecordLLM      string
 	runReplayLLM      string
 	runAllowShellExec bool
+	runSandbox        string
 	runAgent          string
 	runModel          string
 	runAgreedBy       string // who agreed to the task before a session started
@@ -83,6 +84,9 @@ func init() {
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
+	runCmd.Flags().StringVar(&runSandbox, "sandbox", agent.SandboxAuto,
+		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap), "+
+			"required (refuse commands that cannot be sandboxed) or off")
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
 	runCmd.Flags().StringVar(&runValidator, "validator", "",
@@ -98,6 +102,11 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	caseID, err := parseID("case-id", args[0])
 	if err != nil {
 		return err
+	}
+	switch runSandbox {
+	case agent.SandboxAuto, agent.SandboxRequired, agent.SandboxOff:
+	default:
+		return fmt.Errorf("--sandbox must be auto, required or off, not %q", runSandbox)
 	}
 	return runCase(caseID)
 }
@@ -192,6 +201,7 @@ func runCase(caseID int64) error {
 		ApprovalPort:   runApprovalPort,
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
+		Sandbox:        runSandbox,
 		AckDrift:       runAckDrift,
 		Validator:      validator,
 		Agreed:         runAgreedBy,
