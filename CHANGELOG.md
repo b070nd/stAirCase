@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- Approved shell commands of built-in agents run in an OS sandbox (macOS
+  `sandbox-exec`, Linux `bwrap`): they can write only in the worktree and their
+  own temporary folder, with no network. `staircase run --sandbox auto|required|off`
+  (default `auto`: sandbox when available, otherwise run and say so). Files a
+  command changes are now decided after it ran instead of failing the run, and a
+  run whose commands all ran sandboxed keeps CAL 3.
+
 - `staircase policy test <file>`: replay the proposals of past runs against a
   policy file and see what it would have decided differently, above all
   changes a person rejected that it would approve.

@@ -25,10 +25,15 @@ stAirCase is **pre-1.0**.
 
 ## What stAirCase does not do
 
-- **It is not a sandbox.** stAirCase and its agents run as **your user**. An
-  approved shell command can read and change anything you can, outside the
-  repository too. Only the changes it makes *inside* the worktree are caught (they
-  fail the run).
+- **It is not a sandbox for the agents.** stAirCase and its agents run as **your
+  user**. Approved shell commands of built-in agents run in an OS sandbox
+  (`--sandbox auto`, the default): they can write only in the worktree and their
+  own temporary folder, and have no network, but they can read anything you can.
+  Where no sandbox tool is found (macOS `sandbox-exec`, Linux `bwrap`), `auto`
+  runs them as you and says so, and `--sandbox required` refuses them. Files a
+  command changes in the worktree come to you afterwards: approved, they are kept;
+  rejected, they are reverted. Claude Code and Codex run their own commands, in
+  their own sandboxes or none.
 - **It does not judge quality.** A successful run means "exactly what was approved
   was committed", not "the story is done". That is your decision:
   `staircase story accept`.
@@ -71,7 +76,7 @@ running, but no longer are, as stopped.
 
 ## Still missing before trusted use
 
-- **An OS sandbox** for approved shell commands.
+- **The Linux sandbox tested on a real machine** (`bwrap`; macOS is tested).
 - **Experience with real projects.** The tests and the offline demo check the
   safety mechanics with a stand-in model. They say nothing about how well a given
   model does real work.

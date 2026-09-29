@@ -12,7 +12,7 @@
 # Usage:  ./demo/run-demo.sh            (interactive - you approve each proposal)
 #         ./demo/run-demo.sh --auto     (auto-approves via curl; used by CI)
 #         ./demo/run-demo.sh --tamper   (an approved shell command changes a
-#                                        file after its approval → run FAILS)
+#                                        file after its approval → reviewed, put back)
 #         ./demo/run-demo.sh --drift    (the agent wanders outside its stories'
 #                                        scope → run HALTED)
 set -euo pipefail
@@ -107,7 +107,8 @@ staircase gate "$CASE_ID" 2>&1 | grep -E "plan_pinned|plan_compiled" || true
 RUN_FLAGS=(--approval-port "$APPROVAL_PORT" --approval-token "$APPROVAL_TOKEN")
 case "$MODE" in
   tamper) say "TAMPER MODE: after its files are approved, the agent asks to run a shell"
-          note "command that changes one of them. Expected: the run FAILS, nothing is committed."
+          note "command that changes one of them. You approve the command, then reject what it"
+          note "changed. Expected: the file is put back; only the bytes you approved are committed."
           RUN_FLAGS+=(--allow-shell-exec) ;;
   drift)  say "DRIFT MODE: after its stories' work, the agent keeps proposing files outside"
           note "their scope. Expected: each goes to you marked DRIFT; the 3rd halts the run." ;;
@@ -126,9 +127,13 @@ for _ in $(seq 1 1200); do
   YIELD_ID="$(curl -s "${AUTH[@]}" "$API" 2>/dev/null | "$DEMOTOOL" first-yield || true)"
   if [ -z "$YIELD_ID" ]; then sleep 0.1; continue; fi
   say "Pending approval - exactly what would be applied"
-  curl -s "${AUTH[@]}" "$API/$YIELD_ID" | "$DEMOTOOL" show-yield
+  YIELD="$(curl -s "${AUTH[@]}" "$API/$YIELD_ID")"
+  printf '%s' "$YIELD" | "$DEMOTOOL" show-yield
   DECISION=approve
-  if [ "$AUTO" = "1" ]; then
+  if [ "$MODE" = "tamper" ] && [[ "$YIELD" == *'"review_after":true'* ]]; then
+    note "rejecting: the approved command changed a file you already approved"
+    DECISION=reject
+  elif [ "$AUTO" = "1" ]; then
     note "auto-approving (CI mode)"
   else
     read -r -p "  Press Enter to approve, or type 'r' to reject: " ANS
@@ -148,14 +153,11 @@ grep -a "Drift:" "$RUN_LOG" || true
 STATUS="$(staircase inspect runs | awk '$1 == "1" {print $3}')"
 case "$MODE" in
   tamper)
-    say "Checking the tamper was refused"
-    [ "$STATUS" = "FAILED" ] || die "expected the tampered run to FAIL (got $STATUS)"
-    [ "$RUN_EXIT" -ne 0 ] || die "a failed run must exit non-zero"
-    ok "run FAILED and exited $RUN_EXIT - the post-approval change was refused"
-    if git -C "$TARGET_REPO" log --oneline staircase/run-1 2>/dev/null | grep -q "staircase: run"; then
-      die "tampered content must NOT be committed"
-    fi
-    ok "nothing committed" ;;
+    say "Checking the tamper was reverted"
+    [ "$STATUS" = "SUCCESS" ] && [ "$RUN_EXIT" -eq 0 ] || die "the run must still succeed (got $STATUS, exit $RUN_EXIT)"
+    GOT="$(git -C "$TARGET_REPO" show staircase/run-1:GREETING.md)" || die "GREETING.md is not on the run branch"
+    [[ "$GOT" != *injected* ]] || die "the rejected change must NOT be committed"
+    ok "the command's change was put back; the branch holds only the approved bytes" ;;
   drift)
     say "Checking the drift was halted"
     [ "$STATUS" = "KILLED" ] || die "expected the drifting run to be halted (got $STATUS)"
@@ -197,7 +199,6 @@ staircase inspect runs || true
 if staircase audit export 1 >/dev/null 2>&1; then
   CP="$STAIRCASE_DIR/audit/run-1.checkpoint.json"
   staircase audit verify "$CP"
-  [ "$MODE" = "tamper" ] && { note "Why finalize refused to commit:"; "$DEMOTOOL" show-mismatch "$CP" || true; }
 elif [ -z "$MODE" ]; then
   die "audit export failed for a successful run"
 else

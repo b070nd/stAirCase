@@ -61,7 +61,8 @@ runs the built binary.
 on the real binary and runtime with a stand-in model (`demo/demotool`): it
 checks the run branch holds exactly the approved create/edit/delete, the
 developer's checkout is byte-identical, the stories complete the case and the
-audit chain verifies; `--tamper` must fail closed and `--drift` must halt.
+audit chain verifies; `--tamper` must put back the file an approved command changed, and `--drift`
+must halt.
 
 **Docs tests** (`src/cmd/staircase/docs_test.go`) keep the documentation honest:
 `TestCLIReference` fails when [cli.md](cli.md) no longer matches the commands' help

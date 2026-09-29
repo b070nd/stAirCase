@@ -151,6 +151,9 @@ func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.Y
 	}
 	if req.ReviewAfter {
 		fields["review_after"] = true
+		if req.Sandboxed {
+			fields["sandboxed"] = true
+		}
 	}
 	if req.Guard != "" {
 		fields["guard"] = req.Guard

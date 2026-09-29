@@ -120,6 +120,9 @@ type RunOptions struct {
 	// AllowShellExec, when true, includes run_shell in the agent tool list.
 	// Defaults to false - operators must explicitly pass --allow-shell-exec.
 	AllowShellExec bool
+	// Sandbox is where approved commands run: "auto" (default: in the
+	// sandbox when this machine has one), "required" or "off".
+	Sandbox string
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -472,7 +475,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 	defer cancelAgent()
 	stopped := make(chan struct{})
-	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, proposals: proposals, usage: usage, host: host}
+	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, proposals: proposals, usage: usage, host: host}
 	val := opts.Validator
 	if val != nil {
 		if val.Chat == nil {
