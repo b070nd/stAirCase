@@ -187,10 +187,12 @@ func runCase(caseID int64) error {
 		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
 	case "gemini":
 		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel}
+	case "opencode":
+		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: runModel}
 	case "review":
 		ag = &agent.Review{Commit: pl.Review.Commit, By: pl.Review.By}
 	default:
-		return fmt.Errorf("unknown --agent %q: use built-in, claude-code, codex or gemini", who)
+		return fmt.Errorf("unknown --agent %q: use built-in, claude-code, codex, gemini or opencode", who)
 	}
 
 	var validator *orchestrator.Validator

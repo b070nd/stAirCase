@@ -160,6 +160,8 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 	assert.NotContains(t, claude, "decisions:")
 	gem := agreement(sessionSetup{harness: "gemini", name: "Gemini CLI", task: "t", root: "/r", base: "abc", shell: true})
 	assert.Contains(t, gem, "without a sandbox")
+	oc := agreement(sessionSetup{harness: "opencode", name: "OpenCode", task: "t", root: "/r", base: "abc", shell: true})
+	assert.Contains(t, oc, "without a sandbox")
 	assert.Contains(t, agreement(sessionSetup{harness: "gemini", name: "Gemini CLI", task: "t", root: "/r", base: "abc"}), "not allowed")
 	signed := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc", signed: true})
 	assert.Contains(t, signed, "signed with your SSH key")

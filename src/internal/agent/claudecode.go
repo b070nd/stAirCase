@@ -312,7 +312,7 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 		h.started.Store(true)
 	case "PreToolUse":
 		pre := h.pre
-		if h.codex {
+		if h.codex || in.Tool == "apply_patch" { // Codex's tools; OpenCode's patches read the same way
 			pre = h.preCodex
 		}
 		reason := pre(ctx, in)

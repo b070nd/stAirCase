@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`staircase opencode "task"` (work in progress):** OpenCode as the governed agent,
+  through a plugin generated per run that posts every tool call to the run and throws
+  to block it. Built from its documentation and tested with a stand-in that runs the
+  plugin under Node, not yet against a real login. Edits, patches and commands are
+  decided before they run, every other tool is refused. `run --agent opencode`.
+
 - **`staircase gemini "task"` (work in progress):** Gemini CLI as the governed agent,
   built from its documentation and tested against a stand-in, not yet against a real
   login. Edits and commands are decided before they run, every other tool is refused,

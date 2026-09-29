@@ -17,7 +17,7 @@ import (
 )
 
 // harnessNames are the harnesses as Assisted-by trailers name them.
-var harnessNames = map[string]string{"claude-code": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI"}
+var harnessNames = map[string]string{"claude-code": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "OpenCode"}
 
 // assistants names who helped make a run's change, for the Assisted-by
 // trailer and the certificate: the harness, or the models of the built-in

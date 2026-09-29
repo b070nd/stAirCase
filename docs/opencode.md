@@ -1,0 +1,55 @@
+# Governing OpenCode (work in progress)
+
+```bash
+staircase opencode "add a /health endpoint"
+```
+
+Runs [OpenCode](https://opencode.ai) on the task in a separate worktree of your
+repository, with every change decided by you, your rules or your reviewers, like
+[Claude Code](claude-code.md).
+
+**Status.** This adapter was built from OpenCode's published documentation and tested
+against a stand-in that loads and runs the generated plugin under Node, as the
+documentation describes. It has **not yet been run against a real OpenCode login**.
+Treat it as experimental until it has been.
+
+## What happens
+
+- stAirCase writes a small plugin for the run and points OpenCode at it
+  (`OPENCODE_CONFIG_DIR`). The plugin hooks `tool.execute.before`: every tool call is
+  posted to stAirCase, and a refusal, or any error at all, **throws**, which blocks the
+  call.
+- `edit`, `write` and `apply_patch` become proposals decided before they are applied,
+  and the approved bytes are written again afterwards, so what OpenCode's editor did
+  cannot change what is committed. `edit` must match exactly once.
+- Reading and searching (`read`, `glob`, `grep`) is limited to the worktree.
+  `todowrite` is allowed. Every other tool (`webfetch`, `task`, `websearch` and so on)
+  is refused.
+- `bash` is refused unless you start the session with `--allow-shell-exec`; then each
+  command comes to you before it runs, and the files it changed come to you afterwards.
+  OpenCode's commands run **without a sandbox**, so a run with commands reaches
+  [CAL 2](adr/0001-core-promise-and-assurance-levels.md), not CAL 3.
+- OpenCode's own permission prompts are off (`permission: "*": "allow"`, with
+  `external_directory` and `doom_loop` denied), because stAirCase's plugin decides and a
+  headless run would only stall on a prompt. Sharing and self-update are off.
+- At the end, exactly the approved changes are committed on `staircase/run-N`, with
+  `Assisted-by: OpenCode` and a signed change certificate. Your checkout is not touched.
+
+All the options of `staircase claude` work (`--allow`, `--check`, `--validator`,
+`--signal`, `--approve-in-scope`, `--sign-approvals`, `--approval-port`); `--model` takes
+OpenCode's `provider/model`.
+
+## Limits, from OpenCode's documentation
+
+- **A plugin that fails to load lets calls through.** stAirCase's plugin calls the run when
+  it loads; a session whose plugin never reaches the run fails and keeps nothing, and
+  finalize refuses any change in the worktree that nobody approved. A command that did run
+  in that window could still have had effects elsewhere.
+- **Other plugins still load.** OpenCode has no way to load only stAirCase's plugin.
+  stAirCase points `XDG_CONFIG_HOME` at an empty folder so your global config and plugins
+  are not read, but plugins in the repository's `.opencode` folder still are. Do not run
+  this on a repository whose `.opencode` folder you do not trust.
+- **Login.** OpenCode must already have a provider (`opencode auth login`). stAirCase does
+  not pass API keys to it, so a command it runs cannot read one.
+- **No company-wide template** yet: OpenCode's documentation describes no way to make a
+  hook mandatory.

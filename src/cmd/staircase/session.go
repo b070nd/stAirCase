@@ -78,7 +78,27 @@ calls stAirCase's hooks.`,
 	RunE: geminiSession,
 }
 
+var opencodeCmd = &cobra.Command{
+	Use:   "opencode <task>",
+	Short: "Run OpenCode on a task in this repository, with every change decided by you (work in progress)",
+	Long: `Runs OpenCode on the task in a separate worktree of the git repository you are
+in. Every file edit, patch and command it wants to make comes to you first
+(commands need --allow-shell-exec); every other tool is refused. At the end,
+exactly the approved changes are committed on a new branch, staircase/run-N;
+your checkout is not touched.
+
+Work in progress: built from OpenCode's documentation and tested against a
+stand-in that runs the generated plugin, not yet against a real login. OpenCode
+must be installed and have a provider logged in (opencode auth login). Its
+commands run without a sandbox, so a run with commands reaches CAL 2. Plugins in
+the repository's .opencode folder still load beside stAirCase's (OpenCode cannot
+be told to ignore them); a run fails if OpenCode never calls stAirCase's plugin.`,
+	Args: cobra.ArbitraryArgs,
+	RunE: opencodeSession,
+}
+
 func init() {
+	sessionFlags(opencodeCmd, "OpenCode", true)
 	sessionFlags(geminiCmd, "Gemini CLI", true)
 	claudeCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
 	claudeCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
@@ -119,6 +139,11 @@ func codexSession(_ *cobra.Command, args []string) error {
 // geminiSession is `staircase gemini <task>`.
 func geminiSession(_ *cobra.Command, args []string) error {
 	return session("gemini", "Gemini CLI", "gemini", args)
+}
+
+// opencodeSession is `staircase opencode <task>`.
+func opencodeSession(_ *cobra.Command, args []string) error {
+	return session("opencode", "OpenCode", "opencode", args)
 }
 
 // sessionFlags are the flags of a session command for an agent: what it may
@@ -335,7 +360,7 @@ func agreement(s sessionSetup) string {
 		fmt.Fprintf(&b, "  commands:    none (the changes were made elsewhere)\n")
 	case s.harness == "codex":
 		fmt.Fprintf(&b, "  commands:    run in Codex's sandbox (no network); files they change come to you afterwards\n")
-	case s.shell && s.harness == "gemini":
+	case s.shell && (s.harness == "gemini" || s.harness == "opencode"):
 		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs, without a sandbox (the change reaches CAL 2)\n")
 	case s.shell && s.harness == "claude-code":
 		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs in Claude Code's sandbox (no network)\n")

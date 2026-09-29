@@ -266,7 +266,7 @@ staircase compile <case-id> [flags]
 Flags:
 
 ```
-      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex, gemini, review (default "built-in")
+      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex, gemini, opencode, review (default "built-in")
       --force          Overwrite an existing plan
 ```
 
@@ -518,6 +518,46 @@ Flags:
 
 ```
       --case int   Filter by case ID
+```
+
+## staircase opencode
+
+Run OpenCode on a task in this repository, with every change decided by you (work in progress)
+
+```
+staircase opencode <task> [flags]
+```
+
+Runs OpenCode on the task in a separate worktree of the git repository you are
+in. Every file edit, patch and command it wants to make comes to you first
+(commands need --allow-shell-exec); every other tool is refused. At the end,
+exactly the approved changes are committed on a new branch, staircase/run-N;
+your checkout is not touched.
+
+Work in progress: built from OpenCode's documentation and tested against a
+stand-in that runs the generated plugin, not yet against a real login. OpenCode
+must be installed and have a provider logged in (opencode auth login). Its
+commands run without a sandbox, so a run with commands reaches CAL 2. Plugins in
+the repository's .opencode folder still load beside stAirCase's (OpenCode cannot
+be told to ignore them); a run fails if OpenCode never calls stAirCase's plugin.
+
+Flags:
+
+```
+      --allow stringArray          A path (glob) the task may change; repeat for more
+      --allow-shell-exec           Let OpenCode propose shell commands (each still needs your approval)
+      --approval-port int          Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --model string               Model for OpenCode (default: its own)
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
 ## staircase policy sign

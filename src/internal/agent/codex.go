@@ -58,7 +58,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	if err != nil {
 		return err
 	}
-	h := &hookServer{env: env, root: root, token: rand.Text(), codex: true, pending: map[string]orchestrator.Approval{}, calls: map[string]*hookCall{}}
+	h := &hookServer{env: env, root: root, token: rand.Text(), codex: true, name: "codex", label: "Codex", pending: map[string]orchestrator.Approval{}, calls: map[string]*hookCall{}}
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
@@ -145,8 +145,8 @@ func (h *hookServer) preCodex(ctx context.Context, in hookInput) string {
 			}
 			edits[i].File = rel
 		}
-		ap := h.env.Propose(ctx, domain.YieldRequest{AgentName: "codex", ActionType: domain.ActionFileEdit,
-			ProposedEdits: edits, ReasoningTrace: "Codex apply_patch", ConfidenceScore: 0.9})
+		ap := h.env.Propose(ctx, domain.YieldRequest{AgentName: h.who(), ActionType: domain.ActionFileEdit,
+			ProposedEdits: edits, ReasoningTrace: h.title() + " apply_patch", ConfidenceScore: 0.9})
 		if !ap.Approved {
 			return ap.Refusal()
 		}
