@@ -1,0 +1,18 @@
+{
+  "description": "The payload was changed after signing.",
+  "publicKey": "IakB43BwF9EnuLu5oSToYr/0DaIbgj4KLBBUb3Ae0aY=",
+  "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "minCal": 0,
+  "envelope": {
+    "payloadType": "application/vnd.in-toto+json",
+    "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJzdWJqZWN0IjpbeyJuYW1lIjoiY29tbWl0IiwiZGlnZXN0Ijp7ImdpdENvbW1pdCI6IjRiODI1ZGM2NDJjYjZlYjlhMDYwZTU0YmY4ZDY5Mjg4ZmJlZTQ5MDQifX1dLCJwcmVkaWNhdGVUeXBlIjoiaHR0cHM6Ly9naXRodWIuY29tL2IwNzBuZC9zdEFpckNhc2UvYmxvYi9tYXN0ZXIvZG9jcy9hZHIvMDAwMi1jaGFuZ2UtY2VydGlmaWNhdGUubWQjdjEiLCJwcmVkaWNhdGUiOnsicnVuIjo3LCJiYXNlQ29tbWl0IjoiOWZjZWIwMmQwYWU1OThlOTVkYzk3MGI3NDc2N2YxOTM3MmQ2MWFmOCIsInBsYW5EaWdlc3QiOiI1ZDQxNDAyYWJjNGIyYTc2Yjk3MTlkOTExMDE3YzU5MiIsImFnZW50cyI6WyJDbGF1ZGUgQ29kZSJdLCJkZWNpc2lvbnMiOnsib3BlcmF0b3IiOjIsInBvbGljeSI6MX0sImNoYWluSGVhZCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJjYWwiOjQsInJlcXVlc3RlZEJ5IjoiZGV2QGV4YW1wbGUuY29tIiwiY2hlY2tzIjpbeyJjb21tYW5kIjoiZ28gdGVzdCAuLy4uLiIsImV4aXRDb2RlIjowLCJzYW5kYm94ZWQiOnRydWUsIm91dHB1dFNoYTI1NiI6IjJjMjZiNDZiNjhmZmM2OGZmOTliNDUzYzFkMzA0MTM0MTM0MjJkNzA2NDgzYmZhMGY5OGE1ZTg4NjI2NmU3YWUifV19fQ==",
+    "signatures": [
+      {
+        "keyid": "dd068d5580cc456c66e93e5103fafdcb9b2167cabe85ff6c574c32275db98d51",
+        "sig": "O4XLugVc8qbX0hEhm7jaXtvBsr8P8fhjKctmpuijw36vQzoz4Qr8lnlpZNGl5kQh7wwu0KBl99dN3h5gAQv9BQ=="
+      }
+    ]
+  },
+  "valid": false,
+  "error": "signature"
+}

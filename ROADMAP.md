@@ -176,11 +176,15 @@ Six contracts stay stable and versioned while everything around them may change:
 ### Phase 5 - v1.0: a standard others can implement
 
 - A written specification of the certificate and of how a commit is rebuilt, with test
-  vectors.
+  vectors. *The certificate is specified ([spec](docs/spec/certificate-v1.md)), with
+  11 vectors and an independent verifier; rebuilding a commit needs the v2 ledger.*
 - The certificate format proposed to in-toto, and its mapping to SLSA's source track
   published, together with a mapping to the OWASP Top 10 for LLM applications and
-  NIST's secure development profile for generative AI (SP 800-218A).
-- A compatibility promise for the six contracts.
+  NIST's secure development profile for generative AI (SP 800-218A). *Mappings
+  published ([standards](docs/standards.md)); the in-toto proposal is
+  [drafted](docs/spec/in-toto-predicate.md).*
+- A compatibility promise for the six contracts. *Written
+  ([compatibility](docs/compatibility.md)); it becomes semantic versioning at 1.0.*
 
 ## Waiting for demand
 

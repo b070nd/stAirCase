@@ -1,0 +1,18 @@
+{
+  "description": "A signed in-toto statement, but not a change certificate.",
+  "publicKey": "IakB43BwF9EnuLu5oSToYr/0DaIbgj4KLBBUb3Ae0aY=",
+  "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "minCal": 0,
+  "envelope": {
+    "payloadType": "application/vnd.in-toto+json",
+    "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJzdWJqZWN0IjpbeyJuYW1lIjoiY29tbWl0IiwiZGlnZXN0Ijp7ImdpdENvbW1pdCI6IjRiODI1ZGM2NDJjYjZlYjlhMDYwZTU0YmY4ZDY5Mjg4ZmJlZTQ5MDQifX1dLCJwcmVkaWNhdGVUeXBlIjoiaHR0cHM6Ly9zbHNhLmRldi9wcm92ZW5hbmNlL3YxIiwicHJlZGljYXRlIjp7InJ1biI6NywiYmFzZUNvbW1pdCI6IjlmY2ViMDJkMGFlNTk4ZTk1ZGM5NzBiNzQ3NjdmMTkzNzJkNjFhZjgiLCJwbGFuRGlnZXN0IjoiNWQ0MTQwMmFiYzRiMmE3NmI5NzE5ZDkxMTAxN2M1OTIiLCJhZ2VudHMiOlsiQ2xhdWRlIENvZGUiXSwiZGVjaXNpb25zIjp7Im9wZXJhdG9yIjoyLCJwb2xpY3kiOjF9LCJjaGFpbkhlYWQiOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiY2FsIjozLCJyZXF1ZXN0ZWRCeSI6ImRldkBleGFtcGxlLmNvbSIsImNoZWNrcyI6W3siY29tbWFuZCI6ImdvIHRlc3QgLi8uLi4iLCJleGl0Q29kZSI6MCwic2FuZGJveGVkIjp0cnVlLCJvdXRwdXRTaGEyNTYiOiIyYzI2YjQ2YjY4ZmZjNjhmZjk5YjQ1M2MxZDMwNDEzNDEzNDIyZDcwNjQ4M2JmYTBmOThhNWU4ODYyNjZlN2FlIn1dfX0=",
+    "signatures": [
+      {
+        "keyid": "dd068d5580cc456c66e93e5103fafdcb9b2167cabe85ff6c574c32275db98d51",
+        "sig": "PMQY8et8LddMwAqSfYX8DP+onnythk3ivsjmyI5rjLxpgwNoMhQcKmac/YI3UfbdK5O1i8won7nIZvVimHICAQ=="
+      }
+    ]
+  },
+  "valid": false,
+  "error": "not a change certificate"
+}

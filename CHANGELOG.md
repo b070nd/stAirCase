@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- The change certificate's specification (`docs/spec/certificate-v1.md`) with 11
+  conformance test vectors, checked by stAirCase's tests and, in CI, by an
+  independent verifier written from the specification alone
+  (`docs/spec/verify_vectors.py`).
+- How stAirCase relates to SLSA's source track, the OWASP Top 10 for LLM
+  applications and NIST's SSDF (`docs/standards.md`), and a compatibility promise
+  for the six interfaces other tools build on (`docs/compatibility.md`).
+
 ## [0.4.0] - 2026-09-29
 
 Scale your attention, not your risk. Approve a task once instead of every step,
