@@ -145,7 +145,7 @@ func verifyCommit(commit string) error {
 	if err != nil {
 		return fmt.Errorf("commit %.12s: %w", commit, err)
 	}
-	if s.Commit() != commit {
+	if s.Commit() != commit { // before the signers: they sign this certificate, not another commit's
 		return fmt.Errorf("the certificate is about commit %.12s, not %.12s", s.Commit(), commit)
 	}
 	p := s.Predicate
@@ -158,17 +158,8 @@ func verifyCommit(commit string) error {
 			level = 4
 		}
 	}
-	if level < verifyMinCAL {
-		why := ""
-		if len(p.Notes) > 0 {
-			why = ": " + strings.Join(p.Notes, "; ")
-		}
-		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d%s", commit, level, verifyMinCAL, why)
-	}
-	for _, c := range p.Checks {
-		if c.ExitCode != 0 {
-			return fmt.Errorf("commit %.12s: check %q failed (exit %d)", commit, c.Command, c.ExitCode)
-		}
+	if err := s.Accept(commit, level, verifyMinCAL); err != nil { // docs/spec/certificate-v1.md
+		return err
 	}
 	if verifyCheckAnchor {
 		sidecar := verifyFile + ".anchor"

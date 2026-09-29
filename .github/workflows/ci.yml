@@ -39,6 +39,15 @@ jobs:
           # the OS sandbox engines that must be tested here, not skipped
           STAIRCASE_REQUIRE_SANDBOX: ${{ runner.os == 'Linux' && 'landlock' || 'sandbox-exec' }}
 
+      # An implementation written from docs/spec alone must decide the
+      # certificate's conformance vectors as stAirCase does.
+      - name: Certificate vectors (independent verifier)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m venv /tmp/spec
+          /tmp/spec/bin/pip install -q cryptography==50.0.1
+          /tmp/spec/bin/python docs/spec/verify_vectors.py
+
       - name: Vulnerability scan
         if: runner.os == 'Linux'
         run: |

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // PredicateType names this predicate and its version.
@@ -149,4 +150,27 @@ func Open(env Envelope, pub ed25519.PublicKey) (Statement, error) {
 		return s, fmt.Errorf("not a change certificate (%s, %s)", s.Type, s.PredicateType)
 	}
 	return s, nil
+}
+
+// Accept decides whether an opened certificate lets commit through: it must
+// be about exactly that commit, reach minCAL at level (its CAL, or 4 with a
+// trusted second person's signature), and record no failed check.
+func (s Statement) Accept(commit string, level, minCAL int) error {
+	if s.Commit() != commit {
+		return fmt.Errorf("the certificate is about commit %.12s, not %.12s", s.Commit(), commit)
+	}
+	p := s.Predicate
+	if level < minCAL {
+		why := ""
+		if len(p.Notes) > 0 {
+			why = ": " + strings.Join(p.Notes, "; ")
+		}
+		return fmt.Errorf("commit %.12s reached CAL %d, below the required %d%s", commit, level, minCAL, why)
+	}
+	for _, c := range p.Checks {
+		if c.ExitCode != 0 {
+			return fmt.Errorf("commit %.12s: check %q failed (exit %d)", commit, c.Command, c.ExitCode)
+		}
+	}
+	return nil
 }

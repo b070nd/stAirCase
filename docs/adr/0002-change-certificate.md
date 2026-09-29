@@ -1,5 +1,7 @@
 # ADR 0002: The change certificate
 
+> The normative specification, with test vectors, is [spec/certificate-v1.md](../spec/certificate-v1.md).
+
 - Status: accepted; v1 shipped (fields below); the ledger, policy digest, verifiers
   and ranges come in later versions
 - Date: 2026-09-28
