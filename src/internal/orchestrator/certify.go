@@ -49,7 +49,11 @@ func assistants(pl *plan.Plan) []string {
 // hash when the commit was made.
 func commitMessage(runID, caseID int64, pl *plan.Plan, chainHead string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "staircase: run #%d - case #%d\n\n", runID, caseID)
+	if pl != nil && pl.Review != nil && pl.Review.Message != "" {
+		fmt.Fprintf(&b, "%s\n\nstaircase: run #%d - case #%d\n\n", strings.TrimSpace(pl.Review.Message), runID, caseID)
+	} else {
+		fmt.Fprintf(&b, "staircase: run #%d - case #%d\n\n", runID, caseID)
+	}
 	for _, a := range assistants(pl) {
 		fmt.Fprintf(&b, "Assisted-by: %s\n", a)
 	}

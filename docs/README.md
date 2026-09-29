@@ -23,6 +23,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Audit evidence](audit.md) | inspect runs, change certificates, [require them in CI](audit.md#require-certificates-on-pull-requests), let others verify evidence |
 | [Governing Claude Code](claude-code.md) | use Claude Code as the agent (experimental) |
 | [Governing Codex](codex.md) | use OpenAI's Codex as the agent (experimental) |
+| [Agents in your own checkout](attach.md) | Cursor and other tools that edit your files directly: seal what you approve |
 | [Reviewing changes made elsewhere](review.md) | certify what you accept from a cloud agent's pull request |
 | [Working as a team](governance.md) | one repository for the team's rules and trusted keys, pinned in every workspace |
 | [Governing every session in a company](managed.md) | managed settings that send every Claude Code or Codex session through stAirCase |

@@ -175,6 +175,12 @@ func session(harness, name, command string, args []string) error {
 		}
 		_ = db.Close()
 	}
+	return sessionFinish(root, branch, storyID)
+}
+
+// sessionFinish tells what to do with a session's result; staircase seal
+// replaces it.
+var sessionFinish = func(root, branch string, storyID int64) error {
 	fmt.Printf("\nThe approved changes are on %s. Review them, then accept the story when the task is done:\n"+
 		"  git -C %s diff HEAD...%s\n  staircase story accept %d\n", branch, root, branch, storyID)
 	return nil

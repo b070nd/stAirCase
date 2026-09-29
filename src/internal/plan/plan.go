@@ -141,9 +141,10 @@ var Harnesses = []string{"claude-code", "codex", "review"}
 // Review is a change made elsewhere (for example a cloud agent's pull request)
 // that a run reviews file by file.
 type Review struct {
-	Ref    string `json:"ref"`
-	Commit string `json:"commit"`
-	By     string `json:"by"`
+	Ref     string `json:"ref"`
+	Commit  string `json:"commit"`
+	By      string `json:"by"`
+	Message string `json:"message,omitempty"` // the commit's own message (staircase seal)
 }
 
 // Validate reports what would make the plan fail to run.
