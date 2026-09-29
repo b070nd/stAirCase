@@ -93,6 +93,7 @@ type Server struct {
 	httpSrv *http.Server
 	addr    string // resolved listen address, set after Start
 	token   string // bearer token; empty = no auth (dev/test mode only)
+	routes  func(*http.ServeMux)
 }
 
 // ─── constructor ──────────────────────────────────────────────────────────────
@@ -103,19 +104,39 @@ type Server struct {
 // local dev environments where the listener is not reachable by other users.
 // Call [Start] to begin accepting connections.
 func NewServer(addr, token string) *Server {
+	s := newServer(token, nil)
+	s.addr = addr
+	s.routes = func(mux *http.ServeMux) {
+		mux.HandleFunc("/v1/yields", s.requireAuth(s.handleList))
+		mux.HandleFunc("/v1/yields/", s.requireAuth(s.handleYield))
+	}
+	s.build()
+	return s
+}
+
+// newServer is a server that serves the review page and the API routes.
+func newServer(token string, routes func(*http.ServeMux)) *Server {
 	s := &Server{
 		pending: make(map[string]*PendingYield),
 		decided: make(map[string]struct{}),
-		addr:    addr,
 		token:   token,
+		routes:  routes,
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/yields", s.requireAuth(s.handleList))
-	mux.HandleFunc("/v1/yields/", s.requireAuth(s.handleYield))
-	mux.HandleFunc("/", servePage)
-	s.httpSrv = &http.Server{Handler: localOnly(mux), ReadHeaderTimeout: 10 * time.Second}
+	s.build()
 	return s
 }
+
+func (s *Server) build() {
+	mux := http.NewServeMux()
+	if s.routes != nil {
+		s.routes(mux)
+	}
+	mux.HandleFunc("/", servePage)
+	s.httpSrv = &http.Server{Handler: localOnly(mux), ReadHeaderTimeout: 10 * time.Second}
+}
+
+// Token is the server's key.
+func (s *Server) Token() string { return s.token }
 
 // ReviewURL is the review page's link. The token is in the fragment, which
 // browsers never send to a server.

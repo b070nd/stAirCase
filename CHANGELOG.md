@@ -15,6 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase serve`: one review page for every running session of the workspace,
+  each proposal labelled with its project and run, decisions forwarded to the
+  session they belong to. Sessions register while they run; only this machine's
+  sessions are contacted, and their keys never reach the browser.
+
 - A review page in your browser: with `--approval-port`, a run serves a page on
   that port and prints its link. It shows each waiting proposal with the exact
   change (a line diff for rewritten files) and its notes, and approves or rejects

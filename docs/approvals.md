@@ -81,6 +81,21 @@ nothing from elsewhere, and cannot be embedded in another site. The link's key i
 in the part after `#`, which browsers never send to a server; the page keeps it for
 the tab only and removes it from the address bar.
 
+### One page for every session
+
+```bash
+staircase serve
+```
+
+When several sessions run at once (in different repositories or terminals, each
+with its own `--approval-port`), `staircase serve` shows all their waiting proposals
+on one page, each labelled with its project and run, and sends every decision to
+the session it belongs to. Open the printed link; the page's key is the only one
+your browser sees, and the sessions' own keys stay in the server. Sessions announce
+themselves in `~/.staircase-workspace/sessions/` while they run (files only you can
+read) and are removed when they end. Only sessions on this machine are ever
+contacted. Sessions using another workspace (`--dir`) need their own `serve`.
+
 ### From another terminal or a script: the approval API
 
 ```bash

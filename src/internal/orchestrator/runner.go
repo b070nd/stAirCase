@@ -464,6 +464,13 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 	}
 
+	if approvalSrv != nil { // the hub (staircase serve) finds this run through its file
+		sess := approvalhttp.Session{Name: fmt.Sprintf("%s, run #%d", project.Name, run.ID),
+			URL: "http://" + approvalSrv.ListenAddr(), Token: approvalSrv.Token()}
+		if err := approvalhttp.Register(r.wsDir, sess); err == nil {
+			defer approvalhttp.Unregister(r.wsDir, sess)
+		}
+	}
 	tracker := monitor.NewTracker(run.ID, caseID, project.Name, gitBranch)
 	_, budgetCap, _ := r.store.GetProjectConfig(caseRec.ProjectID)
 	display = monitor.NewDisplay(tracker, budgetCap)

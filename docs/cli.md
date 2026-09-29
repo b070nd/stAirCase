@@ -819,6 +819,29 @@ Flags:
       --project int   Scope secret to a specific project ID (0 = global)
 ```
 
+## staircase serve
+
+One review page in your browser for every running session
+
+```
+staircase serve [flags]
+```
+
+Serves a local page that lists the proposals waiting in every session that is
+running with --approval-port (staircase claude, codex, review, seal, run), with
+the exact change of each, and lets you approve or reject them in one place.
+
+Sessions announce themselves in the workspace; the page needs only its own key,
+which is in the link printed here (the sessions' keys never reach the browser).
+The page is served only to this machine.
+
+Flags:
+
+```
+      --port int       Port to listen on (127.0.0.1 only) (default 8765)
+      --token string   The page's key (default: a new one, in the printed link)
+```
+
 ## staircase sign
 
 Sign a commit's change certificate as the person who reviewed it (two-party review)
