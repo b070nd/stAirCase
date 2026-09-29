@@ -128,10 +128,16 @@ type Engine struct {
 //   - a blanket-deny rule is present but AllowBlanketDeny is false (CHECK 7.1.5).
 func LoadEngine(wsDir string) (*Engine, error) {
 	path := filepath.Join(wsDir, "policy.json")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return &Engine{}, nil
 	}
+	return LoadEngineFile(path)
+}
+
+// LoadEngineFile reads a policy file with the same strict rules as the
+// workspace's policy.json; a missing file is an error.
+func LoadEngineFile(path string) (*Engine, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read policy file: %w", err)
 	}
@@ -276,7 +282,7 @@ func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 	return PolicyDecision{Matched: false, Reason: "no matching rule"}
 }
 
-// ─── predicate helpers ──────────��────────────────────────────��────────────────
+// ─── predicate helpers ────────────────────────────────────────────────────────────
 
 func (r Rule) matchesAgentName(agentName string) bool {
 	if len(r.AgentNames) == 0 {

@@ -434,6 +434,23 @@ Sign $STAIRCASE_DIR/policy.json with the workspace Ed25519 signing key
 Re-run this command after every policy edit. staircase run warns when the
 signature file is absent and refuses to run when the signature is invalid.
 
+## staircase policy test
+
+Show what a policy would have decided differently on the proposals of past runs
+
+```
+staircase policy test <policy-file>
+```
+
+Replays every proposal recorded in this workspace's runs against the rules of
+a policy file (the same format as policy.json) and shows where it would have
+decided differently: above all, changes a person rejected that the policy would
+approve. Run it before you put a new rule into policy.json.
+
+Shell commands, proposals refused by the orchestrator and proposals that drift
+or a guard sent to a person are never the policy's to decide, so they stay as
+they were. The replay applies the rules only, not the per-run limits.
+
 ## staircase policy verify
 
 Verify the policy.json signature

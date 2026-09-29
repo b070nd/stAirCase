@@ -153,6 +153,27 @@ The file is strict: if it does not parse, or has a field stAirCase does not know
 the run stops before it starts. A reject rule with no conditions at all would reject
 everything; it is refused unless you set `"allow_blanket_deny": true`.
 
+Test a rule on your history before you use it. `staircase policy test` replays every
+proposal recorded in the workspace against a policy file and shows what it would have
+decided differently - above all, changes a person rejected that the rule would approve:
+
+```bash
+staircase policy test new-policy.json
+```
+
+```
+42 past proposal(s) replayed against new-policy.json
+  17 would be approved by the policy, as a person or the validator did before
+  24 stay as they were
+
+⚠️  a person REJECTED these, the policy would APPROVE them:
+  run #7: docs/setup.md by coder
+```
+
+Shell commands, refused proposals and proposals that drift or a guard sent to a person
+are never the policy's to decide, so they stay as they were. The replay applies the
+rules, not the per-run limits.
+
 Protect the file against silent edits by signing it:
 
 ```bash
