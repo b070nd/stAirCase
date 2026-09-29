@@ -101,7 +101,7 @@ function render(y) {
   const req = y.request;
   const card = el("article");
   card.append(el("h2", "", (req.agent_name || "agent") + " " + describe(req)));
-  card.append(el("p", "meta", "waiting since " + new Date(y.created).toLocaleTimeString()));
+  card.append(el("p", "meta", (y.session ? y.session + " · " : "") + "waiting since " + new Date(y.created).toLocaleTimeString()));
   for (const [label, text] of [["CHECK: ", req.guard], ["Drift: ", req.drift], ["Review: ", req.review]]) {
     if (text) card.append(el("div", "note", label + text));
   }
