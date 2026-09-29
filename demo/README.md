@@ -8,7 +8,7 @@ tamper-evident audit log.
 ```bash
 ./demo/run-demo.sh          # interactive - you approve each proposal yourself
 ./demo/run-demo.sh --auto   # hands-free (approves via curl); used by CI
-./demo/run-demo.sh --tamper # proves a command cannot slip a change past your approval
+./demo/run-demo.sh --tamper # proves a change made after approval is refused
 ./demo/run-demo.sh --drift  # proves an agent wandering off its stories is stopped
 ```
 
@@ -56,15 +56,19 @@ record a real run once; replay it offline with `staircase run --replay-llm`.
 ## The `--tamper` proof
 
 With `--tamper`, after its file is approved the coder asks to run a shell
-command that appends to the file. You approve the command. It runs (in the OS
-sandbox where the machine has one), and the file it changed comes back to you
-as its own decision, marked as already changed. The demo rejects it: the file is
-put back to the bytes you approved, and only those are committed.
+command that appends to the file. You approve the command - and the run still
+fails: the file no longer holds the bytes you approved, so nothing is committed
+and the refusal is written to the audit chain:
+
+```
+✓ Run FAILED as expected - the post-approval change was refused.
+✓ Nothing committed. The refusal is on the audit chain below.
+    event: approval_content_mismatch  file=GREETING.md
+    approved sha256 1ae04447…, found bf6d6ad6…
+```
 
 This is the headline security control: **approval is bound to content, not to a
-preview or a command.** A command cannot slip a change past you: what it wrote
-is decided like any other change, and finalize still refuses to commit any byte
-that no decision covers.
+preview or a command.** Only bytes a human approved reach the repository.
 
 ## The `--drift` proof
 

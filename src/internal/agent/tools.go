@@ -99,8 +99,8 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 	}
 	if env.AllowShell {
 		tools = append(tools, newTool("run_shell", "Execute a shell command inside the project root after operator approval (never auto-approved). "+
-			"It runs in a sandbox where available: it can write only in the project and $TMPDIR, with no network. "+
-			"Files it changes are then reviewed: approved, they are kept; rejected, they are reverted.",
+			"Not sandboxed: it runs as the orchestrator's OS user; the operator's approval is the boundary. "+
+			"Files it changes are not approved changes and fail the run unless proposed as edits.",
 			`{"type":"object","properties":{"command":{"type":"string"},"reasoning":{"type":"string"},"working_dir":{"type":"string"}},"required":["command","reasoning"]}`,
 			func(ctx context.Context, a struct {
 				Command    string `json:"command"`
@@ -110,17 +110,7 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 				if ap := env.ProposeShell(ctx, agent, a.Reasoning, orDefault(a.WorkingDir, "."), a.Command); !ap.Approved {
 					return ap.Refusal()
 				}
-				out, sandboxed, err := runShell(ctx, root, a.WorkingDir, a.Command, env.Sandbox)
-				if err != nil {
-					return "error: " + err.Error()
-				}
-				if !sandboxed {
-					out = "(ran without a sandbox)\n" + out
-				}
-				if ap := env.ShellRan(ctx, agent, a.Command, sandboxed); !ap.Approved {
-					out += "\nthe files it changed were " + ap.Refusal() + "; they were reverted"
-				}
-				return out
+				return runShell(ctx, root, a.WorkingDir, a.Command)
 			}))
 	}
 	return tools
@@ -209,27 +199,22 @@ func listDir(root, path string) string {
 
 // runShell runs an approved command in the worktree with the runtime's
 // environment allowlist, returning the exit code and the tails of its output.
-// It reports whether the command ran in the sandbox, or an error when it
-// did not run at all.
-func runShell(ctx context.Context, root, dir, command, sandbox string) (string, bool, error) {
+func runShell(ctx context.Context, root, dir, command string) string {
 	cwd, err := inside(root, orDefault(dir, "."))
 	if err != nil {
-		return "", false, errors.New("working_dir escapes project root")
+		return "error: working_dir escapes project root"
 	}
 	ctx, cancel := context.WithTimeout(ctx, shellTimeout)
 	defer cancel()
-	cmd, sandboxed, cleanup, err := shellCommand(ctx, root, cwd, command, sandbox)
-	if err != nil {
-		return "", false, fmt.Errorf("%w (--sandbox required)", err)
-	}
-	defer cleanup()
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd.Dir, cmd.Env = cwd, shellEnv()
 	cmd.WaitDelay = 5 * time.Second // a child holding the pipes open cannot hang the tool
 	killProcessGroup(cmd)
 	stdout, stderr := &tail{max: 4096}, &tail{max: 2048}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err = cmd.Run()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Sprintf("error: command timed out after %d s", int(shellTimeout.Seconds())), sandboxed, nil
+		return fmt.Sprintf("error: command timed out after %d s", int(shellTimeout.Seconds()))
 	}
 	code := 0
 	var exitErr *exec.ExitError
@@ -237,13 +222,13 @@ func runShell(ctx context.Context, root, dir, command, sandbox string) (string, 
 	case errors.As(err, &exitErr):
 		code = exitErr.ExitCode()
 	case err != nil:
-		return "error running command: " + err.Error(), sandboxed, nil
+		return "error running command: " + err.Error()
 	}
 	out := fmt.Sprintf("exit=%d\n%s", code, stdout)
 	if s := stderr.String(); s != "" {
 		out += "STDERR: " + s
 	}
-	return out, sandboxed, nil
+	return out
 }
 
 // shellEnv is what an approved shell command inherits: nothing that could

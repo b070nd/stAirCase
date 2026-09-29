@@ -107,31 +107,3 @@ func TestRun_certificate_level_drops_with_unsandboxed_commands(t *testing.T) {
 	assert.Equal(t, 2, s.Predicate.CAL)
 	assert.True(t, strings.Contains(strings.Join(s.Predicate.Notes, " "), "sandbox"), s.Predicate.Notes)
 }
-
-// TestRun_certificate_level_with_sandboxed_commands: an approved command that
-// ran in the sandbox keeps CAL 3, and the file it wrote reaches the branch
-// once decided; the same command without a sandbox drops the run to CAL 2.
-func TestRun_certificate_level_with_sandboxed_commands(t *testing.T) {
-	for _, sandboxed := range []bool{true, false} {
-		agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
-			if ap := env.ProposeShell(ctx, "coder", "r", ".", "make gen"); !ap.Approved {
-				return nil
-			}
-			if err := os.WriteFile(filepath.Join(env.Worktree, "gen.txt"), []byte("gen\n"), 0o644); err != nil {
-				return err
-			}
-			env.ShellRan(ctx, "coder", "make gen", sandboxed)
-			return nil
-		}
-		r, _, s := certified(t, agent, orchestrator.RunOptions{AllowShellExec: true}, &operator{approve: true})
-		got, err := r.OnBranch("gen.txt")
-		require.NoError(t, err, got)
-		assert.Equal(t, "gen\n", got)
-		assert.Contains(t, r.Types(), "shell_ran")
-		if sandboxed {
-			assert.Equal(t, 3, s.Predicate.CAL, s.Predicate.Notes)
-		} else {
-			assert.Equal(t, 2, s.Predicate.CAL)
-		}
-	}
-}

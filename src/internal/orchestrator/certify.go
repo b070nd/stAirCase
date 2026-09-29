@@ -79,33 +79,24 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if out, err := exec.Command("git", "-C", repo.path, "config", "user.email").Output(); err == nil {
 		p.RequestedBy = strings.TrimSpace(string(out))
 	}
-	shells, sandboxed, after := 0, 0, false
+	shell, after := false, false
 	for _, e := range events {
+		if e.EventType != "yield_decided" {
+			continue
+		}
 		var d struct {
 			Source      string `json:"source"`
 			ActionType  string `json:"action_type"`
 			Approved    bool   `json:"approved"`
 			ReviewAfter bool   `json:"review_after"`
-			Sandboxed   bool   `json:"sandboxed"`
 		}
-		if json.Unmarshal([]byte(e.Payload), &d) != nil {
-			continue
-		}
-		switch e.EventType {
-		case "shell_ran":
-			if d.Sandboxed {
-				sandboxed++
-			}
-		case "yield_decided":
+		if json.Unmarshal([]byte(e.Payload), &d) == nil {
 			p.Decisions[d.Source]++
-			if d.Approved && d.ActionType == domain.ActionShellExec {
-				shells++
-			}
-			// a sandboxed command was decided before it ran; what it wrote is decided too
-			after = after || (d.Approved && d.ReviewAfter && !d.Sandboxed)
+			shell = shell || (d.Approved && d.ActionType == domain.ActionShellExec)
+			after = after || (d.Approved && d.ReviewAfter)
 		}
 	}
-	if shells > sandboxed { // ADR 0001: CAL 3 runs no approved command outside a sandbox
+	if shell { // ADR 0001: CAL 3 runs no approved command outside a sandbox
 		p.CAL = 2
 		p.Notes = append(p.Notes, "shell commands were approved and ran without a sandbox")
 	}

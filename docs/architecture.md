@@ -95,9 +95,8 @@ move. The path a run took is recorded as its last audit event (`run_path`).
 
 - **The agent is untrusted.** It changes nothing except through proposals; the
   orchestrator never trusts what it claims (hashes, what it wrote) and verifies
-  the worktree before committing. Tools run as your OS user; approved shell
-  commands run in an OS sandbox where the machine has one
-  ([SECURITY.md](../SECURITY.md)).
+  the worktree before committing. Tools and approved shell commands run as your
+  OS user - there is no OS sandbox ([SECURITY.md](../SECURITY.md)).
 - **Models see** the plan's brief, the repository map, files the agents read,
   and nothing else; keys are decrypted only to call the model, never shown to
   it, and scrubbed from every log and audit record. Shell commands get an

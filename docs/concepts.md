@@ -119,8 +119,8 @@ only to the code that needs it. Secrets never appear in logs or in the audit cha
 
 ## What stAirCase is not
 
-- **Not a sandbox.** Agents run inside the `staircase` process as your user;
-  only their approved shell commands run in an OS sandbox. stAirCase controls what reaches your repository, not
+- **Not a sandbox.** Agents run inside the `staircase` process, and approved shell
+  commands run as your user. stAirCase controls what reaches your repository, not
   what a process can do on your machine. See [Safety boundary](safety.md).
 - **Not a code reviewer.** It makes sure *you* reviewed and approved every change,
   and it proves that you did. Whether the change is good is still your judgement.

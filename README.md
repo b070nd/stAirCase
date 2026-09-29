@@ -71,7 +71,7 @@ At the end the demo proves that the new branch holds exactly those changes and t
 your checkout did not change. Two more modes show the safety checks at work:
 
 ```bash
-./demo/run-demo.sh --tamper   # a command changes an approved file → you decide, it is put back
+./demo/run-demo.sh --tamper   # a file changes after you approved it → nothing is committed
 ./demo/run-demo.sh --drift    # the agent works outside its task → the run is stopped
 ```
 
@@ -104,9 +104,8 @@ minutes.
 
 ## Know the limits
 
-stAirCase controls **what reaches your repository**. It is **not a sandbox** for the
-agents themselves: they run as your user. Approved shell commands of built-in agents
-run in an OS sandbox where the machine has one. Read the
+stAirCase controls **what reaches your repository**. It is **not a sandbox**: agents
+and approved shell commands run as your user. Read the
 [safety boundary](docs/safety.md) before you use it on a project you care about.
 stAirCase is pre-1.0.
 

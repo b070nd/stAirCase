@@ -67,10 +67,7 @@ staircase verify staircase/run-7 --min-cal 3     # fail below CAL 3
 ```
 
 A run reaches CAL 3 when every action was decided before it ran; it drops to CAL 2
-when an approved shell command ran without a sandbox (always the case for Claude
-Code's own commands), or when changes were reviewed only after the agent made them.
-Files written by a command that ran in the sandbox are decided before they reach
-the commit, so they keep CAL 3. The
+when shell commands were approved, because they run without a sandbox. The
 certificate format is described in [ADR 0002](adr/0002-change-certificate.md).
 
 **For a reviewer on another machine:** notes are not pushed or fetched by default.

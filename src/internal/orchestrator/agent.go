@@ -38,7 +38,6 @@ func (f AgentFunc) Run(ctx context.Context, env *AgentEnv) error { return f(ctx,
 type AgentEnv struct {
 	Worktree   string // the run's git worktree: the agent's project root
 	AllowShell bool   // shell_exec may be proposed (--allow-shell-exec)
-	Sandbox    string // approved commands: "auto", "required" or "off" (--sandbox)
 
 	proposals chan<- proposal
 	usage     chan<- Usage
@@ -166,15 +165,6 @@ func (e *AgentEnv) ProposeEdit(ctx context.Context, agent, reasoning string, edi
 func (e *AgentEnv) ProposeWorktreeChanges(ctx context.Context, agent, reasoning string) Approval {
 	return e.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: domain.ActionFileEdit,
 		ReasoningTrace: reasoning, ReviewAfter: true, ConfidenceScore: 0.9})
-}
-
-// ShellRan records that an approved command ran, and whether in the
-// sandbox, then asks for a decision on the files it changed (see
-// ProposeWorktreeChanges).
-func (e *AgentEnv) ShellRan(ctx context.Context, agent, command string, sandboxed bool) Approval {
-	e.host.audit("shell_ran", map[string]any{"agent": agent, "command": command, "sandboxed": sandboxed})
-	return e.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: domain.ActionFileEdit,
-		ReasoningTrace: "files changed by the approved command: " + command, ReviewAfter: true, Sandboxed: sandboxed, ConfidenceScore: 0.9})
 }
 
 // ProposeShell proposes running command in dir, relative to the worktree.

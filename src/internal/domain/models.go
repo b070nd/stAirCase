@@ -183,10 +183,6 @@ type YieldRequest struct {
 	// command made them): the orchestrator fills ProposedEdits with them,
 	// approving keeps them and rejecting reverts them.
 	ReviewAfter bool `json:"review_after,omitempty"`
-	// Sandboxed, with ReviewAfter, says the changes come from an approved
-	// command that ran in the sandbox: decided before it ran, so the run can
-	// still reach CAL 3. Set by the orchestrator only.
-	Sandboxed bool `json:"sandboxed,omitempty"`
 
 	// Drift, set by the orchestrator, says why drift supervision sends this
 	// proposal to a human (outside the stories' scope, a limit, a checkpoint).

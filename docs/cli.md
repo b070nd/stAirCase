@@ -648,7 +648,6 @@ Flags:
       --reconcile               Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
       --record-llm string       Record every model exchange of this run to this file (JSON lines) for offline replay.
       --replay-llm string       File path to replay recorded LLM exchanges instead of calling the real API.
-      --sandbox string          Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap), required (refuse commands that cannot be sandboxed) or off (default "auto")
       --skip-gates              Bypass quality gate pre-flight (use with care)
       --validator string        Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once
 ```

@@ -60,10 +60,6 @@ certificate). Signing each decision, not only the whole change, comes later.
 - **Today:** v0.2.0 already enforces what CAL 3 needs for file changes. A run with
   shell commands enabled reaches CAL 3 only once commands run in a sandbox. Claude
   Code runs reach CAL 3 only once its own commands are sandboxed.
-- **Update (sandbox):** approved commands of built-in agents now run in an OS
-  sandbox (macOS `sandbox-exec`, Linux `bwrap`) and are recorded as `shell_ran`.
-  A run stays at CAL 3 when every approved command ran sandboxed; the files such a
-  command wrote are decided before they reach the commit.
 - CAL 4 resembles two-party review in SLSA's source track (Level 4). The
   documentation may describe the mapping, but it never claims compliance on anyone's
   behalf.

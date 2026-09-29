@@ -126,8 +126,7 @@ func TestTools_read_and_list_stay_inside_the_project(t *testing.T) {
 }
 
 // TestTools_run_shell catches shell access in a run that does not allow it, a
-// command running before its approval, credentials in its environment, and
-// files it wrote not being decided.
+// command running before its approval, and credentials in its environment.
 func TestTools_run_shell(t *testing.T) {
 	for _, tl := range agent.Tools(&orchestrator.AgentEnv{Worktree: t.TempDir()}, "coder") {
 		assert.NotEqual(t, "run_shell", tl.Name, "offered without --allow-shell-exec")
@@ -137,7 +136,7 @@ func TestTools_run_shell(t *testing.T) {
 		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
 	}))
 	defer approver.Close()
-	r, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true, Sandbox: agent.SandboxOff}, // TestShellSandbox covers the sandbox
+	r, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true},
 		func(s *persistence.Store, _ string, projectID int64) {
 			require.NoError(t, s.UpdateProjectWebhook(projectID, approver.URL))
 		}, func(ctx context.Context, env *orchestrator.AgentEnv) []string {
@@ -145,15 +144,9 @@ func TestTools_run_shell(t *testing.T) {
 				call(ctx, env, "run_shell", map[string]string{"command": "echo out; echo err >&2; exit 3", "reasoning": "r"}),
 				call(ctx, env, "run_shell", map[string]string{"command": "echo ${STAIRCASE_TEST_CREDENTIAL:-absent}", "reasoning": "r"}),
 				call(ctx, env, "run_shell", map[string]string{"command": "pwd", "reasoning": "r", "working_dir": ".."}),
-				call(ctx, env, "run_shell", map[string]string{"command": "echo gen > gen.txt", "reasoning": "r"}),
 			}
 		})
-	const bare = "(ran without a sandbox)\n"
-	assert.Equal(t, []string{bare + "exit=3\nout\nSTDERR: err\n", bare + "exit=0\nabsent\n",
-		"error: working_dir escapes project root", bare + "exit=0\n"}, out)
-	got, err := r.OnBranch("gen.txt")
-	require.NoError(t, err, got)
-	assert.Equal(t, "gen\n", got, "a file the command wrote reaches the branch once decided")
+	assert.Equal(t, []string{"exit=3\nout\nSTDERR: err\n", "exit=0\nabsent\n", "error: working_dir escapes project root"}, out)
 	assert.Equal(t, persistence.RunStatusSuccess, r.Run.Status)
 	assert.Contains(t, r.Types(), "yield_decided", "every command was decided before it ran")
 }
