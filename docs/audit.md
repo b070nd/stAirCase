@@ -184,7 +184,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v0.4.0
+      - uses: b070nd/stAirCase@v0.5.0
         with:
           key: .github/staircase.pub
           min-cal: 3
