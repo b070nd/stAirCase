@@ -25,18 +25,19 @@ stAirCase is **pre-1.0**.
 
 ## What stAirCase does not do
 
-- **It is not a sandbox for the agents.** stAirCase and its agents run as **your
-  user**. Approved shell commands of built-in agents run in an OS sandbox
-  (`--sandbox auto`, the default): they can write only in the worktree and their
-  own temporary folder, have no network, and cannot read the stAirCase workspace
-  or common credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh` and others).
-  They can read the rest of your files, and what they print goes to the model.
-  Where no sandbox is found (macOS `sandbox-exec`; Linux `bwrap` or the kernel's
-  Landlock), `auto`
-  runs them as you and says so, and `--sandbox required` refuses them. Files a
-  command changes in the worktree come to you afterwards: approved, they are kept;
-  rejected, they are reverted. Claude Code and Codex run their own commands, in
-  their own sandboxes or none.
+- **It does not sandbox the agent program itself.** stAirCase, Claude Code, Codex
+  and stAirCase's own runtime run as **your user**. What the agents *do* is
+  confined: reads and edits only through stAirCase's tools, inside the run's
+  worktree, and shell commands and checks in an OS sandbox (`--sandbox auto`, the
+  default: macOS `sandbox-exec`, Linux bubblewrap or Landlock; in `staircase claude`
+  sessions Claude Code's own sandbox, turned on strictly; Codex's workspace-write
+  sandbox). In it a command can write only in the worktree and its own temporary
+  folder, has no network, and cannot read the stAirCase workspace or common
+  credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh` and others). It can read
+  the rest of your files, and what it prints goes to the model. Where no sandbox is
+  found, `auto` runs commands as you and says so; `--sandbox required` refuses
+  them. Files a command changes come to you afterwards: approved, they are kept;
+  rejected, they are reverted.
 - **It does not judge quality.** A successful run means "exactly what was approved
   was committed", not "the story is done". That is your decision:
   `staircase story accept`.
@@ -58,12 +59,19 @@ stAirCase is **pre-1.0**.
 
 1. **Try it on a project you can afford to experiment with.** Keep the workspace
    (`~/.staircase-workspace`) outside the repository.
-2. **Leave shell commands off** unless you need them. If you turn them on for
-   untrusted work, run stAirCase in a container or VM that does not mount your home
-   folder or unrelated credentials.
+2. **Leave shell commands off** unless you need them. When you turn them on, use
+   `--sandbox required` so no command runs outside the sandbox. For untrusted work,
+   run stAirCase itself in a container or VM that does not mount your home folder
+   or unrelated credentials: then the agent program is contained too.
 3. **Give stories a scope** so changes elsewhere come to you (`staircase story scope`).
 4. **Set a budget cap** per project (`staircase project config set --budget-cap`).
-5. **Review the branch** before you merge it, and run your project's own tests.
+5. **Let checks do the tedious part.** `--check` runs your tests, and security
+   scanners such as `gosec ./...`, `semgrep scan --error` or `npm audit`, on the
+   exact commit in the sandbox; in Claude Code and Codex sessions the agent cannot
+   finish until they pass ([checks](audit.md#checks-on-the-commit)). Scanners that
+   download rules need their rules available offline, as the sandbox has no
+   network.
+6. **Review the branch** before you merge it.
 
 ## What a run's result means
 

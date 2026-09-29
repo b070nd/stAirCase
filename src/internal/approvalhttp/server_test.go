@@ -476,3 +476,45 @@ func TestStartTLS_nil_config_uses_default(t *testing.T) {
 	require.NoError(t, srv.StartTLS(ctx, certFile, keyFile, nil))
 	assert.NotEmpty(t, srv.ListenAddr())
 }
+
+// TestReviewPage: the run's approval port also serves the review page. It
+// loads nothing from elsewhere and cannot be framed; the API behind it still
+// needs the token, which the printed link carries in the fragment only; and a
+// request for another host name (DNS rebinding) is refused.
+func TestReviewPage(t *testing.T) {
+	srv, cancel := startServerWithToken(t, "s3cret")
+	defer cancel()
+	base := "http://" + srv.ListenAddr()
+	get := func(path, host string) *http.Response {
+		req, err := http.NewRequest(http.MethodGet, base+path, nil)
+		require.NoError(t, err)
+		if host != "" {
+			req.Host = host
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		return resp
+	}
+
+	page := get("/", "")
+	require.Equal(t, http.StatusOK, page.StatusCode)
+	assert.Contains(t, page.Header.Get("Content-Type"), "text/html")
+	csp := page.Header.Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'none'", "script-src 'self'", "connect-src 'self'", "frame-ancestors 'none'"} {
+		assert.Contains(t, csp, want)
+	}
+	assert.Equal(t, "no-referrer", page.Header.Get("Referrer-Policy"))
+	body, _ := io.ReadAll(page.Body)
+	assert.Contains(t, string(body), `src="app.js"`)
+	assert.NotContains(t, string(body), "s3cret")
+	for _, asset := range []string{"/app.js", "/style.css"} {
+		assert.Equal(t, http.StatusOK, get(asset, "").StatusCode, asset)
+	}
+	assert.Equal(t, http.StatusUnauthorized, get("/v1/yields", "").StatusCode, "the API still needs the token")
+	assert.Equal(t, http.StatusMisdirectedRequest, get("/", "attacker.example").StatusCode, "DNS rebinding")
+	assert.Equal(t, http.StatusMisdirectedRequest, get("/v1/yields", "attacker.example:80").StatusCode)
+	assert.Equal(t, http.StatusOK, get("/", "localhost").StatusCode)
+
+	assert.Equal(t, base+"/#token=s3cret", srv.ReviewURL())
+}

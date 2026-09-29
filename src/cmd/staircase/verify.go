@@ -187,6 +187,13 @@ func verifyCommit(commit string) error {
 		}
 		fmt.Printf("   check passed %s: %s\n", where, c.Command)
 	}
+	if a := p.Attention; a != nil {
+		fmt.Printf("   %d decision(s) by people, median %.0f s", a.HumanDecisions, a.MedianSeconds)
+		if a.QuickApprovals > 0 {
+			fmt.Printf("; ⚠️  %d large change(s) approved within seconds", a.QuickApprovals)
+		}
+		fmt.Println()
+	}
 	for _, n := range p.Notes {
 		fmt.Printf("   note: %s\n", n)
 	}

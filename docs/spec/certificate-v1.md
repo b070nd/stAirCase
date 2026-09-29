@@ -56,6 +56,7 @@ is always `commit`, so the certificate does not reveal the repository's name.
 | `cal` | integer 1 to 3 | yes | the change assurance level the run reached (level 4 is only ever established by a verifier, section 5) |
 | `notes` | array of strings | no | why the level is not higher |
 | `requestedBy` | string | no | the git identity (e-mail) the run was made under |
+| `attention` | object | no | how people decided, when any did: `{"humanDecisions": integer, "medianSeconds": number, "quickApprovals": integer}`; a quick approval is a change of 20 or more lines approved in under 5 seconds. Informative: it does not change the level |
 | `checks` | array | no | commands run on the commit after it was made, each `{"command": string, "exitCode": integer, "sandboxed": boolean, "outputSha256": string}`; `exitCode` -1 means it could not run |
 
 Producers MUST NOT put code, prompts or command output in the predicate: it holds

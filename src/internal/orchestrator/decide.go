@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/monitor"
@@ -26,6 +27,7 @@ type deciders struct {
 	validator *Validator
 	task      bool // ApproveInScope with an agreed task
 	signal    *Signal
+	redact    func(string) string // removes delivered secret values from what a person is shown
 	askHuman  func(domain.YieldRequest) domain.YieldResponse
 	display   *monitor.Display
 	tracker   *monitor.Tracker
@@ -48,12 +50,16 @@ type ruling struct {
 	drift   string                   // why drift supervision asked a human
 	halt    bool                     // the run has drifted too far and stops
 	refused bool                     // the orchestrator refused it before anyone decided
+
+	decideMS int64 // a person's time to decide
+	lines    int   // lines the change adds or removes
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
 // Review). A signal can only turn an automatic approval into a person's
 // decision.
 func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling {
+	req.Drift, req.Guard, req.Review, req.Before = "", "", "", nil // the orchestrator's to fill, never the agent's
 	rl := d.rule(ctx, req)
 	if d.signal != nil && rl.resp.Approved && rl.source != "operator" && rl.next != nil {
 		before := map[string]*approvedFile{}
@@ -86,6 +92,17 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		}
 		rl.next = next
 		rl.files = slices.Sorted(maps.Keys(next))
+		for _, e := range req.ProposedEdits {
+			if e.SearchBlock != MarkerNewFile {
+				continue
+			}
+			if cur, _ := d.approvals.current(e.File); cur != nil && !cur.deleted && len(cur.content) <= validatorMaxFile {
+				if req.Before == nil {
+					req.Before = map[string]string{}
+				}
+				req.Before[e.File] = d.redact(string(cur.content))
+			}
+		}
 	}
 
 	// Drift supervision: a proposal reaching outside the stories' scope, past
@@ -144,7 +161,16 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 }
 
 func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
+	start := time.Now()
 	rl.resp, rl.source = d.askHuman(*req), "operator"
+	rl.decideMS = time.Since(start).Milliseconds()
+	if rl.next != nil {
+		before := map[string]*approvedFile{}
+		for p := range rl.next {
+			before[p], _ = d.approvals.current(p)
+		}
+		rl.lines = changedLines(before, rl.next)
+	}
 	d.display.AddActivity(fmt.Sprintf("%-14s HITL   %s → %v", req.AgentName, req.ActionType, rl.resp.Approved))
 	return rl
 }
@@ -164,8 +190,16 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 		final.ProposedEdits = append(final.ProposedEdits, e)
 	}
 	final = scrubSecrets(final, delivered)
+	start := time.Now()
 	resp := d.askHuman(final)
 	decided := yieldDecided(d.total+1, "operator", final, resp, baseSHA, d.approvals.files, "")
+	decided["decide_ms"] = time.Since(start).Milliseconds()
+	lines := 0
+	for p, f := range d.approvals.files {
+		base, _ := d.approvals.fromBase(p)
+		lines += changedLines(map[string]*approvedFile{p: base}, map[string]*approvedFile{p: f})
+	}
+	decided["lines"] = lines
 	decided["files"] = digest(d.approvals.files) // what was offered, approved or not
 	if err := d.audit("yield_decided", decided); err != nil {
 		return false, fmt.Errorf("audit final review: %w", err)
@@ -195,4 +229,32 @@ func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.Y
 		fields["guard"] = req.Guard
 	}
 	return fields
+}
+
+// changedLines counts the lines a change adds or removes, file by file.
+func changedLines(before, after map[string]*approvedFile) int {
+	n := 0
+	for p, a := range after {
+		old := map[string]int{}
+		if b := before[p]; b != nil && !b.deleted {
+			for _, l := range strings.SplitAfter(string(b.content), "\n") {
+				old[l]++
+			}
+		}
+		if !a.deleted {
+			for _, l := range strings.SplitAfter(string(a.content), "\n") {
+				if old[l] > 0 {
+					old[l]--
+				} else if l != "" {
+					n++ // added
+				}
+			}
+		}
+		for l, c := range old {
+			if l != "" {
+				n += c // removed
+			}
+		}
+	}
+	return n
 }

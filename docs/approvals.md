@@ -63,6 +63,24 @@ people rejected before, with their reasons (the ten most recent), and every agen
 reads them in its brief. They come from the audit chain, so nothing is stored in
 your repository; rejections without a reason are not listed.
 
+### In your browser
+
+```bash
+staircase claude "add a /health endpoint" --approval-port 8765
+```
+
+With `--approval-port`, the run also serves a review page and prints its link,
+`http://127.0.0.1:8765/#token=…`. Open it to see each waiting proposal with the
+exact change (a line diff for files it rewrites, the search and replace for an
+edit, the command for a shell command), any `CHECK:`, drift or reviewer note, and
+approve or reject it with feedback for the agent. It works with every command that
+takes `--approval-port` (`run`, `claude`, `codex`, `review`, `seal`).
+
+The page is served only to this machine (it refuses any other host name), loads
+nothing from elsewhere, and cannot be embedded in another site. The link's key is
+in the part after `#`, which browsers never send to a server; the page keeps it for
+the tab only and removes it from the address bar.
+
 ### From another terminal or a script: the approval API
 
 ```bash

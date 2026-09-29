@@ -104,11 +104,18 @@ minutes.
 
 ## Know the limits
 
-stAirCase controls **what reaches your repository**. It is **not a sandbox** for the
-agents themselves: they run as your user. Approved shell commands of built-in agents
-run in an OS sandbox where the machine has one. Read the
-[safety boundary](docs/safety.md) before you use it on a project you care about.
-stAirCase is pre-1.0.
+stAirCase controls **what reaches your repository**, and confines what agents do
+on your machine:
+
+| | Where it runs |
+|---|---|
+| Edits and reads | only through stAirCase's tools, only inside the run's own worktree |
+| Shell commands and checks | an OS sandbox (macOS `sandbox-exec`, Linux bubblewrap or Landlock, Claude Code's own sandbox): no network, writes only in the worktree, no access to your credentials or stAirCase's keys; `--sandbox required` refuses to run without one |
+| The agent program itself | as your user (Claude Code, Codex, or stAirCase's runtime); for stronger isolation, run stAirCase in a container or VM |
+| Agents that edit your checkout (Cursor) | outside stAirCase until you `seal` their staged changes (CAL 2) |
+
+Read the [safety boundary](docs/safety.md) before you use it on a project you care
+about. stAirCase is pre-1.0.
 
 ## Documentation
 
