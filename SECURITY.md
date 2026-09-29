@@ -78,15 +78,17 @@ sandbox. See the [safety boundary](docs/safety.md).
 These are documented, not hidden:
 
 - Approved shell commands (`--allow-shell-exec`, built-in agents) run in an OS
-  sandbox by default (`--sandbox auto`): macOS `sandbox-exec`, Linux `bwrap`
-  (bubblewrap). In it a command can write only in the worktree and its own
+  sandbox by default (`--sandbox auto`): macOS `sandbox-exec`; on Linux
+  `bwrap` (bubblewrap) when it can run, otherwise Landlock (built into kernels
+  since 5.13, nothing to install) with a seccomp filter that refuses sockets. In it a command can write only in the worktree and its own
   temporary folder, and has no network. It cannot read the stAirCase workspace
   (signing key, secrets) or common credential locations in the home folder
   (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.config/git`, `~/.netrc`,
   `~/.npmrc`, keychains and others); it can still **read** the rest of what the
   user can, and its output goes back to the agent's model. Without a sandbox tool, `auto` runs the command as the user and says so;
-  `--sandbox required` refuses it instead. The Linux path is not yet tested on a
-  real machine. Files a command changes in the worktree are decided after it
+  `--sandbox required` refuses it instead. `bwrap` is tested in a Linux
+  container; Landlock is tested by CI on Ubuntu (Docker Desktop's kernel has no
+  Landlock). Files a command changes in the worktree are decided after it
   ran: approved, they are kept; rejected, they are reverted. Use a restricted
   container or VM for untrusted workloads.
 - Each run works in its own git worktree on its own branch, so the developer's

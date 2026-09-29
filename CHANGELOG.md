@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Security
 
+- Linux: when bubblewrap is missing or not allowed to run (Ubuntu 24.04 restricts
+  user namespaces), approved commands and checks now run under Landlock with a
+  seccomp filter that refuses sockets, instead of without a sandbox. A bwrap that
+  cannot run is detected once instead of failing every command. The Linux
+  sandbox tests run in CI, which fails if Landlock is not tested.
+
 - The sandbox for approved commands and checks now hides the stAirCase
   workspace (signing key, encrypted secrets and their key) and common credential
   locations in the home folder (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`,

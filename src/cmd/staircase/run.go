@@ -87,7 +87,7 @@ func init() {
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	runCmd.Flags().StringVar(&runSandbox, "sandbox", sandbox.Auto,
-		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap), "+
+		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), "+
 			"required (refuse commands that cannot be sandboxed) or off")
 	checkFlag(runCmd)
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,

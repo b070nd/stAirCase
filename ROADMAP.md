@@ -153,9 +153,8 @@ Six contracts stay stable and versioned while everything around them may change:
 - `staircase policy test`: see what a new rule would have decided on past runs.
 - **A deeper sandbox:** approved commands and checks already run without network,
   write only in their worktree, and cannot read the workspace or common credential
-  folders. Next:
-  - the Linux sandbox tested in CI on a real kernel, with Landlock (built into the
-    kernel, nothing to install) where bubblewrap is missing or not allowed;
+  folders, on macOS and on Linux (bubblewrap, or Landlock where bubblewrap is
+  missing or not allowed; tested in CI). Next:
   - the agents' own commands sandboxed too: Claude Code's built-in sandbox turned
     on in `staircase claude` sessions, so they can reach CAL 3 like Codex's
     sandboxed commands.
