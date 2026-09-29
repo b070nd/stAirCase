@@ -131,3 +131,20 @@ func TestRunHook_require(t *testing.T) {
 	assert.Contains(t, out, `"allow"`, "the session's answer")
 	assert.Equal(t, 1, posts)
 }
+
+// TestRunHook_file: --file names the session, for an agent that does not pass
+// our environment on to its hooks (Gemini CLI); it wins over the variable.
+func TestRunHook_file(t *testing.T) {
+	url := serve(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"ok":true}`)) })
+	file := sessionFile(t, url)
+	t.Setenv(agent.HookFileEnv, "")
+	code, out, _ := runHook("{}", "gemini", "--governed", "--file", file)
+	assert.Equal(t, 0, code)
+	assert.Equal(t, `{"ok":true}`, out)
+
+	code, _, errOut := runHook("{}", "gemini", "--governed", "--file", filepath.Join(t.TempDir(), "missing.json"))
+	assert.Equal(t, 2, code, "a session file that cannot be read blocks")
+	assert.Contains(t, errOut, "hook file")
+	code, _, _ = runHook("{}", "gemini", "--governed", "--file")
+	assert.Equal(t, 2, code, "--file needs a value")
+}

@@ -58,5 +58,21 @@ func TestHookTemplate(t *testing.T) {
 		assert.True(t, strings.Contains(out, want), "%q in:\n%s", want, out)
 	}
 
+	out, err = captureStdout(t, func() error { return hookTemplateHandler(nil, []string{"gemini"}) })
+	require.NoError(t, err)
+	var g struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+				Timeout int    `json:"timeout"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &g), out)
+	assert.Equal(t, "'/opt/homebrew/bin/staircase' hook gemini --require", g.Hooks["BeforeTool"][0].Hooks[0].Command)
+	assert.Greater(t, g.Hooks["BeforeTool"][0].Hooks[0].Timeout, 3600*1000, "milliseconds: a person may take long to decide")
+	assert.NotEmpty(t, g.Hooks["SessionStart"])
+	assert.NotEmpty(t, g.Hooks["AfterTool"])
+
 	assert.Error(t, hookTemplateHandler(nil, []string{"cursor"}))
 }

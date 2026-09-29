@@ -59,7 +59,27 @@ includes it) and logged in.`,
 	RunE: codexSession,
 }
 
+var geminiCmd = &cobra.Command{
+	Use:   "gemini <task>",
+	Short: "Run Gemini CLI on a task in this repository, with every change decided by you (work in progress)",
+	Long: `Runs Google's Gemini CLI on the task in a separate worktree of the git repository
+you are in. Every file change and command it wants to make comes to you first
+(commands need --allow-shell-exec); every other tool is refused. At the end,
+exactly the approved changes are committed on a new branch, staircase/run-N;
+your checkout is not touched.
+
+Work in progress: built from Gemini CLI's documentation and tested against a
+stand-in, not yet against a real login. Gemini CLI must be installed and logged
+in. Its commands run without a sandbox, so a run with commands reaches CAL 2.
+Hooks in your own or the repository's .gemini settings still run beside
+stAirCase's (Gemini cannot be told to ignore them); a run fails if Gemini never
+calls stAirCase's hooks.`,
+	Args: cobra.ArbitraryArgs,
+	RunE: geminiSession,
+}
+
 func init() {
+	sessionFlags(geminiCmd, "Gemini CLI", true)
 	claudeCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
 	claudeCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Let Claude Code propose shell commands (each still needs your approval)")
@@ -94,6 +114,32 @@ func claudeSession(_ *cobra.Command, args []string) error {
 // codexSession is `staircase codex <task>`.
 func codexSession(_ *cobra.Command, args []string) error {
 	return session("codex", "Codex", "codex", args)
+}
+
+// geminiSession is `staircase gemini <task>`.
+func geminiSession(_ *cobra.Command, args []string) error {
+	return session("gemini", "Gemini CLI", "gemini", args)
+}
+
+// sessionFlags are the flags of a session command for an agent: what it may
+// change, whether it may ask for commands, how to decide, checks, signing,
+// reviewers.
+func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
+	cmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
+	if shell {
+		cmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
+			"Let "+agentName+" propose shell commands (each still needs your approval)")
+	}
+	cmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+		"Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
+	cmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	cmd.Flags().StringVar(&runModel, "model", "", "Model for "+agentName+" (default: its own)")
+	cmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
+	checkFlag(cmd)
+	signFlags(cmd)
+	validatorFlag(cmd)
+	inScopeFlag(cmd)
+	rootCmd.AddCommand(cmd)
 }
 
 // session is a governed run of harness in the current repository, with
@@ -289,6 +335,8 @@ func agreement(s sessionSetup) string {
 		fmt.Fprintf(&b, "  commands:    none (the changes were made elsewhere)\n")
 	case s.harness == "codex":
 		fmt.Fprintf(&b, "  commands:    run in Codex's sandbox (no network); files they change come to you afterwards\n")
+	case s.shell && s.harness == "gemini":
+		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs, without a sandbox (the change reaches CAL 2)\n")
 	case s.shell && s.harness == "claude-code":
 		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs in Claude Code's sandbox (no network)\n")
 	case s.shell:

@@ -38,6 +38,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("FAKE_CODEX") != "" {
 		os.Exit(fakeCodex())
 	}
+	if os.Getenv("FAKE_GEMINI") != "" {
+		os.Exit(fakeGemini())
+	}
 	os.Exit(m.Run())
 }
 

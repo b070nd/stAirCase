@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`staircase gemini "task"` (work in progress):** Gemini CLI as the governed agent,
+  built from its documentation and tested against a stand-in, not yet against a real
+  login. Edits and commands are decided before they run, every other tool is refused,
+  and the hook bridge takes `--file` because Gemini sanitizes its hooks' environment.
+  `run --agent gemini`, `hook-template gemini`.
+
 - `--signal-url <address>`: ask a TypeSafe-compatible server, such as a local Laya
   (`laya-serve`), instead of the gateway. stAirCase then speaks TypeSafe's own shape
   (`POST /v1/systemone`), sends a key only if `SIGNAL_API_KEY` is stored, and

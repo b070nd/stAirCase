@@ -30,3 +30,16 @@ func ManagedCodexHooks(bin string) string {
 	}
 	return b.String()
 }
+
+// ManagedGeminiSettings is the settings.json a company deploys as Gemini CLI's
+// system settings so that every session on its machines goes through
+// stAirCase: the --require hook blocks tool calls outside a governed session.
+// A governed session points Gemini at its own settings file
+// (GEMINI_CLI_SYSTEM_SETTINGS_PATH), which replaces this one for that session.
+func ManagedGeminiSettings(bin string) ([]byte, error) {
+	var s map[string]any
+	if err := json.Unmarshal(GeminiSettings(HookCommand(bin, "gemini", "--require")), &s); err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(s, "", "  ")
+}

@@ -151,7 +151,7 @@ func (h *hookServer) preCodex(ctx context.Context, in hookInput) string {
 			return ap.Refusal()
 		}
 		h.mu.Lock()
-		h.pending[in.ToolUseID] = ap
+		h.pending[in.pendingKey()] = ap
 		h.mu.Unlock()
 		return ""
 	}

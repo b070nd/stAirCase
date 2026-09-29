@@ -21,6 +21,7 @@ staircase claude or staircase codex) and governs the calls inside one.
   claude-code  managed-settings.json (it also sets allowManagedHooksOnly, so
                user and repository hooks do not load)
   codex        the [hooks] block of the managed Codex configuration
+  gemini       Gemini CLI's system settings.json (work in progress)
 
 --bin is where staircase is installed on those machines (default: this
 program). See docs/managed.md.`,
@@ -50,8 +51,14 @@ func hookTemplateHandler(_ *cobra.Command, args []string) error {
 		fmt.Println(string(b))
 	case "codex":
 		fmt.Print(agent.ManagedCodexHooks(bin))
+	case "gemini":
+		b, err := agent.ManagedGeminiSettings(bin)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
 	default:
-		return fmt.Errorf("no managed settings for %q: use claude-code or codex", args[0])
+		return fmt.Errorf("no managed settings for %q: use claude-code, codex or gemini", args[0])
 	}
 	return nil
 }
