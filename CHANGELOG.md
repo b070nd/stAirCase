@@ -6,60 +6,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+Review where you already work. Approve changes in your browser, on one page for
+every running session; commit what a hook-less agent like Cursor did with a
+certificate; share a team's rules and keys from one repository; and see whether
+approvals were given with attention. The certificate format now has a written
+specification with test vectors.
+
+### Added
+
+- **A review page in your browser.** With `--approval-port`, a run serves a page
+  on that port and prints its link. It shows each waiting proposal with the exact
+  change (a line diff for rewritten files) and its notes, and approves or rejects
+  it with feedback. Local only, no outside resources, the key kept out of the
+  server's view. A person deciding a change that rewrites a file is shown what it
+  replaces, and notes an agent set on a proposal itself are cleared.
+- **`staircase serve`:** one review page for every running session of the
+  workspace, each proposal labelled with its project and run, decisions forwarded
+  to the session they belong to. Sessions register while they run; only this
+  machine's sessions are contacted, and their keys never reach the browser.
+- **`staircase seal` and `staircase attach`:** for agents that edit your checkout
+  directly (Cursor, IDE assistants). Stage their changes and run `seal` instead
+  of `git commit`: each staged file is decided, and your branch moves to one
+  certified commit (CAL 2) with your message and the approved files; rejected
+  changes stay in your working files. `attach` installs a pre-commit hook that
+  refuses plain commits while an agent works (`--off` removes it; your own hook is
+  never replaced).
+- **Review attention:** the change certificate records how people decided
+  (decisions, median time, and large changes approved within seconds); `verify`
+  prints it and `report` lists certified commits with such quick approvals, so
+  rubber-stamping becomes visible.
+- **Teams:** `staircase governance use <repository>` installs a team's
+  `policy.json`, `allowed_signers` and members' keys (`keys/*.pub`) from a
+  governance repository, pinned to an exact commit and checked first;
+  `governance status` shows when the source or the workspace changed since.
+  `verify` and `report` then accept certificates from every member, and `verify`
+  counts the team's reviewers for CAL 4.
+- **`staircase report [repository...]`:** how agent-written commits were
+  governed across repositories: commits by people and with agents, valid
+  certificates by level, agents, and every agent commit with a missing or invalid
+  certificate or a failed check. `--json` for dashboards.
+- **The change certificate's specification** (`docs/spec/certificate-v1.md`) with
+  11 conformance test vectors, checked by stAirCase's tests and, in CI, by an
+  independent verifier written from the specification alone. How stAirCase
+  relates to SLSA's source track, the OWASP Top 10 for LLM applications and NIST's
+  SSDF (`docs/standards.md`), a compatibility promise for the six interfaces other
+  tools build on (`docs/compatibility.md`) and a draft in-toto predicate proposal.
+
 ### Changed
 
 - README, SECURITY.md and the safety boundary now say precisely what runs where:
   edits and reads only through stAirCase's tools, commands and checks in an OS
   sandbox, the agent program itself as your user. SECURITY.md still said approved
   commands run without a sandbox, which stopped being true in 0.4.0.
-
-### Added
-
-- `staircase serve`: one review page for every running session of the workspace,
-  each proposal labelled with its project and run, decisions forwarded to the
-  session they belong to. Sessions register while they run; only this machine's
-  sessions are contacted, and their keys never reach the browser.
-
-- A review page in your browser: with `--approval-port`, a run serves a page on
-  that port and prints its link. It shows each waiting proposal with the exact
-  change (a line diff for rewritten files) and its notes, and approves or rejects
-  it with feedback. Local only, no outside resources, the key kept out of the
-  server's view.
-- A person deciding a change that rewrites an existing file is shown what it
-  replaces (`before` in the proposal, filled in by stAirCase), and notes an agent
-  set on a proposal itself are cleared.
-
-- Review attention: the change certificate records how people decided (decisions,
-  median time, and large changes approved within seconds), `verify` prints it and
-  `report` lists certified commits with such quick approvals, so rubber-stamping
-  becomes visible.
-
-- `staircase seal`: for agents that edit your checkout directly (Cursor, IDE
-  assistants), use it instead of `git commit`. Each staged file is decided, and
-  your branch moves to one certified commit (CAL 2) with your message and the
-  approved files; rejected changes stay in your working files. `staircase attach`
-  installs a pre-commit hook that refuses plain commits while an agent works
-  (`--off` removes it; your own hook is never replaced).
-
-- Teams: `staircase governance use <repository>` installs a team's `policy.json`,
-  `allowed_signers` and members' keys (`keys/*.pub`) from a governance
-  repository, pinned to an exact commit and checked first; `governance status`
-  shows when the source or the workspace changed since. `verify` and `report`
-  then accept certificates from every member, and `verify` counts the team's
-  reviewers for CAL 4.
-
-- `staircase report [repository...]`: how agent-written commits were governed
-  across one or more repositories: commits by people and with agents, valid
-  certificates by level, agents, and every agent commit with a missing or
-  invalid certificate or a failed check. `--json` for dashboards.
-
-- The change certificate's specification (`docs/spec/certificate-v1.md`) with 11
-  conformance test vectors, checked by stAirCase's tests and, in CI, by an
-  independent verifier written from the specification alone
-  (`docs/spec/verify_vectors.py`).
-- How stAirCase relates to SLSA's source track, the OWASP Top 10 for LLM
-  applications and NIST's SSDF (`docs/standards.md`), and a compatibility promise
-  for the six interfaces other tools build on (`docs/compatibility.md`).
 
 ## [0.4.0] - 2026-09-29
 
