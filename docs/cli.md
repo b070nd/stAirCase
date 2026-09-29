@@ -14,6 +14,26 @@ Global flag, accepted by every command:
 
 The workspace directory can also be set with the `STAIRCASE_DIR` environment variable.
 
+## staircase attach
+
+Stop plain git commits in this checkout while an agent works in it (use staircase seal)
+
+```
+staircase attach [flags]
+```
+
+Installs a pre-commit hook in this repository that refuses git commit with the
+way to seal the changes instead. It guards against committing an agent's work
+by accident; it is not a wall (git commit --no-verify gets through, and your CI
+check stays the second line). staircase attach --off removes it. An existing
+pre-commit hook of your own is never overwritten.
+
+Flags:
+
+```
+      --off   Remove the hook
+```
+
 ## staircase audit anchor
 
 Anchor a run's change certificate in a Rekor transparency log (digests only)
@@ -716,6 +736,39 @@ Flags:
       --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --skip-gates              Bypass quality gate pre-flight (use with care)
       --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+```
+
+## staircase seal
+
+Commit the staged changes an agent made in your checkout, file by file decided and certified
+
+```
+staircase seal [flags]
+```
+
+For agents that edit your checkout directly (Cursor, an IDE assistant, any
+tool): stage their changes with git add, then run staircase seal instead of git
+commit. Each staged file comes to you (or your rules) to approve or reject, as
+in staircase review. Your current branch then moves to one new commit that holds
+exactly the approved files, with your message, an Assisted-by trailer and a
+change certificate (CAL 2: the files were changed before they were decided).
+
+Rejected changes stay in your working files, uncommitted; edits you did not
+stage are left alone.
+
+Flags:
+
+```
+      --allow stringArray       A path (glob) the changes may touch; a file elsewhere comes to you as drift
+      --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --approve-in-scope        Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --by string               Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)
+      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+  -m, --message string          The commit message (default: Changes by <agent>)
+      --signal string           Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --validator stringArray   Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                     Start without asking to confirm (needed without a terminal)
 ```
 
 ## staircase secret list

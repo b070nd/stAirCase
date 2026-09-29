@@ -114,7 +114,8 @@ Six contracts stay stable and versioned while everything around them may change:
 ### Phase 2 - v0.4: any agent, anywhere
 
 - **Gemini CLI** and **OpenCode** support.
-- **Review-after** capture, used for **Cursor** (CAL 2).
+- **Review-after** capture, used for **Cursor** (CAL 2). *Done: `staircase seal`
+  works with any agent that edits your checkout.*
 - `staircase review <pull request>` for cloud agents.
 - Templates for managed (company-wide) hook settings.
 - **Signed approvals** with your SSH key: *who* approved becomes provable.
@@ -168,6 +169,7 @@ Six contracts stay stable and versioned while everything around them may change:
   state machine's recorded state) and you can approve from a browser. Approvals there
   are signed with a passkey.
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
+  *Done: `staircase attach` and `staircase seal` (CAL 2), which also covers Cursor.*
 - **Git as the control plane:**
   - rules, blueprints and trusted keys come from a governance repository; *done for
     rules and keys: `staircase governance`;*

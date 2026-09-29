@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `staircase seal`: for agents that edit your checkout directly (Cursor, IDE
+  assistants), use it instead of `git commit`. Each staged file is decided, and
+  your branch moves to one certified commit (CAL 2) with your message and the
+  approved files; rejected changes stay in your working files. `staircase attach`
+  installs a pre-commit hook that refuses plain commits while an agent works
+  (`--off` removes it; your own hook is never replaced).
+
 - Teams: `staircase governance use <repository>` installs a team's `policy.json`,
   `allowed_signers` and members' keys (`keys/*.pub`) from a governance
   repository, pinned to an exact commit and checked first; `governance status`
