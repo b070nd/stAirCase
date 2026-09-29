@@ -1,4 +1,4 @@
-package agent
+package sandbox
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func TestShellSandbox(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 	run := func(command string) (string, bool) {
-		cmd, sandboxed, cleanup, err := shellCommand(context.Background(), wt, wt, command, SandboxRequired)
+		cmd, sandboxed, cleanup, err := Command(context.Background(), wt, wt, command, Required)
 		require.NoError(t, err)
 		defer cleanup()
 		out, err := cmd.CombinedOutput()
@@ -47,13 +47,13 @@ func TestShellSandbox(t *testing.T) {
 func TestShellSandbox_unavailable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // no sandbox-exec or bwrap to find
 	wt := t.TempDir()
-	_, _, _, err := shellCommand(context.Background(), wt, wt, "true", SandboxRequired)
+	_, _, _, err := Command(context.Background(), wt, wt, "true", Required)
 	assert.ErrorContains(t, err, "no sandbox")
-	_, sandboxed, cleanup, err := shellCommand(context.Background(), wt, wt, "true", SandboxAuto)
+	_, sandboxed, cleanup, err := Command(context.Background(), wt, wt, "true", Auto)
 	require.NoError(t, err)
 	cleanup()
 	assert.False(t, sandboxed)
-	_, sandboxed, cleanup, err = shellCommand(context.Background(), wt, wt, "true", SandboxOff)
+	_, sandboxed, cleanup, err = Command(context.Background(), wt, wt, "true", Off)
 	require.NoError(t, err)
 	cleanup()
 	assert.False(t, sandboxed)

@@ -148,14 +148,15 @@ func TestClaudeSession_outside_a_repository(t *testing.T) {
 // governed for this agent.
 func TestAgreement_says_what_will_happen(t *testing.T) {
 	text := agreement(sessionSetup{harness: "codex", name: "Codex", task: "fix the date test", root: "/r/shop",
-		base: "0123456789abcdef", allow: []string{"src/**"}, model: "gpt-6-luna"})
+		base: "0123456789abcdef", allow: []string{"src/**"}, checks: []string{"go test ./..."}, model: "gpt-6-luna"})
 	for _, want := range []string{"Codex", "fix the date test", "/r/shop", "0123456789ab", "src/**",
-		"before", "sandbox", "afterwards", "gpt-6-luna", "no budget cap"} {
+		"before", "sandbox", "afterwards", "go test ./...", "gpt-6-luna", "no budget cap"} {
 		assert.Contains(t, text, want)
 	}
 	claude := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc"})
 	assert.Contains(t, claude, "the whole repository")
 	assert.Contains(t, claude, "not allowed")
+	assert.NotContains(t, claude, "checks:")
 }
 
 // TestClaudeSession_needs_agreement: without a terminal to ask, a session

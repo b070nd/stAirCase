@@ -17,6 +17,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
 // Tool is one function the model may call.
@@ -211,20 +212,20 @@ func listDir(root, path string) string {
 // environment allowlist, returning the exit code and the tails of its output.
 // It reports whether the command ran in the sandbox, or an error when it
 // did not run at all.
-func runShell(ctx context.Context, root, dir, command, sandbox string) (string, bool, error) {
+func runShell(ctx context.Context, root, dir, command, mode string) (string, bool, error) {
 	cwd, err := inside(root, orDefault(dir, "."))
 	if err != nil {
 		return "", false, errors.New("working_dir escapes project root")
 	}
 	ctx, cancel := context.WithTimeout(ctx, shellTimeout)
 	defer cancel()
-	cmd, sandboxed, cleanup, err := shellCommand(ctx, root, cwd, command, sandbox)
+	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, root, cwd, command, mode)
 	if err != nil {
 		return "", false, fmt.Errorf("%w (--sandbox required)", err)
 	}
 	defer cleanup()
 	cmd.WaitDelay = 5 * time.Second // a child holding the pipes open cannot hang the tool
-	killProcessGroup(cmd)
+	sandbox.KillGroup(cmd)
 	stdout, stderr := &tail{max: 4096}, &tail{max: 2048}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err = cmd.Run()
@@ -244,27 +245,6 @@ func runShell(ctx context.Context, root, dir, command, sandbox string) (string, 
 		out += "STDERR: " + s
 	}
 	return out, sandboxed, nil
-}
-
-// shellEnv is what an approved shell command inherits: nothing that could
-// carry credentials (SSH agent, cloud or LLM keys) - only what tools need to
-// run, find certificates and reach a proxy.
-func shellEnv() []string {
-	keep := func(k string) bool {
-		switch k {
-		case "PATH", "HOME", "TMPDIR", "LANG", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
-			"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy":
-			return true
-		}
-		return strings.HasPrefix(k, "LC_")
-	}
-	var env []string
-	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); keep(k) {
-			env = append(env, kv)
-		}
-	}
-	return env
 }
 
 // tail keeps the last max bytes written to it.

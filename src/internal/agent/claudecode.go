@@ -19,6 +19,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
 // ClaudeCode runs Claude Code (`claude -p`) in the run's worktree as the run's
@@ -86,11 +87,11 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		args = append(args, "--model", c.Model)
 	}
 	cmd := exec.CommandContext(ctx, orDefault(c.Bin, "claude"), args...)
-	// ponytail: shellEnv carries no LLM key, so Claude Code must be logged in
+	// ponytail: sandbox.Env carries no LLM key, so Claude Code must be logged in
 	// (keychain under HOME); pass ANTHROPIC_API_KEY via a secret if needed.
-	cmd.Dir, cmd.Env = root, append(shellEnv(), HookFileEnv+"="+hookFile)
+	cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile)
 	cmd.WaitDelay = 5 * time.Second
-	killProcessGroup(cmd)
+	sandbox.KillGroup(cmd)
 	var stdout bytes.Buffer
 	stderr := &tail{max: 4096}
 	cmd.Stdout, cmd.Stderr = &stdout, stderr

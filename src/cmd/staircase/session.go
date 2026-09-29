@@ -66,6 +66,8 @@ func init() {
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
 	claudeCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
+	checkFlag(claudeCmd)
+	checkFlag(codexCmd)
 	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
 	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
@@ -124,7 +126,7 @@ func session(harness, name, command string, args []string) error {
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: sessionAllow, model: runModel,
+			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, model: runModel,
 			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
@@ -233,7 +235,7 @@ func samePath(a, b string) bool {
 // sessionSetup is what a session is about to do, for the person to agree to.
 type sessionSetup struct {
 	harness, name, task, root, base, model string
-	allow                                  []string
+	allow, checks                          []string
 	shell                                  bool
 	budget                                 float64
 	projectID                              int64
@@ -269,6 +271,9 @@ func agreement(s sessionSetup) string {
 		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs\n")
 	default:
 		fmt.Fprintf(&b, "  commands:    not allowed (--allow-shell-exec lets it ask)\n")
+	}
+	if len(s.checks) > 0 {
+		fmt.Fprintf(&b, "  checks:      %s (on the commit, results in its certificate)\n", strings.Join(s.checks, "; "))
 	}
 	model := s.model
 	if model == "" {

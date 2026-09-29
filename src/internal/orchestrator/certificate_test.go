@@ -2,11 +2,14 @@ package orchestrator_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -134,4 +137,30 @@ func TestRun_certificate_level_with_sandboxed_commands(t *testing.T) {
 			assert.Equal(t, 2, s.Predicate.CAL)
 		}
 	}
+}
+
+// TestRun_checks_the_commit_it_made: each check runs on a clean checkout of
+// exactly the commit the run made, in the sandbox where the machine has one,
+// and its result is in the certificate; a failing check is recorded, not
+// hidden, and its checkout is removed.
+func TestRun_checks_the_commit_it_made(t *testing.T) {
+	r, _, s := certified(t, writeFile("health.txt", "ok\n"), orchestrator.RunOptions{
+		Plan:   &plan.Plan{Harness: "claude-code"},
+		Checks: []string{"grep -q ok health.txt && test -z \"$(git status --porcelain)\"", "echo broken; exit 3"}}, nil)
+
+	c := s.Predicate.Checks
+	require.Len(t, c, 2)
+	assert.Equal(t, "grep -q ok health.txt && test -z \"$(git status --porcelain)\"", c[0].Command)
+	assert.Equal(t, 0, c[0].ExitCode, "the check sees the committed tree")
+	assert.Equal(t, 3, c[1].ExitCode)
+	assert.Equal(t, sha256Hex("broken\n"), c[1].OutputSHA256)
+	assert.Equal(t, runtime.GOOS == "darwin", c[0].Sandboxed)
+	assert.Equal(t, 3, s.Predicate.CAL, "checks are evidence, not decisions")
+	assert.Contains(t, r.Types(), "check_ran")
+	assert.NotContains(t, git(t, r.Repo, "worktree", "list"), "staircase-check")
+}
+
+func sha256Hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }

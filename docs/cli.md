@@ -161,6 +161,7 @@ Flags:
       --allow-shell-exec        Let Claude Code propose shell commands (each still needs your approval)
       --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
+      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string            Model for Claude Code (default: its own)
   -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
@@ -215,6 +216,7 @@ Flags:
       --allow stringArray       A path (glob) the task may change; repeat for more
       --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
+      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string            Model for Codex (default: its own)
   -y, --yes                     Start without asking to confirm the task (needed without a terminal)
 ```
@@ -621,6 +623,7 @@ Flags:
       --approval-port int       Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
       --by string               Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
+      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
   -y, --yes                     Start without asking to confirm (needed without a terminal)
 ```
 
@@ -640,6 +643,7 @@ Flags:
       --allow-shell-exec        Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int       Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string   Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
+      --check stringArray       A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --debug                   Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
       --dry-run                 Validate and print the execution plan without running
       --metrics-addr string     Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.

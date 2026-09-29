@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `--check "<command>"` on `run`, `claude`, `codex` and `review`: runs a command,
+  such as your tests, on a clean checkout of the commit the run made, in the
+  sandbox, and records its exit code and output digest in the change certificate.
+  `staircase verify` fails a commit whose check failed.
+
 - Approved shell commands of built-in agents run in an OS sandbox (macOS
   `sandbox-exec`, Linux `bwrap`): they can write only in the worktree and their
   own temporary folder, with no network. `staircase run --sandbox auto|required|off`

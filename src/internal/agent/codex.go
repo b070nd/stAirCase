@@ -17,6 +17,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
 // codexApp is where the ChatGPT app for macOS keeps its Codex CLI, used when
@@ -85,9 +86,9 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	args = append(args, c.Prompt+"\n\n"+codexRules)
 
 	cmd := exec.CommandContext(ctx, c.bin(), args...)
-	cmd.Dir, cmd.Env = root, append(shellEnv(), HookFileEnv+"="+hookFile)
+	cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile)
 	cmd.WaitDelay = 5 * time.Second
-	killProcessGroup(cmd)
+	sandbox.KillGroup(cmd)
 	var stdout bytes.Buffer
 	stderr := &tail{max: 4096}
 	cmd.Stdout, cmd.Stderr = &stdout, stderr // stdin stays empty: codex exec waits on an open one
