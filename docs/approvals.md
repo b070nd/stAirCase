@@ -283,8 +283,26 @@ change is it. It can only **send the change to you**: when it rates the change r
 doubts it serves a story, or cannot answer. It never approves or rejects anything.
 Every rating is recorded (`signal_rated`).
 
+**A local model instead of the gateway.** [Laya](https://huggingface.co/convaiinnovations/laya)
+is an open model (Apache 2.0) with a Jev-shaped server; run it yourself and nothing
+leaves your machine:
+
+```bash
+pip install "laya[serve]"
+LAYA_API_KEY=some-secret laya-serve            # port 8000
+staircase secret set SIGNAL_API_KEY            # the same secret, read from stdin
+staircase claude "…" --signal laya --signal-url http://127.0.0.1:8000
+```
+
+`--signal-url` makes stAirCase speak TypeSafe's own request shape (`POST /v1/systemone`)
+to that address instead of the gateway's. `laya-serve` listens on all interfaces and
+accepts anyone unless `LAYA_API_KEY` is set, so set it and keep the port closed to
+your network. The change is sent to the address you give, so give one you trust. A key
+is sent only when you stored `SIGNAL_API_KEY`; the gateway key is never sent there.
+
 The model sees the stories and the change, the same as a validator. Measure it on
-your own kind of changes before you rely on it: `make eval-jev` runs 24 labelled
+your own kind of changes before you rely on it: `make eval-jev` (for a local Laya:
+`go run ./src/tools/jeveval -model laya -base http://127.0.0.1:8000 -api systemone`) runs 24 labelled
 changes (secrets, exfiltration, weakened tests, prompt injection, Trojan Source,
 drift) and reports what it missed and what it flagged needlessly.
 

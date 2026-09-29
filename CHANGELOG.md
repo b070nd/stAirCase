@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- `--signal-url <address>`: ask a TypeSafe-compatible server, such as a local Laya
+  (`laya-serve`), instead of the gateway. stAirCase then speaks TypeSafe's own shape
+  (`POST /v1/systemone`), sends a key only if `SIGNAL_API_KEY` is stored, and
+  `jeveval -api systemone` measures such a server on the same 24 cases.
+
 - **Signed decisions.** `--sign-approvals <ssh key>` (with `--sign-as`) signs each
   decision you make; the approval API also takes a `signer` and `signature`, over
   the request's `decision_payload`. The signature covers the run, the exact request

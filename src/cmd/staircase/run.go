@@ -45,6 +45,7 @@ var (
 	runAckDrift       bool
 	runValidator      []string
 	runSignal         string
+	runSignalURL      string
 	runSignKey        string
 	runSignAs         string
 	runRequireSigned  bool
@@ -201,7 +202,7 @@ func runCase(caseID int64) error {
 	}
 	var sig *orchestrator.Signal
 	if runSignal != "" {
-		sig = &orchestrator.Signal{Model: runSignal}
+		sig = &orchestrator.Signal{Model: runSignal, URL: runSignalURL}
 	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
@@ -238,6 +239,9 @@ func checkFlag(cmd *cobra.Command) {
 
 // validatorFlag adds --validator and --signal to cmd.
 func validatorFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&runSignalURL, "signal-url", "",
+		"Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; "+
+			"the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)")
 	cmd.Flags().StringVar(&runSignal, "signal", "",
 		"Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; "+
 			"it can only send a change to you (risky, off the stories, or no answer), never approve one")

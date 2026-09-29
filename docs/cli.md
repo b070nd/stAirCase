@@ -188,6 +188,7 @@ Flags:
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
@@ -249,6 +250,7 @@ Flags:
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
@@ -741,6 +743,7 @@ Flags:
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
@@ -775,6 +778,7 @@ Flags:
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --skip-gates                 Bypass quality gate pre-flight (use with care)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
 ```
@@ -811,6 +815,7 @@ Flags:
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```

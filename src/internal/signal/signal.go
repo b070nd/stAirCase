@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type Answer struct {
 	Choice        string             `json:"choice"`      // choice
 	Score         float64            `json:"score"`       // score
 	Probabilities map[string]float64 `json:"probabilities"`
+	Noul          *float64           `json:"noul"` // TypeSafe's native name for a boolean's probability
 }
 
 // Result is one evaluation: the answers by question, and what it cost.
@@ -47,16 +49,34 @@ type Evaluator interface {
 	Evaluate(ctx context.Context, state any, questions map[string]Question) (Result, error)
 }
 
-// Client calls an evaluation model through the gateway's HTTP API.
+// The two request shapes an evaluation server can speak.
+const (
+	// Gateway is the AI Gateway's POST /v1/evaluate.
+	Gateway = ""
+	// SystemOne is TypeSafe's own POST /v1/systemone, which TypeSafe and Laya
+	// (an open model, run locally with laya-serve) speak.
+	SystemOne = "systemone"
+)
+
+// Client calls an evaluation model through an HTTP API.
 type Client struct {
 	Model   string
-	Key     string
+	Key     string       // sent as a bearer token when set
 	BaseURL string       // default DefaultBaseURL
+	API     string       // Gateway (default) or SystemOne
 	HTTP    *http.Client // default: 30 s timeout
 }
 
 // Evaluate asks the questions about state in one request.
 func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Question) (Result, error) {
+	path := "/v1/evaluate"
+	switch c.API {
+	case Gateway:
+	case SystemOne:
+		path, questions = "/v1/systemone", nativeQuestions(questions)
+	default:
+		return Result{}, fmt.Errorf("unknown evaluation API %q", c.API)
+	}
 	body, err := json.Marshal(map[string]any{"model": c.Model, "state": state, "questions": questions})
 	if err != nil {
 		return Result{}, err
@@ -65,11 +85,13 @@ func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Q
 	if base == "" {
 		base = DefaultBaseURL
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/evaluate", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		return Result{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Key)
+	if c.Key != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Key)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	hc := c.HTTP
 	if hc == nil {
@@ -100,8 +122,13 @@ func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Q
 		return Result{}, fmt.Errorf("%s: unreadable answer: %w", c.Model, err)
 	}
 	for id := range questions {
-		if _, ok := out.Answers[id]; !ok {
+		a, ok := out.Answers[id]
+		if !ok {
 			return Result{}, fmt.Errorf("%s: no answer to %q", c.Model, id)
+		}
+		if a.Noul != nil { // native boolean
+			a.Probability = *a.Noul
+			out.Answers[id] = a
 		}
 	}
 	cost, _ := strconv.ParseFloat(out.ProviderMetadata.Gateway.Cost, 64)
@@ -122,4 +149,20 @@ var ReviewQuestions = map[string]Question{
 	"kind": {Type: "choice", Instructions: "What kind of change is this?",
 		Criteria: map[string]string{"feature": "product code", "test": "tests", "docs": "documentation",
 			"config": "configuration, CI or build files", "dependency": "dependency manifests or lock files"}},
+}
+
+// nativeQuestions are the questions in TypeSafe's own shape: a boolean is a
+// "noul", whose criteria are yes and no.
+func nativeQuestions(qs map[string]Question) map[string]Question {
+	out := make(map[string]Question, len(qs))
+	for id, q := range qs {
+		if q.Type == "boolean" {
+			q.Type = "noul"
+			if m, ok := q.Criteria.(map[string]string); ok {
+				q.Criteria = map[string]string{"yes": m["true"], "no": m["false"]}
+			}
+		}
+		out[id] = q
+	}
+	return out
 }

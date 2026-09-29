@@ -567,7 +567,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 
 	if opts.Signal != nil {
 		if opts.Signal.Eval == nil {
-			if key, err := host.secret("LLM_GATEWAY_API_KEY"); err == nil && key != "" {
+			if opts.Signal.URL != "" { // a local Laya or TypeSafe: its own shape, a key only if it has one
+				key, _ := host.secret("SIGNAL_API_KEY")
+				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: opts.Signal.URL, API: signal.SystemOne}
+			} else if key, err := host.secret("LLM_GATEWAY_API_KEY"); err == nil && key != "" {
 				base, _ := host.secret("LLM_GATEWAY_URL") // as for the gateway's models (llm.New)
 				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: strings.TrimSuffix(strings.TrimSuffix(base, "/"), "/v1")}
 			}
