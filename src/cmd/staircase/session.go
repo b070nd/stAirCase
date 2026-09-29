@@ -20,9 +20,10 @@ import (
 )
 
 var (
-	sessionAllow  []string
-	sessionYes    bool
-	sessionReview *plan.Review // set by staircase review
+	sessionAllow   []string
+	sessionYes     bool
+	sessionInScope bool         // --approve-in-scope
+	sessionReview  *plan.Review // set by staircase review
 )
 
 var claudeCmd = &cobra.Command{
@@ -68,6 +69,10 @@ func init() {
 	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
 	checkFlag(claudeCmd)
 	checkFlag(codexCmd)
+	validatorFlag(claudeCmd)
+	validatorFlag(codexCmd)
+	inScopeFlag(claudeCmd)
+	inScopeFlag(codexCmd)
 	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
 	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
@@ -95,6 +100,9 @@ func session(harness, name, command string, args []string) error {
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
+	}
+	if sessionInScope && len(sessionAllow) == 0 {
+		return fmt.Errorf("--approve-in-scope needs the task's scope: name the paths it may change with --allow")
 	}
 	root, err := gitTopLevel()
 	if err != nil {
@@ -126,7 +134,7 @@ func session(harness, name, command string, args []string) error {
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, model: runModel,
+			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, model: runModel,
 			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
@@ -236,6 +244,7 @@ func samePath(a, b string) bool {
 type sessionSetup struct {
 	harness, name, task, root, base, model string
 	allow, checks                          []string
+	inScope                                bool
 	shell                                  bool
 	budget                                 float64
 	projectID                              int64
@@ -257,9 +266,13 @@ func agreement(s sessionSetup) string {
 		scope = strings.Join(s.allow, ", ") + " (a change anywhere else comes to you as drift)"
 	}
 	fmt.Fprintf(&b, "  may change:  %s\n", scope)
-	if s.harness == "review" {
+	switch {
+	case s.inScope:
+		fmt.Fprintf(&b, "  edits:       inside the scope approved as part of this task, 1 in 5 shown to you;\n"+
+			"               sensitive files and anything outside come to you; you approve the whole change at the end\n")
+	case s.harness == "review":
 		fmt.Fprintf(&b, "  files:       each changed file comes to you, one at a time; rejected ones are left out\n")
-	} else {
+	default:
 		fmt.Fprintf(&b, "  edits:       each one comes to you before it happens\n")
 	}
 	switch {
@@ -267,13 +280,15 @@ func agreement(s sessionSetup) string {
 		fmt.Fprintf(&b, "  commands:    none (the changes were made elsewhere)\n")
 	case s.harness == "codex":
 		fmt.Fprintf(&b, "  commands:    run in Codex's sandbox (no network); files they change come to you afterwards\n")
+	case s.shell && s.harness == "claude-code":
+		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs in Claude Code's sandbox (no network)\n")
 	case s.shell:
 		fmt.Fprintf(&b, "  commands:    each one comes to you before it runs\n")
 	default:
 		fmt.Fprintf(&b, "  commands:    not allowed (--allow-shell-exec lets it ask)\n")
 	}
 	if len(s.checks) > 0 {
-		fmt.Fprintf(&b, "  checks:      %s (on the commit, results in its certificate)\n", strings.Join(s.checks, "; "))
+		fmt.Fprintf(&b, "  checks:      %s (must pass before the agent may finish; results in the certificate)\n", strings.Join(s.checks, "; "))
 	}
 	model := s.model
 	if model == "" {
@@ -304,4 +319,11 @@ func agree(s sessionSetup) (string, error) {
 		return "", errors.New("not started")
 	}
 	return "operator", nil
+}
+
+// inScopeFlag adds --approve-in-scope to cmd.
+func inScopeFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&sessionInScope, "approve-in-scope", false,
+		"Approve changes inside the --allow scope as part of the agreed task instead of one by one: "+
+			"1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end")
 }

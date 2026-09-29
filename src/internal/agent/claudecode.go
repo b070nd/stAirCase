@@ -74,7 +74,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		}
 	}
 	settings := filepath.Join(dir, "settings.json")
-	if err := os.WriteFile(settings, hookSettings(HookCommand(bin, "claude-code", "--governed")), 0o600); err != nil {
+	if err := os.WriteFile(settings, hookSettings(HookCommand(bin, "claude-code", "--governed"), sandboxSettings(root, env.Workspace)), 0o600); err != nil {
 		return err
 	}
 
@@ -127,17 +127,70 @@ func HookCommand(bin, agentName, mode string) string {
 	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "' hook " + agentName + " " + mode
 }
 
+// sandboxSettings turn on Claude Code's own sandbox for its commands, as
+// strict as staircase's: no start without it, no retry outside it, no
+// network, and the workspace and credentials unreadable except the worktree.
+func sandboxSettings(worktree, workspace string) map[string]any {
+	deny := []string{}
+	for _, c := range sandbox.Credentials {
+		deny = append(deny, "~/"+c)
+	}
+	if ws, err := filepath.EvalSymlinks(workspace); err == nil {
+		deny = append(deny, ws)
+	}
+	return map[string]any{"enabled": true, "failIfUnavailable": true, "allowUnsandboxedCommands": false,
+		"filesystem": map[string]any{"denyRead": deny, "allowRead": []string{worktree}},
+		"network":    map[string]any{"allowedDomains": []string{}, "strictAllowlist": true}}
+}
+
+// managedSettingsFiles are where a company's Claude Code managed settings
+// live; they load in every session and win over ours.
+var managedSettingsFiles = []string{"/Library/Application Support/ClaudeCode/managed-settings.json", "/etc/claude-code/managed-settings.json"}
+
+// managedWidensSandbox reports whether managed settings turn the sandbox
+// off, allow unsandboxed retries or exempt commands: then a command cannot
+// be counted as sandboxed.
+// ponytail: reads the files only; a configuration profile (MDM) is not seen.
+func managedWidensSandbox() bool {
+	for _, f := range managedSettingsFiles {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var m struct {
+			Sandbox struct {
+				Enabled                  *bool    `json:"enabled"`
+				AllowUnsandboxedCommands *bool    `json:"allowUnsandboxedCommands"`
+				ExcludedCommands         []string `json:"excludedCommands"`
+			} `json:"sandbox"`
+		}
+		if json.Unmarshal(b, &m) != nil {
+			return true
+		}
+		s := m.Sandbox
+		if (s.Enabled != nil && !*s.Enabled) || (s.AllowUnsandboxedCommands != nil && *s.AllowUnsandboxedCommands) || len(s.ExcludedCommands) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // hookSettings is the settings file that routes Claude Code's tool calls
-// through cmd.
-func hookSettings(cmd string) []byte {
+// through cmd and turns on its sandbox (sandboxSettings).
+func hookSettings(cmd string, sandboxCfg map[string]any) []byte {
 	hook := func(matcher string) []map[string]any {
 		return []map[string]any{{"matcher": matcher,
 			"hooks": []map[string]any{{"type": "command", "command": cmd, "timeout": hookTimeout}}}}
 	}
-	b, _ := json.Marshal(map[string]any{"hooks": map[string]any{
+	s := map[string]any{"hooks": map[string]any{
 		"PreToolUse":  hook("*"),
-		"PostToolUse": hook("Edit|Write"),
-	}})
+		"PostToolUse": hook("Edit|Write|Bash"),
+		"Stop":        hook(""),
+	}}
+	if sandboxCfg != nil {
+		s["sandbox"] = sandboxCfg
+	}
+	b, _ := json.Marshal(s)
 	return b
 }
 
@@ -217,6 +270,10 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 		}
 		return reply(map[string]any{"hookSpecificOutput": map[string]any{
 			"hookEventName": "PreToolUse", "permissionDecision": decision, "permissionDecisionReason": reason}})
+	case "Stop": // the definition of done: the checks must pass first
+		if reason := h.env.Done(ctx); reason != "" {
+			return reply(map[string]any{"decision": "block", "reason": reason})
+		}
 	case "PostToolUse":
 		h.mu.Lock()
 		ap, ok := h.pending[in.ToolUseID]
@@ -230,6 +287,15 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 		if h.codex && in.Tool == "Bash" {
 			if reason := h.postCodexCommand(ctx, in); reason != "" {
 				return reply(map[string]any{"decision": "block", "reason": reason})
+			}
+		}
+		if !h.codex && in.Tool == "Bash" { // it ran in Claude Code's sandbox: decide what it changed
+			var a struct {
+				Command string `json:"command"`
+			}
+			_ = json.Unmarshal(in.Input, &a)
+			if ap := h.env.ShellRan(ctx, "claude-code", a.Command, !managedWidensSandbox()); !ap.Approved {
+				return reply(map[string]any{"decision": "block", "reason": "the files it changed were " + ap.Refusal() + "; they were reverted"})
 			}
 		}
 	}
@@ -247,6 +313,8 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		ReplaceAll bool   `json:"replace_all"`
 		Command    string `json:"command"`
 		Pattern    string `json:"pattern"`
+
+		DangerouslyDisableSandbox bool `json:"dangerouslyDisableSandbox"`
 	}
 	if err := json.Unmarshal(in.Input, &a); err != nil {
 		return "staircase: unreadable tool input"
@@ -269,6 +337,9 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		}
 		return ""
 	case "Bash":
+		if a.DangerouslyDisableSandbox {
+			return "staircase: commands run in the sandbox only"
+		}
 		if ap := h.env.ProposeShell(ctx, "claude-code", "Claude Code Bash", ".", a.Command); !ap.Approved {
 			return ap.Refusal()
 		}

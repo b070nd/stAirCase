@@ -35,6 +35,9 @@ jobs:
       # bats CLI smoke tests, and the offline demo.
       - name: make check
         run: make check
+        env:
+          # the OS sandbox engines that must be tested here, not skipped
+          STAIRCASE_REQUIRE_SANDBOX: ${{ runner.os == 'Linux' && 'landlock' || 'sandbox-exec' }}
 
       - name: Vulnerability scan
         if: runner.os == 'Linux'

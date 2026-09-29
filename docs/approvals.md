@@ -32,8 +32,11 @@ screen does not show line by line.
    keys, cloud and API keys, tokens). Only what the change adds counts. The reason
    is shown as `CHECK:` and recorded with the decision.
 4. **Your policy** rules (`policy.json`) can approve or reject it automatically.
-5. **A validator model**, if you turned one on, can decide in-scope file changes.
-6. **A person** decides everything else.
+5. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
+   that are not sensitive (see [below](#approving-the-task-not-every-step)).
+6. **A validator model** or a panel of them, if you turned one on, can decide
+   in-scope file changes.
+7. **A person** decides everything else.
 
 Shell commands always go to a person.
 
@@ -181,6 +184,45 @@ staircase policy sign     # writes policy.json.sig; runs then refuse a changed f
 staircase policy verify
 ```
 
+## Approving the task, not every step
+
+```bash
+staircase claude "add a /health endpoint" --allow "src/**" --approve-in-scope
+```
+
+When you agree to a task with its scope (`--allow`), you can approve the task
+itself instead of each change. Changes inside the scope are then approved as part
+of the agreed task, and recorded as decided by `task`. You still see:
+
+- one in every five changes, as a spot check;
+- anything outside the scope, and anything a guard flags (dependencies, hidden
+  Unicode, secrets) or a limit stops;
+- sensitive files (CI, build, dependency, `.env` and shell files);
+- shell commands;
+- **the whole change once, at the end**, before anything is committed. Rejecting it
+  commits nothing.
+
+Your policy rules still come first. This works with `claude`, `codex` and `review`.
+
+## A decision model as a signal
+
+```bash
+staircase claude "add a /health endpoint" --allow "src/**" --approve-in-scope --signal typesafe-ai/jev
+```
+
+`--signal` asks an evaluation model, such as TypeSafe AI's Jev through the LLM
+gateway (`LLM_GATEWAY_API_KEY`), about every change that would be approved without
+you: by a rule, the agreed task or a validator. It answers typed questions with
+probabilities, not text: is the change risky, does it serve a story, what kind of
+change is it. It can only **send the change to you**: when it rates the change risky,
+doubts it serves a story, or cannot answer. It never approves or rejects anything.
+Every rating is recorded (`signal_rated`).
+
+The model sees the stories and the change, the same as a validator. Measure it on
+your own kind of changes before you rely on it: `make eval-jev` runs 24 labelled
+changes (secrets, exfiltration, weakened tests, prompt injection, Trojan Source,
+drift) and reports what it missed and what it flagged needlessly.
+
 ## Letting a model review changes: the validator
 
 ```bash
@@ -202,3 +244,18 @@ secret) that decides file changes the policy leaves open, in place of a person.
 
 The validator is a model and can be wrong or misled by what it reads. It is a way to
 save your time on small in-scope changes, not a replacement for your final review.
+
+**Two models that must agree.** Repeat `--validator` to make a panel, ideally from
+different vendors, so one model's blind spot or one prompt injection that fools it
+is not enough:
+
+```bash
+staircase review pr-42 --by "Copilot coding agent" \
+  --validator openai/gpt-oss-20b --validator anthropic/claude-haiku-4.5
+```
+
+Each model reviews the change on its own. It is approved only if all of them
+approve and rejected only if all of them reject; when they disagree, you decide and
+see each model's reason. The decision is recorded as made by all of them
+(`validator:<model>+<model>`), also in the change certificate. `--validator` works
+with `run`, `claude`, `codex` and `review`.

@@ -124,7 +124,8 @@ Six contracts stay stable and versioned while everything around them may change:
 - An evaluation of fast decision models, such as Jev or the open-source Laya, on our own
   test cases. The model never decides freely: it only picks among the next steps the
   run allows, as a typed answer, and a wrong pick can only send a change to a person.
-  The numbers get published.
+  The numbers get published. *Built: `--signal typesafe-ai/jev` and `make eval-jev`
+  with 24 labelled changes; the numbers follow once the gateway account can run it.*
 
 ### Phase 3 - v0.5: scale human attention
 
@@ -134,16 +135,19 @@ Six contracts stay stable and versioned while everything around them may change:
   its evidence, and it is the ground for runs that can pause and resume (phase 4).
 - **Approve the task, not every step:** building on the up-front agreement from phase
   2, changes inside the approved scope can be approved on evidence; anything outside
-  comes to you. Some approvals are sampled for your review.
+  comes to you. Some approvals are sampled for your review. *Done:
+  `--approve-in-scope`, with a checkpoint every fifth change and a final review.
+  Evidence-based approval (checks, reviewer models) inside the scope comes next.*
 - **Gates as evidence:** each checkpoint must pass its gates - tests run in a sandbox
   on the exact approved code, two independent reviewer models that must agree, and a
-  person - and every gate's result goes into the change certificate. *First part
-  done: `--check` runs tests in the sandbox on the exact commit and records the
-  result in the certificate.*
+  person - and every gate's result goes into the change certificate. *Done:
+  `--check` runs tests in the sandbox on the exact commit and records the result in
+  the certificate; repeated `--validator` models must agree.*
 - **A definition of done:** a session cannot end until its required gates pass. The
   agent's own "stop" hook is refused with the failures, so it keeps working inside
   governance until the result is right. ("An attempt is allowed to be wrong; it is not
-  allowed to ship until it isn't.")
+  allowed to ship until it isn't.") *Done for `--check` in Claude Code and Codex
+  sessions.*
 - **Guards:**
   - new or changed dependencies always come to you;
   - hidden Unicode ("Trojan Source") and secrets written into code are flagged.
@@ -153,12 +157,10 @@ Six contracts stay stable and versioned while everything around them may change:
 - `staircase policy test`: see what a new rule would have decided on past runs.
 - **A deeper sandbox:** approved commands and checks already run without network,
   write only in their worktree, and cannot read the workspace or common credential
-  folders. Next:
-  - the Linux sandbox tested in CI on a real kernel, with Landlock (built into the
-    kernel, nothing to install) where bubblewrap is missing or not allowed;
+  folders, on macOS and on Linux (bubblewrap, or Landlock where bubblewrap is
+  missing or not allowed; tested in CI). Next:
   - the agents' own commands sandboxed too: Claude Code's built-in sandbox turned
-    on in `staircase claude` sessions, so they can reach CAL 3 like Codex's
-    sandboxed commands.
+    on in `staircase claude` sessions, so they can reach CAL 3. *Done.*
 
 ### Phase 4 - v0.6 to v0.9: teams without servers
 

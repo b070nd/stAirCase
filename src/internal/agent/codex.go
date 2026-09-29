@@ -20,9 +20,12 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
-// codexApp is where the ChatGPT app for macOS keeps its Codex CLI, used when
-// no codex is on PATH.
-const codexApp = "/Applications/ChatGPT.app/Contents/Resources/codex"
+// codexApp is where the ChatGPT app for macOS keeps its Codex CLI, newest
+// layout first (0.158 moved it), used when no codex is on PATH.
+var codexApp = []string{
+	"/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+	"/Applications/ChatGPT.app/Contents/Resources/codex",
+}
 
 // Codex runs OpenAI's Codex CLI (`codex exec`) in the run's worktree as the
 // run's agent. Its hooks route every tool call through staircase:
@@ -79,7 +82,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	hook := fmt.Sprintf(`[{matcher="*",hooks=[{type="command",command=%s,timeout=%d}]}]`,
 		tomlString(HookCommand(bin, "codex", "--governed")), hookTimeout)
 	args := []string{"exec", "-s", "workspace-write", "-c", `approval_policy="never"`, "--dangerously-bypass-hook-trust",
-		"-c", "hooks.SessionStart=" + hook, "-c", "hooks.PreToolUse=" + hook, "-c", "hooks.PostToolUse=" + hook}
+		"-c", "hooks.SessionStart=" + hook, "-c", "hooks.PreToolUse=" + hook, "-c", "hooks.PostToolUse=" + hook, "-c", "hooks.Stop=" + hook}
 	if c.Model != "" {
 		args = append(args, "-m", c.Model)
 	}
@@ -112,8 +115,10 @@ func (c *Codex) bin() string {
 		return c.Bin
 	}
 	if _, err := exec.LookPath("codex"); err != nil {
-		if _, err := os.Stat(codexApp); err == nil {
-			return codexApp
+		for _, app := range codexApp {
+			if _, err := os.Stat(app); err == nil {
+				return app
+			}
 		}
 	}
 	return "codex"

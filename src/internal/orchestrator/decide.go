@@ -24,13 +24,20 @@ type deciders struct {
 	drift     *policy.Supervisor
 	policy    *policy.Engine
 	validator *Validator
+	task      bool // ApproveInScope with an agreed task
+	signal    *Signal
 	askHuman  func(domain.YieldRequest) domain.YieldResponse
 	display   *monitor.Display
 	tracker   *monitor.Tracker
 	audit     func(event string, fields map[string]any) error
 
-	total, autoApproved int // proposals so far, and those the policy approved (limits)
+	total, autoApproved int  // proposals so far, and those the policy approved (limits)
+	taskApproved        bool // something was approved as part of the task: a person reviews the result
 }
+
+// taskCheckpointEvery: with ApproveInScope, a person still sees at least one
+// in every so many proposals.
+const taskCheckpointEvery = 5
 
 // ruling is how one proposal was decided.
 type ruling struct {
@@ -44,8 +51,25 @@ type ruling struct {
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
-// Review).
+// Review). A signal can only turn an automatic approval into a person's
+// decision.
 func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling {
+	rl := d.rule(ctx, req)
+	if d.signal != nil && rl.resp.Approved && rl.source != "operator" && rl.next != nil {
+		before := map[string]*approvedFile{}
+		for p := range rl.next {
+			before[p], _ = d.approvals.current(p)
+		}
+		if why := d.signal.escalate(ctx, before, rl.next, d.audit); why != "" {
+			req.Review = why
+			return d.human(req, rl)
+		}
+	}
+	return rl
+}
+
+// rule decides req without the signal.
+func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 	d.total++
 	var rl ruling
 	// The orchestrator derives exactly what approving this proposal would
@@ -94,10 +118,22 @@ func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling 
 		rl.resp, rl.source = domain.Decide(dec.Approved, dec.Reason), "policy"
 		return rl
 	}
+	// The agreed task: the proposal is in scope (no drift), no guard or limit
+	// sent it to a person, and it is not a sensitive file.
+	if d.task && req.ActionType == domain.ActionFileEdit && rl.next != nil {
+		if f := sensitive(rl.files); f != "" {
+			req.Review = "sensitive path " + f + " - a person decides even inside the agreed task"
+			return d.human(req, rl)
+		}
+		d.taskApproved = true
+		d.display.AddActivity(fmt.Sprintf("%-14s TASK   %s → approved (inside the agreed task)", req.AgentName, req.ActionType))
+		rl.resp, rl.source = domain.Decide(true, "inside the agreed task"), "task"
+		return rl
+	}
 	note, resp, decided := d.validator.decide(ctx, *req, rl.files, rl.next, d.approvals, d.tracker)
 	if decided {
 		d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → %v (%s)", req.AgentName, req.ActionType, resp.Approved, resp.Feedback))
-		rl.resp, rl.source = resp, "validator:"+d.validator.Model
+		rl.resp, rl.source = resp, "validator:"+d.validator.Name()
 		return rl
 	}
 	req.Review = note
@@ -118,7 +154,7 @@ func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
 // request is secret-scrubbed like every proposal.
 func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error) {
 	final := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: domain.ActionFinalReview,
-		ReasoningTrace: "Final review: the validator approved changes in this run. Approve to commit exactly these files."}
+		ReasoningTrace: "Final review: changes in this run were approved without you (by the validator or as part of the agreed task). Approve to commit exactly these files."}
 	for _, p := range slices.Sorted(maps.Keys(d.approvals.files)) {
 		f := d.approvals.files[p]
 		e := domain.ProposedEdit{File: p, SearchBlock: "(final content)", ReplaceBlock: string(f.content)}

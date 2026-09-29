@@ -99,6 +99,8 @@ func TestCodex_edits_are_decided_first_and_command_changes_after(t *testing.T) {
 	assert.True(t, slices.Contains(args, "workspace-write"), "shell commands run in Codex's sandbox: %v", args)
 	assert.Contains(t, args, "--dangerously-bypass-hook-trust", "otherwise Codex skips the hooks silently")
 	assert.Contains(t, args, `approval_policy="never"`)
+	assert.True(t, slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "hooks.Stop=") }),
+		"the definition of done: Codex asks before it ends")
 }
 
 // TestCodex_without_its_hooks_nothing_is_kept: a Codex that never ran the

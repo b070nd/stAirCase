@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Modes (staircase run --sandbox).
@@ -71,6 +72,22 @@ func hidden(hide []string) []string {
 	return out
 }
 
+// engine is one way to sandbox a command: its command-line prefix, or why
+// it cannot run here.
+type engine struct {
+	name string
+	wrap func(root, tmp string, hide []string) ([]string, error)
+}
+
+// engines are this machine's sandboxes, most tested first.
+var engines = map[string][]engine{
+	"darwin": {{"sandbox-exec", sandboxExec}},
+	"linux":  {{"bwrap", bubblewrap}, {"landlock", landlockWrapper}},
+}
+
+// only, when set, limits the engines to one (tests).
+var only string
+
 // sandboxWrapper is the command line that puts a command in the sandbox for
 // this machine, writable only in root and tmp, the hide paths unreadable
 // (root stays readable inside them), or an error when there is none.
@@ -82,40 +99,59 @@ func sandboxWrapper(root, tmp string, hide []string) ([]string, error) {
 	if tmp, err = filepath.EvalSymlinks(tmp); err != nil {
 		return nil, err
 	}
-	switch runtime.GOOS {
-	case "darwin":
-		bin, err := exec.LookPath("sandbox-exec")
-		if err != nil {
-			return nil, errors.New("no sandbox: sandbox-exec is not available")
+	why := []string{}
+	for _, e := range engines[runtime.GOOS] {
+		if only != "" && e.name != only {
+			continue
 		}
-		profile := fmt.Sprintf(`(version 1)
+		w, err := e.wrap(root, tmp, hide)
+		if err == nil {
+			return w, nil
+		}
+		why = append(why, err.Error())
+	}
+	if len(why) == 0 {
+		why = append(why, "none for "+runtime.GOOS)
+	}
+	return nil, errors.New("no sandbox: " + strings.Join(why, "; "))
+}
+
+func sandboxExec(root, tmp string, hide []string) ([]string, error) {
+	bin, err := exec.LookPath("sandbox-exec")
+	if err != nil {
+		return nil, errors.New("sandbox-exec is not available")
+	}
+	profile := fmt.Sprintf(`(version 1)
 (allow default)
 (deny network*)
 (deny file-write*)
 (allow file-write* (subpath %q) (subpath %q)
   (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/fd/"))`, root, tmp)
-		for _, h := range hide {
-			profile += fmt.Sprintf("\n(deny file-read* (subpath %q))", h)
-		}
-		profile += fmt.Sprintf("\n(allow file-read* (subpath %q) (subpath %q))", root, tmp) // later rules win
-		return []string{bin, "-p", profile}, nil
-	case "linux":
-		// ponytail: untested (no bwrap on the dev Mac, TestShellSandbox runs on macOS only).
-		bin, err := exec.LookPath("bwrap")
-		if err != nil {
-			return nil, errors.New("no sandbox: install bubblewrap (bwrap)")
-		}
-		args := []string{bin, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"}
-		for _, h := range hide { // an empty folder or file in its place; root is bound back below
-			if info, err := os.Stat(h); err == nil && info.IsDir() {
-				args = append(args, "--tmpfs", h)
-			} else if err == nil {
-				args = append(args, "--ro-bind", "/dev/null", h)
-			}
-		}
-		return append(args, "--bind", root, root, "--bind", tmp, tmp, "--unshare-net", "--die-with-parent", "--"), nil
+	for _, h := range hide {
+		profile += fmt.Sprintf("\n(deny file-read* (subpath %q))", h)
 	}
-	return nil, fmt.Errorf("no sandbox on %s", runtime.GOOS)
+	profile += fmt.Sprintf("\n(allow file-read* (subpath %q) (subpath %q))", root, tmp) // later rules win
+	return []string{bin, "-p", profile}, nil
+}
+
+// bubblewrap is tested in a Linux container (bubblewrap 0.12, arm64).
+func bubblewrap(root, tmp string, hide []string) ([]string, error) {
+	bin, err := exec.LookPath("bwrap")
+	if err != nil {
+		return nil, errors.New("install bubblewrap (bwrap)")
+	}
+	if err := bwrapUsable(bin); err != nil {
+		return nil, fmt.Errorf("bwrap cannot run here: %w", err)
+	}
+	args := []string{bin, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"}
+	for _, h := range hide { // an empty folder or file in its place; root is bound back below
+		if info, err := os.Stat(h); err == nil && info.IsDir() {
+			args = append(args, "--tmpfs", h)
+		} else if err == nil {
+			args = append(args, "--ro-bind", "/dev/null", h)
+		}
+	}
+	return append(args, "--bind", root, root, "--bind", tmp, tmp, "--unshare-net", "--die-with-parent", "--"), nil
 }
 
 // Env is what a command inherits: nothing that could
@@ -137,4 +173,70 @@ func Env() []string {
 		}
 	}
 	return env
+}
+
+var bwrapChecked sync.Map // bwrap path → error (nil: it runs)
+
+// bwrapUsable reports whether bin can set up a sandbox here, once per path.
+func bwrapUsable(bin string) error {
+	if err, ok := bwrapChecked.Load(bin); ok {
+		e, _ := err.(error)
+		return e
+	}
+	var err error
+	if out, rerr := exec.Command(bin, "--ro-bind", "/", "/", "--unshare-net", "--", "/bin/true").CombinedOutput(); rerr != nil {
+		err = fmt.Errorf("%w: %s", rerr, strings.TrimSpace(string(out)))
+	}
+	bwrapChecked.Store(bin, err)
+	return err
+}
+
+// readable covers the file system except the hide paths: each hidden path's
+// ancestors are replaced by their other entries.
+// ponytail: entries created after the command starts next to a hidden path
+// (for example a new folder in the home folder) are not readable.
+func readable(hide []string) []string {
+	allowed := map[string]bool{"/": true}
+	for _, h := range hide {
+		for a := range allowed {
+			if within(h, a) {
+				delete(allowed, a) // already expanded inside h
+			}
+		}
+		anc := ""
+		for a := range allowed {
+			if a == h || within(a, h) {
+				anc = a
+				break
+			}
+		}
+		if anc == "" {
+			continue
+		}
+		delete(allowed, anc)
+		for cur := anc; cur != h; {
+			first, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(h, cur), "/"), "/")
+			next := filepath.Join(cur, first)
+			entries, _ := os.ReadDir(cur)
+			for _, e := range entries {
+				if p := filepath.Join(cur, e.Name()); p != next {
+					allowed[p] = true
+				}
+			}
+			cur = next
+		}
+	}
+	out := make([]string, 0, len(allowed))
+	for a := range allowed {
+		out = append(out, a)
+	}
+	return out
+}
+
+// within reports whether p is strictly inside dir.
+func within(dir, p string) bool {
+	if dir == "/" {
+		return p != "/" && strings.HasPrefix(p, "/")
+	}
+	return strings.HasPrefix(p, dir+"/")
 }

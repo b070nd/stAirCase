@@ -43,7 +43,8 @@ var (
 	runModel          string
 	runAgreedBy       string // who agreed to the task before a session started
 	runAckDrift       bool
-	runValidator      string
+	runValidator      []string
+	runSignal         string
 )
 
 var runCmd = &cobra.Command{
@@ -87,14 +88,12 @@ func init() {
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	runCmd.Flags().StringVar(&runSandbox, "sandbox", sandbox.Auto,
-		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap), "+
+		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), "+
 			"required (refuse commands that cannot be sandboxed) or off")
 	checkFlag(runCmd)
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
-	runCmd.Flags().StringVar(&runValidator, "validator", "",
-		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
-			"a human approves the run's final change once")
+	validatorFlag(runCmd)
 	runCmd.Flags().StringVar(&runModel, "model", "", "Model for an agent harness (claude-code, codex); default: the harness's own")
 	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
 		"Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental)")
@@ -188,11 +187,17 @@ func runCase(caseID int64) error {
 	}
 
 	var validator *orchestrator.Validator
-	if runValidator != "" {
-		if llm.SecretFor(runValidator) == "" {
-			return fmt.Errorf("--validator %q: no provider serves this model", runValidator)
+	for _, m := range runValidator {
+		if llm.SecretFor(m) == "" {
+			return fmt.Errorf("--validator %q: no provider serves this model", m)
 		}
-		validator = &orchestrator.Validator{Model: runValidator}
+	}
+	if len(runValidator) > 0 {
+		validator = &orchestrator.Validator{Models: runValidator}
+	}
+	var sig *orchestrator.Signal
+	if runSignal != "" {
+		sig = &orchestrator.Signal{Model: runSignal}
 	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
@@ -205,6 +210,8 @@ func runCase(caseID int64) error {
 		ApprovalToken:  runApprovalToken,
 		AllowShellExec: runAllowShellExec,
 		Sandbox:        runSandbox,
+		ApproveInScope: sessionInScope,
+		Signal:         sig,
 		Checks:         runChecks,
 		AckDrift:       runAckDrift,
 		Validator:      validator,
@@ -219,4 +226,14 @@ func checkFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&runChecks, "check", nil,
 		"A command (such as your tests) to run on the commit once it is made, in the sandbox; "+
 			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")
+}
+
+// validatorFlag adds --validator and --signal to cmd.
+func validatorFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&runSignal, "signal", "",
+		"Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; "+
+			"it can only send a change to you (risky, off the stories, or no answer), never approve one")
+	cmd.Flags().StringArrayVar(&runValidator, "validator", nil,
+		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
+			"a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides")
 }

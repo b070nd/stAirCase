@@ -67,8 +67,8 @@ staircase verify staircase/run-7 --min-cal 3     # fail below CAL 3
 ```
 
 A run reaches CAL 3 when every action was decided before it ran; it drops to CAL 2
-when an approved shell command ran without a sandbox (always the case for Claude
-Code's own commands), or when changes were reviewed only after the agent made them.
+when an approved shell command ran without a sandbox (for example when a company's
+managed settings exempt Claude Code's commands from its sandbox), or when changes were reviewed only after the agent made them.
 Files written by a command that ran in the sandbox are decided before they reach
 the commit, so they keep CAL 3. The
 certificate format is described in [ADR 0002](adr/0002-change-certificate.md).
@@ -101,6 +101,13 @@ Each check runs on a clean checkout of exactly that commit, in the same OS sandb
 as approved commands (no network, writes only in the checkout and a temporary
 folder), for at most 15 minutes. The certificate records the command, its exit code,
 whether it ran sandboxed and the SHA-256 of its output, never the output itself.
+
+**The agent cannot finish until the checks pass.** In `staircase claude` and
+`staircase codex` sessions, when the agent wants to end, its Stop hook runs the
+checks on a copy of the approved changes so far. If one fails, the stop is refused
+and the agent gets the failure to work on. After 3 refused stops it may end anyway,
+and the result is recorded as it is. Each attempt is on the audit chain
+(`done_checked`).
 
 A failed check does not undo the commit, but `staircase verify` fails it, so a CI
 check that requires certificates also requires passing checks. Checks are evidence
@@ -153,7 +160,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v0.3.0
+      - uses: b070nd/stAirCase@v0.4.0
         with:
           key: .github/staircase.pub
           min-cal: 3

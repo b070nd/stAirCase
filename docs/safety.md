@@ -31,7 +31,8 @@ stAirCase is **pre-1.0**.
   own temporary folder, have no network, and cannot read the stAirCase workspace
   or common credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh` and others).
   They can read the rest of your files, and what they print goes to the model.
-  Where no sandbox tool is found (macOS `sandbox-exec`, Linux `bwrap`), `auto`
+  Where no sandbox is found (macOS `sandbox-exec`; Linux `bwrap` or the kernel's
+  Landlock), `auto`
   runs them as you and says so, and `--sandbox required` refuses them. Files a
   command changes in the worktree come to you afterwards: approved, they are kept;
   rejected, they are reverted. Claude Code and Codex run their own commands, in
@@ -82,7 +83,6 @@ running, but no longer are, as stopped.
 
 ## Still missing before trusted use
 
-- **The Linux sandbox tested on a real machine** (`bwrap`; macOS is tested).
 - **Experience with real projects.** The tests and the offline demo check the
   safety mechanics with a stand-in model. They say nothing about how well a given
   model does real work.

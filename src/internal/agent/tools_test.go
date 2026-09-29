@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -164,9 +163,12 @@ func TestTools_run_shell(t *testing.T) {
 // sandbox cannot look into the workspace (keys, secrets) from its worktree
 // inside it.
 func TestTools_run_shell_cannot_read_the_workspace(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("checked on macOS (sandbox-exec)")
+	d := t.TempDir()
+	_, _, cleanup, err := sandbox.Command(context.Background(), d, d, "true", sandbox.Required)
+	if err != nil {
+		t.Skip(err)
 	}
+	cleanup()
 	approver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
 	}))
@@ -178,6 +180,7 @@ func TestTools_run_shell_cannot_read_the_workspace(t *testing.T) {
 			return []string{call(ctx, env, "run_shell", map[string]string{"command": "ls ../..", "reasoning": "r"})}
 		})
 	require.Len(t, out, 1)
-	assert.NotContains(t, out[0], "worktrees", out[0])
-	assert.Contains(t, out[0], "not permitted", out[0])
+	// bubblewrap shows the empty path down to the worktree, sandbox-exec and
+	// Landlock refuse the listing; either way the workspace's files are hidden.
+	assert.NotContains(t, out[0], "policy.json", out[0])
 }

@@ -40,7 +40,7 @@ func (r *reviewer) Chat(_ context.Context, req llm.Request) (llm.Response, error
 func validated(t *testing.T, rv *reviewer, op *operator, agent orchestrator.AgentFunc) runtest.Result {
 	return runtest.Run(t, runtest.Options{
 		Setup: scoped(op, `{"rules":[]}`),
-		Run:   orchestrator.RunOptions{Validator: &orchestrator.Validator{Model: "review/model", Chat: rv}},
+		Run:   orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: rv}},
 		Agent: agent})
 }
 
@@ -110,7 +110,7 @@ func TestValidator_hands_over_to_a_human(t *testing.T) {
 			stories, _ := s.ListUserStoriesByCase(cases[0].ID)
 			_ = s.SetUserStoryScope(stories[0].ID, `{"allow":["**"]}`)
 		},
-		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Model: "review/model", Chat: rv}},
+		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: rv}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			create(ctx, env, ".github/workflows/ci.yml")
 			for _, f := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"} {
@@ -141,7 +141,7 @@ func TestValidator_tokens_count_against_the_budget(t *testing.T) {
 			scoped(&operator{approve: true}, `{"rules":[]}`)(s, wsDir, projectID)
 			require.NoError(t, s.SetProjectBudgetCap(projectID, 0.0001))
 		},
-		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Model: "review/model", Chat: &reviewer{}}},
+		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: &reviewer{}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			create(ctx, env, "GREETING.md")
 			<-ctx.Done()
@@ -149,4 +149,62 @@ func TestValidator_tokens_count_against_the_budget(t *testing.T) {
 		})})
 	assert.Equal(t, persistence.RunStatusKilled, r.Run.Status)
 	assert.Less(t, time.Since(started), 10*time.Second, "killed by the budget, not the test deadline")
+}
+
+// panel answers each review by model, from that model's queue.
+type panel struct {
+	mu      sync.Mutex
+	replies map[string][]string
+}
+
+func (p *panel) Chat(_ context.Context, req llm.Request) (llm.Response, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	q := p.replies[req.Model]
+	reply := q[0]
+	p.replies[req.Model] = q[1:]
+	return llm.Response{Message: llm.Message{Role: "assistant", Content: reply}, InputTokens: 10, OutputTokens: 5}, nil
+}
+
+// TestValidator_two_models_must_agree: with two validators, a change is
+// approved or rejected only when both say so, and recorded as decided by
+// both; when they disagree a person decides, seeing each one's reason.
+func TestValidator_two_models_must_agree(t *testing.T) {
+	yes, no := func(r string) string { return `{"approve": true, "reason": "` + r + `"}` }, func(r string) string { return `{"approve": false, "reason": "` + r + `"}` }
+	p := &panel{replies: map[string][]string{
+		"a/one": {yes("fine"), no("leaks a token"), no("rude")},
+		"b/two": {yes("ok"), yes("looks fine"), no("rude too")},
+	}}
+	op := &operator{approve: true}
+	var got []orchestrator.Approval
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+			scoped(op, `{"rules":[]}`)(s, wsDir, projectID)
+			cases, _ := s.ListCasesByProject(projectID)
+			stories, _ := s.ListUserStoriesByCase(cases[0].ID)
+			_ = s.SetUserStoryScope(stories[0].ID, `{"allow":["**"]}`)
+		},
+		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"a/one", "b/two"}, Chat: p}},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
+				ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+					ProposedEdits: []domain.ProposedEdit{{File: f, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "x\n"}}})
+				if ap.Approved {
+					require.NoError(t, ap.Apply(env.Worktree))
+				}
+				got = append(got, ap)
+			}
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	require.Len(t, got, 3)
+	assert.True(t, got[0].Approved, "both approve")
+	assert.True(t, got[1].Approved, "they disagree: the operator approved")
+	assert.False(t, got[2].Approved, "both reject")
+	assert.Contains(t, got[2].Feedback, "rude")
+	assert.Equal(t, []string{"file_edit:validator:a/one+b/two", "file_edit:operator", "file_edit:validator:a/one+b/two", "final_review:operator"}, sources(t, r))
+	require.NotEmpty(t, op.seen)
+	assert.Contains(t, op.seen[0].Review, "disagree")
+	assert.Contains(t, op.seen[0].Review, "leaks a token")
+	assert.Contains(t, op.seen[0].Review, "looks fine")
 }
