@@ -59,6 +59,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`clean --aggressive` no longer destroys evidence silently.** It keeps a run branch
+  that is not merged into another branch (the only copy of the commit), archives
+  flagged cases and pruned audit rows to `archive/` before deleting them (and deletes
+  nothing if the archive fails), and stops entirely while a `legal-hold` file is in the
+  workspace.
 - **Key rotation cannot be left half done unnoticed.** After an interrupted
   `secret rotate` whose outcome is ambiguous, the workspace key is refused (by runs,
   `secret set` and `doctor`) until `secret rotate` resolves it. Before, `secret set`

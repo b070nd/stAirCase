@@ -210,6 +210,12 @@ orphaned staircase/run-* git branches older than 30 days.
 
 --keep-failed preserves branches and logs for FAILED runs (forensic mode).
 
+Aggressive cleaning never throws evidence away silently: a run branch that is
+not merged into another branch is kept (it holds the only copy of the commit),
+audit rows and flagged cases are written to archive/ before they are deleted (and
+not deleted if that fails), and a file named legal-hold in the workspace stops
+every such deletion.
+
 --dry-run prints what would be removed without deleting anything.
 
 Flags:

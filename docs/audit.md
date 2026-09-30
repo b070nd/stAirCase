@@ -125,6 +125,23 @@ With `--require-evidence` the run also exits non-zero in that case, so a script 
 job cannot mistake it for a complete result. The run is not relabelled as failed or
 undelivered: the commit exists, and its hash is in the record.
 
+## Keeping evidence: clean, archive and legal hold
+
+`staircase clean --aggressive` tidies the workspace, but it does not throw evidence
+away silently:
+
+- A `staircase/run-N` branch is deleted only when it is older than 30 days **and
+  merged into another branch** (local or remote-tracking). An unmerged run branch holds
+  the only copy of its commit and is kept, with a message. A squash-merge does not count
+  as merged, so those branches stay until you delete them yourself.
+- Audit rows go to `archive/clean-<time>.jsonl` (readable only by you) **before** they
+  are deleted: flagged cases with their runs and events, and the oldest event-log rows
+  beyond a million. If the archive cannot be written, nothing is deleted.
+- A file named `legal-hold` in the workspace stops all of it: no audit rows, cases or
+  run branches are deleted until you remove the file.
+
+Certificates and ledgers under `audit/` are never touched by `clean`.
+
 ## Review attention
 
 A signed approval proves someone clicked approve, not that they read the change. So
