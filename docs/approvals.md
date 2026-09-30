@@ -75,9 +75,10 @@ staircase claude "add a /health endpoint" --sign-approvals ~/.ssh/id_ed25519 --a
 With `--sign-approvals <key>`, stAirCase signs each decision you make (in the
 terminal, the browser or the API) with your key, as `--sign-as` (default: your git
 `user.email`). A hardware-backed key (`ed25519-sk`) that needs a touch turns this
-into a real presence check. The signature covers the run, the exact request you saw
-(by its SHA-256) and your decision, so it cannot be moved to another decision, and
-a signature for "approve" is worthless as a rejection.
+into a real presence check. The signature covers the run, a fresh nonce for this one
+proposal, the exact request you saw (by its SHA-256) and your decision, so it cannot
+be moved to another decision or replayed on a later identical proposal, and a
+signature for "approve" is worthless as a rejection.
 
 Someone else can decide through the approval API and sign on their own machine: each
 pending request carries a `decision_payload`; they sign that text followed by
@@ -139,12 +140,15 @@ a token. Pass `--approval-token` to choose the token yourself.
 
 | Request | What it does |
 |---|---|
-| `GET /v1/yields` | list waiting proposals (`id`, `request`, `created`) |
+| `GET /v1/yields` | list waiting proposals (`id`, `request`, `request_sha256`, `created`) |
 | `GET /v1/yields/{id}` | one waiting proposal |
-| `POST /v1/yields/{id}/approve` | approve; optional body `{"feedback": "…"}` |
-| `POST /v1/yields/{id}/reject` | reject; optional body `{"feedback": "…"}` |
+| `POST /v1/yields/{id}/approve` | approve; optional body `{"feedback": "…", "request_sha256": "…"}` |
+| `POST /v1/yields/{id}/reject` | reject; optional body `{"feedback": "…", "request_sha256": "…"}` |
 
-Every request needs the header `Authorization: Bearer <token>`.
+Every request needs the header `Authorization: Bearer <token>`. A proposal's `id` is
+never reused, by a later proposal or a later run. Send its `request_sha256` back with
+the decision to be sure you are answering the request you read: a decision naming a
+different request is refused with `409`.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/v1/yields

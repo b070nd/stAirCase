@@ -144,3 +144,55 @@ func nonLoopbackIP() string {
 	}
 	return ""
 }
+
+// TestHub_a_replaced_session_does_not_inherit_old_cards: a session that ends
+// and is replaced at the same address must not be decided by a card the page
+// still shows for the old one (F91).
+func TestHub_a_replaced_session_does_not_inherit_old_cards(t *testing.T) {
+	dir := t.TempDir()
+	old, cancelOld := startServerWithToken(t, "key")
+	addr := old.ListenAddr()
+	require.NoError(t, approvalhttp.Register(dir, approvalhttp.Session{Name: "run", URL: "http://" + addr, Token: "key"}))
+	old.PendYield(domain.YieldRequest{AgentName: "coder", ActionType: "file_edit", ReasoningTrace: "the old proposal"})
+
+	hub := approvalhttp.NewHub(dir, "hub-key")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, hub.Start(ctx, "127.0.0.1:0"))
+	base := "http://" + hub.ListenAddr()
+	var list []struct {
+		ID string `json:"id"`
+	}
+	_, body := hubGet(t, base+"/v1/yields", "hub-key")
+	require.NoError(t, json.Unmarshal(body, &list))
+	require.Len(t, list, 1)
+	oldCard := list[0].ID // still on someone's screen
+
+	cancelOld()
+	require.Eventually(t, func() bool {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return false
+		}
+		_ = ln.Close()
+		return true
+	}, 5*time.Second, 20*time.Millisecond)
+	fresh := approvalhttp.NewServer(addr, "key")
+	fctx, fcancel := context.WithCancel(context.Background())
+	defer fcancel()
+	require.NoError(t, fresh.Start(fctx))
+	require.NoError(t, approvalhttp.Register(dir, approvalhttp.Session{Name: "run", URL: "http://" + addr, Token: "key"}))
+	_, ch := fresh.PendYield(domain.YieldRequest{AgentName: "coder", ActionType: "file_edit", ReasoningTrace: "a different proposal"})
+
+	req, _ := http.NewRequest(http.MethodPost, base+"/v1/yields/"+oldCard+"/approve", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer hub-key")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	select {
+	case r := <-ch:
+		t.Fatalf("the old card decided the new proposal: %+v", r)
+	default:
+	}
+}

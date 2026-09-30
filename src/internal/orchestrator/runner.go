@@ -525,12 +525,12 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return errors.New("--require-signed-approvals needs the trusted signers: an allowed_signers file in the workspace (staircase governance use, or copy git's allowed_signers there)")
 	}
 	// askHuman shows a proposal to the operator: approval API, webhook or TUI.
-	askHuman := func(req domain.YieldRequest) domain.YieldResponse {
+	askHuman := func(req domain.YieldRequest, signText string) domain.YieldResponse {
 		display.Pause()
 		defer display.Resume()
 		switch {
 		case approvalSrv != nil:
-			_, ch := approvalSrv.PendSigned(req, signing.payload(req))
+			_, ch := approvalSrv.PendSigned(req, signText)
 			return <-ch
 		case project.WebhookURL != "":
 			return sendWebhookYield(project.WebhookURL, webhookSecret, req)

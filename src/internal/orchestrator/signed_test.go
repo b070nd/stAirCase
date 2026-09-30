@@ -55,6 +55,7 @@ type remoteDecider struct {
 	approve bool
 	sign    func(text string) (signer, sig string) // nil: unsigned
 	signAs  string
+	replay  bool // sign the first proposal, then send that same signature for every later one
 }
 
 func (d remoteDecider) run(ctx context.Context, wg *sync.WaitGroup, seen *[]string, mu *sync.Mutex) {
@@ -71,6 +72,7 @@ func (d remoteDecider) run(ctx context.Context, wg *sync.WaitGroup, seen *[]stri
 		b, _ := io.ReadAll(resp.Body)
 		return b
 	}
+	var first []string // signer and signature of the first decision, for replay
 	for ctx.Err() == nil {
 		var ys []struct {
 			ID      string `json:"id"`
@@ -89,6 +91,11 @@ func (d remoteDecider) run(ctx context.Context, wg *sync.WaitGroup, seen *[]stri
 					as = verb
 				}
 				body["signer"], body["signature"] = d.sign(y.Payload + as)
+				if d.replay && first != nil {
+					body["signer"], body["signature"] = first[0], first[1]
+				} else if d.replay {
+					first = []string{body["signer"], body["signature"]}
+				}
 			}
 			b, _ := json.Marshal(body)
 			call(http.MethodPost, base+"/"+y.ID+"/"+verb, b)
@@ -104,6 +111,14 @@ func (d remoteDecider) run(ctx context.Context, wg *sync.WaitGroup, seen *[]stri
 // approval API, and returns the run, the recorded decisions and the
 // certificate's view of them.
 func signedRun(t *testing.T, opts orchestrator.RunOptions, signers string, d remoteDecider) (runtest.Result, []map[string]any, certificate.Predicate, []string) {
+	return signedRunWith(t, func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		create(ctx, env, "GREETING.md")
+		return nil
+	}, opts, signers, d)
+}
+
+// signedRunWith is signedRun for an agent of your own.
+func signedRunWith(t *testing.T, agent orchestrator.AgentFunc, opts orchestrator.RunOptions, signers string, d remoteDecider) (runtest.Result, []map[string]any, certificate.Predicate, []string) {
 	d.port = freePort(t)
 	opts.ApprovalPort, opts.ApprovalToken = d.port, "tok"
 	var wg sync.WaitGroup
@@ -120,11 +135,8 @@ func signedRun(t *testing.T, opts orchestrator.RunOptions, signers string, d rem
 				require.NoError(t, os.WriteFile(filepath.Join(ws, "allowed_signers"), []byte(signers), 0o644))
 			}
 		},
-		Run: opts,
-		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
-			create(ctx, env, "GREETING.md")
-			return nil
-		})})
+		Run:   opts,
+		Agent: agent})
 	cancel()
 	wg.Wait()
 	var decided []map[string]any
@@ -171,7 +183,7 @@ func TestSignedApprovals(t *testing.T) {
 			remoteDecider{approve: true, sign: signer(t, aliceKey, "alice@example.com")})
 		require.NoError(t, r.Err)
 		require.NotEmpty(t, seen)
-		assert.True(t, strings.HasPrefix(seen[0], "staircase-decision-v1\nrun=1\nrequest="), seen[0])
+		assert.True(t, strings.HasPrefix(seen[0], "staircase-decision-v1\nrun=1\nnonce="), seen[0])
 		first := decided[0]
 		assert.Equal(t, true, first["approved"])
 		assert.Equal(t, "alice@example.com", first["signed_by"])
@@ -243,4 +255,24 @@ func TestSignedApprovals(t *testing.T) {
 		assert.Equal(t, true, decided[0]["trusted"])
 		assert.Equal(t, []string{"alice@example.com"}, p.Signed.Signers)
 	})
+}
+
+// TestSignedApprovals_a_signature_is_good_for_one_proposal: the signed text
+// carries a fresh nonce, so a signature captured for one proposal does not
+// decide another, not even one with an identical request (F97).
+func TestSignedApprovals_a_signature_is_good_for_one_proposal(t *testing.T) {
+	aliceKey, aliceLine := sshKey(t, "alice@example.com")
+	twice := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		create(ctx, env, "GREETING.md") // rejected ...
+		create(ctx, env, "GREETING.md") // ... and proposed again, byte for byte
+		return nil
+	}
+	_, decided, _, seen := signedRunWith(t, twice, orchestrator.RunOptions{RequireSignedApprovals: true}, aliceLine,
+		remoteDecider{approve: false, replay: true, sign: signer(t, aliceKey, "alice@example.com")})
+	require.GreaterOrEqual(t, len(decided), 2)
+	require.GreaterOrEqual(t, len(seen), 2)
+	assert.NotEqual(t, seen[0], seen[1], "each proposal is offered with its own text to sign")
+	assert.Contains(t, decided[0], "signed_by", "the honest signature counts")
+	assert.Contains(t, decided[1], "signature_refused", "the replayed one does not")
+	assert.NotContains(t, decided[1], "signed_by")
 }
