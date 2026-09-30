@@ -105,6 +105,13 @@ The ledger holds the approved content, so it stays in your workspace
 SHA-256. To let a reviewer rebuild, give them the ledger file, and they run
 `staircase rebuild <commit> --ledger run-7.ledger.json`. Runs from before this feature have no ledger.
 
+The ledger is JSON, so it can hold text, not arbitrary bytes. A proposal whose text is
+not valid UTF-8 (a binary file, for example) is refused, with that reason, before
+anyone decides it: a person cannot read it and a rebuild could not reproduce it.
+Text with NUL bytes, bare carriage returns, any Unicode and files up to 200 KiB
+round-trip exactly. A lossless encoding for binary changes may come later as a new
+ledger version; version 1 will not change meaning.
+
 ## Review attention
 
 A signed approval proves someone clicked approve, not that they read the change. So

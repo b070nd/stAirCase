@@ -135,6 +135,10 @@ unless `base` equals the certificate's `baseCommit` and the commit's parent; (4)
 replay the proposals as below on the tree of `base`; (5) accept only if the resulting
 git tree id equals the commit's tree id.
 
+A ledger is JSON and so carries only text: `file`, `search_block` and `replace_block`
+are valid UTF-8, and a producer refuses a proposal whose text is not, so a
+binary change has no ledger and no certificate that names one.
+
 **Replaying.** Keep a state of files, path to (bytes, mode), starting from the base
 tree (regular files only). For each proposal in order, apply its edits in order to a
 copy that sees the earlier edits of the same proposal; if any edit is refused, the
