@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two sessions starting in one repository at the same time could fail.** Git is
+  not safe against two `worktree add` at once (it could fail reading another's
+  half-written `.git/worktrees/run-N/commondir`), so one run would end FAILED at
+  the start. Creating and removing run worktrees is now serialized, within a
+  process and across processes (a lock file in the repository's git directory). It
+  showed up as a test that failed about one time in forty.
+
 ### Added
 
 - **An authenticated initiator.** A run started with `--sign-approvals` signs its own

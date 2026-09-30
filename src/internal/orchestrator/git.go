@@ -2,9 +2,14 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/wslock"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -72,20 +77,46 @@ func (g *GitRepo) HeadSHA() (string, error) {
 // worktree at path, leaving repo's own checkout untouched. go-git has no
 // worktree API, so this shells out like the other worktree commands.
 func addWorktree(repo, path, branch, base string) error {
-	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", branch, path, base).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+	return withWorktreeLock(repo, func() error {
+		out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", branch, path, base).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	})
+}
+
+var worktreeMu sync.Mutex
+
+// withWorktreeLock runs f with no other staircase creating or removing a
+// worktree of repo. Git is not safe against two `worktree add` at once (one can
+// fail reading another's half-written .git/worktrees/<name>/commondir), and
+// sessions in one repository do start together. The lock is a mutex for this
+// process and a flock on a file in the repository's git directory for others.
+func withWorktreeLock(repo string, f func() error) error {
+	worktreeMu.Lock()
+	defer worktreeMu.Unlock()
+	if out, err := exec.Command("git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir").Output(); err == nil {
+		if lf, err := os.OpenFile(filepath.Join(strings.TrimSpace(string(out)), "staircase-worktree.lock"), os.O_CREATE|os.O_RDWR, 0o600); err == nil {
+			defer func() { _ = lf.Close() }()
+			for deadline := time.Now().Add(30 * time.Second); wslock.LockExclusive(lf.Fd()) != nil && time.Now().Before(deadline); {
+				time.Sleep(20 * time.Millisecond)
+			}
+			defer func() { _ = wslock.Unlock(lf.Fd()) }()
+		}
 	}
-	return nil
+	return f()
 }
 
 // removeWorktree deletes a run's worktree (its branch is kept).
 func removeWorktree(repo, path string) error {
-	out, err := exec.Command("git", "-C", repo, "worktree", "remove", "--force", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
+	return withWorktreeLock(repo, func() error {
+		out, err := exec.Command("git", "-C", repo, "worktree", "remove", "--force", path).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	})
 }
 
 // BranchExists reports whether a local branch with the given name exists.

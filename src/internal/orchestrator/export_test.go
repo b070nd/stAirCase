@@ -78,3 +78,8 @@ func CommitApprovedForTest(repoPath, file, content string, tamper func()) (strin
 	tamper()
 	return a.commit(branch, "test")
 }
+
+// AddWorktreeForTest exposes addWorktree for the concurrency test.
+func AddWorktreeForTest(repo, path, branch, base string) error {
+	return addWorktree(repo, path, branch, base)
+}
