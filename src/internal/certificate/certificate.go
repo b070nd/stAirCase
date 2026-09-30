@@ -51,6 +51,10 @@ type Predicate struct {
 	// RequestedBy is the git identity (user.email) the run was made under:
 	// a second person's signature must come from someone else (CAL 4).
 	RequestedBy string `json:"requestedBy,omitempty"`
+	// Initiator is the person who started the run, authenticated: their SSH
+	// signature over InitiatorText. Unlike RequestedBy it cannot be set by
+	// editing a git config. Present only when the run was started with a key.
+	Initiator *Initiator `json:"initiator,omitempty"`
 	// Checks ran on a clean checkout of the commit after it was made.
 	Checks []Check `json:"checks,omitempty"`
 	// Ledger is the SHA-256 of the run's ledger (the base commit and every
@@ -62,6 +66,24 @@ type Predicate struct {
 	Signed *SignedApprovals `json:"signed,omitempty"`
 	// Attention is how people decided, when any did.
 	Attention *Attention `json:"attention,omitempty"`
+}
+
+// Initiator is who started a run and proved it: Signature is the base64 of an
+// SSH signature (namespace InitiatorNamespace) by Principal's key over
+// InitiatorText of the same certificate.
+type Initiator struct {
+	Principal string `json:"principal"`
+	Signature string `json:"signature"`
+}
+
+// InitiatorNamespace is the SSH signature namespace of an initiator's signature.
+const InitiatorNamespace = "staircase-request"
+
+// InitiatorText is what an initiator signs, rebuilt from the certificate's own
+// run, base commit and plan and the principal's name, so a signature cannot be
+// moved to another run, base, plan or name.
+func InitiatorText(p Predicate, principal string) []byte {
+	return []byte(fmt.Sprintf("staircase-request-v1\nrun=%d\nbase=%s\nplan=%s\nprincipal=%s", p.Run, p.BaseCommit, p.PlanDigest, principal))
 }
 
 // SignedApprovals says how many human decisions carried a valid SSH

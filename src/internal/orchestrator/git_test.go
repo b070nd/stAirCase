@@ -1,10 +1,12 @@
 package orchestrator_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
@@ -234,4 +236,36 @@ func TestOpenGitRepo_linked_worktree(t *testing.T) {
 	assert.Equal(t, "refs/heads/main", strings.TrimSpace(string(out)), "main checkout must not move")
 	out, _ = exec.Command("git", "-C", repo, "status", "--porcelain").CombinedOutput()
 	assert.Empty(t, strings.TrimSpace(string(out)), "main checkout must stay clean")
+}
+
+// TestAddWorktree_concurrent: sessions in one repository start at the same
+// time (two terminals, `staircase serve`), and git itself is not safe against
+// two `worktree add` at once (it can fail reading a half-written
+// .git/worktrees/run-N/commondir). Creating worktrees is serialized, so every
+// one of them succeeds.
+func TestAddWorktree_concurrent(t *testing.T) {
+	repo := initGitRepo(t)
+	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	dir := t.TempDir()
+	const n = 24
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- orchestrator.AddWorktreeForTest(repo, filepath.Join(dir, fmt.Sprintf("run-%d", i)), fmt.Sprintf("staircase/run-%d", i), base)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		assert.NoError(t, err)
+	}
+}
+
+func gitOut(t *testing.T, repo string, args ...string) string {
+	out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).Output()
+	require.NoError(t, err)
+	return string(out)
 }

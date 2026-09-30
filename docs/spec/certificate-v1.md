@@ -56,6 +56,7 @@ is always `commit`, so the certificate does not reveal the repository's name.
 | `cal` | integer 1 to 3 | yes | the change assurance level the run reached (level 4 is only ever established by a verifier, section 5) |
 | `notes` | array of strings | no | why the level is not higher |
 | `requestedBy` | string | no | the git identity (e-mail) the run was made under |
+| `initiator` | object | no | the person who started the run, authenticated: `{"principal": string, "signature": string}`; `signature` is the standard base64 of an armored SSH signature in the namespace `staircase-request` by that principal's key over the text `staircase-request-v1\nrun=<run>\nbase=<baseCommit>\nplan=<planDigest or empty>\nprincipal=<principal>` (section 5, step 5) |
 | `ledger` | string | no | hex SHA-256 of the run's ledger file (section 7): the base commit and every approved proposal, in order. With it the commit's tree can be rebuilt |
 | `policy` | string | no | hex SHA-256 of the `policy.json` in effect for the run |
 | `signed` | object | no | decisions people signed with SSH keys: `{"decisions": integer, "signers": [string]}`; `signers` are the principals a trusted `allowed_signers` file lists for the keys that signed. Informative: it does not change the level |
@@ -93,10 +94,16 @@ people, a verifier MUST:
    A producer cannot sign level 4, so a statement claiming it (or any other level) is
    not a certificate, however validly it is signed.
 4. Refuse it unless the subject's commit is exactly the commit being checked.
-5. Take the level as `cal`. If an `allowed_signers` file is given and `cal` is at
-   least 3, the level is 4 when at least one person's signature (section 4) verifies
-   against that file for its principal and namespace, and that principal is not
-   `requestedBy`.
+5. If `initiator` is present, rebuild its text from the certificate's own `run`,
+   `baseCommit`, `planDigest` and the principal, and refuse the certificate unless the
+   signature verifies over it (any key); the initiator is *trusted* when the
+   `allowed_signers` file lists that key for that principal and the namespace
+   `staircase-request`. Then take the level as `cal`. If an `allowed_signers` file is
+   given and `cal` is at least 3, the level is 4 when at least one person's signature
+   (section 4) verifies against that file for its principal and namespace, and that
+   principal is not `requestedBy`, is not the initiator's principal, and its key is not
+   the initiator's key. A verifier MAY require a trusted initiator for level 4; then a
+   certificate with no initiator, or an untrusted one, stays at `cal`.
 6. Refuse it when the level is below the required minimum.
 7. Refuse it when any `checks` entry has an `exitCode` other than 0.
 

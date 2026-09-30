@@ -6,7 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two sessions starting in one repository at the same time could fail.** Git is
+  not safe against two `worktree add` at once (it could fail reading another's
+  half-written `.git/worktrees/run-N/commondir`), so one run would end FAILED at
+  the start. Creating and removing run worktrees is now serialized, within a
+  process and across processes (a lock file in the repository's git directory). It
+  showed up as a test that failed about one time in forty.
+
 ### Added
+
+- **An authenticated initiator.** A run started with `--sign-approvals` signs its own
+  request (who, run, base commit, plan) and the certificate carries that signature as
+  `initiator`. `verify` checks it, never lets the initiator (by name, by git email or
+  by key) be their own second party, and `--require-initiator` (Action input
+  `require-initiator`) makes CAL 4 count only when the initiator proved who they are
+  and is trusted. This closes the "two different strings are not two people" gap for
+  keys you trust; it is still keys, not humans.
 
 - **Real-agent evidence.** `./demo/smoke.sh codex-stop` runs a real Codex through a
   held (70 s) and rejected approval, its retry, and a Stop refused until a failing

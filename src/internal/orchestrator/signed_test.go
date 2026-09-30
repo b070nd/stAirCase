@@ -22,6 +22,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -275,4 +276,36 @@ func TestSignedApprovals_a_signature_is_good_for_one_proposal(t *testing.T) {
 	assert.Contains(t, decided[0], "signed_by", "the honest signature counts")
 	assert.Contains(t, decided[1], "signature_refused", "the replayed one does not")
 	assert.NotContains(t, decided[1], "signed_by")
+}
+
+// TestRun_the_initiator_signs_the_request: with --sign-approvals the person who
+// starts a run signs who they are, the run, its base commit and its plan; the
+// certificate carries that signature, and a key that cannot sign stops the run
+// before the agent does anything (F96).
+func TestRun_the_initiator_signs_the_request(t *testing.T) {
+	aliceKey, _ := sshKey(t, "alice@example.com")
+	plan := &plan.Plan{Harness: "claude-code", Digest: "p1an"}
+	r, commit, s := certified(t, writeFile("health.txt", "ok\n"),
+		orchestrator.RunOptions{Plan: plan, SignKey: aliceKey, SignAs: "alice@example.com"}, nil)
+	require.NotNil(t, s.Predicate.Initiator, "the certificate names its initiator")
+	assert.Equal(t, "alice@example.com", s.Predicate.Initiator.Principal)
+	sig, err := base64.StdEncoding.DecodeString(s.Predicate.Initiator.Signature)
+	require.NoError(t, err)
+	fp, err := sshsig.Check(certificate.InitiatorNamespace, certificate.InitiatorText(s.Predicate, "alice@example.com"), sig)
+	require.NoError(t, err, "the signature is over the text the verifier rebuilds")
+	assert.Regexp(t, `^SHA256:`, fp)
+	assert.Contains(t, r.Types(), "initiator_signed")
+	_ = commit
+
+	// No key, no initiator: the git email stays an unauthenticated claim.
+	_, _, s = certified(t, writeFile("health.txt", "ok\n"), orchestrator.RunOptions{Plan: plan}, nil)
+	assert.Nil(t, s.Predicate.Initiator)
+
+	// A key that cannot sign: the run stops before the agent runs.
+	ran := false
+	agent := orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error { ran = true; return nil })
+	res := runtest.Run(t, runtest.Options{Agent: agent, Run: orchestrator.RunOptions{Plan: plan, SignKey: filepath.Join(t.TempDir(), "missing"), SignAs: "alice@example.com"}})
+	require.Error(t, res.Err)
+	assert.Contains(t, res.Err.Error(), "initiator")
+	assert.False(t, ran, "the agent never ran")
 }
