@@ -89,7 +89,9 @@ people, a verifier MUST:
 2. Decode `payload`, and refuse it unless at least one signature verifies with the
    trusted key over the PAE (section 1).
 3. Parse the statement, and refuse it unless `_type` and `predicateType` are exactly
-   as in section 2 and the subject names a commit.
+   as in section 2, the subject names a commit, and `cal` is an integer from 1 to 3.
+   A producer cannot sign level 4, so a statement claiming it (or any other level) is
+   not a certificate, however validly it is signed.
 4. Refuse it unless the subject's commit is exactly the commit being checked.
 5. Take the level as `cal`. If an `allowed_signers` file is given and `cal` is at
    least 3, the level is 4 when at least one person's signature (section 4) verifies

@@ -182,6 +182,14 @@ reviewer is not the person the run was made for: the certificate records the git
 email (`user.email`) the run was made under, and that person's own signature does
 not count as a second review.
 
+What this proves, and what it does not: CAL 4 means a reviewer whose key you trust
+signed the change and is not recorded as the requester. The requester is the git
+`user.email` of the checkout, which anyone can set to anything, so two different
+strings are not proof of two different people. Until the requester is authenticated
+too (an initiator signature is planned), read CAL 4 as "a trusted reviewer signed
+it", not as proven two-person control, and back it with branch protection that
+requires a human approval.
+
 ## Require certificates on pull requests
 
 A CI check can refuse pull requests with an agent's commit that is not properly

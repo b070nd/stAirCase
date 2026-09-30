@@ -66,6 +66,9 @@ func vectors(t *testing.T) map[string]vector {
 	wrongPredicate := Envelope{PayloadType: payloadType, Payload: base64.StdEncoding.EncodeToString(b),
 		Signatures: []Signature{{KeyID: KeyID(priv.Public().(ed25519.PublicKey)), Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, PAE(payloadType, b)))}}}
 
+	claims4, claims0 := pred, pred
+	claims4.CAL, claims0.CAL = 4, 0 // freshly signed, so the signature is fine: the claim is what is wrong
+
 	v := func(desc string, env Envelope, commit string, minCAL int, ok bool, cal int, why string) vector {
 		return vector{Description: desc, PublicKey: pub, Commit: commit, MinCAL: minCAL, Envelope: env, Valid: ok, CAL: cal, Error: why}
 	}
@@ -81,6 +84,8 @@ func vectors(t *testing.T) map[string]vector {
 		"09-unsigned":              v("No signature at all.", unsigned, vectorCommit, 0, false, 0, "signature"),
 		"10-not-in-toto":           v("The envelope's payload type is not in-toto.", otherType, vectorCommit, 0, false, 0, "payload type"),
 		"11-other-predicate-type":  v("A signed in-toto statement, but not a change certificate.", wrongPredicate, vectorCommit, 0, false, 0, "not a change certificate"),
+		"12-claims-cal4":           v("A producer's own signature cannot reach CAL 4: only a verifier establishes it.", sign(claims4, vectorCommit, priv), vectorCommit, 0, false, 0, "assurance level"),
+		"13-claims-cal0":           v("A level outside 1 to 3 is not a level.", sign(claims0, vectorCommit, priv), vectorCommit, 0, false, 0, "assurance level"),
 	}
 }
 
