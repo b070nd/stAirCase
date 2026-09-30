@@ -42,9 +42,17 @@ func landlockABI() int {
 	return int(v)
 }
 
+// landlockVersion is the kernel's Landlock ABI (replaced in tests).
+var landlockVersion = landlockABI
+
 func landlockWrapper(root, tmp string, hide []string) ([]string, error) {
-	if landlockABI() < 1 {
+	switch abi := landlockVersion(); {
+	case abi < 1:
 		return nil, errors.New("this kernel has no Landlock")
+	case abi < 3:
+		// Before ABI 3 (kernel 6.2) truncate(2) is not restricted, so a command could
+		// still empty files outside the folders it may write: not the sandbox we promise.
+		return nil, fmt.Errorf("this kernel's Landlock (ABI %d) cannot stop a command truncating files outside its folders; it needs ABI 3 (Linux 6.2), or install bubblewrap", abi)
 	}
 	self, err := os.Executable()
 	if err != nil {

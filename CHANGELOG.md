@@ -59,6 +59,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Sandbox confidentiality, stated and tightened.** The agents' own login stores
+  (`~/.claude`, `~/.codex`, `~/.gemini`, OpenCode's) are hidden from sandboxed
+  commands like `~/.ssh`. On Linux, a kernel whose Landlock is older than ABI 3
+  (before 6.2) no longer counts as a sandbox: it cannot stop a command truncating
+  files outside its folders, so `--sandbox required` refuses and `auto` runs
+  unsandboxed and says so (install bubblewrap). `docs/safety.md` has a
+  confidentiality profile table.
 - **`clean --aggressive` no longer destroys evidence silently.** It keeps a run branch
   that is not merged into another branch (the only copy of the commit), archives
   flagged cases and pruned audit rows to `archive/` before deleting them (and deletes

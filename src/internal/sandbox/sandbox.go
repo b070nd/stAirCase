@@ -49,7 +49,9 @@ func Command(ctx context.Context, root, cwd, command, mode string, hide ...strin
 // ponytail: a list, not an allowlist of reads (tools read all over the
 // system); add a path here when a tool keeps its tokens elsewhere.
 var Credentials = []string{".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials",
-	".npmrc", ".pypirc", ".config/gh", ".config/gcloud", ".config/git", "Library/Keychains"}
+	".npmrc", ".pypirc", ".config/gh", ".config/gcloud", ".config/git", "Library/Keychains",
+	// the agents' own login stores
+	".claude", ".claude.json", ".codex", ".gemini", ".config/opencode", ".local/share/opencode"}
 
 // hidden are the existing, resolved paths to hide: the credentials under the
 // home folder and hide.
