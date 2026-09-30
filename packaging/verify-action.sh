@@ -15,6 +15,7 @@
 #   ALLOWED_SIGNERS  path of the allowed_signers file (optional)
 #   TRUST_REF  ref to read KEY and ALLOWED_SIGNERS from (default origin/<base>)
 #   REBUILD  "true": also rebuild each commit from its ledger note
+#   REQUIRE_INITIATOR  "true": CAL 4 needs a signed, trusted initiator
 #   STAIRCASE_BIN  use this binary instead of installing a release (for testing)
 #   MIN_CAL  lowest change assurance level accepted
 #   ALL      "false": check only commits that name an agent (default: every commit)
@@ -86,4 +87,5 @@ if [ -n "${ALLOWED_SIGNERS:-}" ]; then
 fi
 [ "${ALL:-true}" = "false" ] || args+=(--all)
 [ "${REBUILD:-false}" = "true" ] && args+=(--rebuild)
+[ "${REQUIRE_INITIATOR:-false}" = "true" ] && args+=(--require-initiator)
 "$dir/staircase" verify "${args[@]}"

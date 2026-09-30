@@ -83,3 +83,20 @@ func TestOpen_refuses_an_unearnable_level(t *testing.T) {
 		assert.NoError(t, err, "cal %d", cal)
 	}
 }
+
+// TestInitiatorText: what an initiator signs is rebuilt from the certificate's
+// own fields (run, base commit, plan) and their name, so the signature cannot
+// be lifted onto another run, base or plan, or another principal.
+func TestInitiatorText(t *testing.T) {
+	p := certificate.Predicate{Run: 7, BaseCommit: "abc", PlanDigest: "def"}
+	base := certificate.InitiatorText(p, "alice@example.com")
+	assert.Equal(t, "staircase-request-v1\nrun=7\nbase=abc\nplan=def\nprincipal=alice@example.com", string(base))
+	for name, other := range map[string][]byte{
+		"run":       certificate.InitiatorText(certificate.Predicate{Run: 8, BaseCommit: "abc", PlanDigest: "def"}, "alice@example.com"),
+		"base":      certificate.InitiatorText(certificate.Predicate{Run: 7, BaseCommit: "abd", PlanDigest: "def"}, "alice@example.com"),
+		"plan":      certificate.InitiatorText(certificate.Predicate{Run: 7, BaseCommit: "abc", PlanDigest: "deg"}, "alice@example.com"),
+		"principal": certificate.InitiatorText(p, "bob@example.com"),
+	} {
+		assert.NotEqual(t, string(base), string(other), name)
+	}
+}

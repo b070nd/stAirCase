@@ -1179,6 +1179,7 @@ Flags:
       --ledger string            With --rebuild, read the ledger from this file instead of the git note (one commit only)
       --min-cal int              Fail below this change assurance level (1-4)
       --rebuild                  Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note (refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails
+      --require-initiator        CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; without it the requester is the git email, which anyone can set
 ```
 
 ## staircase version

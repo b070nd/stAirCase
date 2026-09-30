@@ -29,6 +29,8 @@ var (
 	verifySigners     string
 	verifyRebuild     bool
 	verifyLedger      string
+
+	verifyRequireInitiator bool
 )
 
 var verifyCmd = &cobra.Command{
@@ -61,6 +63,9 @@ func init() {
 		"git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4 "+
 			"(default: the team's, from staircase governance)")
 	verifyCmd.Flags().BoolVar(&verifyAll, "all", false, "In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)")
+	verifyCmd.Flags().BoolVar(&verifyRequireInitiator, "require-initiator", false,
+		"CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; "+
+			"without it the requester is the git email, which anyone can set")
 	verifyCmd.Flags().BoolVar(&verifyRebuild, "rebuild", false,
 		"Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note "+
 			"(refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails")
@@ -161,12 +166,32 @@ func verifyCommit(commit string) error {
 			signersFile = team // the team's reviewers (staircase governance use)
 		}
 	}
-	if signersFile != "" && p.CAL >= 3 { // ADR 0001: CAL 4 = CAL 3 + a second, identified person
-		if signers, err = personSignatures(env, signersFile, p.RequestedBy); err != nil {
-			return err
+	// The initiator's own signature: always checked when present (a false claim
+	// fails the certificate), trusted only when the signers file lists their key.
+	var initiator, initiatorKey string
+	initiatorTrusted := false
+	if in := p.Initiator; in != nil {
+		sig, err := base64.StdEncoding.DecodeString(in.Signature)
+		if err != nil {
+			return fmt.Errorf("commit %.12s: the initiator's signature is not valid base64", commit)
 		}
-		if len(signers) > 0 {
-			level = 4
+		text := certificate.InitiatorText(p, in.Principal)
+		if initiatorKey, err = sshsig.Check(certificate.InitiatorNamespace, text, sig); err != nil {
+			return fmt.Errorf("commit %.12s: the initiator's signature is not valid: %w", commit, err)
+		}
+		initiator = in.Principal
+		initiatorTrusted = signersFile != "" && sshsig.Verify(signersFile, in.Principal, certificate.InitiatorNamespace, text, sig) == nil
+	}
+	if signersFile != "" && p.CAL >= 3 { // ADR 0001: CAL 4 = CAL 3 + a second, identified person
+		if verifyRequireInitiator && !initiatorTrusted {
+			s.Predicate.Notes = append(s.Predicate.Notes, "CAL 4 needs the run's initiator authenticated and trusted (--require-initiator)")
+		} else {
+			if signers, err = personSignatures(env, signersFile, p.RequestedBy, initiator, initiatorKey); err != nil {
+				return err
+			}
+			if len(signers) > 0 {
+				level = 4
+			}
 		}
 	}
 	if err := s.Accept(commit, level, verifyMinCAL); err != nil { // docs/spec/certificate-v1.md
@@ -209,6 +234,14 @@ func verifyCommit(commit string) error {
 	}
 	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, level)
 	fmt.Print(rebuilt)
+	switch {
+	case initiator != "" && initiatorTrusted:
+		fmt.Printf("   started by %s (signed, key %s, trusted)\n", initiator, initiatorKey)
+	case initiator != "":
+		fmt.Printf("   started by %s (signed, key %s, not in the trusted signers)\n", initiator, initiatorKey)
+	case p.RequestedBy != "":
+		fmt.Printf("   requested by %s (the git email of the checkout: unauthenticated)\n", p.RequestedBy)
+	}
 	if len(signers) > 0 {
 		fmt.Printf("   reviewed and signed by %s\n", strings.Join(signers, ", "))
 	}
@@ -246,7 +279,7 @@ func verifyCommit(commit string) error {
 // personSignatures are the trusted people who signed env (staircase sign):
 // each signature must verify with ssh-keygen against the allowed_signers file,
 // and the requester's own signature does not count.
-func personSignatures(env certificate.Envelope, allowedSigners, requester string) ([]string, error) {
+func personSignatures(env certificate.Envelope, allowedSigners, requester, initiator, initiatorKey string) ([]string, error) {
 	payload, err := base64.StdEncoding.DecodeString(env.Payload)
 	if err != nil {
 		return nil, err
@@ -255,12 +288,15 @@ func personSignatures(env certificate.Envelope, allowedSigners, requester string
 	var who []string
 	for _, s := range env.Signatures {
 		principal, ok := strings.CutPrefix(s.KeyID, certificate.SSHSignature)
-		if !ok || principal == requester {
+		if !ok || principal == requester || (initiator != "" && principal == initiator) {
 			continue
 		}
 		sig, err := base64.StdEncoding.DecodeString(s.Sig)
 		if err != nil {
 			continue
+		}
+		if fp, err := sshsig.Check(certificate.SSHNamespace, pae, sig); initiatorKey != "" && err == nil && fp == initiatorKey {
+			continue // the same key as the initiator's, under another name
 		}
 		if sshsig.Verify(allowedSigners, principal, certificate.SSHNamespace, pae, sig) == nil {
 			who = append(who, principal)

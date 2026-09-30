@@ -12,6 +12,9 @@ inputs:
   allowed-signers:
     description: Path of the git allowed_signers file of trusted reviewers (CAL 4), read from the same trusted ref as the key
     default: ""
+  require-initiator:
+    description: '"true": CAL 4 counts only when the run''s initiator signed the request and is in allowed-signers'
+    default: "false"
   trust-ref:
     description: Git ref the key and allowed-signers are read from. Default for a pull request is origin/<base branch>; outside one, set it to a protected branch or tag
     default: ""
@@ -43,6 +46,7 @@ runs:
         ALLOWED_SIGNERS: ${{ inputs.allowed-signers }}
         TRUST_REF: ${{ inputs.trust-ref }}
         REBUILD: ${{ inputs.rebuild }}
+        REQUIRE_INITIATOR: ${{ inputs.require-initiator }}
         RANGE: ${{ inputs.range }}
         VERSION: ${{ inputs.version || github.action_ref }}
         BASE_REF: ${{ github.base_ref }}

@@ -79,6 +79,13 @@ action() {
   [[ "$output" == *"--rebuild"* ]]
 }
 
+@test "require-initiator is opt in" {
+  action
+  [[ "$output" != *"--require-initiator"* ]]
+  REQUIRE_INITIATOR=true action
+  [[ "$output" == *"--require-initiator"* ]]
+}
+
 @test "a key that is only in the pull request is refused" {
   git -C "$WORK/repo" checkout -q pr
   echo "NEW-KEY" >"$WORK/repo/.github/new.pub"

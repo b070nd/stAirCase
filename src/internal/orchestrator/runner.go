@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/approvalhttp"
+	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/gate"
@@ -37,6 +39,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/b070nd/stAirCase/src/internal/signal"
+	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/b070nd/stAirCase/src/internal/webhookauth"
 	"github.com/b070nd/stAirCase/src/internal/wslock"
@@ -319,7 +322,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	ledger := Ledger{Base: baseSHA}
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
-	var evidenceErrs []string // what could not be written for the commit, if anything
+	var evidenceErrs []string            // what could not be written for the commit, if anything
+	var initiator *certificate.Initiator // the signed request of whoever started the run, if they signed
 	var display *monitor.Display
 	var sup *policy.Supervisor // drift supervision, from RUN SETUP on
 
@@ -418,6 +422,21 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	if err := r.audit(run.ID, "run_bound", bound); err != nil {
 		return fmt.Errorf("audit run_bound: %w", err)
+	}
+	if opts.SignKey != "" { // the person who starts the run proves who they are, before any work is done
+		var digest string
+		if opts.Plan != nil {
+			digest = opts.Plan.Digest
+		}
+		sig, err := sshsig.Sign(opts.SignKey, certificate.InitiatorNamespace,
+			certificate.InitiatorText(certificate.Predicate{Run: run.ID, BaseCommit: baseSHA, PlanDigest: digest}, opts.SignAs))
+		if err != nil {
+			return fmt.Errorf("sign as the run's initiator: %w", err)
+		}
+		initiator = &certificate.Initiator{Principal: opts.SignAs, Signature: base64.StdEncoding.EncodeToString(sig)}
+		if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs}); err != nil {
+			return fmt.Errorf("audit initiator_signed: %w", err)
+		}
 	}
 	if opts.Agreed != "" {
 		agreed := map[string]any{"by": opts.Agreed}
@@ -818,7 +837,7 @@ runLoop:
 				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not attached to the commit: %v\n", err)
 				evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 			}
-			ev.policy = snap.Digest
+			ev.policy, ev.initiator = snap.Digest, initiator
 			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})

@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **An authenticated initiator.** A run started with `--sign-approvals` signs its own
+  request (who, run, base commit, plan) and the certificate carries that signature as
+  `initiator`. `verify` checks it, never lets the initiator (by name, by git email or
+  by key) be their own second party, and `--require-initiator` (Action input
+  `require-initiator`) makes CAL 4 count only when the initiator proved who they are
+  and is trusted. This closes the "two different strings are not two people" gap for
+  keys you trust; it is still keys, not humans.
+
 - **Real-agent evidence.** `./demo/smoke.sh codex-stop` runs a real Codex through a
   held (70 s) and rejected approval, its retry, and a Stop refused until a failing
   `--check` passes; every smoke run now also verifies and rebuilds the commit in a

@@ -230,13 +230,26 @@ reviewer is not the person the run was made for: the certificate records the git
 email (`user.email`) the run was made under, and that person's own signature does
 not count as a second review.
 
-What this proves, and what it does not: CAL 4 means a reviewer whose key you trust
-signed the change and is not recorded as the requester. The requester is the git
-`user.email` of the checkout, which anyone can set to anything, so two different
-strings are not proof of two different people. Until the requester is authenticated
-too (an initiator signature is planned), read CAL 4 as "a trusted reviewer signed
-it", not as proven two-person control, and back it with branch protection that
-requires a human approval.
+**Who started the run.** By default the certificate records the git `user.email` of the
+checkout as the requester, and anyone can set that to anything, so two different strings
+are not proof of two different people. Start the run with your SSH key
+(`--sign-approvals ~/.ssh/id_ed25519 --sign-as you@example.com`) and you also sign the
+request: your name, the run, its base commit and its plan. The certificate then carries
+that signature as its `initiator`, and `verify` checks it (a forged one fails the
+certificate). A second party must be someone else: neither the git email, nor the
+initiator's name, nor the initiator's key under another name counts.
+
+```bash
+staircase verify staircase/run-7 --allowed-signers .github/allowed_signers --min-cal 4 --require-initiator
+```
+
+With `--require-initiator`, CAL 4 counts only when the initiator signed and is listed in
+`allowed_signers` (namespace `staircase-request`, which a plain `ssh-keygen` line covers
+unless restricted): that is two different *trusted keys*. What that proves is that two
+keys you trust were used, one to start the run and one to review it, not that two humans
+hold them; back it with branch protection that requires a human approval. Without
+`--require-initiator` (and for runs started without a key), read CAL 4 as "a trusted
+reviewer signed it".
 
 ## Require certificates on pull requests
 

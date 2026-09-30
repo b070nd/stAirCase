@@ -72,6 +72,7 @@ const (
 type evidence struct {
 	checks         []certificate.Check
 	ledger, policy string // SHA-256 digests
+	initiator      *certificate.Initiator
 }
 
 // certify signs a change certificate about commit with the workspace key,
@@ -89,7 +90,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		return err
 	}
 	p := certificate.Predicate{Run: runID, BaseCommit: baseSHA, Agents: assistants(pl), ChainHead: chainHead,
-		Decisions: map[string]int{}, CAL: 3, Checks: ev.checks, Ledger: ev.ledger, Policy: ev.policy}
+		Decisions: map[string]int{}, CAL: 3, Checks: ev.checks, Ledger: ev.ledger, Policy: ev.policy, Initiator: ev.initiator}
 	if pl != nil {
 		p.PlanDigest, p.Blueprint = pl.Digest, pl.BlueprintHash
 	}
