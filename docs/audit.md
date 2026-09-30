@@ -142,6 +142,17 @@ away silently:
 
 Certificates and ledgers under `audit/` are never touched by `clean`.
 
+## Back up and restore the workspace
+
+The workspace directory (`~/.staircase-workspace`) is the whole state: the database
+(`workspace.db` with its `-wal` and `-shm` files), the encryption key (`.key`), the
+signing keys, `policy.json`, and `audit/` (certificates, ledgers, checkpoints). Back
+it up while no run is active: copy the directory, all of it. A restored copy verifies
+its audit chains, decrypts its secrets and verifies its commits with the restored
+signing key; this is tested. Without `.key`, the stored secrets cannot be read, so keep
+it with the backup, somewhere only you can reach. Keep the certificates and ledgers in
+git too (`refs/notes/staircase*`), so a commit's evidence does not depend on one disk.
+
 ## Review attention
 
 A signed approval proves someone clicked approve, not that they read the change. So

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/viper"
@@ -134,4 +135,57 @@ func TestClean_archives_pruned_event_rows(t *testing.T) {
 	assert.Contains(t, string(b), events[0].EventHash)
 	assert.Contains(t, string(b), events[1].EventHash)
 	assert.NotContains(t, string(b), events[2].EventHash, "only what was pruned")
+}
+
+// copyDir copies a directory tree (files only, modes kept), as a backup would.
+func copyDir(t *testing.T, from, to string) {
+	t.Helper()
+	require.NoError(t, filepath.Walk(from, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(from, p)
+		dst := filepath.Join(to, rel)
+		if info.IsDir() {
+			return os.MkdirAll(dst, 0o700)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dst, b, info.Mode().Perm())
+	}))
+}
+
+// TestWorkspace_backup_and_restore: a plain copy of the workspace directory
+// taken after a run (the database, its write-ahead log, the keys, audit/) is a
+// complete backup: restored elsewhere, the run's audit chain verifies, its
+// secrets decrypt and its commit still verifies against the restored key (F104).
+func TestWorkspace_backup_and_restore(t *testing.T) {
+	_, ws, git := sessionRepo(t)
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	require.NoError(t, setSecretFromStdin(t, "API_KEY", "s3cret"))
+	commit := strings.TrimSpace(git("rev-parse", "staircase/run-1"))
+
+	backup := filepath.Join(t.TempDir(), "restored")
+	require.NoError(t, os.MkdirAll(backup, 0o700))
+	copyDir(t, ws, backup)
+	viper.Set("STAIRCASE_DIR", backup)
+
+	restored, rdb, err := openStore()
+	require.NoError(t, err)
+	defer func() { _ = rdb.Close() }()
+	require.NoError(t, restored.VerifyChain(1), "the audit chain survives a copy of the directory")
+	key, err := crypto.LoadKey(backup)
+	require.NoError(t, err)
+	sec, err := restored.GetSecret("API_KEY", nil)
+	require.NoError(t, err)
+	require.NotNil(t, sec)
+	v, err := crypto.Decrypt(key, sec.EncryptedValue)
+	require.NoError(t, err)
+	assert.Equal(t, "s3cret", v)
+	verifyMinCAL, verifyKey, verifyFile, verifyAll, verifyRebuild = 3, "", "", false, false
+	t.Cleanup(func() { verifyMinCAL = 0 })
+	require.NoError(t, verifyHandler(nil, []string{commit}), "the restored signing key verifies the commit")
+	viper.Set("STAIRCASE_DIR", ws)
 }

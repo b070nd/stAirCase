@@ -59,6 +59,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Decisions are durable, and releases need a green build.** The workspace database
+  commits with `synchronous=FULL`, so a decision acknowledged to the agent is on disk
+  before it is reported (macOS caveat in `docs/governance.md`). The release workflow
+  now refuses a tag whose commit is not on the default branch or has no successful CI
+  run (`packaging/release-gate.sh`). The governance and compatibility docs state what
+  identity, rollout, revocation and agent testing do and do not establish, and a
+  restored copy of the workspace is tested to verify.
 - **Sandbox confidentiality, stated and tightened.** The agents' own login stores
   (`~/.claude`, `~/.codex`, `~/.gemini`, OpenCode's) are hidden from sandboxed
   commands like `~/.ssh`. On Linux, a kernel whose Landlock is older than ABI 3
