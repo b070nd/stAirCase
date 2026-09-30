@@ -17,6 +17,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Approve on evidence.** `--approve-on-evidence` (with `--allow`, and `--check`
+  and/or `--validator`) approves an in-scope change only when every check passes in the
+  sandbox on the exact state the change would produce (the base, the approved changes
+  and this one) and the reviewer models agree; otherwise it comes to you with what was
+  missing. It replaces the 1-in-5 sampling of `--approve-in-scope`, is recorded as
+  `evidence` with each check's result, and the whole change is still approved by you
+  once at the end. Nothing is approved on the absence of evidence.
+
 - **SLSA verification summaries.** `staircase verify --vsa-out <dir>` writes a signed
   SLSA Verification Summary Attestation (VSA v1, DSSE) for every commit that passes:
   the commit and its tree, the repository (`--resource-uri`, else the origin remote),

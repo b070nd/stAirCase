@@ -43,7 +43,7 @@ func (o *operator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // scoped gives the case one story allowed to change only GREETING.md and
 // sends HITL yields to op; policy (from runtest) auto-approves file edits.
-func scoped(op *operator, policyJSON string) func(*persistence.Store, string, int64) {
+func scoped(op http.Handler, policyJSON string) func(*persistence.Store, string, int64) {
 	return func(s *persistence.Store, wsDir string, projectID int64) {
 		srv := httptest.NewServer(op)
 		cases, _ := s.ListCasesByProject(projectID)

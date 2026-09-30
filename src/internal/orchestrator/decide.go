@@ -25,7 +25,8 @@ type deciders struct {
 	drift     *policy.Supervisor
 	policy    *policy.Engine
 	validator *Validator
-	task      bool // ApproveInScope with an agreed task
+	task      bool          // ApproveInScope (or ApproveOnEvidence) with an agreed task
+	evidence  *evidenceGate // with ApproveOnEvidence: in-scope changes are approved on evidence, not on the task alone
 	signal    *Signal
 	redact    func(string) string                                                 // removes delivered secret values from what a person is shown
 	sign      *decisionSigning                                                    // checks and adds signatures on human decisions
@@ -55,6 +56,7 @@ type ruling struct {
 	decideMS int64          // a person's time to decide
 	lines    int            // lines the change adds or removes
 	signed   map[string]any // the signature on a person's decision, for the audit record
+	evidence map[string]any // what an evidence-based approval rests on, for the audit record
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
@@ -143,6 +145,9 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		if f := sensitive(rl.files); f != "" {
 			req.Review = "sensitive path " + f + " - a person decides even inside the agreed task"
 			return d.human(req, rl)
+		}
+		if d.evidence != nil {
+			return d.onEvidence(ctx, req, rl)
 		}
 		d.taskApproved = true
 		d.display.AddActivity(fmt.Sprintf("%-14s TASK   %s → approved (inside the agreed task)", req.AgentName, req.ActionType))
@@ -261,4 +266,42 @@ func changedLines(before, after map[string]*approvedFile) int {
 		}
 	}
 	return n
+}
+
+// onEvidence decides an in-scope change on evidence: the checks must pass on
+// the state it would produce, and the reviewer models, if any, must agree. A
+// panel that unanimously rejects rejects it; anything else that is not clear
+// evidence goes to a person, who is shown what was missing. Nothing is
+// approved on the absence of evidence.
+func (d *deciders) onEvidence(ctx context.Context, req *domain.YieldRequest, rl ruling) ruling {
+	results, failed := d.evidence.runChecks(ctx, rl.next)
+	ev := map[string]any{}
+	if len(results) > 0 {
+		ev["checks"] = checkEvidence(results)
+	}
+	if failed != "" {
+		req.Review = "no evidence to approve on: " + failed
+		d.display.AddActivity(fmt.Sprintf("%-14s EVIDENCE %s → HITL (%s)", req.AgentName, req.ActionType, failed))
+		return d.human(req, rl)
+	}
+	if d.validator != nil {
+		note, resp, decided := d.validator.decide(ctx, *req, rl.files, rl.next, d.approvals, d.tracker)
+		switch {
+		case decided && !resp.Approved:
+			d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → false (%s)", req.AgentName, req.ActionType, resp.Feedback))
+			rl.resp, rl.source, rl.evidence = resp, "validator:"+d.validator.Name(), ev
+			return rl
+		case !decided:
+			req.Review = note
+			if note != "" {
+				d.validator.humanDecided()
+			}
+			return d.human(req, rl)
+		}
+		ev["validator"] = d.validator.Name()
+	}
+	d.taskApproved = true // a person still reviews the whole change at the end
+	d.display.AddActivity(fmt.Sprintf("%-14s EVIDENCE %s → approved", req.AgentName, req.ActionType))
+	rl.resp, rl.source, rl.evidence = domain.Decide(true, "approved on evidence"), "evidence", ev
+	return rl
 }

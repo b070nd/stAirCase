@@ -143,8 +143,9 @@ Six contracts stay stable and versioned while everything around them may change:
   comes to you. Some approvals are sampled for your review. *Done:
   `--approve-in-scope`, with a checkpoint every fifth change and a final review;
   review attention in the certificate makes approvals given without reading
-  visible. Evidence-based approval (checks, reviewer models) inside the scope comes
-  next.*
+  visible. Evidence-based approval: `--approve-on-evidence` approves in-scope changes
+  only when the checks pass on the state each change produces and the reviewer models
+  agree, replacing the sampled checkpoint.*
 - **Gates as evidence:** each checkpoint must pass its gates - tests run in a sandbox
   on the exact approved code, two independent reviewer models that must agree, and a
   person - and every gate's result goes into the change certificate. *Done:

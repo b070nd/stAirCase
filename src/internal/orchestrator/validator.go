@@ -31,6 +31,7 @@ type Validator struct {
 	rejectRun  int  // consecutive validator rejections
 	unreviewed bool // the validator approved something no human has seen
 	brief      string
+	noSampling bool // with ApproveOnEvidence: evidence replaces the validator's sampled human review
 }
 
 const (
@@ -184,7 +185,7 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files [
 	}
 	v.rejectRun = 0
 	v.approvals++
-	if v.approvals%validatorSampleEvery == 0 {
+	if !v.noSampling && v.approvals%validatorSampleEvery == 0 {
 		return "the validator approved (" + strings.Join(yes, "; ") + ") - sampled for human review", resp, false
 	}
 	v.unreviewed = true

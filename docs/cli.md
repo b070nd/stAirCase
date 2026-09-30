@@ -182,6 +182,7 @@ Flags:
       --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Claude Code (default: its own)
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -251,6 +252,7 @@ Flags:
       --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Codex (default: its own)
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -409,6 +411,7 @@ Flags:
       --approval-port int          Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Gemini CLI (default: its own)
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -558,6 +561,7 @@ Flags:
       --approval-port int          Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for OpenCode (default: its own)
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -828,6 +832,7 @@ Flags:
       --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --by string                  Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -901,6 +906,7 @@ Flags:
       --approval-port int          Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --by string                  Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
   -m, --message string             The commit message (default: Changes by <agent>)
