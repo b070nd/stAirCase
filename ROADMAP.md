@@ -118,7 +118,8 @@ Six contracts stay stable and versioned while everything around them may change:
   works with any agent that edits your checkout.*
 - `staircase review <pull request>` for cloud agents.
 - Templates for managed (company-wide) hook settings.
-- **Signed approvals** with your SSH key: *who* approved becomes provable.
+- **Signed approvals** with your SSH key: *who* approved becomes provable. *Done for
+  each decision: `--sign-approvals`, with the approval API taking signatures too.*
 - **Agree on the task before it starts:** a session shows its scope (the paths it may
   change), the kinds of change and the budget, and you approve them before the agent
   runs. This is the first step of "approve the task, not every step" (phase 3).
@@ -169,9 +170,11 @@ Six contracts stay stable and versioned while everything around them may change:
 
 - A **local background service**, so long runs survive restarts (they resume from the
   state machine's recorded state) and you can approve from a browser. Approvals there
-  are signed with a passkey. *Started: every run with `--approval-port` serves a review page
+  are signed with your SSH key (a passkey was considered and dropped: one identity
+  system is enough). *Started: every run with `--approval-port` serves a review page
   (line diffs, notes, approve or reject) and `staircase serve` shows all running
-  sessions on one page; passkey signing comes next.*
+  sessions on one page; decisions are signed with `--sign-approvals`. Resuming runs
+  after a restart is still open.*
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
   *Done: `staircase attach` and `staircase seal` (CAL 2), which also covers Cursor.*
 - **Git as the control plane:**
@@ -183,8 +186,9 @@ Six contracts stay stable and versioned while everything around them may change:
 ### Phase 5 - v1.0: a standard others can implement
 
 - A written specification of the certificate and of how a commit is rebuilt, with test
-  vectors. *The certificate is specified ([spec](docs/spec/certificate-v1.md)), with
-  11 vectors and an independent verifier; rebuilding a commit needs the v2 ledger.*
+  vectors. *Done: the certificate and the rebuild are specified
+  ([spec](docs/spec/certificate-v1.md)), with 11 + 14 vectors and independent
+  implementations; `staircase rebuild` reproduces a commit from its ledger.*
 - The certificate format proposed to in-toto, and its mapping to SLSA's source track
   published, together with a mapping to the OWASP Top 10 for LLM applications and
   NIST's secure development profile for generative AI (SP 800-218A). *Mappings

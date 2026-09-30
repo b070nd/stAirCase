@@ -41,16 +41,20 @@ A change to any field means a new version in this URI.
 | `cal` | the assurance level reached ([ADR 0001](0001-core-promise-and-assurance-levels.md)) |
 | `notes` | why the level is not higher, for example approved shell commands without a sandbox |
 | `requestedBy` | the git identity the run was made under (a CAL 4 signer must be someone else) |
+| `ledger` | the SHA-256 of the run's ledger (base commit and every approved proposal, in order): `staircase rebuild` replays it and must find the commit's tree ([specification](../spec/certificate-v1.md#7-rebuilding-a-commit)) |
+| `policy` | the SHA-256 of the policy.json in effect |
+| `signed` | decisions people signed with SSH keys, and the trusted signers among them (informative) |
 | `attention` | how people decided: decisions, median seconds, and large changes approved within seconds (informative) |
 | `checks` | commands run on the commit (`--check`): command, exit code, sandboxed, SHA-256 of the output. `staircase verify` fails a commit with a failed check |
 
-**Planned for v2:** `ledger` (the SHA-256 of the ordered, approved proposals and their
-derived file digests, so a verifier can rebuild the commit), `policy` (the digest of
-the policy in effect) and `verifiers` (references to test-result attestations).
+**Update:** `ledger` and `policy` shipped as optional fields of v1: added fields do
+not change what v1 means, and older verifiers ignore them. What is still planned is
+`verifiers` (references to test-result attestations).
 
-**Rebuilding the commit** (v2). Take the base commit and apply the ledger with the
-documented derivation rules. The result must be exactly the commit's tree. The certificate holds
-only digests; the ledger holds the content and stays private.
+**Rebuilding the commit.** Take the base commit and replay the ledger with the
+documented derivation rules ([specification](../spec/certificate-v1.md#7-rebuilding-a-commit)).
+The result must be exactly the commit's tree (`staircase rebuild`). The certificate
+holds only the ledger's digest; the ledger holds the content and stays private.
 
 **Carriers.**
 - The envelope is stored in the workspace and as a git note under

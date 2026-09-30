@@ -1,0 +1,45 @@
+{
+  "description": "Git trees hold no empty directories.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "dir/only.txt",
+        "search_block": "(delete file)",
+        "replace_block": ""
+      }
+    ]
+  ],
+  "tree": "67ce9ff3ed892e5a52520abc75a42db0c0d4f2a4"
+}

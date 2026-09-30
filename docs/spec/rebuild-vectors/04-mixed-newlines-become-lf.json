@@ -1,0 +1,45 @@
+{
+  "description": "A file with mixed line ends is read with universal newlines and saved with LF.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "mixed.txt",
+        "search_block": "q\n",
+        "replace_block": "Q\n"
+      }
+    ]
+  ],
+  "tree": "755569f83300b7a7943205a270ebd8c372b10619"
+}

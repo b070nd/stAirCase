@@ -54,12 +54,17 @@ type PendingYield struct {
 	ID      string              `json:"id"`
 	Req     domain.YieldRequest `json:"request"`
 	Created time.Time           `json:"created"`
+	// Payload is what a person signs to sign the decision: this text followed
+	// by "approve" or "reject" (SSH signature, namespace staircase-decision).
+	Payload string `json:"decision_payload,omitempty"`
 	ch      chan domain.YieldResponse
 }
 
 // feedbackBody is the optional JSON body accepted by approve/reject endpoints.
 type feedbackBody struct {
-	Feedback string `json:"feedback"`
+	Feedback  string `json:"feedback"`
+	Signer    string `json:"signer"`
+	Signature string `json:"signature"`
 }
 
 // MozillaTLSConfig returns a *tls.Config that matches the Mozilla TLS
@@ -277,6 +282,12 @@ func (s *Server) ListenAddr() string {
 // channel that will receive exactly one [domain.YieldResponse] when an operator
 // calls the approve/reject endpoint (or when the server shuts down).
 func (s *Server) PendYield(req domain.YieldRequest) (id string, ch <-chan domain.YieldResponse) {
+	return s.PendSigned(req, "")
+}
+
+// PendSigned is PendYield for a decision a person can sign: payload is
+// offered to the client as decision_payload.
+func (s *Server) PendSigned(req domain.YieldRequest, payload string) (id string, ch <-chan domain.YieldResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -286,6 +297,7 @@ func (s *Server) PendYield(req domain.YieldRequest) (id string, ch <-chan domain
 		ID:      id,
 		Req:     req,
 		Created: time.Now(),
+		Payload: payload,
 		ch:      make(chan domain.YieldResponse, 1),
 	}
 	s.pending[id] = py
@@ -370,7 +382,9 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 
-	py.ch <- domain.Decide(approved, body.Feedback)
+	resp := domain.Decide(approved, body.Feedback)
+	resp.Signer, resp.Signature = body.Signer, body.Signature
+	py.ch <- resp
 
 	action := "rejected"
 	if approved {

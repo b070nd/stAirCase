@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -73,13 +74,9 @@ func signHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("who is signing? set --as or git user.email")
 	}
 
-	cmd := exec.Command("ssh-keygen", "-Y", "sign", "-q", "-f", key, "-n", certificate.SSHNamespace)
-	cmd.Stdin = bytes.NewReader(certificate.PAE(env.PayloadType, payload))
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	sig, err := cmd.Output()
+	sig, err := sshsig.Sign(key, certificate.SSHNamespace, certificate.PAE(env.PayloadType, payload))
 	if err != nil {
-		return fmt.Errorf("ssh-keygen -Y sign with %s: %w: %s", key, err, bytes.TrimSpace(stderr.Bytes()))
+		return err
 	}
 	id := certificate.SSHSignature + who
 	kept := env.Signatures[:0]

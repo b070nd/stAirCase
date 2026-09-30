@@ -28,6 +28,7 @@ type deciders struct {
 	task      bool // ApproveInScope with an agreed task
 	signal    *Signal
 	redact    func(string) string // removes delivered secret values from what a person is shown
+	sign      *decisionSigning    // checks and adds signatures on human decisions
 	askHuman  func(domain.YieldRequest) domain.YieldResponse
 	display   *monitor.Display
 	tracker   *monitor.Tracker
@@ -51,8 +52,9 @@ type ruling struct {
 	halt    bool                     // the run has drifted too far and stops
 	refused bool                     // the orchestrator refused it before anyone decided
 
-	decideMS int64 // a person's time to decide
-	lines    int   // lines the change adds or removes
+	decideMS int64          // a person's time to decide
+	lines    int            // lines the change adds or removes
+	signed   map[string]any // the signature on a person's decision, for the audit record
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
@@ -164,6 +166,9 @@ func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
 	start := time.Now()
 	rl.resp, rl.source = d.askHuman(*req), "operator"
 	rl.decideMS = time.Since(start).Milliseconds()
+	if d.sign != nil {
+		rl.resp, rl.signed = d.sign.check(*req, rl.resp)
+	}
 	if rl.next != nil {
 		before := map[string]*approvedFile{}
 		for p := range rl.next {
@@ -192,7 +197,12 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 	final = scrubSecrets(final, delivered)
 	start := time.Now()
 	resp := d.askHuman(final)
+	var signed map[string]any
+	if d.sign != nil {
+		resp, signed = d.sign.check(final, resp)
+	}
 	decided := yieldDecided(d.total+1, "operator", final, resp, baseSHA, d.approvals.files, "")
+	maps.Copy(decided, signed)
 	decided["decide_ms"] = time.Since(start).Milliseconds()
 	lines := 0
 	for p, f := range d.approvals.files {

@@ -45,6 +45,9 @@ var (
 	runAckDrift       bool
 	runValidator      []string
 	runSignal         string
+	runSignKey        string
+	runSignAs         string
+	runRequireSigned  bool
 )
 
 var runCmd = &cobra.Command{
@@ -91,6 +94,7 @@ func init() {
 		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), "+
 			"required (refuse commands that cannot be sandboxed) or off")
 	checkFlag(runCmd)
+	signFlags(runCmd)
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
 	validatorFlag(runCmd)
@@ -212,12 +216,16 @@ func runCase(caseID int64) error {
 		Sandbox:        runSandbox,
 		ApproveInScope: sessionInScope,
 		Signal:         sig,
-		Checks:         runChecks,
-		AckDrift:       runAckDrift,
-		Validator:      validator,
-		Agreed:         runAgreedBy,
-		Agent:          ag,
-		Plan:           &pl,
+		SignKey:        runSignKey,
+		SignAs:         orDefaultStr(runSignAs, gitConfig("user.email")),
+
+		RequireSignedApprovals: runRequireSigned,
+		Checks:                 runChecks,
+		AckDrift:               runAckDrift,
+		Validator:              validator,
+		Agreed:                 runAgreedBy,
+		Agent:                  ag,
+		Plan:                   &pl,
 	})
 }
 
@@ -236,4 +244,21 @@ func validatorFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&runValidator, "validator", nil,
 		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
 			"a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides")
+}
+
+// signFlags adds the flags for signed decisions to cmd.
+func signFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&runSignKey, "sign-approvals", "",
+		"Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); "+
+			"a key that needs a touch makes it a presence check")
+	cmd.Flags().StringVar(&runSignAs, "sign-as", "", "The name you sign decisions as (default: git user.email)")
+	cmd.Flags().BoolVar(&runRequireSigned, "require-signed-approvals", false,
+		"Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers")
+}
+
+func orDefaultStr(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }

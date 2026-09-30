@@ -1,0 +1,52 @@
+{
+  "description": "Editing a file that an earlier proposal deleted is refused.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "old.txt",
+        "search_block": "(delete file)",
+        "replace_block": ""
+      }
+    ],
+    [
+      {
+        "file": "old.txt",
+        "search_block": "bye\n",
+        "replace_block": "hi\n"
+      }
+    ]
+  ],
+  "error": "cannot edit a file that does not exist"
+}

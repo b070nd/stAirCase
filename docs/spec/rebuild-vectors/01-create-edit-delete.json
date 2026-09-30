@@ -1,0 +1,59 @@
+{
+  "description": "A new file, an edit, and a deletion.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "new/hello.txt",
+        "search_block": "(new file)",
+        "replace_block": "hello\n"
+      }
+    ],
+    [
+      {
+        "file": "lf.txt",
+        "search_block": "a\n",
+        "replace_block": "A\n"
+      }
+    ],
+    [
+      {
+        "file": "old.txt",
+        "search_block": "(delete file)",
+        "replace_block": ""
+      }
+    ]
+  ],
+  "tree": "1aa3e01e230cfe79640b7763772a9a2921e16968"
+}

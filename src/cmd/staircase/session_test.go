@@ -157,6 +157,11 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 	assert.Contains(t, claude, "the whole repository")
 	assert.Contains(t, claude, "not allowed")
 	assert.NotContains(t, claude, "checks:")
+	assert.NotContains(t, claude, "decisions:")
+	signed := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc", signed: true})
+	assert.Contains(t, signed, "signed with your SSH key")
+	required := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc", requireSigned: true})
+	assert.Contains(t, required, "must be signed")
 	inScope := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc",
 		allow: []string{"src/**"}, inScope: true})
 	assert.Contains(t, inScope, "approved as part of this task")

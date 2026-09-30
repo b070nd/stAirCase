@@ -212,6 +212,11 @@ type YieldResponse struct {
 	Type     string `json:"type"` // "yield_response"
 	Approved bool   `json:"approved"`
 	Feedback string `json:"feedback,omitempty"`
+	// Signer and Signature are a person's SSH signature of the decision (see
+	// the request's decision_payload): who claims to have decided, and the
+	// base64 of the armored signature.
+	Signer    string `json:"signer,omitempty"`
+	Signature string `json:"signature,omitempty"`
 }
 
 // Action types of a YieldRequest.

@@ -33,6 +33,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewBy, "by", "", "Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)")
 	reviewCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
 	checkFlag(reviewCmd)
+	signFlags(reviewCmd)
 	validatorFlag(reviewCmd)
 	inScopeFlag(reviewCmd)
 	reviewCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")

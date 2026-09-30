@@ -29,6 +29,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/gate"
+	"github.com/b070nd/stAirCase/src/internal/governance"
 	"github.com/b070nd/stAirCase/src/internal/llm"
 	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/b070nd/stAirCase/src/internal/obs"
@@ -131,6 +132,12 @@ type RunOptions struct {
 	// Signal, when set, is a decision model asked about every change
 	// approved without a person; it can only send it to a person.
 	Signal *Signal
+	// RequireSignedApprovals refuses a person's decision unless it carries an
+	// SSH signature of a signer listed in the workspace's allowed_signers.
+	RequireSignedApprovals bool
+	// SignKey, when set, makes stAirCase sign each human decision with this
+	// SSH key, as SignAs (a key that needs a touch makes it a presence check).
+	SignKey, SignAs string
 	// Checks are commands run on the commit the run made (--check), such as
 	// its tests; their results are evidence in the change certificate.
 	Checks []string
@@ -294,6 +301,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	worktree := "" // the run's checkout: the agent's project root, never the developer's
 	var wgr *GitRepo
 	var appr *approvals // trusted record of what the approvals mean, byte for byte
+	ledger := Ledger{Base: baseSHA}
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
 	var display *monitor.Display
@@ -506,13 +514,20 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			val.brief = opts.Plan.Brief()
 		}
 	}
+	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs}
+	if _, err := os.Stat(filepath.Join(r.wsDir, governance.AllowedSigners)); err == nil {
+		signing.signers = filepath.Join(r.wsDir, governance.AllowedSigners)
+	}
+	if opts.RequireSignedApprovals && signing.signers == "" {
+		return errors.New("--require-signed-approvals needs the trusted signers: an allowed_signers file in the workspace (staircase governance use, or copy git's allowed_signers there)")
+	}
 	// askHuman shows a proposal to the operator: approval API, webhook or TUI.
 	askHuman := func(req domain.YieldRequest) domain.YieldResponse {
 		display.Pause()
 		defer display.Resume()
 		switch {
 		case approvalSrv != nil:
-			_, ch := approvalSrv.PendYield(req)
+			_, ch := approvalSrv.PendSigned(req, signing.payload(req))
 			return <-ch
 		case project.WebhookURL != "":
 			return sendWebhookYield(project.WebhookURL, webhookSecret, req)
@@ -561,7 +576,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			opts.Signal.brief = opts.Plan.Brief()
 		}
 	}
-	dec := &deciders{redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
@@ -633,6 +648,7 @@ runLoop:
 			// runtime can act on it: an approval that is not on the audit chain
 			// is never released (CHECK 7.3.1).
 			decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
+			maps.Copy(decided, rl.signed)
 			if rl.source == "operator" {
 				decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
 			}
@@ -647,6 +663,7 @@ runLoop:
 			d := decision{resp: rl.resp}
 			if rl.resp.Approved && rl.next != nil {
 				appr.record(rl.next)
+				ledger.add(dec.total, rl.source, req.ProposedEdits)
 				d.files = rl.next
 			} else if req.ReviewAfter && appr != nil { // rejected or refused: undo what the command did
 				paths := make([]string, len(req.ProposedEdits))
@@ -721,8 +738,14 @@ runLoop:
 			commitHash = hash
 			// The commit is made; a certificate that cannot be written is reported
 			// and recorded, not a reason to call the run failed.
-			checks := r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)
-			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, checks); err != nil {
+			ev := evidence{checks: r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)}
+			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
+				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
+			}
+			if b, rerr := os.ReadFile(filepath.Join(r.wsDir, "policy.json")); rerr == nil {
+				ev.policy = sha256Hex(b)
+			}
+			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
 			}

@@ -53,8 +53,22 @@ type Predicate struct {
 	RequestedBy string `json:"requestedBy,omitempty"`
 	// Checks ran on a clean checkout of the commit after it was made.
 	Checks []Check `json:"checks,omitempty"`
+	// Ledger is the SHA-256 of the run's ledger (the base commit and every
+	// approved proposal, in order): with it the commit's tree can be rebuilt.
+	Ledger string `json:"ledger,omitempty"`
+	// Policy is the SHA-256 of the policy.json in effect for the run.
+	Policy string `json:"policy,omitempty"`
+	// Signed counts the decisions people signed with their SSH keys.
+	Signed *SignedApprovals `json:"signed,omitempty"`
 	// Attention is how people decided, when any did.
 	Attention *Attention `json:"attention,omitempty"`
+}
+
+// SignedApprovals says how many human decisions carried a valid SSH
+// signature, and whose: only signers the team's allowed_signers file lists.
+type SignedApprovals struct {
+	Decisions int      `json:"decisions"`
+	Signers   []string `json:"signers,omitempty"`
 }
 
 // Attention makes review effort visible: how many decisions people made,

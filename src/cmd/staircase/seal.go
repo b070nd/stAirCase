@@ -51,6 +51,7 @@ func init() {
 	sealCmd.Flags().StringVarP(&sealMessage, "message", "m", "", "The commit message (default: Changes by <agent>)")
 	sealCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
 	checkFlag(sealCmd)
+	signFlags(sealCmd)
 	validatorFlag(sealCmd)
 	inScopeFlag(sealCmd)
 	sealCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")
