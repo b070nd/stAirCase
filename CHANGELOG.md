@@ -17,6 +17,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **SLSA verification summaries.** `staircase verify --vsa-out <dir>` writes a signed
+  SLSA Verification Summary Attestation (VSA v1, DSSE) for every commit that passes:
+  the commit and its tree, the repository (`--resource-uri`, else the origin remote),
+  the verifier (`--verifier-id`), a policy digest over the parameters it ran with, the
+  attestations it used (certificate, ledger) and levels of its own
+  (`STAIRCASE_CAL_n`, `STAIRCASE_REBUILT`, ...). It claims no SLSA source level, and
+  nothing is written for a commit that failed. See `docs/spec/vsa-v1.md`.
+
 - **An authenticated initiator.** A run started with `--sign-approvals` signs its own
   request (who, run, base commit, plan) and the certificate carries that signature as
   `initiator`. `verify` checks it, never lets the initiator (by name, by git email or

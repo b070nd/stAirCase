@@ -3,19 +3,25 @@ package main
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/governance"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
+	"github.com/b070nd/stAirCase/src/internal/vsa"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,7 +37,13 @@ var (
 	verifyLedger      string
 
 	verifyRequireInitiator bool
+
+	// a SLSA verification summary for every commit that passes
+	verifyVSAOut, verifyResourceURI, verifyVerifierID, verifyPolicyURI, verifyVSAKey string
 )
+
+// vsaResource is the repository URI of the summaries being written.
+var vsaResource string
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify <commit | range>",
@@ -66,6 +78,13 @@ func init() {
 	verifyCmd.Flags().BoolVar(&verifyRequireInitiator, "require-initiator", false,
 		"CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; "+
 			"without it the requester is the git email, which anyone can set")
+	verifyCmd.Flags().StringVar(&verifyVSAOut, "vsa-out", "",
+		"Write a SLSA Verification Summary Attestation (VSA v1, signed DSSE) for every commit that passes, to <dir>/<commit>.vsa.json; "+
+			"its levels are stAirCase's own (STAIRCASE_CAL_n, STAIRCASE_REBUILT, ...), never a SLSA source level")
+	verifyCmd.Flags().StringVar(&verifyResourceURI, "resource-uri", "", "With --vsa-out, the repository URI, such as git+https://github.com/org/repo (default: from the origin remote)")
+	verifyCmd.Flags().StringVar(&verifyVerifierID, "verifier-id", "", "With --vsa-out, the verifier's identity URI (default: https://github.com/b070nd/stAirCase); consumers accept a VSA only from verifiers they know")
+	verifyCmd.Flags().StringVar(&verifyPolicyURI, "policy-uri", "", "With --vsa-out, the URI that says what the policy digest covers (default: the VSA specification's policy section)")
+	verifyCmd.Flags().StringVar(&verifyVSAKey, "vsa-key", "", "With --vsa-out, the raw Ed25519 private key file that signs it (default: the workspace's .signing.key)")
 	verifyCmd.Flags().BoolVar(&verifyRebuild, "rebuild", false,
 		"Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note "+
 			"(refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails")
@@ -78,6 +97,12 @@ func init() {
 func verifyHandler(_ *cobra.Command, args []string) error {
 	if verifyMinCAL < 0 || verifyMinCAL > 4 {
 		return errors.New("--min-cal is a level from 1 to 4")
+	}
+	if verifyVSAOut != "" {
+		var err error
+		if vsaResource, err = resolveResourceURI(); err != nil {
+			return err
+		}
 	}
 	if strings.Contains(args[0], "..") {
 		return verifyRange(args[0])
@@ -198,6 +223,7 @@ func verifyCommit(commit string) error {
 		return err
 	}
 	rebuilt := ""
+	var rebuiltLedger []byte
 	if verifyRebuild {
 		if p.Ledger == "" {
 			return fmt.Errorf("commit %.12s: the certificate names no ledger (no ledger, nothing to rebuild from)", commit)
@@ -218,6 +244,7 @@ func verifyCommit(commit string) error {
 			return err
 		}
 		rebuilt = fmt.Sprintf("   rebuilt from %d approved proposal(s): tree %.12s is identical\n", n, tree)
+		rebuiltLedger = ledger
 	}
 	if verifyCheckAnchor {
 		sidecar := verifyFile + ".anchor"
@@ -234,6 +261,11 @@ func verifyCommit(commit string) error {
 	}
 	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, level)
 	fmt.Print(rebuilt)
+	if verifyVSAOut != "" {
+		if err := writeVSA(commit, raw, rebuiltLedger, p, level, initiatorTrusted, keys, signersFile); err != nil {
+			return fmt.Errorf("commit %.12s: verification summary: %w", commit, err)
+		}
+	}
 	switch {
 	case initiator != "" && initiatorTrusted:
 		fmt.Printf("   started by %s (signed, key %s, trusted)\n", initiator, initiatorKey)
@@ -332,4 +364,75 @@ func ledgerFor(top, commit string) ([]byte, error) {
 		return nil, errors.New("no ledger (no git note in refs/notes/staircase-ledger; fetch it like the certificates, or pass --ledger)")
 	}
 	return bytes.TrimSuffix(out, []byte("\n")), nil // git adds a line break to a note
+}
+
+// resolveResourceURI is the repository URI of a VSA: --resource-uri, else the
+// origin remote.
+func resolveResourceURI() (string, error) {
+	if verifyResourceURI != "" {
+		return verifyResourceURI, nil
+	}
+	out, _ := exec.Command("git", "remote", "get-url", "origin").Output()
+	return vsa.ResourceURI(string(out))
+}
+
+// writeVSA signs and writes the verification summary of a commit that passed.
+func writeVSA(commit string, certRaw, ledger []byte, p certificate.Predicate, level int, initiatorTrusted bool, keys []ed25519.PublicKey, signersFile string) error {
+	tree, err := exec.Command("git", "rev-parse", commit+"^{tree}").Output()
+	if err != nil {
+		return err
+	}
+	var priv ed25519.PrivateKey
+	if verifyVSAKey != "" {
+		raw, err := os.ReadFile(verifyVSAKey)
+		if err != nil {
+			return err
+		}
+		if len(raw) != ed25519.PrivateKeySize {
+			return fmt.Errorf("%s is not a raw Ed25519 private key (%d bytes)", verifyVSAKey, len(raw))
+		}
+		priv = ed25519.PrivateKey(raw)
+	} else if priv, err = crypto.LoadSigningKey(viper.GetString("STAIRCASE_DIR")); err != nil {
+		return fmt.Errorf("no key to sign with (pass --vsa-key): %w", err)
+	}
+	params := vsa.Parameters{MinCAL: verifyMinCAL, All: verifyAll, Rebuild: verifyRebuild, RequireInitiator: verifyRequireInitiator, Keys: []string{}}
+	for _, k := range keys {
+		params.Keys = append(params.Keys, certificate.KeyID(k))
+	}
+	slices.Sort(params.Keys)
+	if signersFile != "" {
+		b, err := os.ReadFile(signersFile)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		params.Signers = hex.EncodeToString(sum[:])
+	}
+	id := orDefaultStr(verifyVerifierID, "https://github.com/b070nd/stAirCase")
+	v := buildVersion(version, "")
+	if v != "dev" {
+		v = "v" + v
+	}
+	st := vsa.Build(vsa.Input{
+		Commit: commit, Tree: strings.TrimSpace(string(tree)), ResourceURI: vsaResource, VerifierID: id, VerifierVersion: v,
+		Time: time.Now(), PolicyURI: verifyPolicyURI, Params: params, CAL: level, Rebuilt: ledger != nil,
+		ChecksPassed: len(p.Checks) > 0, InitiatorAuthenticated: initiatorTrusted, Certificate: certRaw, Ledger: ledger,
+	})
+	env, err := vsa.Sign(st, priv)
+	if err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(env, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(verifyVSAOut, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(verifyVSAOut, commit+".vsa.json")
+	if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("   📄 Verification summary (SLSA VSA): %s\n", path)
+	return nil
 }

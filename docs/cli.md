@@ -1178,8 +1178,13 @@ Flags:
       --key string               Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)
       --ledger string            With --rebuild, read the ledger from this file instead of the git note (one commit only)
       --min-cal int              Fail below this change assurance level (1-4)
+      --policy-uri string        With --vsa-out, the URI that says what the policy digest covers (default: the VSA specification's policy section)
       --rebuild                  Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note (refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails
       --require-initiator        CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; without it the requester is the git email, which anyone can set
+      --resource-uri string      With --vsa-out, the repository URI, such as git+https://github.com/org/repo (default: from the origin remote)
+      --verifier-id string       With --vsa-out, the verifier's identity URI (default: https://github.com/b070nd/stAirCase); consumers accept a VSA only from verifiers they know
+      --vsa-key string           With --vsa-out, the raw Ed25519 private key file that signs it (default: the workspace's .signing.key)
+      --vsa-out string           Write a SLSA Verification Summary Attestation (VSA v1, signed DSSE) for every commit that passes, to <dir>/<commit>.vsa.json; its levels are stAirCase's own (STAIRCASE_CAL_n, STAIRCASE_REBUILT, ...), never a SLSA source level
 ```
 
 ## staircase version

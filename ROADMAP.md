@@ -197,7 +197,8 @@ Six contracts stay stable and versioned while everything around them may change:
   published, together with a mapping to the OWASP Top 10 for LLM applications and
   NIST's secure development profile for generative AI (SP 800-218A). *Mappings
   published ([standards](docs/standards.md)); the in-toto proposal is
-  [drafted](docs/spec/in-toto-predicate.md).*
+  [drafted](docs/spec/in-toto-predicate.md); `verify --vsa-out` writes a signed
+  [SLSA verification summary](docs/spec/vsa-v1.md) per verified commit.*
 - A compatibility promise for the six contracts. *Written
   ([compatibility](docs/compatibility.md)); it becomes semantic versioning at 1.0.*
 

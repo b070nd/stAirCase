@@ -163,9 +163,15 @@ func Sign(s Statement, priv ed25519.PrivateKey) (Envelope, error) {
 	if err != nil {
 		return Envelope{}, err
 	}
+	return SignPayload(payload, priv), nil
+}
+
+// SignPayload signs an in-toto statement already serialized as JSON, exactly as
+// given (DSSE signs the bytes, never a re-encoding), with priv.
+func SignPayload(payload []byte, priv ed25519.PrivateKey) Envelope {
 	sig := ed25519.Sign(priv, PAE(payloadType, payload))
 	return Envelope{PayloadType: payloadType, Payload: base64.StdEncoding.EncodeToString(payload),
-		Signatures: []Signature{{KeyID: KeyID(priv.Public().(ed25519.PublicKey)), Sig: base64.StdEncoding.EncodeToString(sig)}}}, nil
+		Signatures: []Signature{{KeyID: KeyID(priv.Public().(ed25519.PublicKey)), Sig: base64.StdEncoding.EncodeToString(sig)}}}
 }
 
 // Open verifies env against pub and returns its statement. It refuses an
