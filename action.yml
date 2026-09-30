@@ -7,14 +7,23 @@ branding:
 
 inputs:
   key:
-    description: Path of the trusted public signing key (a workspace's .signing.pub) in the repository
+    description: Path of the trusted public signing key (a workspace's .signing.pub) in the repository. Read from the pull request's base branch (or trust-ref), never from the pull request itself
     required: true
+  allowed-signers:
+    description: Path of the git allowed_signers file of trusted reviewers (CAL 4), read from the same trusted ref as the key
+    default: ""
+  trust-ref:
+    description: Git ref the key and allowed-signers are read from. Default for a pull request is origin/<base branch>; outside one, set it to a protected branch or tag
+    default: ""
+  rebuild:
+    description: '"true": also rebuild each commit from its ledger (refs/notes/staircase-ledger) and require the same tree'
+    default: "false"
   min-cal:
     description: Lowest change assurance level accepted (1-4)
     default: "2"
   all:
-    description: '"true": every commit in the range needs a certificate, not only those that name an agent'
-    default: "false"
+    description: '"true" (default): every commit in the range needs a certificate. "false" skips commits that name no agent, which an agent commit can dodge by omitting its Assisted-by trailer'
+    default: "true"
   range:
     description: Commit range to check; default for a pull request is origin/<base>..<head>
     default: ""
@@ -31,6 +40,9 @@ runs:
         KEY: ${{ inputs.key }}
         MIN_CAL: ${{ inputs.min-cal }}
         ALL: ${{ inputs.all }}
+        ALLOWED_SIGNERS: ${{ inputs.allowed-signers }}
+        TRUST_REF: ${{ inputs.trust-ref }}
+        REBUILD: ${{ inputs.rebuild }}
         RANGE: ${{ inputs.range }}
         VERSION: ${{ inputs.version || github.action_ref }}
         BASE_REF: ${{ github.base_ref }}

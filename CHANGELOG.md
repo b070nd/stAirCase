@@ -14,6 +14,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   written, including when the workspace has no signing key. `--require-evidence`
   makes that case exit non-zero while the commit stays reported as delivered.
 
+- **Protected trust for the verify Action, and `verify --rebuild`.** The Action now
+  reads the trusted key (and the new `allowed-signers` input) from the pull request's
+  base branch, or `trust-ref`, instead of the pull request's own checkout, and checks
+  every commit by default (`all: false` restores the advisory behaviour, and
+  `verify` says how many commits it skipped). A run attaches its ledger to the commit
+  as a git note (`refs/notes/staircase-ledger`); `staircase verify --rebuild` (Action
+  input `rebuild`) replays it and fails a commit whose tree is not the one the
+  ledger produces. `docs/audit.md` states the limits: squash and rebase merges, forks,
+  who may push notes.
+
 - **`staircase opencode "task"` (work in progress):** OpenCode as the governed agent,
   through a plugin generated per run that posts every tool call to the run and throws
   to block it. Built from its documentation and tested with a stand-in that runs the

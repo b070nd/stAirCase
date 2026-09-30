@@ -1170,7 +1170,9 @@ Flags:
       --certificate string       Read the certificate from this file instead of the git note
       --check-anchor             Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
       --key string               Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)
+      --ledger string            With --rebuild, read the ledger from this file instead of the git note (one commit only)
       --min-cal int              Fail below this change assurance level (1-4)
+      --rebuild                  Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note (refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails
 ```
 
 ## staircase version

@@ -814,6 +814,9 @@ runLoop:
 			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
 				evidenceErrs = append(evidenceErrs, "ledger: "+err.Error())
+			} else if err := attachNote(gr, LedgerNotesRef, LedgerPath(r.wsDir, run.ID), hash); err != nil {
+				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not attached to the commit: %v\n", err)
+				evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 			}
 			ev.policy = snap.Digest
 			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {

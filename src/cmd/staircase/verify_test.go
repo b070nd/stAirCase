@@ -159,7 +159,10 @@ func TestVerify_range(t *testing.T) {
 	verifyMinCAL, verifyKey, verifyFile, verifyCheckAnchor, verifyAll = 3, "", "", false, false
 	t.Cleanup(func() { verifyMinCAL, verifyAll = 0, false })
 
-	require.NoError(t, verifyHandler(nil, []string{"main..HEAD"}), "the run's commit is certified, the person's needs none")
+	out, err := captureStdout(t, func() error { return verifyHandler(nil, []string{"main..HEAD"}) })
+	require.NoError(t, err, "the run's commit is certified, the person's needs none")
+	assert.Contains(t, out, "1 commit(s) were not checked because they name no agent",
+		"a pass that skipped commits says so: a commit that omits Assisted-by looks the same")
 
 	verifyAll = true
 	assert.ErrorContains(t, verifyHandler(nil, []string{"main..HEAD"}), "no change certificate")

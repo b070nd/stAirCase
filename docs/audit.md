@@ -212,10 +212,10 @@ requires a human approval.
 
 ## Require certificates on pull requests
 
-A CI check can refuse pull requests with an agent's commit that is not properly
-certified. Commit your workspace's public key to the repository (it is public; copy
-`~/.staircase-workspace/.signing.pub`, for example to `.github/staircase.pub`), and
-add a workflow:
+A CI check can refuse pull requests with a change that is not properly certified.
+Commit your workspace's public key to the repository's protected branch (it is
+public; copy `~/.staircase-workspace/.signing.pub`, for example to
+`.github/staircase.pub`), and add a workflow:
 
 ```yaml
 name: stAirCase
@@ -230,26 +230,53 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v0.5.0
+      - uses: b070nd/stAirCase@v0.6.0   # the trust rules below need 0.6.0; 0.5.0 reads the key from the checkout
         with:
           key: .github/staircase.pub
+          allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4
           min-cal: 3
+          rebuild: true                              # optional: needs a release that keeps ledger notes
 ```
 
 The check installs that release of `staircase` after verifying how it was built,
-fetches the certificates (`refs/notes/staircase`) and checks every commit of the pull
-request that names an agent in an `Assisted-by:` trailer. With `all: true`, every
-commit needs a certificate. Push the certificates together with the branch:
+fetches the certificates (`refs/notes/staircase`) and checks **every commit** of the
+pull request. Push the certificates together with the branch:
 
 ```bash
-git push origin staircase/run-7 refs/notes/staircase
+git push origin staircase/run-7 refs/notes/staircase refs/notes/staircase-ledger
 ```
 
-What it cannot do: a commit made with an agent but not marked `Assisted-by:` looks
-like a person's commit. Use `all: true` where every change must come through
-stAirCase.
+**Where the trust comes from.** The key and the allowed signers are read from the
+pull request's *base branch* (or `trust-ref`), never from the pull request's own
+files: a pull request that replaced the key would otherwise vouch for itself. A key
+that is only in the pull request is refused. Outside a pull request (a push, a merge
+queue), set `range` and `trust-ref` to a protected branch or tag. Protect the key and
+signers paths with CODEOWNERS and a ruleset that requires review, and make this
+check a required status check; a check that can be skipped or edited by the change it
+judges is not a gate.
 
-The same check runs locally: `staircase verify main..HEAD --min-cal 3`.
+**Every commit, by default.** `all: false` checks only commits that name an agent in
+an `Assisted-by:` trailer, and a run of `staircase verify` without `--all` says how
+many commits it skipped. A commit an agent made without the trailer looks like a
+person's, so selective checking is advisory. To exempt human commits reliably, do it
+outside the change: a ruleset that requires signed commits from people, for example.
+
+**Rebuild.** With `rebuild: true` (`staircase verify --rebuild`), each commit is also
+replayed from its ledger, which a run attaches as a note
+(`refs/notes/staircase-ledger`), and must have exactly the tree the ledger produces:
+a validly signed certificate on a commit that holds other bytes fails. A commit with
+no ledger fails, so turn it on once your runs come from a release that keeps them.
+
+**Limits, stated plainly.** A certificate is about one commit id. Squash-merge and
+rebase-merge make new commits that carry no certificate, so check the pull request's
+own commits before merging, and merge with a merge commit, or certify the merged
+result with `staircase seal`. A pull request from a fork has no notes in your
+repository (the contributor cannot push them there) and fails closed. Notes are
+ordinary refs: anyone who can push to them can overwrite a note, so restrict who may
+push `refs/notes/staircase*`. None of this has been exercised against a real
+organization ruleset; do that once with a test repository before relying on it.
+
+The same check runs locally: `staircase verify main..HEAD --all --min-cal 3`.
 
 ## Look at a run
 
