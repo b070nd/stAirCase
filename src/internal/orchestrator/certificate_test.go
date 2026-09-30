@@ -203,3 +203,38 @@ func TestRun_certificate_shows_review_attention(t *testing.T) {
 	assert.Equal(t, 1, a.QuickApprovals, "30 lines approved at once by the test operator")
 	assert.GreaterOrEqual(t, a.MedianSeconds, 0.0)
 }
+
+// TestRun_certificate_binds_the_policy_the_run_loaded: the policy file is read
+// once; replacing it while the run is going changes neither the decisions nor
+// the digest the certificate records (F93).
+func TestRun_certificate_binds_the_policy_the_run_loaded(t *testing.T) {
+	var policyFile string
+	var loaded []byte
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		var err error
+		if loaded, err = os.ReadFile(policyFile); err != nil {
+			return err
+		}
+		// someone swaps the policy after the run began
+		if err := os.WriteFile(policyFile, []byte(`{"version":1,"rules":[],"limits":{"max_auto_approved":99}}`), 0o600); err != nil {
+			return err
+		}
+		return writeFile("health.txt", "ok\n")(ctx, env)
+	}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent),
+		Setup: func(st *persistence.Store, wsDir string, projectID int64) {
+			require.NoError(t, crypto.GenerateSigningKey(wsDir))
+			policyFile = filepath.Join(wsDir, "policy.json")
+		}})
+	require.NoError(t, r.Err)
+	b, err := os.ReadFile(filepath.Join(r.WsDir, "audit", "run-1.certificate.json"))
+	require.NoError(t, err)
+	var env certificate.Envelope
+	require.NoError(t, json.Unmarshal(b, &env))
+	pub, err := crypto.LoadSigningPublicKey(r.WsDir)
+	require.NoError(t, err)
+	s, err := certificate.Open(env, pub)
+	require.NoError(t, err)
+	assert.Equal(t, sha256Hex(string(loaded)), s.Predicate.Policy, "the digest is of the policy the run decided under")
+	assert.Equal(t, 1, s.Predicate.Decisions["policy"], "the original policy approved the change")
+}

@@ -1,6 +1,8 @@
 package policy_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -36,10 +38,19 @@ func writePolicy(t *testing.T, dir string, e policy.Engine) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), b, 0o600))
 }
 
+// loadEngine is the engine of the workspace's policy snapshot.
+func loadEngine(dir string) (*policy.Engine, error) {
+	snap, err := policy.LoadSnapshot(dir)
+	if err != nil {
+		return nil, err
+	}
+	return snap.Engine, nil
+}
+
 // ─── LoadEngine ───────────────────────────────────────────────────────────────
 
 func TestLoadEngine_missing_file_returns_empty(t *testing.T) {
-	e, err := policy.LoadEngine(t.TempDir())
+	e, err := loadEngine(t.TempDir())
 	require.NoError(t, err)
 	assert.Empty(t, e.Rules)
 }
@@ -51,7 +62,7 @@ func TestLoadEngine_parses_valid_json(t *testing.T) {
 			{ActionTypes: []string{"file_edit"}, MinConfidence: 0.9, Effect: policy.EffectApprove},
 		},
 	})
-	e, err := policy.LoadEngine(dir)
+	e, err := loadEngine(dir)
 	require.NoError(t, err)
 	require.Len(t, e.Rules, 1)
 	assert.Equal(t, policy.EffectApprove, e.Rules[0].Effect)
@@ -60,7 +71,7 @@ func TestLoadEngine_parses_valid_json(t *testing.T) {
 func TestLoadEngine_invalid_json_returns_error(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte("not json"), 0o600))
-	_, err := policy.LoadEngine(dir)
+	_, err := loadEngine(dir)
 	assert.Error(t, err)
 }
 
@@ -340,7 +351,7 @@ func TestEvaluate_type_compatible_with_domain(t *testing.T) {
 func TestPolicyLoadValidation(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`not-json`), 0o600))
-	_, err := policy.LoadEngine(dir)
+	_, err := loadEngine(dir)
 	require.Error(t, err, "invalid JSON must be rejected at load time")
 	assert.Contains(t, err.Error(), "parse policy file")
 }
@@ -385,14 +396,14 @@ func TestBlanketDenyRequiresFlag(t *testing.T) {
 	// Blanket-deny rule without the explicit flag → must error.
 	data := []byte(`{"rules":[{"effect":"reject"}]}`)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), data, 0o600))
-	_, err := policy.LoadEngine(dir)
+	_, err := loadEngine(dir)
 	require.Error(t, err, "blanket-deny without allow_blanket_deny must be rejected")
 	assert.Contains(t, err.Error(), "blanket-deny")
 
 	// Same rule WITH allow_blanket_deny: true → must succeed.
 	allowed := []byte(`{"rules":[{"effect":"reject"}],"allow_blanket_deny":true}`)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), allowed, 0o600))
-	e, err := policy.LoadEngine(dir)
+	e, err := loadEngine(dir)
 	require.NoError(t, err, "blanket-deny with allow_blanket_deny must be accepted")
 	require.NotNil(t, e)
 }
@@ -434,6 +445,36 @@ func setupSignedPolicy(t *testing.T) (wsDir string, policyData []byte) {
 	sigHex := crypto.Sign(privKey, policyData)
 	require.NoError(t, os.WriteFile(filepath.Join(wsDir, policy.PolicySigFile), []byte(sigHex), 0o644))
 	return wsDir, policyData
+}
+
+// TestLoadSnapshot_is_one_read: the digest, the signature verdict and the
+// engine all come from the same bytes; a signed policy reports Signed, an
+// unsigned one does not, a missing one has no digest, and a signature that does
+// not match the bytes refuses the load (F93).
+func TestLoadSnapshot_is_one_read(t *testing.T) {
+	wsDir, data := setupSignedPolicy(t)
+	snap, err := policy.LoadSnapshot(wsDir)
+	require.NoError(t, err)
+	sum := sha256.Sum256(data)
+	assert.Equal(t, hex.EncodeToString(sum[:]), snap.Digest)
+	assert.True(t, snap.Signed)
+	assert.Equal(t, 5, snap.Engine.Limits.MaxAutoApproved)
+
+	require.NoError(t, os.Remove(filepath.Join(wsDir, policy.PolicySigFile)))
+	snap, err = policy.LoadSnapshot(wsDir)
+	require.NoError(t, err)
+	assert.False(t, snap.Signed)
+	assert.NotEmpty(t, snap.Digest)
+
+	snap, err = policy.LoadSnapshot(t.TempDir())
+	require.NoError(t, err)
+	assert.Empty(t, snap.Digest, "no policy file, nothing to name")
+	assert.Empty(t, snap.Engine.Rules)
+
+	wsDir, _ = setupSignedPolicy(t)
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{"rules":[],"limits":{"max_auto_approved":500}}`), 0o600))
+	_, err = policy.LoadSnapshot(wsDir)
+	assert.ErrorContains(t, err, "signature invalid")
 }
 
 // TestPolicyEngine_shell_exec_never_auto_approved verifies the hard invariant:
@@ -516,19 +557,19 @@ func TestVerifyPolicySignature_no_policy_file(t *testing.T) {
 func TestLoadEngine_fails_closed(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limts":{"max_total_yields":3}}`), 0o600))
-	_, err := policy.LoadEngine(dir)
+	_, err := loadEngine(dir)
 	assert.ErrorContains(t, err, "limts")
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[{"agent_names":["intern"],"effect":"reject"}]}`), 0o600))
-	e, err := policy.LoadEngine(dir)
+	e, err := loadEngine(dir)
 	require.NoError(t, err)
 	assert.False(t, e.Evaluate(fileEditReq("file_edit", 1, "a.go")).Approved)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_duration":60}}`), 0o600))
-	_, err = policy.LoadEngine(dir)
+	_, err = loadEngine(dir)
 	assert.ErrorContains(t, err, "max_run_duration is now max_run_secs")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_secs":60,"max_auto_approved":2}}`), 0o600))
-	e, err = policy.LoadEngine(dir)
+	e, err = loadEngine(dir)
 	require.NoError(t, err)
 	assert.Equal(t, 60, e.Limits.MaxRunSecs)
 	assert.Equal(t, 2, e.Limits.MaxAutoApproved)

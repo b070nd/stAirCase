@@ -431,10 +431,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	policyEngine, err := policy.LoadEngine(r.wsDir) // fail closed: a broken policy never runs as "no policy"
+	// One read of policy.json: the rules, the signature check and the digest the
+	// certificate names all come from the same bytes. Fail closed: a broken or
+	// tampered policy never runs as "no policy".
+	snap, err := policy.LoadSnapshot(r.wsDir)
 	if err != nil {
 		return fmt.Errorf("load policy: %w", err)
 	}
+	policyEngine := snap.Engine
 	limits := policyEngine.Limits.Limits // the drift-supervision limits of the policy …
 	if opts.Plan != nil {
 		limits = limits.Tighter(opts.Plan.Limits) // … and of the plan (its blueprint's)
@@ -452,11 +456,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if limits.MaxRunSecs > 0 {
 		runDeadline = time.After(time.Duration(limits.MaxRunSecs) * time.Second)
 	}
-	// P2: verify Ed25519 signature on policy.json when sidecar is present.
-	// Absent signature warns (backward compat); invalid signature is fatal.
-	if sigPresent, sigErr := policy.VerifyPolicySignature(r.wsDir); sigErr != nil {
-		return fmt.Errorf("policy integrity check failed - re-sign with 'staircase policy sign': %w", sigErr)
-	} else if !sigPresent {
+	if snap.Digest != "" && !snap.Signed {
 		obs.Log.Warn("policy.json is unsigned - run 'staircase policy sign' to enable tamper detection")
 	}
 
@@ -745,9 +745,7 @@ runLoop:
 			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
 			}
-			if b, rerr := os.ReadFile(filepath.Join(r.wsDir, "policy.json")); rerr == nil {
-				ev.policy = sha256Hex(b)
-			}
+			ev.policy = snap.Digest
 			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
