@@ -51,6 +51,17 @@ import (
 // agent run as success.
 var ErrRunNotSuccessful = errors.New("run did not complete successfully")
 
+// ErrEvidenceIncomplete is returned with RequireEvidence when a commit was
+// made but its ledger or change certificate could not be. The commit stays
+// delivered on its run branch; the run is not relabelled as undelivered.
+var ErrEvidenceIncomplete = errors.New("the commit was made but its evidence is incomplete")
+
+// What a run that made a commit can say about its evidence (RunSummary.Outcome).
+const (
+	OutcomeCertified       = "certified"                  // a signed certificate and the ledger it names
+	OutcomeWithoutEvidence = "delivered_without_evidence" // the commit exists; see RunSummary.EvidenceErrors
+)
+
 // lostGrace is how long a run waits for its agent to stop after cancellation
 // before it ends without it (recording agent_unresponsive).
 var lostGrace = 10 * time.Second
@@ -135,6 +146,10 @@ type RunOptions struct {
 	// RequireSignedApprovals refuses a person's decision unless it carries an
 	// SSH signature of a signer listed in the workspace's allowed_signers.
 	RequireSignedApprovals bool
+	// RequireEvidence makes a commit without its ledger and signed change
+	// certificate a failure: the run ends with ErrEvidenceIncomplete (the commit
+	// stays on its branch, reported as delivered).
+	RequireEvidence bool
 	// SignKey, when set, makes stAirCase sign each human decision with this
 	// SSH key, as SignAs (a key that needs a touch makes it a presence check).
 	SignKey, SignAs string
@@ -304,12 +319,17 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	ledger := Ledger{Base: baseSHA}
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
+	var evidenceErrs []string // what could not be written for the commit, if anything
 	var display *monitor.Display
 	var sup *policy.Supervisor // drift supervision, from RUN SETUP on
 
 	defer func() {
 		if runErr != nil && finalStatus == persistence.RunStatusSuccess {
 			finalStatus = persistence.RunStatusFailed
+		}
+		var evidenceErr error // reported, but the delivered commit keeps its status
+		if len(evidenceErrs) > 0 && opts.RequireEvidence {
+			evidenceErr = fmt.Errorf("%w: %s", ErrEvidenceIncomplete, strings.Join(evidenceErrs, "; "))
 		}
 		endTime := time.Now()
 		if err := r.store.FinishRun(run.ID, finalStatus, endTime, commitHash); err != nil {
@@ -319,7 +339,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 				runErr = errors.Join(runErr, err)
 			}
 		}
-		summary := RunSummary{RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus, CommitHash: commitHash, EndTime: endTime}
+		summary := RunSummary{RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus, CommitHash: commitHash, EndTime: endTime,
+			EvidenceErrors: evidenceErrs}
+		if commitHash != "" {
+			summary.Outcome = OutcomeCertified
+			if len(evidenceErrs) > 0 {
+				summary.Outcome = OutcomeWithoutEvidence
+			}
+		}
 		if sup != nil {
 			rep := sup.Report()
 			summary.Drift = &rep
@@ -349,6 +376,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 		if finalStatus != persistence.RunStatusSuccess {
 			runErr = errors.Join(runErr, fmt.Errorf("run #%d finished with status %s: %w", run.ID, finalStatus, ErrRunNotSuccessful))
+		} else if evidenceErr != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("run #%d: %w", run.ID, evidenceErr))
 		}
 		if display != nil {
 			display.Final(fmt.Sprintf("Run #%d %s", run.ID, finalStatus))
@@ -778,16 +807,22 @@ runLoop:
 		}
 		if hash != "" {
 			commitHash = hash
-			// The commit is made; a certificate that cannot be written is reported
-			// and recorded, not a reason to call the run failed.
+			// The commit is made and stays delivered. Evidence that cannot be written
+			// is reported, recorded and named in the run summary; with RequireEvidence
+			// the run also ends with ErrEvidenceIncomplete.
 			ev := evidence{checks: r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)}
 			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
+				evidenceErrs = append(evidenceErrs, "ledger: "+err.Error())
 			}
 			ev.policy = snap.Digest
 			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
+				evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
+			}
+			if len(evidenceErrs) > 0 {
+				_ = r.audit(run.ID, "evidence_failed", map[string]any{"commit": hash, "errors": evidenceErrs})
 			}
 		}
 	}
@@ -802,6 +837,10 @@ type RunSummary struct {
 	FinalStatus string    `json:"final_status"`
 	CommitHash  string    `json:"commit_hash,omitempty"`
 	EndTime     time.Time `json:"end_time"`
+	// Outcome is what a run that made a commit can say about its evidence:
+	// OutcomeCertified, or OutcomeWithoutEvidence with EvidenceErrors saying why.
+	Outcome        string   `json:"outcome,omitempty"`
+	EvidenceErrors []string `json:"evidence_errors,omitempty"`
 	// Drift is the run's drift supervision record.
 	Drift *policy.DriftReport `json:"drift,omitempty"`
 }

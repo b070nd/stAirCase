@@ -24,31 +24,32 @@ import (
 )
 
 var (
-	runDryRun         bool
-	runForce          bool
-	runSkipGate       bool
-	runAutoStash      bool
-	runDebug          bool
-	runReconcile      bool
-	runApprovalPort   int
-	runApprovalToken  string
-	runMetricsAddr    string
-	runOTelEndpoint   string
-	runRecordLLM      string
-	runReplayLLM      string
-	runAllowShellExec bool
-	runSandbox        string
-	runChecks         []string
-	runAgent          string
-	runModel          string
-	runAgreedBy       string // who agreed to the task before a session started
-	runAckDrift       bool
-	runValidator      []string
-	runSignal         string
-	runSignalURL      string
-	runSignKey        string
-	runSignAs         string
-	runRequireSigned  bool
+	runDryRun          bool
+	runForce           bool
+	runSkipGate        bool
+	runAutoStash       bool
+	runDebug           bool
+	runReconcile       bool
+	runApprovalPort    int
+	runApprovalToken   string
+	runMetricsAddr     string
+	runOTelEndpoint    string
+	runRecordLLM       string
+	runReplayLLM       string
+	runAllowShellExec  bool
+	runSandbox         string
+	runChecks          []string
+	runAgent           string
+	runModel           string
+	runAgreedBy        string // who agreed to the task before a session started
+	runAckDrift        bool
+	runValidator       []string
+	runSignal          string
+	runSignalURL       string
+	runSignKey         string
+	runSignAs          string
+	runRequireSigned   bool
+	runRequireEvidence bool
 )
 
 var runCmd = &cobra.Command{
@@ -225,6 +226,7 @@ func runCase(caseID int64) error {
 		SignAs:         orDefaultStr(runSignAs, gitConfig("user.email")),
 
 		RequireSignedApprovals: runRequireSigned,
+		RequireEvidence:        runRequireEvidence,
 		Checks:                 runChecks,
 		AckDrift:               runAckDrift,
 		Validator:              validator,
@@ -262,6 +264,9 @@ func signFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&runSignAs, "sign-as", "", "The name you sign decisions as (default: git user.email)")
 	cmd.Flags().BoolVar(&runRequireSigned, "require-signed-approvals", false,
 		"Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers")
+	cmd.Flags().BoolVar(&runRequireEvidence, "require-evidence", false,
+		"Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; "+
+			"the commit stays on its branch and is reported as delivered without evidence")
 }
 
 func orDefaultStr(s, def string) string {

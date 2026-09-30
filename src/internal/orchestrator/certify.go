@@ -82,7 +82,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	priv, err := crypto.LoadSigningKey(r.wsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  No change certificate: %v\n", err)
-		return nil
+		return fmt.Errorf("no signing key: %w", err)
 	}
 	events, err := r.store.ListEventLogs(runID)
 	if err != nil {

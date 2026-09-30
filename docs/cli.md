@@ -184,6 +184,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Claude Code (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
@@ -246,6 +247,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Codex (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
@@ -403,6 +405,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Gemini CLI (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
@@ -551,6 +554,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for OpenCode (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
@@ -820,6 +824,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --by string                  Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
@@ -854,6 +859,7 @@ Flags:
       --reconcile                  Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
       --record-llm string          Record every model exchange of this run to this file (JSON lines) for offline replay.
       --replay-llm string          File path to replay recorded LLM exchanges instead of calling the real API.
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sandbox string             Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
@@ -892,6 +898,7 @@ Flags:
       --by string                  Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
   -m, --message string             The commit message (default: Changes by <agent>)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)

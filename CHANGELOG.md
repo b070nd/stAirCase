@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Evidence outcomes and `--require-evidence`.** A run that makes a commit now says
+  whether it is `certified` or `delivered_without_evidence` (and why) in its summary,
+  and records an `evidence_failed` event when the ledger or certificate could not be
+  written, including when the workspace has no signing key. `--require-evidence`
+  makes that case exit non-zero while the commit stays reported as delivered.
+
 - **`staircase opencode "task"` (work in progress):** OpenCode as the governed agent,
   through a plugin generated per run that posts every tool call to the run and throws
   to block it. Built from its documentation and tested with a stand-in that runs the

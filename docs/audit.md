@@ -112,6 +112,19 @@ Text with NUL bytes, bare carriage returns, any Unicode and files up to 200 KiB
 round-trip exactly. A lossless encoding for binary changes may come later as a new
 ledger version; version 1 will not change meaning.
 
+## When the evidence cannot be written
+
+The commit is made first; the ledger and the signed certificate are written after it.
+If either cannot be written (a full disk, an unwritable `audit/` directory, no signing
+key), the commit is still on its run branch and the run says so plainly: the run
+summary (`runs/<id>/summary.json`) has `"outcome": "delivered_without_evidence"` and
+the reasons in `evidence_errors`, and the audit chain has an `evidence_failed` event.
+A fully evidenced commit has `"outcome": "certified"`.
+
+With `--require-evidence` the run also exits non-zero in that case, so a script or CI
+job cannot mistake it for a complete result. The run is not relabelled as failed or
+undelivered: the commit exists, and its hash is in the record.
+
 ## Review attention
 
 A signed approval proves someone clicked approve, not that they read the change. So
