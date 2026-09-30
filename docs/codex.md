@@ -1,7 +1,7 @@
 # Governing Codex
 
-> **Experimental.** Tested with codex-cli 0.155 (the version inside the ChatGPT app
-> for macOS). It depends on how Codex runs hooks, which can change between
+> **Experimental.** Tested with codex-cli 0.155 to 0.159 (the version inside the
+> ChatGPT app for macOS; [what was run](compatibility.md#which-agents-have-actually-been-run)). It depends on how Codex runs hooks, which can change between
 > versions.
 
 stAirCase can run OpenAI's [Codex CLI](https://developers.openai.com/codex) as the

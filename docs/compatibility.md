@@ -32,16 +32,40 @@ database and the agents' prompts, can change in any version.
 ## Which agents have actually been run
 
 A stand-in agent that speaks an agent's hook protocol proves stAirCase's side of the
-bridge. It says nothing about what a real version of that agent does. This is what
-has been exercised against the real thing:
+bridge. It says nothing about what a real version of that agent does. This is what has
+been run against the real thing, with the version and the date, and how to repeat it.
+"Stand-in only" means the behaviour is tested against a fake that stAirCase's own
+tests drive, not against the real program.
 
-| Agent | Tested against the real program | Not yet |
-|---|---|---|
-| Codex CLI | 0.155 and 0.158: two paid runs (an edit decided before it ran, a command's changes reviewed after, certificate CAL 2 verified); all flags accepted | a refused Stop (definition of done) in a real turn |
-| Claude Code | 2.1.236, logged out: the settings stAirCase passes, and that a repository's own hooks are ignored | a logged-in run; the sandbox settings end to end (`make smoke-claude`) |
-| Gemini CLI | nothing: a stand-in, built from its documentation | everything; work in progress |
-| OpenCode | nothing: a stand-in that runs the generated plugin under Node, built from its documentation | everything; work in progress |
+| Scenario | Codex CLI | Claude Code | Gemini CLI | OpenCode |
+|---|---|---|---|---|
+| Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (logged out) | 0.46.0 (no login) | not installed |
+| Its hooks run, every tool call is governed | yes (real run) | not run: needs a login | stand-in only | stand-in only |
+| Session refused when its hooks never ran | stand-in only | stand-in only | stand-in only | stand-in only |
+| An approval held longer than a hook's default timeout | yes: held 70 s, then answered | not run | not run | not run |
+| A rejection, then the agent's retry | yes: rejected once, the retry approved | not run | not run | not run |
+| Stop refused until a failing check passes | yes: the first attempt to stop blocked by the check, the second allowed | stand-in only | not applicable | not applicable |
+| Commit verified and rebuilt by a fresh clone with only the public key | yes | not run | not run | not run |
+| Commands: no network, no credentials | Codex's own sandbox plus stAirCase's checks; not probed with a real model | not run | not run | not run |
+| Only staircase's settings are read (a repository's own hooks are ignored) | not applicable | yes, logged out | not run | not run |
 
-Agent versions change often. A newer version than the one listed may behave
-differently; run the smoke test for your agent (`make smoke-claude`, `make smoke-codex`)
-after upgrading it.
+What a cell means is the same everywhere: "yes" cites a run whose result is in the
+audit chain of that run and that anyone can repeat; everything else is unverified.
+Two more limits. The real Gemini CLI, run without a login, refuses before any hook
+fires, so its hooks and our settings file are untested beyond being accepted. And the
+Codex run used a cheap model on a one-line task: it shows the mechanics work, not how
+well a model does real work.
+
+**Repeat them.** Each needs the agent installed and logged in, costs a few cents with a
+small model, and cleans up after itself:
+
+```bash
+make smoke-codex                 # edits decided first, command changes reviewed after
+./demo/smoke.sh codex-stop       # held and rejected approval, refused Stop, fresh-clone verify
+make smoke-claude                # Claude Code, first approval held 40 s
+SMOKE_CODEX_MODEL=nonexistent ./demo/smoke.sh codex-stop   # free: stops at the model call
+```
+
+`SMOKE_KEEP=1` keeps the scratch directory (and prints its path) so you can look at
+the audit chain afterwards. Agent versions change often: a newer version than the one
+listed may behave differently, so run the smoke test for your agent after upgrading it.

@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **Real-agent evidence.** `./demo/smoke.sh codex-stop` runs a real Codex through a
+  held (70 s) and rejected approval, its retry, and a Stop refused until a failing
+  `--check` passes; every smoke run now also verifies and rebuilds the commit in a
+  fresh clone that has only the public signing key. `docs/compatibility.md` has the
+  per-agent, per-scenario table of what was actually run (Codex 0.159: all of the
+  above) and what was not, with how to repeat it.
+
 ## [0.6.0] - 2026-09-30
 
 Reproducible, not just signed, and hardened. A commit can be rebuilt from the
