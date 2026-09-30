@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
+Reproducible, not just signed, and hardened. A commit can be rebuilt from the
+proposals that were approved for it, and a CI check can require that. People can
+sign their individual decisions. Every finding of an external assurance review
+that could be reproduced is fixed, and what could not be verified is written down:
+behaviour under a real GitHub ruleset (squash and rebase merges, forks, merge
+queues) and a Linux kernel with old Landlock were reasoned about, not run. Gemini
+CLI and OpenCode arrive as work in progress, built from their documentation and
+tested against stand-ins only.
+
+### Changed (read before upgrading)
+
+- **The verify Action's defaults are stricter.** It reads the key and allowed
+  signers from the pull request's base branch (or `trust-ref`) instead of the
+  checkout, and `all` now defaults to `true`: every commit needs a certificate. Set
+  `all: false` for the old advisory behaviour. The documented workflow uses
+  `b070nd/stAirCase@v0.6.0`; 0.5.0 of the Action still reads the key from the PR.
+- **A certificate that claims `cal` outside 1 to 3 is refused**, however validly it
+  is signed. stAirCase itself never wrote one.
+- **Proposal ids in the approval API are strings with a random part**
+  (`3-x7k2...`), not counting numbers. Treat them as opaque.
+- **A proposal whose text is not valid UTF-8 is refused** before it is decided,
+  because the ledger could not reproduce it.
+- **Linux: a kernel with Landlock older than ABI 3** (before 6.2) no longer counts
+  as a sandbox. `--sandbox required` refuses commands there and `auto` runs them
+  unsandboxed and says so; install bubblewrap.
+- **The workspace database commits with `synchronous=FULL`.**
+
 ### Added
 
 - **Evidence outcomes and `--require-evidence`.** A run that makes a commit now says
