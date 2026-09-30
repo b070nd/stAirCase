@@ -546,3 +546,22 @@ func TestServer_a_proposal_has_its_own_identity(t *testing.T) {
 	right := post(t, baseURL(a)+"/v1/yields/"+idA+"/approve", map[string]string{"request_sha256": list[0].Challenge})
 	assert.Equal(t, http.StatusOK, right.StatusCode, "and the refusal left the proposal pending")
 }
+
+// TestServer_a_withdrawn_proposal_cannot_be_decided: once the run stops
+// waiting, a late approve is refused and unblocks nothing (F98).
+func TestServer_a_withdrawn_proposal_cannot_be_decided(t *testing.T) {
+	srv, _ := startServer(t)
+	id, ch := pendReq(t, srv)
+	srv.Withdraw(id)
+	resp := post(t, baseURL(srv)+"/v1/yields/"+id+"/approve", nil)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	select {
+	case r := <-ch:
+		t.Fatalf("a withdrawn proposal was decided: %+v", r)
+	default:
+	}
+	list := get(t, baseURL(srv)+"/v1/yields")
+	var out []map[string]any
+	require.NoError(t, json.NewDecoder(list.Body).Decode(&out))
+	assert.Empty(t, out)
+}

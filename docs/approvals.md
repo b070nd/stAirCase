@@ -156,6 +156,13 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -d '{"feedback":"looks good"}' http://127.0.0.1:8765/v1/yields/<id>/approve
 ```
 
+A proposal waits for you only as long as its run lives. If the run is cancelled, or
+its `max_run_secs` limit passes, while a proposal is waiting (through the page, the API
+or a webhook), the wait ends, the proposal is withdrawn and a late answer is refused
+(`409`); it is never recorded as an approval. The run's final review, asked after the
+agent has finished, ends only when the run is cancelled. The terminal dialog cannot be
+interrupted, but an answer given after the run ended is discarded the same way.
+
 ### From a service: a webhook
 
 stAirCase can send each proposal to your service and use its answer:

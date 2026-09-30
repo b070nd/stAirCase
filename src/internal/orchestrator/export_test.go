@@ -2,6 +2,7 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ func ExportedTimePtr(t time.Time) *time.Time { return timePtr(t) }
 // ExportedSendWebhookYield wraps sendWebhookYield for round-trip testing.
 // secret may be nil for the unauthenticated path.
 func ExportedSendWebhookYield(url string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
-	return sendWebhookYield(url, secret, req)
+	return sendWebhookYield(context.Background(), url, secret, req)
 }
 
 // ExportedScrubSecrets exposes scrubSecrets for whitebox tests (CHECK 4.4.3).

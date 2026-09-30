@@ -456,8 +456,12 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	sup = policy.NewSupervisor(scope, limits)
 	var runDeadline <-chan time.Time
+	waitCtx := ctx // a person's answer is only good while this run is: its limit ends the wait
 	if limits.MaxRunSecs > 0 {
 		runDeadline = time.After(time.Duration(limits.MaxRunSecs) * time.Second)
+		var cancelWait context.CancelFunc
+		waitCtx, cancelWait = context.WithTimeout(ctx, time.Duration(limits.MaxRunSecs)*time.Second)
+		defer cancelWait()
 	}
 	if snap.Digest != "" && !snap.Signed {
 		obs.Log.Warn("policy.json is unsigned - run 'staircase policy sign' to enable tamper detection")
@@ -528,15 +532,32 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	askHuman := func(req domain.YieldRequest, signText string) domain.YieldResponse {
 		display.Pause()
 		defer display.Resume()
+		wait := waitCtx
+		if req.ActionType == domain.ActionFinalReview { // after the agent: only cancellation ends this wait
+			wait = ctx
+		}
+		ended := func() domain.YieldResponse {
+			return domain.Decide(false, "the run ended while this waited for a decision")
+		}
+		var resp domain.YieldResponse
 		switch {
 		case approvalSrv != nil:
-			_, ch := approvalSrv.PendSigned(req, signText)
-			return <-ch
+			id, ch := approvalSrv.PendSigned(req, signText)
+			select {
+			case resp = <-ch:
+			case <-wait.Done():
+				approvalSrv.Withdraw(id)
+				return ended()
+			}
 		case project.WebhookURL != "":
-			return sendWebhookYield(project.WebhookURL, webhookSecret, req)
+			resp = sendWebhookYield(wait, project.WebhookURL, webhookSecret, req)
 		default:
-			return tui.RunYieldTUI(req)
+			resp = tui.RunYieldTUI(req) // ponytail: the terminal dialog cannot be interrupted; its answer is checked below
 		}
+		if wait.Err() != nil { // an answer that arrives after the run ended counts for nothing
+			return ended()
+		}
+		return resp
 	}
 	go func() {
 		defer close(stopped)
@@ -693,6 +714,14 @@ runLoop:
 			}
 
 		case procErr := <-agentDone:
+			if ctx.Err() != nil { // it stopped because the run was cancelled, which is how the run ended
+				cancelled()
+				break runLoop
+			}
+			if waitCtx.Err() != nil { // or because the run's time was up while it waited for a person
+				driftHalt(fmt.Sprintf("the run exceeded its %d s limit", limits.MaxRunSecs))
+				break runLoop
+			}
 			processExited(procErr)
 			break runLoop
 
@@ -721,6 +750,12 @@ runLoop:
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
+	stillGoing := func() { // a run cancelled while finalizing delivers nothing
+		if finalStatus == persistence.RunStatusSuccess && ctx.Err() != nil {
+			finalStatus = persistence.RunStatusKilled
+		}
+	}
+	stillGoing()
 	if finalStatus == persistence.RunStatusSuccess && (val != nil && val.unreviewed || dec.taskApproved) {
 		approved, err := dec.finalReview(baseSHA, delivered())
 		if err != nil {
@@ -731,6 +766,7 @@ runLoop:
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
+	stillGoing()
 	if finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
 		chainHead, err := r.store.GetLastEventHash(run.ID)
 		if err != nil {
@@ -844,7 +880,7 @@ func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) ([]byte, erro
 // the response signature is verified; an unsigned, mis-signed, stale, or
 // otherwise unverifiable response is treated as a rejection so a network
 // attacker cannot forge an approval.
-func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
+func sendWebhookYield(ctx context.Context, webhookURL string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
 	reject := func(msg string) domain.YieldResponse {
 		return domain.Decide(false, msg)
 	}
@@ -857,7 +893,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 	}{yieldID, req})
 	reqHash := sha256Hex(body)
 
-	httpReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
 		obs.Log.Warn("webhook request build failed - auto-rejecting", "err", err)
 		return reject("webhook error: " + err.Error())

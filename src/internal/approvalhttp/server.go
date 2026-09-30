@@ -317,6 +317,15 @@ func (s *Server) PendSigned(req domain.YieldRequest, payload string) (id string,
 	return id, py.ch
 }
 
+// Withdraw takes a proposal back because nobody can use an answer any more
+// (the run ended): a later decision for it is refused as already decided.
+func (s *Server) Withdraw(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pending, id)
+	s.decided[id] = struct{}{}
+}
+
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
 
 // GET /v1/yields - list all pending yields.
