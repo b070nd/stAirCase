@@ -41,6 +41,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   even with a valid signature. The specification describes the replay, with 14
   conformance vectors and an independent Python implementation run in CI.
 
+### Fixed
+
+- **A producer cannot claim CAL 4.** A certificate that says `cal` 4 (or anything
+  outside 1 to 3) is refused however validly it is signed; level 4 is only ever
+  established by a verifier from a trusted reviewer's signature. Conformance vectors
+  12 and 13, the independent verifier and the specification say so, and the docs
+  no longer describe CAL 4 as proven two-person control: the requester is an
+  unauthenticated git email.
+- **One read of the policy file.** The rules, the signature check and the digest the
+  certificate records come from a single read of `policy.json`, so a file replaced
+  while a run is going changes neither the decisions nor the digest.
+- **Webhook approvals fail closed.** A stored webhook secret that cannot be looked up
+  or decrypted stops the run instead of falling back to an unsigned channel; only an
+  HTTP 2xx answer counts (a signed approval body on a 500 no longer approves) and a
+  redirect is not followed.
+- **A decision answers one proposal.** Proposal ids carry a random part instead of a
+  counter that restarts at 1, and the review page sends back the hash of the request
+  it showed, so a card left over from an ended session cannot decide a new one. The
+  text a person signs has a fresh nonce per proposal, so a captured signature is
+  refused on a later identical proposal. (Signed decisions are new since 0.5.0.)
+- **A wait for a person ends with the run.** Cancelling a run, or its `max_run_secs`
+  passing, while it waits for a person (page, API, webhook or final review) ends
+  the wait, withdraws the proposal and refuses a late answer; it is never recorded
+  as an approval. A cancelled run ends KILLED and commits nothing.
+- **Changes the ledger cannot reproduce are refused.** A proposal whose file name or
+  text is not valid UTF-8 is refused before it is decided, instead of being approved
+  and then failing `rebuild`.
+
 ## [0.5.0] - 2026-09-29
 
 Review where you already work. Approve changes in your browser, on one page for
