@@ -115,7 +115,10 @@ func TestShellSandbox_hides_credentials(t *testing.T) { eachEngine(t, testHidesC
 func testHidesCredentials(t *testing.T) {
 	home, ws := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	for _, f := range []string{".ssh/id_ed25519", ".aws/credentials", ".netrc", ".config/gh/hosts.yml", ".notes"} {
+	// the agents' own login stores are credentials too (F103)
+	logins := []string{".claude/.credentials.json", ".claude.json", ".codex/auth.json", ".gemini/oauth_creds.json",
+		".local/share/opencode/auth.json", ".config/opencode/opencode.json"}
+	for _, f := range append([]string{".ssh/id_ed25519", ".aws/credentials", ".netrc", ".config/gh/hosts.yml", ".notes"}, logins...) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(home, f)), 0o700))
 		require.NoError(t, os.WriteFile(filepath.Join(home, f), []byte("x"), 0o600))
 	}
@@ -125,7 +128,7 @@ func testHidesCredentials(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wt, "main.go"), []byte("x"), 0o644))
 	read := func(path string) (on, off bool) { return sandboxRun(t, wt, "cat "+path, ws) }
 
-	for _, f := range []string{".ssh/id_ed25519", ".aws/credentials", ".netrc", ".config/gh/hosts.yml"} {
+	for _, f := range append([]string{".ssh/id_ed25519", ".aws/credentials", ".netrc", ".config/gh/hosts.yml"}, logins...) {
 		on, off := read(filepath.Join(home, f))
 		assert.True(t, off, f)
 		assert.False(t, on, f)

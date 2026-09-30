@@ -17,7 +17,7 @@ import (
 )
 
 // harnessNames are the harnesses as Assisted-by trailers name them.
-var harnessNames = map[string]string{"claude-code": "Claude Code", "codex": "Codex"}
+var harnessNames = map[string]string{"claude-code": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "OpenCode"}
 
 // assistants names who helped make a run's change, for the Assisted-by
 // trailer and the certificate: the harness, or the models of the built-in
@@ -82,7 +82,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	priv, err := crypto.LoadSigningKey(r.wsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  No change certificate: %v\n", err)
-		return nil
+		return fmt.Errorf("no signing key: %w", err)
 	}
 	events, err := r.store.ListEventLogs(runID)
 	if err != nil {
@@ -177,17 +177,32 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
+	if err := attachNote(repo, NotesRef, path, commit); err != nil {
+		return fmt.Errorf("attach the change certificate to %s: %w", commit, err)
+	}
+	fmt.Fprintf(os.Stdout, "   📜 Change certificate (CAL %d): %s, also in git notes (refs/notes/staircase)\n", p.CAL, path)
+	return r.audit(runID, "certificate_issued", map[string]any{"commit": commit, "cal": p.CAL,
+		"envelope_sha256": sha256Hex(b)})
+}
+
+// NotesRef and LedgerNotesRef are the git notes a run attaches to its commit:
+// the signed certificate, and the ledger it names.
+const (
+	NotesRef       = "staircase"
+	LedgerNotesRef = "staircase-ledger"
+)
+
+// attachNote adds the file's content as a note under refs/notes/<ref> on commit.
+func attachNote(repo *GitRepo, ref, file, commit string) error {
 	name, email := repo.identity()
 	cmd := exec.Command("git", "-C", repo.path, "-c", "core.hooksPath=/dev/null",
-		"notes", "--ref=staircase", "add", "-f", "-F", path, commit)
+		"notes", "--ref="+ref, "add", "-f", "-F", file, commit)
 	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
 		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("attach the change certificate to %s: %w: %s", commit, err, bytes.TrimSpace(stderr.Bytes()))
+		return fmt.Errorf("%w: %s", err, bytes.TrimSpace(stderr.Bytes()))
 	}
-	fmt.Fprintf(os.Stdout, "   📜 Change certificate (CAL %d): %s, also in git notes (refs/notes/staircase)\n", p.CAL, path)
-	return r.audit(runID, "certificate_issued", map[string]any{"commit": commit, "cal": p.CAL,
-		"envelope_sha256": sha256Hex(b)})
+	return nil
 }

@@ -33,7 +33,8 @@ stAirCase is **pre-1.0**.
   sessions Claude Code's own sandbox, turned on strictly; Codex's workspace-write
   sandbox). In it a command can write only in the worktree and its own temporary
   folder, has no network, and cannot read the stAirCase workspace or common
-  credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh` and others). It can read
+  credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh`, the agents' own login stores
+  such as `~/.claude`, `~/.codex`, `~/.gemini` and OpenCode's, and others). It can read
   the rest of your files, and what it prints goes to the model. Where no sandbox is
   found, `auto` runs commands as you and says so; `--sandbox required` refuses
   them. Files a command changes come to you afterwards: approved, they are kept;
@@ -72,6 +73,23 @@ stAirCase is **pre-1.0**.
    download rules need their rules available offline, as the sandbox has no
    network.
 6. **Review the branch** before you merge it.
+
+## Confidentiality: pick a profile
+
+Commit integrity (only approved bytes reach the branch) is not confidentiality. What
+a run can *read*, and what leaves your machine, depends on how you run it:
+
+| Profile | How | What it protects | What it does not |
+|---|---|---|---|
+| **Default** | `staircase claude "..."` | commits, worktree isolation, commands without network and without your credential folders and agent logins | the agent program runs as you with the provider's network access; a command can read the rest of your files, and its output goes to the model |
+| **Strict commands** | add `--sandbox required`, leave shell commands off | no command runs unsandboxed; on Linux a kernel whose Landlock is older than ABI 3 (before Linux 6.2) counts as having no Landlock sandbox, because it cannot stop a command truncating your files, so install bubblewrap there | the agent program itself; what the agent reads through its own tools still goes to the provider |
+| **Contained** | run stAirCase inside a container or VM that mounts only the project and a scratch workspace, with egress limited to the model provider | the agent program and everything it can read | anything you mount, and whatever the provider receives |
+
+The credential list is a deny-list, not an allow-list: a tool that keeps its tokens
+somewhere else is readable by a sandboxed command. If that matters to you, use the
+contained profile. Nothing here stops what the model is sent from leaving for the
+provider: that is what a model run is. Decide per repository whether that is
+acceptable before a run, not after.
 
 ## What a run's result means
 

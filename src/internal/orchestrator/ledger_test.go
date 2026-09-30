@@ -92,3 +92,42 @@ func TestRebuild_a_changed_ledger_gives_another_tree(t *testing.T) {
 	_, _, err = orchestrator.RebuildTree(r.Repo, []byte(`{"version":9}`))
 	assert.ErrorContains(t, err, "version")
 }
+
+// TestRebuild_is_lossless_for_text_and_refuses_what_it_cannot_hold: a proposal
+// is refused when its text is not valid UTF-8 (the ledger is JSON and could not
+// reproduce those bytes), while NUL bytes, bare CRs, JSON-special characters
+// and large files survive the ledger and rebuild to the same tree (F94).
+func TestRebuild_is_lossless_for_text_and_refuses_what_it_cannot_hold(t *testing.T) {
+	awkward := "a\x00b\r\nc\r d e \"q\" \\ <&> \U0001F642 \t\n" + strings.Repeat("x", 150<<10)
+	var binaryAnswer orchestrator.Approval
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		for _, e := range []domain.ProposedEdit{
+			{File: "awkward.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: awkward},
+			{File: "bin.dat", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "\xff\xfe\x00\x80not utf-8"},
+		} {
+			ap := env.ProposeEdit(ctx, "claude-code", "r", e)
+			if e.File == "bin.dat" {
+				binaryAnswer = ap
+			}
+			if ap.Approved {
+				if err := ap.Apply(env.Worktree); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	r, commit, _ := certified(t, agent, orchestrator.RunOptions{Plan: &plan.Plan{Harness: "claude-code"}}, nil)
+
+	assert.False(t, binaryAnswer.Approved)
+	assert.Contains(t, binaryAnswer.Feedback, "UTF-8")
+	_, err := os.Stat(filepath.Join(r.Repo, "bin.dat"))
+	assert.Error(t, err)
+	assert.Equal(t, awkward, git(t, r.Repo, "show", commit+":awkward.txt"))
+
+	ledger, err := os.ReadFile(orchestrator.LedgerPath(r.WsDir, r.Run.ID))
+	require.NoError(t, err)
+	tree, _, err := orchestrator.RebuildTree(r.Repo, ledger)
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^{tree}")), tree)
+}

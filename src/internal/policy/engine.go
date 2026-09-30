@@ -28,6 +28,8 @@ package policy
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -121,17 +123,39 @@ type Engine struct {
 	AllowBlanketDeny bool `json:"allow_blanket_deny"`
 }
 
-// LoadEngine reads $wsDir/policy.json and returns an Engine.
-// If the file does not exist an empty (approve-nothing) Engine is returned.
-// Returns an error when:
-//   - the JSON cannot be parsed (caller can surface it to the operator), or
-//   - a blanket-deny rule is present but AllowBlanketDeny is false (CHECK 7.1.5).
-func LoadEngine(wsDir string) (*Engine, error) {
+// Snapshot is the workspace's policy as one read of policy.json: the engine,
+// the SHA-256 of the exact bytes it was parsed from, and whether those same
+// bytes carry a valid signature. A run decides under the snapshot and its
+// certificate names Digest, so a file replaced mid-run changes neither.
+type Snapshot struct {
+	Engine *Engine
+	Digest string // "" when there is no policy.json
+	Signed bool
+}
+
+// LoadSnapshot reads $wsDir/policy.json once. A missing file yields an empty
+// (approve-nothing) Engine. It fails when the JSON cannot be parsed, a
+// blanket-deny rule lacks AllowBlanketDeny (CHECK 7.1.5), or a signature
+// sidecar exists and does not match those bytes.
+func LoadSnapshot(wsDir string) (*Snapshot, error) {
 	path := filepath.Join(wsDir, "policy.json")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return &Engine{}, nil
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return &Snapshot{Engine: &Engine{}}, nil
 	}
-	return LoadEngineFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read policy file: %w", err)
+	}
+	e, err := parseEngine(data, path)
+	if err != nil {
+		return nil, err
+	}
+	signed, err := verifySignature(wsDir, data)
+	if err != nil {
+		return nil, fmt.Errorf("policy integrity check failed - re-sign with 'staircase policy sign': %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return &Snapshot{Engine: e, Digest: hex.EncodeToString(sum[:]), Signed: signed}, nil
 }
 
 // LoadEngineFile reads a policy file with the same strict rules as the
@@ -141,6 +165,10 @@ func LoadEngineFile(path string) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read policy file: %w", err)
 	}
+	return parseEngine(data, path)
+}
+
+func parseEngine(data []byte, path string) (*Engine, error) {
 	var e Engine
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields() // a misspelt field would silently drop a rule or a limit
@@ -180,24 +208,25 @@ const PolicySigFile = "policy.json.sig"
 // (true, nil) when the signature is present and valid.  Returns (true, err)
 // when the signature is present but invalid (tamper detected).
 func VerifyPolicySignature(wsDir string) (sigPresent bool, err error) {
-	policyPath := filepath.Join(wsDir, "policy.json")
-	data, err := os.ReadFile(policyPath)
+	data, err := os.ReadFile(filepath.Join(wsDir, "policy.json"))
 	if os.IsNotExist(err) {
 		return false, nil // no policy file - nothing to verify
 	}
 	if err != nil {
 		return false, fmt.Errorf("read policy.json for verification: %w", err)
 	}
+	return verifySignature(wsDir, data)
+}
 
-	sigPath := filepath.Join(wsDir, PolicySigFile)
-	sigHex, err := os.ReadFile(sigPath)
+// verifySignature checks the sidecar against data, the policy bytes the caller holds.
+func verifySignature(wsDir string, data []byte) (bool, error) {
+	sigHex, err := os.ReadFile(filepath.Join(wsDir, PolicySigFile))
 	if os.IsNotExist(err) {
 		return false, nil // no sig sidecar - unsigned policy
 	}
 	if err != nil {
 		return true, fmt.Errorf("read policy signature: %w", err)
 	}
-
 	pub, err := crypto.LoadSigningPublicKey(wsDir)
 	if err != nil {
 		return true, fmt.Errorf("load signing public key: %w", err)

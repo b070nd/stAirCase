@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -71,4 +75,42 @@ func TestSignal_only_sends_changes_to_a_person(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 4, n)
+}
+
+// TestSignal_url_talks_to_a_local_server: --signal-url asks a
+// TypeSafe-compatible server (a local Laya) in its own shape, sends no key it
+// was not given, and its answers turn an automatic approval into a person's
+// decision just like the gateway's.
+func TestSignal_url_talks_to_a_local_server(t *testing.T) {
+	var auth []string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		auth = append(auth, r.URL.Path+" "+r.Header.Get("Authorization"))
+		mu.Unlock()
+		risky := 0.02
+		if strings.Contains(string(body), "upload.sh") {
+			risky = 0.9
+		}
+		_, _ = fmt.Fprintf(w, `{"model":"laya","answers":{"risky":{"noul":%v},"serves_story":{"noul":0.9},"kind":{"choice":"feature","probabilities":{"feature":1},"confidence":1}},"usage":{"input_tokens":1,"output_tokens":1}}`, risky)
+	}))
+	defer srv.Close()
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
+		Run:   orchestrator.RunOptions{Signal: &orchestrator.Signal{Model: "laya", URL: srv.URL}},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			for _, f := range []string{"ok.txt", "upload.sh"} {
+				create(ctx, env, f)
+			}
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	assert.Equal(t, []string{"file_edit:policy", "file_edit:operator"}, sources(t, r))
+	require.Len(t, op.seen, 1)
+	assert.Contains(t, op.seen[0].Review, "laya rates this change risky (0.90)")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"/v1/systemone ", "/v1/systemone "}, auth, "its own path, and no key")
 }

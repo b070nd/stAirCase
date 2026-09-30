@@ -9,7 +9,7 @@ check: lint
 	GOOS=windows go build ./...
 	go test ./... -count=1 -timeout=600s
 	$(MAKE) race
-	bats tests/integration.bats
+	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats
 	$(MAKE) demo
 
 # ─── Core unit tests ──────────────────────────────────────────────────────────

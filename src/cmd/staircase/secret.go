@@ -219,7 +219,7 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 		defer func() { _ = db.Close() }()
 
 		// reencrypt re-encrypts every secret in a single DB transaction (CHECK 4.3.2).
-		// Opens a pinned *sql.Conn, sets synchronous=FULL on it, then runs the
+		// Opens a pinned *sql.Conn, makes sure synchronous=FULL on it, then runs the
 		// rotation transaction on the same connection - guaranteeing that the PRAGMA
 		// and the transaction share the underlying SQLite connection and the WAL
 		// write is fsynced before COMMIT returns (power-loss durable).
@@ -232,9 +232,6 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 			if _, err := conn.ExecContext(context.Background(), "PRAGMA synchronous=FULL"); err != nil {
 				return fmt.Errorf("rotate: set synchronous=FULL: %w", err)
 			}
-			defer func() {
-				_, _ = conn.ExecContext(context.Background(), "PRAGMA synchronous=NORMAL")
-			}()
 			return store.RotateSecretsOnConn(context.Background(), conn, oldKey, newKey, crypto.Decrypt, crypto.Encrypt)
 		}
 

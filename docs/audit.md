@@ -105,6 +105,54 @@ The ledger holds the approved content, so it stays in your workspace
 SHA-256. To let a reviewer rebuild, give them the ledger file, and they run
 `staircase rebuild <commit> --ledger run-7.ledger.json`. Runs from before this feature have no ledger.
 
+The ledger is JSON, so it can hold text, not arbitrary bytes. A proposal whose text is
+not valid UTF-8 (a binary file, for example) is refused, with that reason, before
+anyone decides it: a person cannot read it and a rebuild could not reproduce it.
+Text with NUL bytes, bare carriage returns, any Unicode and files up to 200 KiB
+round-trip exactly. A lossless encoding for binary changes may come later as a new
+ledger version; version 1 will not change meaning.
+
+## When the evidence cannot be written
+
+The commit is made first; the ledger and the signed certificate are written after it.
+If either cannot be written (a full disk, an unwritable `audit/` directory, no signing
+key), the commit is still on its run branch and the run says so plainly: the run
+summary (`runs/<id>/summary.json`) has `"outcome": "delivered_without_evidence"` and
+the reasons in `evidence_errors`, and the audit chain has an `evidence_failed` event.
+A fully evidenced commit has `"outcome": "certified"`.
+
+With `--require-evidence` the run also exits non-zero in that case, so a script or CI
+job cannot mistake it for a complete result. The run is not relabelled as failed or
+undelivered: the commit exists, and its hash is in the record.
+
+## Keeping evidence: clean, archive and legal hold
+
+`staircase clean --aggressive` tidies the workspace, but it does not throw evidence
+away silently:
+
+- A `staircase/run-N` branch is deleted only when it is older than 30 days **and
+  merged into another branch** (local or remote-tracking). An unmerged run branch holds
+  the only copy of its commit and is kept, with a message. A squash-merge does not count
+  as merged, so those branches stay until you delete them yourself.
+- Audit rows go to `archive/clean-<time>.jsonl` (readable only by you) **before** they
+  are deleted: flagged cases with their runs and events, and the oldest event-log rows
+  beyond a million. If the archive cannot be written, nothing is deleted.
+- A file named `legal-hold` in the workspace stops all of it: no audit rows, cases or
+  run branches are deleted until you remove the file.
+
+Certificates and ledgers under `audit/` are never touched by `clean`.
+
+## Back up and restore the workspace
+
+The workspace directory (`~/.staircase-workspace`) is the whole state: the database
+(`workspace.db` with its `-wal` and `-shm` files), the encryption key (`.key`), the
+signing keys, `policy.json`, and `audit/` (certificates, ledgers, checkpoints). Back
+it up while no run is active: copy the directory, all of it. A restored copy verifies
+its audit chains, decrypts its secrets and verifies its commits with the restored
+signing key; this is tested. Without `.key`, the stored secrets cannot be read, so keep
+it with the backup, somewhere only you can reach. Keep the certificates and ledgers in
+git too (`refs/notes/staircase*`), so a commit's evidence does not depend on one disk.
+
 ## Review attention
 
 A signed approval proves someone clicked approve, not that they read the change. So
@@ -182,12 +230,20 @@ reviewer is not the person the run was made for: the certificate records the git
 email (`user.email`) the run was made under, and that person's own signature does
 not count as a second review.
 
+What this proves, and what it does not: CAL 4 means a reviewer whose key you trust
+signed the change and is not recorded as the requester. The requester is the git
+`user.email` of the checkout, which anyone can set to anything, so two different
+strings are not proof of two different people. Until the requester is authenticated
+too (an initiator signature is planned), read CAL 4 as "a trusted reviewer signed
+it", not as proven two-person control, and back it with branch protection that
+requires a human approval.
+
 ## Require certificates on pull requests
 
-A CI check can refuse pull requests with an agent's commit that is not properly
-certified. Commit your workspace's public key to the repository (it is public; copy
-`~/.staircase-workspace/.signing.pub`, for example to `.github/staircase.pub`), and
-add a workflow:
+A CI check can refuse pull requests with a change that is not properly certified.
+Commit your workspace's public key to the repository's protected branch (it is
+public; copy `~/.staircase-workspace/.signing.pub`, for example to
+`.github/staircase.pub`), and add a workflow:
 
 ```yaml
 name: stAirCase
@@ -202,26 +258,53 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v0.5.0
+      - uses: b070nd/stAirCase@v0.6.0   # the trust rules below need 0.6.0; 0.5.0 reads the key from the checkout
         with:
           key: .github/staircase.pub
+          allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4
           min-cal: 3
+          rebuild: true                              # optional: needs a release that keeps ledger notes
 ```
 
 The check installs that release of `staircase` after verifying how it was built,
-fetches the certificates (`refs/notes/staircase`) and checks every commit of the pull
-request that names an agent in an `Assisted-by:` trailer. With `all: true`, every
-commit needs a certificate. Push the certificates together with the branch:
+fetches the certificates (`refs/notes/staircase`) and checks **every commit** of the
+pull request. Push the certificates together with the branch:
 
 ```bash
-git push origin staircase/run-7 refs/notes/staircase
+git push origin staircase/run-7 refs/notes/staircase refs/notes/staircase-ledger
 ```
 
-What it cannot do: a commit made with an agent but not marked `Assisted-by:` looks
-like a person's commit. Use `all: true` where every change must come through
-stAirCase.
+**Where the trust comes from.** The key and the allowed signers are read from the
+pull request's *base branch* (or `trust-ref`), never from the pull request's own
+files: a pull request that replaced the key would otherwise vouch for itself. A key
+that is only in the pull request is refused. Outside a pull request (a push, a merge
+queue), set `range` and `trust-ref` to a protected branch or tag. Protect the key and
+signers paths with CODEOWNERS and a ruleset that requires review, and make this
+check a required status check; a check that can be skipped or edited by the change it
+judges is not a gate.
 
-The same check runs locally: `staircase verify main..HEAD --min-cal 3`.
+**Every commit, by default.** `all: false` checks only commits that name an agent in
+an `Assisted-by:` trailer, and a run of `staircase verify` without `--all` says how
+many commits it skipped. A commit an agent made without the trailer looks like a
+person's, so selective checking is advisory. To exempt human commits reliably, do it
+outside the change: a ruleset that requires signed commits from people, for example.
+
+**Rebuild.** With `rebuild: true` (`staircase verify --rebuild`), each commit is also
+replayed from its ledger, which a run attaches as a note
+(`refs/notes/staircase-ledger`), and must have exactly the tree the ledger produces:
+a validly signed certificate on a commit that holds other bytes fails. A commit with
+no ledger fails, so turn it on once your runs come from a release that keeps them.
+
+**Limits, stated plainly.** A certificate is about one commit id. Squash-merge and
+rebase-merge make new commits that carry no certificate, so check the pull request's
+own commits before merging, and merge with a merge commit, or certify the merged
+result with `staircase seal`. A pull request from a fork has no notes in your
+repository (the contributor cannot push them there) and fails closed. Notes are
+ordinary refs: anyone who can push to them can overwrite a note, so restrict who may
+push `refs/notes/staircase*`. None of this has been exercised against a real
+organization ruleset; do that once with a test repository before relying on it.
+
+The same check runs locally: `staircase verify main..HEAD --all --min-cal 3`.
 
 ## Look at a run
 

@@ -184,10 +184,12 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Claude Code (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
@@ -207,6 +209,12 @@ Python scripts (graph_exec_*) and stale IPC sockets. Compiled plans are kept.
 orphaned staircase/run-* git branches older than 30 days.
 
 --keep-failed preserves branches and logs for FAILED runs (forensic mode).
+
+Aggressive cleaning never throws evidence away silently: a run branch that is
+not merged into another branch is kept (it holds the only copy of the commit),
+audit rows and flagged cases are written to archive/ before they are deleted (and
+not deleted if that fails), and a file named legal-hold in the workspace stops
+every such deletion.
 
 --dry-run prints what would be removed without deleting anything.
 
@@ -245,10 +253,12 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --model string               Model for Codex (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
@@ -264,7 +274,7 @@ staircase compile <case-id> [flags]
 Flags:
 
 ```
-      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex, review (default "built-in")
+      --agent string   Who runs the case: built-in (the project's topology) or an agent harness: claude-code, codex, gemini, opencode, review (default "built-in")
       --force          Overwrite an existing plan
 ```
 
@@ -370,6 +380,47 @@ content and the workspace public key (.signing.pub).
 Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
 gates.json has not been modified since it was last signed.
 
+## staircase gemini
+
+Run Gemini CLI on a task in this repository, with every change decided by you (work in progress)
+
+```
+staircase gemini <task> [flags]
+```
+
+Runs Google's Gemini CLI on the task in a separate worktree of the git repository
+you are in. Every file change and command it wants to make comes to you first
+(commands need --allow-shell-exec); every other tool is refused. At the end,
+exactly the approved changes are committed on a new branch, staircase/run-N;
+your checkout is not touched.
+
+Work in progress: built from Gemini CLI's documentation and tested against a
+stand-in, not yet against a real login. Gemini CLI must be installed and logged
+in. Its commands run without a sandbox, so a run with commands reaches CAL 2.
+Hooks in your own or the repository's .gemini settings still run beside
+stAirCase's (Gemini cannot be told to ignore them); a run fails if Gemini never
+calls stAirCase's hooks.
+
+Flags:
+
+```
+      --allow stringArray          A path (glob) the task may change; repeat for more
+      --allow-shell-exec           Let Gemini CLI propose shell commands (each still needs your approval)
+      --approval-port int          Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --model string               Model for Gemini CLI (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm the task (needed without a terminal)
+```
+
 ## staircase governance status
 
 Show the pinned governance commit, and whether the source or the workspace changed since
@@ -431,6 +482,7 @@ staircase claude or staircase codex) and governs the calls inside one.
   claude-code  managed-settings.json (it also sets allowManagedHooksOnly, so
                user and repository hooks do not load)
   codex        the [hooks] block of the managed Codex configuration
+  gemini       Gemini CLI's system settings.json (work in progress)
 
 --bin is where staircase is installed on those machines (default: this
 program). See docs/managed.md.
@@ -475,6 +527,47 @@ Flags:
 
 ```
       --case int   Filter by case ID
+```
+
+## staircase opencode
+
+Run OpenCode on a task in this repository, with every change decided by you (work in progress)
+
+```
+staircase opencode <task> [flags]
+```
+
+Runs OpenCode on the task in a separate worktree of the git repository you are
+in. Every file edit, patch and command it wants to make comes to you first
+(commands need --allow-shell-exec); every other tool is refused. At the end,
+exactly the approved changes are committed on a new branch, staircase/run-N;
+your checkout is not touched.
+
+Work in progress: built from OpenCode's documentation and tested against a
+stand-in that runs the generated plugin, not yet against a real login. OpenCode
+must be installed and have a provider logged in (opencode auth login). Its
+commands run without a sandbox, so a run with commands reaches CAL 2. Plugins in
+the repository's .opencode folder still load beside stAirCase's (OpenCode cannot
+be told to ignore them); a run fails if OpenCode never calls stAirCase's plugin.
+
+Flags:
+
+```
+      --allow stringArray          A path (glob) the task may change; repeat for more
+      --allow-shell-exec           Let OpenCode propose shell commands (each still needs your approval)
+      --approval-port int          Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
+      --approval-token string      Token for the approval API (default: a new one, printed)
+      --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
+      --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --model string               Model for OpenCode (default: its own)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
+      --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
+      --sign-as string             The name you sign decisions as (default: git user.email)
+      --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+  -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
 ## staircase policy sign
@@ -737,10 +830,12 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --by string                  Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
@@ -770,11 +865,13 @@ Flags:
       --reconcile                  Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
       --record-llm string          Record every model exchange of this run to this file (JSON lines) for offline replay.
       --replay-llm string          File path to replay recorded LLM exchanges instead of calling the real API.
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sandbox string             Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --skip-gates                 Bypass quality gate pre-flight (use with care)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
 ```
@@ -807,10 +904,12 @@ Flags:
       --by string                  Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
   -m, --message string             The commit message (default: Changes by <agent>)
+      --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
+      --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
@@ -1077,7 +1176,9 @@ Flags:
       --certificate string       Read the certificate from this file instead of the git note
       --check-anchor             Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
       --key string               Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)
+      --ledger string            With --rebuild, read the ledger from this file instead of the git note (one commit only)
       --min-cal int              Fail below this change assurance level (1-4)
+      --rebuild                  Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note (refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails
 ```
 
 ## staircase version

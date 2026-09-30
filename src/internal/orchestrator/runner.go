@@ -51,6 +51,17 @@ import (
 // agent run as success.
 var ErrRunNotSuccessful = errors.New("run did not complete successfully")
 
+// ErrEvidenceIncomplete is returned with RequireEvidence when a commit was
+// made but its ledger or change certificate could not be. The commit stays
+// delivered on its run branch; the run is not relabelled as undelivered.
+var ErrEvidenceIncomplete = errors.New("the commit was made but its evidence is incomplete")
+
+// What a run that made a commit can say about its evidence (RunSummary.Outcome).
+const (
+	OutcomeCertified       = "certified"                  // a signed certificate and the ledger it names
+	OutcomeWithoutEvidence = "delivered_without_evidence" // the commit exists; see RunSummary.EvidenceErrors
+)
+
 // lostGrace is how long a run waits for its agent to stop after cancellation
 // before it ends without it (recording agent_unresponsive).
 var lostGrace = 10 * time.Second
@@ -135,6 +146,10 @@ type RunOptions struct {
 	// RequireSignedApprovals refuses a person's decision unless it carries an
 	// SSH signature of a signer listed in the workspace's allowed_signers.
 	RequireSignedApprovals bool
+	// RequireEvidence makes a commit without its ledger and signed change
+	// certificate a failure: the run ends with ErrEvidenceIncomplete (the commit
+	// stays on its branch, reported as delivered).
+	RequireEvidence bool
 	// SignKey, when set, makes stAirCase sign each human decision with this
 	// SSH key, as SignAs (a key that needs a touch makes it a presence check).
 	SignKey, SignAs string
@@ -304,12 +319,17 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	ledger := Ledger{Base: baseSHA}
 	finalStatus := persistence.RunStatusFailed
 	commitHash := ""
+	var evidenceErrs []string // what could not be written for the commit, if anything
 	var display *monitor.Display
 	var sup *policy.Supervisor // drift supervision, from RUN SETUP on
 
 	defer func() {
 		if runErr != nil && finalStatus == persistence.RunStatusSuccess {
 			finalStatus = persistence.RunStatusFailed
+		}
+		var evidenceErr error // reported, but the delivered commit keeps its status
+		if len(evidenceErrs) > 0 && opts.RequireEvidence {
+			evidenceErr = fmt.Errorf("%w: %s", ErrEvidenceIncomplete, strings.Join(evidenceErrs, "; "))
 		}
 		endTime := time.Now()
 		if err := r.store.FinishRun(run.ID, finalStatus, endTime, commitHash); err != nil {
@@ -319,7 +339,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 				runErr = errors.Join(runErr, err)
 			}
 		}
-		summary := RunSummary{RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus, CommitHash: commitHash, EndTime: endTime}
+		summary := RunSummary{RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus, CommitHash: commitHash, EndTime: endTime,
+			EvidenceErrors: evidenceErrs}
+		if commitHash != "" {
+			summary.Outcome = OutcomeCertified
+			if len(evidenceErrs) > 0 {
+				summary.Outcome = OutcomeWithoutEvidence
+			}
+		}
 		if sup != nil {
 			rep := sup.Report()
 			summary.Drift = &rep
@@ -349,6 +376,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 		if finalStatus != persistence.RunStatusSuccess {
 			runErr = errors.Join(runErr, fmt.Errorf("run #%d finished with status %s: %w", run.ID, finalStatus, ErrRunNotSuccessful))
+		} else if evidenceErr != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("run #%d: %w", run.ID, evidenceErr))
 		}
 		if display != nil {
 			display.Final(fmt.Sprintf("Run #%d %s", run.ID, finalStatus))
@@ -421,7 +450,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	// Per-project HMAC secret for authenticating webhook approvals. When a
 	// webhook is configured without a secret the channel is unauthenticated -
 	// warn loudly so operators know to store one under __webhook_hmac_secret__.
-	webhookSecret := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
+	webhookSecret, err := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
+	if err != nil && project.WebhookURL != "" { // a stored secret we cannot read is not "no secret"
+		return fmt.Errorf("webhook secret: %w", err)
+	}
 	if project.WebhookURL != "" && len(webhookSecret) == 0 {
 		obs.Log.Warn(`webhook approvals are UNAUTHENTICATED - store an HMAC secret to prevent forged approvals: printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <id>`,
 			"project_id", caseRec.ProjectID)
@@ -431,10 +463,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	policyEngine, err := policy.LoadEngine(r.wsDir) // fail closed: a broken policy never runs as "no policy"
+	// One read of policy.json: the rules, the signature check and the digest the
+	// certificate names all come from the same bytes. Fail closed: a broken or
+	// tampered policy never runs as "no policy".
+	snap, err := policy.LoadSnapshot(r.wsDir)
 	if err != nil {
 		return fmt.Errorf("load policy: %w", err)
 	}
+	policyEngine := snap.Engine
 	limits := policyEngine.Limits.Limits // the drift-supervision limits of the policy …
 	if opts.Plan != nil {
 		limits = limits.Tighter(opts.Plan.Limits) // … and of the plan (its blueprint's)
@@ -449,14 +485,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 	sup = policy.NewSupervisor(scope, limits)
 	var runDeadline <-chan time.Time
+	waitCtx := ctx // a person's answer is only good while this run is: its limit ends the wait
 	if limits.MaxRunSecs > 0 {
 		runDeadline = time.After(time.Duration(limits.MaxRunSecs) * time.Second)
+		var cancelWait context.CancelFunc
+		waitCtx, cancelWait = context.WithTimeout(ctx, time.Duration(limits.MaxRunSecs)*time.Second)
+		defer cancelWait()
 	}
-	// P2: verify Ed25519 signature on policy.json when sidecar is present.
-	// Absent signature warns (backward compat); invalid signature is fatal.
-	if sigPresent, sigErr := policy.VerifyPolicySignature(r.wsDir); sigErr != nil {
-		return fmt.Errorf("policy integrity check failed - re-sign with 'staircase policy sign': %w", sigErr)
-	} else if !sigPresent {
+	if snap.Digest != "" && !snap.Signed {
 		obs.Log.Warn("policy.json is unsigned - run 'staircase policy sign' to enable tamper detection")
 	}
 
@@ -522,18 +558,35 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return errors.New("--require-signed-approvals needs the trusted signers: an allowed_signers file in the workspace (staircase governance use, or copy git's allowed_signers there)")
 	}
 	// askHuman shows a proposal to the operator: approval API, webhook or TUI.
-	askHuman := func(req domain.YieldRequest) domain.YieldResponse {
+	askHuman := func(req domain.YieldRequest, signText string) domain.YieldResponse {
 		display.Pause()
 		defer display.Resume()
+		wait := waitCtx
+		if req.ActionType == domain.ActionFinalReview { // after the agent: only cancellation ends this wait
+			wait = ctx
+		}
+		ended := func() domain.YieldResponse {
+			return domain.Decide(false, "the run ended while this waited for a decision")
+		}
+		var resp domain.YieldResponse
 		switch {
 		case approvalSrv != nil:
-			_, ch := approvalSrv.PendSigned(req, signing.payload(req))
-			return <-ch
+			id, ch := approvalSrv.PendSigned(req, signText)
+			select {
+			case resp = <-ch:
+			case <-wait.Done():
+				approvalSrv.Withdraw(id)
+				return ended()
+			}
 		case project.WebhookURL != "":
-			return sendWebhookYield(project.WebhookURL, webhookSecret, req)
+			resp = sendWebhookYield(wait, project.WebhookURL, webhookSecret, req)
 		default:
-			return tui.RunYieldTUI(req)
+			resp = tui.RunYieldTUI(req) // ponytail: the terminal dialog cannot be interrupted; its answer is checked below
 		}
+		if wait.Err() != nil { // an answer that arrives after the run ended counts for nothing
+			return ended()
+		}
+		return resp
 	}
 	go func() {
 		defer close(stopped)
@@ -567,7 +620,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 
 	if opts.Signal != nil {
 		if opts.Signal.Eval == nil {
-			if key, err := host.secret("LLM_GATEWAY_API_KEY"); err == nil && key != "" {
+			if opts.Signal.URL != "" { // a local Laya or TypeSafe: its own shape, a key only if it has one
+				key, _ := host.secret("SIGNAL_API_KEY")
+				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: opts.Signal.URL, API: signal.SystemOne}
+			} else if key, err := host.secret("LLM_GATEWAY_API_KEY"); err == nil && key != "" {
 				base, _ := host.secret("LLM_GATEWAY_URL") // as for the gateway's models (llm.New)
 				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: strings.TrimSuffix(strings.TrimSuffix(base, "/"), "/v1")}
 			}
@@ -687,6 +743,14 @@ runLoop:
 			}
 
 		case procErr := <-agentDone:
+			if ctx.Err() != nil { // it stopped because the run was cancelled, which is how the run ended
+				cancelled()
+				break runLoop
+			}
+			if waitCtx.Err() != nil { // or because the run's time was up while it waited for a person
+				driftHalt(fmt.Sprintf("the run exceeded its %d s limit", limits.MaxRunSecs))
+				break runLoop
+			}
 			processExited(procErr)
 			break runLoop
 
@@ -715,6 +779,12 @@ runLoop:
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
+	stillGoing := func() { // a run cancelled while finalizing delivers nothing
+		if finalStatus == persistence.RunStatusSuccess && ctx.Err() != nil {
+			finalStatus = persistence.RunStatusKilled
+		}
+	}
+	stillGoing()
 	if finalStatus == persistence.RunStatusSuccess && (val != nil && val.unreviewed || dec.taskApproved) {
 		approved, err := dec.finalReview(baseSHA, delivered())
 		if err != nil {
@@ -725,6 +795,7 @@ runLoop:
 			finalStatus = persistence.RunStatusFailed
 		}
 	}
+	stillGoing()
 	if finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
 		chainHead, err := r.store.GetLastEventHash(run.ID)
 		if err != nil {
@@ -736,18 +807,25 @@ runLoop:
 		}
 		if hash != "" {
 			commitHash = hash
-			// The commit is made; a certificate that cannot be written is reported
-			// and recorded, not a reason to call the run failed.
+			// The commit is made and stays delivered. Evidence that cannot be written
+			// is reported, recorded and named in the run summary; with RequireEvidence
+			// the run also ends with ErrEvidenceIncomplete.
 			ev := evidence{checks: r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)}
 			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
+				evidenceErrs = append(evidenceErrs, "ledger: "+err.Error())
+			} else if err := attachNote(gr, LedgerNotesRef, LedgerPath(r.wsDir, run.ID), hash); err != nil {
+				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not attached to the commit: %v\n", err)
+				evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 			}
-			if b, rerr := os.ReadFile(filepath.Join(r.wsDir, "policy.json")); rerr == nil {
-				ev.policy = sha256Hex(b)
-			}
+			ev.policy = snap.Digest
 			if err := r.certify(run.ID, hash, baseSHA, chainHead, opts.Plan, gr, ev); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
+				evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
+			}
+			if len(evidenceErrs) > 0 {
+				_ = r.audit(run.ID, "evidence_failed", map[string]any{"commit": hash, "errors": evidenceErrs})
 			}
 		}
 	}
@@ -762,6 +840,10 @@ type RunSummary struct {
 	FinalStatus string    `json:"final_status"`
 	CommitHash  string    `json:"commit_hash,omitempty"`
 	EndTime     time.Time `json:"end_time"`
+	// Outcome is what a run that made a commit can say about its evidence:
+	// OutcomeCertified, or OutcomeWithoutEvidence with EvidenceErrors saying why.
+	Outcome        string   `json:"outcome,omitempty"`
+	EvidenceErrors []string `json:"evidence_errors,omitempty"`
 	// Drift is the run's drift supervision record.
 	Drift *policy.DriftReport `json:"drift,omitempty"`
 }
@@ -812,22 +894,27 @@ func (r *Runner) runGates(caseID int64) error {
 // ─── Git helpers ──────────────────────────────────────────────────────────────
 
 // webhookClient is shared across all webhook calls within a single run.
-var webhookClient = &http.Client{Timeout: 30 * time.Second}
+// It never follows a redirect: the approval must come from the address that was configured.
+var webhookClient = &http.Client{Timeout: 30 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 // loadWebhookSecret returns the decrypted per-project webhook HMAC secret, or
-// nil when none is configured. A missing secret is not an error - it means the
-// webhook channel runs unauthenticated (legacy behaviour, warned about once).
-func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
+// nil with no error when none is stored - that means the webhook channel runs
+// unauthenticated (legacy behaviour, warned about once). A secret that is
+// stored but cannot be looked up or decrypted is an error, never "none".
+func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) ([]byte, error) {
 	sec, err := r.store.GetSecret(webhookauth.SecretKeyName, &projectID)
-	if err != nil || sec == nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("look up: %w", err)
+	}
+	if sec == nil {
+		return nil, nil
 	}
 	plaintext, err := crypto.Decrypt(aesKey, sec.EncryptedValue)
 	if err != nil {
-		obs.Log.Warn("webhook secret decrypt failed - treating channel as unauthenticated", "err", err)
-		return nil
+		return nil, fmt.Errorf("decrypt (was it stored under another workspace key?): %w", err)
 	}
-	return []byte(plaintext)
+	return []byte(plaintext), nil
 }
 
 // sendWebhookYield POSTs the yield to the project webhook and returns the
@@ -835,7 +922,7 @@ func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
 // the response signature is verified; an unsigned, mis-signed, stale, or
 // otherwise unverifiable response is treated as a rejection so a network
 // attacker cannot forge an approval.
-func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
+func sendWebhookYield(ctx context.Context, webhookURL string, secret []byte, req domain.YieldRequest) domain.YieldResponse {
 	reject := func(msg string) domain.YieldResponse {
 		return domain.Decide(false, msg)
 	}
@@ -848,7 +935,7 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 	}{yieldID, req})
 	reqHash := sha256Hex(body)
 
-	httpReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
 		obs.Log.Warn("webhook request build failed - auto-rejecting", "err", err)
 		return reject("webhook error: " + err.Error())
@@ -868,6 +955,10 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode < 200 || resp.StatusCode > 299 { // an error page is not an answer, whatever its body says
+		obs.Log.Warn("webhook answered with an error status - auto-rejecting", "status", resp.StatusCode)
+		return reject(fmt.Sprintf("webhook error: HTTP %d", resp.StatusCode))
+	}
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		obs.Log.Warn("webhook response read failed - auto-rejecting", "err", err)

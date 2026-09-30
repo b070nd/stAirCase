@@ -12,7 +12,10 @@ import (
 // when it rates it risky, doubts it serves a story, or cannot answer.
 type Signal struct {
 	Model string
-	Eval  signal.Evaluator // nil: the gateway, with the project's LLM_GATEWAY_API_KEY
+	// URL, when set, is a TypeSafe-compatible server (such as a local Laya at
+	// http://127.0.0.1:8000) instead of the gateway; the change is sent there.
+	URL   string
+	Eval  signal.Evaluator // nil: built from the gateway or URL
 	brief string
 }
 

@@ -56,3 +56,33 @@ own: review what changed in the repository, then run `governance use` again.
 Whoever can change the governance repository decides the team's rules and whom its
 members trust. Protect its main branch like production code: required reviews, and
 signed commits if you use them.
+
+## What this is not
+
+This is a way to share rules and keys through git. It is not an organization's
+identity system, and it does not claim to be:
+
+- **No single sign-on, roles or authenticated initiators.** Who is trusted is whoever
+  holds a listed key. A run records the git email of the checkout it ran in, which
+  anyone can set; nothing ties a run to a signed-in person.
+- **Rollout and revocation are not atomic.** Each workspace takes a change when its
+  owner runs `governance use`; until then it keeps the old rules and keys. To revoke
+  a key, remove it from `keys/` and `allowed_signers`, merge, and have every member
+  run `governance use`; certificates are checked against a member's *current* keys, so
+  a revoked key stops verifying only where the new bundle has been installed. A CI
+  check reads the bundle from its base branch, so it changes the moment the merge
+  lands.
+- **Durability.** Decisions are committed to the workspace database with
+  `synchronous=FULL` before the agent is told the answer, so an acknowledged
+  decision survives a process crash and, on a filesystem that honours `fsync`, a power
+  cut. macOS acknowledges `fsync` before the data reaches the disk unless the
+  application asks for `F_FULLFSYNC`, which stAirCase does not (it would triple the
+  time of the test suite there); on a laptop that loses power at the wrong moment the
+  last decision may be lost. Keep the audit exports and the certificates in git for
+  anything that matters.
+- **Mock agents are not compatibility evidence.** The adapters for Gemini CLI and
+  OpenCode are tested against stand-ins until their real behaviour is demonstrated;
+  [compatibility](compatibility.md) says which agent versions have actually been run.
+
+Fuller answers (authenticated actors, project roles, key custody in a KMS, retention)
+are planned only where a pilot needs them: see the [roadmap](../ROADMAP.md).

@@ -174,6 +174,9 @@ func Open(env Envelope, pub ed25519.PublicKey) (Statement, error) {
 	if s.Type != statementType || s.PredicateType != PredicateType || s.Commit() == "" {
 		return s, fmt.Errorf("not a change certificate (%s, %s)", s.Type, s.PredicateType)
 	}
+	if cal := s.Predicate.CAL; cal < 1 || cal > 3 { // level 4 is only ever established by a verifier (ADR 0001)
+		return s, fmt.Errorf("the certificate claims assurance level %d, but a producer can sign only 1 to 3", cal)
+	}
 	return s, nil
 }
 

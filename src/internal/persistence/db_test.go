@@ -1,6 +1,7 @@
 package persistence_test
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
@@ -193,4 +194,28 @@ func TestStore_error_paths_with_closed_db(t *testing.T) {
 
 	_, err = store.HasSuccessfulRunAtTopologyVersion(1, 1)
 	assert.Error(t, err, "HasSuccessfulRunAtTopologyVersion on closed db must error")
+}
+
+// TestInitDB_commits_are_durable: every pooled connection runs in WAL mode with
+// synchronous=FULL, so a decision that was acknowledged is on disk (F104).
+func TestInitDB_commits_are_durable(t *testing.T) {
+	db, err := persistence.InitDB(t.TempDir())
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	var conns []*sql.Conn
+	for i := 0; i < 3; i++ { // distinct pooled connections
+		c, err := db.Conn(ctx)
+		require.NoError(t, err)
+		conns = append(conns, c)
+		defer func() { _ = c.Close() }()
+	}
+	for _, c := range conns {
+		var sync int
+		require.NoError(t, c.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&sync))
+		assert.Equal(t, 2, sync, "synchronous=FULL")
+		var mode string
+		require.NoError(t, c.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode))
+		assert.Equal(t, "wal", mode)
+	}
 }

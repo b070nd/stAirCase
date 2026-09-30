@@ -61,3 +61,25 @@ func TestOpen_refuses_other_payloads(t *testing.T) {
 	_, err = certificate.Open(env, pub)
 	assert.Error(t, err)
 }
+
+// TestOpen_refuses_an_unearnable_level: a producer signs CAL 1 to 3 only; CAL 4
+// is established by a verifier from an independent person's signature, so a
+// freshly signed "cal":4 (or 0) is a false claim, not a certificate.
+func TestOpen_refuses_an_unearnable_level(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	for _, cal := range []int{-1, 0, 4, 5} {
+		s := statement()
+		s.Predicate.CAL = cal
+		env, err := certificate.Sign(s, priv)
+		require.NoError(t, err)
+		_, err = certificate.Open(env, pub)
+		assert.ErrorContains(t, err, "assurance level", "cal %d", cal)
+	}
+	for _, cal := range []int{1, 2, 3} {
+		s := statement()
+		s.Predicate.CAL = cal
+		env, _ := certificate.Sign(s, priv)
+		_, err := certificate.Open(env, pub)
+		assert.NoError(t, err, "cal %d", cal)
+	}
+}

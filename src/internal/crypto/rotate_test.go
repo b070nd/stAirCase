@@ -270,10 +270,12 @@ func TestResumeIfCommitted_pending_journal_leaves_unchanged(t *testing.T) {
 
 	require.NoError(t, ResumeIfCommitted(dir))
 
-	// Key must be unchanged.
-	currentKey, err := LoadKey(dir)
+	// Key must be unchanged, and LoadKey refuses while the rotation is unresolved (F101).
+	currentKey, err := os.ReadFile(filepath.Join(dir, KeyFile))
 	require.NoError(t, err)
 	assert.Equal(t, originalKey, currentKey, "key must not change for pending journal")
+	_, err = LoadKey(dir)
+	assert.ErrorContains(t, err, "rotation was interrupted")
 
 	// Journal and temp file must still exist (RotateKey will handle them).
 	_, statErr := os.Stat(journalPath)

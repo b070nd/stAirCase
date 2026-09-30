@@ -105,7 +105,7 @@ func TestServer_list_empty(t *testing.T) {
 
 func TestServer_list_shows_pending_yield(t *testing.T) {
 	srv, _ := startServer(t)
-	pendReq(t, srv)
+	id, _ := pendReq(t, srv)
 
 	resp := get(t, baseURL(srv)+"/v1/yields")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -113,7 +113,7 @@ func TestServer_list_shows_pending_yield(t *testing.T) {
 	var out []map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	require.Len(t, out, 1)
-	assert.Equal(t, "1", out[0]["id"])
+	assert.Equal(t, id, out[0]["id"])
 }
 
 func TestServer_list_not_allowed_methods(t *testing.T) {
@@ -517,4 +517,51 @@ func TestReviewPage(t *testing.T) {
 	assert.Equal(t, http.StatusOK, get("/", "localhost").StatusCode)
 
 	assert.Equal(t, base+"/#token=s3cret", srv.ReviewURL())
+}
+
+// TestServer_a_proposal_has_its_own_identity: ids do not repeat from one
+// server to the next, and a decision that names the request it answers is
+// refused when that is not the request pending under the id (F91).
+func TestServer_a_proposal_has_its_own_identity(t *testing.T) {
+	a, _ := startServer(t)
+	b, _ := startServer(t)
+	idA, _ := pendReq(t, a)
+	idB, _ := pendReq(t, b)
+	assert.NotEqual(t, idA, idB, "a new session must not reuse an old session's proposal ids")
+
+	var list []struct {
+		ID      string `json:"id"`
+		Request struct {
+			AgentName string `json:"agent_name"`
+		} `json:"request"`
+		Challenge string `json:"request_sha256"`
+	}
+	resp := get(t, baseURL(a)+"/v1/yields")
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&list))
+	require.Len(t, list, 1)
+	require.NotEmpty(t, list[0].Challenge, "the proposal's challenge is shown with it")
+
+	wrong := post(t, baseURL(a)+"/v1/yields/"+idA+"/approve", map[string]string{"request_sha256": "not-what-was-shown"})
+	assert.Equal(t, http.StatusConflict, wrong.StatusCode, "a decision for another request is refused")
+	right := post(t, baseURL(a)+"/v1/yields/"+idA+"/approve", map[string]string{"request_sha256": list[0].Challenge})
+	assert.Equal(t, http.StatusOK, right.StatusCode, "and the refusal left the proposal pending")
+}
+
+// TestServer_a_withdrawn_proposal_cannot_be_decided: once the run stops
+// waiting, a late approve is refused and unblocks nothing (F98).
+func TestServer_a_withdrawn_proposal_cannot_be_decided(t *testing.T) {
+	srv, _ := startServer(t)
+	id, ch := pendReq(t, srv)
+	srv.Withdraw(id)
+	resp := post(t, baseURL(srv)+"/v1/yields/"+id+"/approve", nil)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	select {
+	case r := <-ch:
+		t.Fatalf("a withdrawn proposal was decided: %+v", r)
+	default:
+	}
+	list := get(t, baseURL(srv)+"/v1/yields")
+	var out []map[string]any
+	require.NoError(t, json.NewDecoder(list.Body).Decode(&out))
+	assert.Empty(t, out)
 }

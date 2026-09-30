@@ -30,9 +30,12 @@ package approvalhttp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"mime"
@@ -51,9 +54,15 @@ import (
 // PendingYield is the server-side view of an in-flight yield waiting for an
 // operator decision.
 type PendingYield struct {
-	ID      string              `json:"id"`
-	Req     domain.YieldRequest `json:"request"`
-	Created time.Time           `json:"created"`
+	// ID belongs to this proposal alone: it is never reused by a later proposal
+	// or a later server, so a page that still shows an old card cannot decide
+	// a new request.
+	ID  string              `json:"id"`
+	Req domain.YieldRequest `json:"request"`
+	// Challenge is the SHA-256 of the request exactly as shown. A client that
+	// sends it back with its decision is refused unless it still names this request.
+	Challenge string    `json:"request_sha256"`
+	Created   time.Time `json:"created"`
 	// Payload is what a person signs to sign the decision: this text followed
 	// by "approve" or "reject" (SSH signature, namespace staircase-decision).
 	Payload string `json:"decision_payload,omitempty"`
@@ -62,9 +71,10 @@ type PendingYield struct {
 
 // feedbackBody is the optional JSON body accepted by approve/reject endpoints.
 type feedbackBody struct {
-	Feedback  string `json:"feedback"`
-	Signer    string `json:"signer"`
-	Signature string `json:"signature"`
+	Feedback      string `json:"feedback"`
+	RequestSHA256 string `json:"request_sha256"`
+	Signer        string `json:"signer"`
+	Signature     string `json:"signature"`
 }
 
 // MozillaTLSConfig returns a *tls.Config that matches the Mozilla TLS
@@ -292,16 +302,28 @@ func (s *Server) PendSigned(req domain.YieldRequest, payload string) (id string,
 	defer s.mu.Unlock()
 
 	s.nextID++
-	id = fmt.Sprintf("%d", s.nextID)
+	id = fmt.Sprintf("%d-%s", s.nextID, rand.Text()[:12])
+	reqJSON, _ := json.Marshal(req)
+	sum := sha256.Sum256(reqJSON)
 	py := &PendingYield{
-		ID:      id,
-		Req:     req,
-		Created: time.Now(),
-		Payload: payload,
-		ch:      make(chan domain.YieldResponse, 1),
+		ID:        id,
+		Req:       req,
+		Challenge: hex.EncodeToString(sum[:]),
+		Created:   time.Now(),
+		Payload:   payload,
+		ch:        make(chan domain.YieldResponse, 1),
 	}
 	s.pending[id] = py
 	return id, py.ch
+}
+
+// Withdraw takes a proposal back because nobody can use an answer any more
+// (the run ended): a later decision for it is refused as already decided.
+func (s *Server) Withdraw(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pending, id)
+	s.decided[id] = struct{}{}
 }
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
@@ -365,6 +387,11 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id strin
 
 	s.mu.Lock()
 	py, ok := s.pending[id]
+	if ok && body.RequestSHA256 != "" && body.RequestSHA256 != py.Challenge {
+		s.mu.Unlock() // the proposal stays pending: the client answered a different request
+		http.Error(w, "the decision names a different request than the one pending under this id", http.StatusConflict)
+		return
+	}
 	if ok {
 		delete(s.pending, id)
 		s.decided[id] = struct{}{}

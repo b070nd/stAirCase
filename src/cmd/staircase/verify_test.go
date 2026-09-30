@@ -57,6 +57,33 @@ func TestVerify_checks_a_commits_certificate(t *testing.T) {
 	verifyKey, verifyFile = "", ""
 }
 
+// TestVerify_refuses_a_claimed_level_4: the workspace key signs CAL 1 to 3; a
+// certificate it freshly signed with "cal":4 (no reviewer) is a false claim and
+// fails, however low the required level is.
+func TestVerify_refuses_a_claimed_level_4(t *testing.T) {
+	_, ws, _ := sessionRepo(t)
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	file := filepath.Join(ws, "audit", "run-1.certificate.json")
+	raw, err := os.ReadFile(file)
+	require.NoError(t, err)
+	var env certificate.Envelope
+	require.NoError(t, json.Unmarshal(raw, &env))
+	key, err := crypto.LoadSigningKey(ws)
+	require.NoError(t, err)
+	pub, err := certificate.OpenAny(env, []ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+	require.NoError(t, err)
+	pub.Predicate.CAL = 4
+	forged, err := certificate.Sign(pub, key)
+	require.NoError(t, err)
+	raw, _ = json.Marshal(forged)
+	claimed := filepath.Join(t.TempDir(), "claims-4.json")
+	require.NoError(t, os.WriteFile(claimed, raw, 0o600))
+
+	verifyMinCAL, verifyKey, verifyFile = 0, filepath.Join(ws, ".signing.pub"), claimed
+	t.Cleanup(func() { verifyKey, verifyFile = "", "" })
+	assert.ErrorContains(t, verifyHandler(nil, []string{"staircase/run-1"}), "assurance level 4")
+}
+
 // TestVerify_fails_a_failed_check: a commit whose recorded check failed does
 // not pass verify, whatever its level.
 func TestVerify_fails_a_failed_check(t *testing.T) {
@@ -132,7 +159,10 @@ func TestVerify_range(t *testing.T) {
 	verifyMinCAL, verifyKey, verifyFile, verifyCheckAnchor, verifyAll = 3, "", "", false, false
 	t.Cleanup(func() { verifyMinCAL, verifyAll = 0, false })
 
-	require.NoError(t, verifyHandler(nil, []string{"main..HEAD"}), "the run's commit is certified, the person's needs none")
+	out, err := captureStdout(t, func() error { return verifyHandler(nil, []string{"main..HEAD"}) })
+	require.NoError(t, err, "the run's commit is certified, the person's needs none")
+	assert.Contains(t, out, "1 commit(s) were not checked because they name no agent",
+		"a pass that skipped commits says so: a commit that omits Assisted-by looks the same")
 
 	verifyAll = true
 	assert.ErrorContains(t, verifyHandler(nil, []string{"main..HEAD"}), "no change certificate")

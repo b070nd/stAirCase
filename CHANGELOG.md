@@ -6,7 +6,69 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
+Reproducible, not just signed, and hardened. A commit can be rebuilt from the
+proposals that were approved for it, and a CI check can require that. People can
+sign their individual decisions. Every finding of an external assurance review
+that could be reproduced is fixed, and what could not be verified is written down:
+behaviour under a real GitHub ruleset (squash and rebase merges, forks, merge
+queues) and a Linux kernel with old Landlock were reasoned about, not run. Gemini
+CLI and OpenCode arrive as work in progress, built from their documentation and
+tested against stand-ins only.
+
+### Changed (read before upgrading)
+
+- **The verify Action's defaults are stricter.** It reads the key and allowed
+  signers from the pull request's base branch (or `trust-ref`) instead of the
+  checkout, and `all` now defaults to `true`: every commit needs a certificate. Set
+  `all: false` for the old advisory behaviour. The documented workflow uses
+  `b070nd/stAirCase@v0.6.0`; 0.5.0 of the Action still reads the key from the PR.
+- **A certificate that claims `cal` outside 1 to 3 is refused**, however validly it
+  is signed. stAirCase itself never wrote one.
+- **Proposal ids in the approval API are strings with a random part**
+  (`3-x7k2...`), not counting numbers. Treat them as opaque.
+- **A proposal whose text is not valid UTF-8 is refused** before it is decided,
+  because the ledger could not reproduce it.
+- **Linux: a kernel with Landlock older than ABI 3** (before 6.2) no longer counts
+  as a sandbox. `--sandbox required` refuses commands there and `auto` runs them
+  unsandboxed and says so; install bubblewrap.
+- **The workspace database commits with `synchronous=FULL`.**
+
 ### Added
+
+- **Evidence outcomes and `--require-evidence`.** A run that makes a commit now says
+  whether it is `certified` or `delivered_without_evidence` (and why) in its summary,
+  and records an `evidence_failed` event when the ledger or certificate could not be
+  written, including when the workspace has no signing key. `--require-evidence`
+  makes that case exit non-zero while the commit stays reported as delivered.
+
+- **Protected trust for the verify Action, and `verify --rebuild`.** The Action now
+  reads the trusted key (and the new `allowed-signers` input) from the pull request's
+  base branch, or `trust-ref`, instead of the pull request's own checkout, and checks
+  every commit by default (`all: false` restores the advisory behaviour, and
+  `verify` says how many commits it skipped). A run attaches its ledger to the commit
+  as a git note (`refs/notes/staircase-ledger`); `staircase verify --rebuild` (Action
+  input `rebuild`) replays it and fails a commit whose tree is not the one the
+  ledger produces. `docs/audit.md` states the limits: squash and rebase merges, forks,
+  who may push notes.
+
+- **`staircase opencode "task"` (work in progress):** OpenCode as the governed agent,
+  through a plugin generated per run that posts every tool call to the run and throws
+  to block it. Built from its documentation and tested with a stand-in that runs the
+  plugin under Node, not yet against a real login. Edits, patches and commands are
+  decided before they run, every other tool is refused. `run --agent opencode`.
+
+- **`staircase gemini "task"` (work in progress):** Gemini CLI as the governed agent,
+  built from its documentation and tested against a stand-in, not yet against a real
+  login. Edits and commands are decided before they run, every other tool is refused,
+  and the hook bridge takes `--file` because Gemini sanitizes its hooks' environment.
+  `run --agent gemini`, `hook-template gemini`.
+
+- `--signal-url <address>`: ask a TypeSafe-compatible server, such as a local Laya
+  (`laya-serve`), instead of the gateway. stAirCase then speaks TypeSafe's own shape
+  (`POST /v1/systemone`), sends a key only if `SIGNAL_API_KEY` is stored, and
+  `jeveval -api systemone` measures such a server on the same 24 cases.
 
 - **Signed decisions.** `--sign-approvals <ssh key>` (with `--sign-as`) signs each
   decision you make; the approval API also takes a `signer` and `signature`, over
@@ -23,6 +85,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   identical to the commit's, so a commit that holds anything nobody approved fails
   even with a valid signature. The specification describes the replay, with 14
   conformance vectors and an independent Python implementation run in CI.
+
+### Fixed
+
+- **Decisions are durable, and releases need a green build.** The workspace database
+  commits with `synchronous=FULL`, so a decision acknowledged to the agent is on disk
+  before it is reported (macOS caveat in `docs/governance.md`). The release workflow
+  now refuses a tag whose commit is not on the default branch or has no successful CI
+  run (`packaging/release-gate.sh`). The governance and compatibility docs state what
+  identity, rollout, revocation and agent testing do and do not establish, and a
+  restored copy of the workspace is tested to verify.
+- **Sandbox confidentiality, stated and tightened.** The agents' own login stores
+  (`~/.claude`, `~/.codex`, `~/.gemini`, OpenCode's) are hidden from sandboxed
+  commands like `~/.ssh`. On Linux, a kernel whose Landlock is older than ABI 3
+  (before 6.2) no longer counts as a sandbox: it cannot stop a command truncating
+  files outside its folders, so `--sandbox required` refuses and `auto` runs
+  unsandboxed and says so (install bubblewrap). `docs/safety.md` has a
+  confidentiality profile table.
+- **`clean --aggressive` no longer destroys evidence silently.** It keeps a run branch
+  that is not merged into another branch (the only copy of the commit), archives
+  flagged cases and pruned audit rows to `archive/` before deleting them (and deletes
+  nothing if the archive fails), and stops entirely while a `legal-hold` file is in the
+  workspace.
+- **Key rotation cannot be left half done unnoticed.** After an interrupted
+  `secret rotate` whose outcome is ambiguous, the workspace key is refused (by runs,
+  `secret set` and `doctor`) until `secret rotate` resolves it. Before, `secret set`
+  kept working with the old key and stored a secret that the finished rotation then
+  stranded. Tested with a real database and a simulated kill at both points.
+- **A producer cannot claim CAL 4.** A certificate that says `cal` 4 (or anything
+  outside 1 to 3) is refused however validly it is signed; level 4 is only ever
+  established by a verifier from a trusted reviewer's signature. Conformance vectors
+  12 and 13, the independent verifier and the specification say so, and the docs
+  no longer describe CAL 4 as proven two-person control: the requester is an
+  unauthenticated git email.
+- **One read of the policy file.** The rules, the signature check and the digest the
+  certificate records come from a single read of `policy.json`, so a file replaced
+  while a run is going changes neither the decisions nor the digest.
+- **Webhook approvals fail closed.** A stored webhook secret that cannot be looked up
+  or decrypted stops the run instead of falling back to an unsigned channel; only an
+  HTTP 2xx answer counts (a signed approval body on a 500 no longer approves) and a
+  redirect is not followed.
+- **A decision answers one proposal.** Proposal ids carry a random part instead of a
+  counter that restarts at 1, and the review page sends back the hash of the request
+  it showed, so a card left over from an ended session cannot decide a new one. The
+  text a person signs has a fresh nonce per proposal, so a captured signature is
+  refused on a later identical proposal. (Signed decisions are new since 0.5.0.)
+- **A wait for a person ends with the run.** Cancelling a run, or its `max_run_secs`
+  passing, while it waits for a person (page, API, webhook or final review) ends
+  the wait, withdraws the proposal and refuses a late answer; it is never recorded
+  as an approval. A cancelled run ends KILLED and commits nothing.
+- **Changes the ledger cannot reproduce are refused.** A proposal whose file name or
+  text is not valid UTF-8 is refused before it is decided, instead of being approved
+  and then failing `rebuild`.
 
 ## [0.5.0] - 2026-09-29
 

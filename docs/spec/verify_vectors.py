@@ -48,6 +48,8 @@ def verify(envelope: dict, public_key: bytes, commit: str, min_cal: int) -> int:
         raise ValueError("is about commit")
     p = st["predicate"]
     level = p["cal"]  # step 5, without person signatures
+    if not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= 3:  # step 3
+        raise ValueError("assurance level")
     if level < min_cal:  # step 6
         raise ValueError("below the required %d" % min_cal)
     for c in p.get("checks") or []:  # step 7

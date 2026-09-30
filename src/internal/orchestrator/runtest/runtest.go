@@ -33,6 +33,8 @@ type Options struct {
 	// NoTopology leaves the project without a topology, as for a case run by
 	// an agent harness.
 	NoTopology bool
+	// Ctx is the parent of the run's context (default: background). Cancel it to cancel the run.
+	Ctx context.Context
 }
 
 // Result is what a run left behind.
@@ -107,7 +109,11 @@ func Run(t testing.TB, o Options) Result {
 
 	opts := o.Run
 	opts.Agent, opts.SkipGates = o.Agent, true
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	parent := o.Ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 	runErr := orchestrator.NewRunner(s, wsDir).Run(ctx, c.ID, opts)
 

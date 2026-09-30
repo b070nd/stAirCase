@@ -27,9 +27,9 @@ type deciders struct {
 	validator *Validator
 	task      bool // ApproveInScope with an agreed task
 	signal    *Signal
-	redact    func(string) string // removes delivered secret values from what a person is shown
-	sign      *decisionSigning    // checks and adds signatures on human decisions
-	askHuman  func(domain.YieldRequest) domain.YieldResponse
+	redact    func(string) string                                                 // removes delivered secret values from what a person is shown
+	sign      *decisionSigning                                                    // checks and adds signatures on human decisions
+	askHuman  func(req domain.YieldRequest, signText string) domain.YieldResponse // signText: what a person signs, up to the verb
 	display   *monitor.Display
 	tracker   *monitor.Tracker
 	audit     func(event string, fields map[string]any) error
@@ -164,11 +164,9 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 
 func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
 	start := time.Now()
-	rl.resp, rl.source = d.askHuman(*req), "operator"
+	rl.source = "operator"
+	rl.resp, rl.signed = d.sign.ask(*req, d.askHuman)
 	rl.decideMS = time.Since(start).Milliseconds()
-	if d.sign != nil {
-		rl.resp, rl.signed = d.sign.check(*req, rl.resp)
-	}
 	if rl.next != nil {
 		before := map[string]*approvedFile{}
 		for p := range rl.next {
@@ -196,11 +194,7 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 	}
 	final = scrubSecrets(final, delivered)
 	start := time.Now()
-	resp := d.askHuman(final)
-	var signed map[string]any
-	if d.sign != nil {
-		resp, signed = d.sign.check(final, resp)
-	}
+	resp, signed := d.sign.ask(final, d.askHuman)
 	decided := yieldDecided(d.total+1, "operator", final, resp, baseSHA, d.approvals.files, "")
 	maps.Copy(decided, signed)
 	decided["decide_ms"] = time.Since(start).Milliseconds()

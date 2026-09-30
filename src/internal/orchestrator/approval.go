@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	gogit "github.com/go-git/go-git/v5"
@@ -76,6 +77,12 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 		return a.fromBase(p)
 	}
 	for _, e := range edits {
+		// The ledger is JSON, which cannot carry bytes that are not UTF-8: such a
+		// change could be approved but never reproduced, and a person cannot read
+		// it. Refuse it here, where a run and a rebuild derive (F94).
+		if !utf8.ValidString(e.File) || !utf8.ValidString(e.SearchBlock) || !utf8.ValidString(e.ReplaceBlock) {
+			return nil, fmt.Errorf("%q: the change is not valid UTF-8 text; binary changes cannot be approved or reproduced", strings.ToValidUTF8(e.File, "?"))
+		}
 		p, err := cleanApprovedPath(a.repo.path, e.File)
 		if err != nil {
 			return nil, err

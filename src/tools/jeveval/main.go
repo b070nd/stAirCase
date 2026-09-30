@@ -40,15 +40,18 @@ type evalCase struct {
 func main() {
 	model := flag.String("model", "typesafe-ai/jev", "evaluation model on the gateway")
 	casesFile := flag.String("cases", "", "labelled cases (default: the built-in set)")
-	base := flag.String("base", signal.DefaultBaseURL, "gateway URL")
+	base := flag.String("base", signal.DefaultBaseURL, "server URL (the gateway, or for -api systemone a local Laya such as http://127.0.0.1:8000)")
+	api := flag.String("api", "", `request shape: "" for the gateway's /v1/evaluate, "systemone" for TypeSafe's and Laya's /v1/systemone`)
 	flag.Parse()
-	key := os.Getenv("LLM_GATEWAY_API_KEY")
-	if key == "" {
-		key = os.Getenv("AI_GATEWAY_API_KEY")
-	}
-	if key == "" {
-		fmt.Fprintln(os.Stderr, "jeveval: set LLM_GATEWAY_API_KEY")
-		os.Exit(2)
+	key := os.Getenv("SIGNAL_API_KEY") // a local server gets its own key only, never the gateway's
+	if *api == signal.Gateway {
+		if key = os.Getenv("LLM_GATEWAY_API_KEY"); key == "" {
+			key = os.Getenv("AI_GATEWAY_API_KEY")
+		}
+		if key == "" {
+			fmt.Fprintln(os.Stderr, "jeveval: set LLM_GATEWAY_API_KEY")
+			os.Exit(2)
+		}
 	}
 	b := defaultCases
 	if *casesFile != "" {
@@ -63,7 +66,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "jeveval:", err)
 		os.Exit(2)
 	}
-	c := &signal.Client{Model: *model, Key: key, BaseURL: *base}
+	c := &signal.Client{Model: *model, Key: key, BaseURL: *base, API: *api}
 	if err := run(context.Background(), c, *model, cases, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "jeveval:", err)
 		os.Exit(1)

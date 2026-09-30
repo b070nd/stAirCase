@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -123,8 +125,13 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 // for the hooks a session brings and --require for a company's managed hook.
 // It is the same on every run and holds no secret; the shell that runs hooks
 // gets the program path quoted.
-func HookCommand(bin, agentName, mode string) string {
-	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "' hook " + agentName + " " + mode
+func HookCommand(bin, agentName, mode string, extra ...string) string {
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	cmd := quote(bin) + " hook " + agentName + " " + mode
+	for _, e := range extra {
+		cmd += " " + quote(e)
+	}
+	return cmd
 }
 
 // sandboxSettings turn on Claude Code's own sandbox for its commands, as
@@ -200,6 +207,13 @@ type hookServer struct {
 	token string
 	codex bool // Codex's tools and rules instead of Claude Code's (see codex.go)
 
+	// Other agents (Gemini CLI, OpenCode) speak Claude Code's gate after
+	// norm has put their events and tools in its shape, and get their own
+	// reply format from out. name is what proposals call the agent.
+	name, label string
+	norm        func(hookInput) hookInput
+	out         func([]byte) []byte
+
 	started atomic.Bool // a SessionStart hook arrived: the agent runs staircase's hooks
 
 	mu      sync.Mutex
@@ -214,6 +228,41 @@ type hookInput struct {
 	ToolUseID string          `json:"tool_use_id"`
 }
 
+// pendingKey pairs an approved edit with the event that follows it: the
+// tool's id, or for an agent that gives none (Gemini CLI) a hash of the call.
+func (in hookInput) pendingKey() string {
+	if in.ToolUseID != "" {
+		return in.ToolUseID
+	}
+	sum := sha256.Sum256([]byte(in.Tool + "\x00" + string(in.Input)))
+	return "call:" + hex.EncodeToString(sum[:8])
+}
+
+func (h *hookServer) who() string {
+	if h.name != "" {
+		return h.name
+	}
+	return "claude-code"
+}
+
+func (h *hookServer) title() string {
+	if h.label != "" {
+		return h.label
+	}
+	return "Claude Code"
+}
+
+// commandSandboxed says whether a command the agent ran was in a sandbox: only
+// Claude Code's is (see sandboxSettings), unless managed settings widen it.
+func (h *hookServer) commandSandboxed() bool { return h.name == "" && !managedWidensSandbox() }
+
+func (h *hookServer) write(w http.ResponseWriter, b []byte) {
+	if h.out != nil {
+		b = h.out(b)
+	}
+	_, _ = w.Write(b)
+}
+
 func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+h.token)) != 1 {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -224,8 +273,11 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if h.norm != nil {
+		in = h.norm(in)
+	}
 	if in.ToolUseID == "" {
-		_, _ = w.Write(h.answer(r.Context(), in))
+		h.write(w, h.answer(r.Context(), in))
 		return
 	}
 	// With a company's managed hook and the session's own both installed, the
@@ -243,7 +295,7 @@ func (h *hookServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		close(c.done)
 	}
 	<-c.done
-	_, _ = w.Write(c.answer)
+	h.write(w, c.answer)
 }
 
 // hookCall is one tool call's answer, shared by every hook that asks for it.
@@ -260,7 +312,7 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 		h.started.Store(true)
 	case "PreToolUse":
 		pre := h.pre
-		if h.codex {
+		if h.codex || in.Tool == "apply_patch" { // Codex's tools; OpenCode's patches read the same way
 			pre = h.preCodex
 		}
 		reason := pre(ctx, in)
@@ -276,8 +328,8 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 		}
 	case "PostToolUse":
 		h.mu.Lock()
-		ap, ok := h.pending[in.ToolUseID]
-		delete(h.pending, in.ToolUseID)
+		ap, ok := h.pending[in.pendingKey()]
+		delete(h.pending, in.pendingKey())
 		h.mu.Unlock()
 		if ok {
 			if err := ap.Apply(h.root); err != nil { // finalize verify fails the run on any divergence
@@ -294,7 +346,7 @@ func (h *hookServer) answer(ctx context.Context, in hookInput) []byte {
 				Command string `json:"command"`
 			}
 			_ = json.Unmarshal(in.Input, &a)
-			if ap := h.env.ShellRan(ctx, "claude-code", a.Command, !managedWidensSandbox()); !ap.Approved {
+			if ap := h.env.ShellRan(ctx, h.who(), a.Command, h.commandSandboxed()); !ap.Approved {
 				return reply(map[string]any{"decision": "block", "reason": "the files it changed were " + ap.Refusal() + "; they were reverted"})
 			}
 		}
@@ -340,7 +392,7 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		if a.DangerouslyDisableSandbox {
 			return "staircase: commands run in the sandbox only"
 		}
-		if ap := h.env.ProposeShell(ctx, "claude-code", "Claude Code Bash", ".", a.Command); !ap.Approved {
+		if ap := h.env.ProposeShell(ctx, h.who(), h.title()+" Bash", ".", a.Command); !ap.Approved {
 			return ap.Refusal()
 		}
 		return ""
@@ -368,12 +420,12 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 
 // proposeEdit asks for an edit and keeps its approval until PostToolUse.
 func (h *hookServer) proposeEdit(ctx context.Context, in hookInput, e domain.ProposedEdit) string {
-	ap := h.env.ProposeEdit(ctx, "claude-code", "Claude Code "+in.Tool, e)
+	ap := h.env.ProposeEdit(ctx, h.who(), h.title()+" "+in.Tool, e)
 	if !ap.Approved {
 		return ap.Refusal()
 	}
 	h.mu.Lock()
-	h.pending[in.ToolUseID] = ap
+	h.pending[in.pendingKey()] = ap
 	h.mu.Unlock()
 	return ""
 }

@@ -54,11 +54,6 @@ func rebuildHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	git := func(a ...string) (string, error) {
-		o, err := exec.Command("git", append([]string{"-C", top}, a...)...).Output()
-		return strings.TrimSpace(string(o)), err
-	}
-
 	var raw []byte
 	if rebuildCertificate != "" {
 		raw, err = os.ReadFile(rebuildCertificate)
@@ -99,25 +94,39 @@ func rebuildHandler(_ *cobra.Command, args []string) error {
 	if got := ledgerDigest(ledger); got != p.Ledger {
 		return fmt.Errorf("%s is not the ledger the certificate names (sha256 %.12s, want %.12s)", ledgerFile, got, p.Ledger)
 	}
-
-	tree, l, err := orchestrator.RebuildTree(top, ledger)
+	proposals, tree, err := rebuildCommit(top, commit, p, ledger)
 	if err != nil {
 		return err
+	}
+	fmt.Printf("✅ Commit %.12s rebuilt: %d approved proposal(s) on %.12s give tree %.12s, identical to the commit's\n", commit, proposals, p.BaseCommit, tree)
+	fmt.Printf("   certificate signed, ledger %.12s named in it, run #%d\n", p.Ledger, p.Run)
+	return nil
+}
+
+// rebuildCommit replays ledger (whose digest the caller has checked against the
+// certificate) and checks that it starts where the commit does and produces the
+// commit's tree. It returns the number of proposals and the tree.
+func rebuildCommit(top, commit string, p certificate.Predicate, ledger []byte) (int, string, error) {
+	git := func(a ...string) (string, error) {
+		o, err := exec.Command("git", append([]string{"-C", top}, a...)...).Output()
+		return strings.TrimSpace(string(o)), err
+	}
+	tree, l, err := orchestrator.RebuildTree(top, ledger)
+	if err != nil {
+		return 0, "", err
 	}
 	parent, _ := git("rev-parse", commit+"^")
 	if l.Base != parent || l.Base != p.BaseCommit {
-		return fmt.Errorf("the ledger starts from %.12s, but the commit's parent is %.12s and the certificate's base is %.12s", l.Base, parent, p.BaseCommit)
+		return 0, "", fmt.Errorf("the ledger starts from %.12s, but the commit's parent is %.12s and the certificate's base is %.12s", l.Base, parent, p.BaseCommit)
 	}
 	want, err := git("rev-parse", commit+"^{tree}")
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	if tree != want {
-		return fmt.Errorf("commit %.12s does not have the tree the ledger produces (rebuilt %.12s, commit has %.12s): it holds bytes nobody approved", commit, tree, want)
+		return 0, "", fmt.Errorf("commit %.12s does not have the tree the ledger produces (rebuilt %.12s, commit has %.12s): it holds bytes nobody approved", commit, tree, want)
 	}
-	fmt.Printf("✅ Commit %.12s rebuilt: %d approved proposal(s) on %.12s give tree %.12s, identical to the commit's\n", commit, len(l.Proposals), l.Base, tree)
-	fmt.Printf("   certificate signed, ledger %.12s named in it, run #%d\n", p.Ledger, p.Run)
-	return nil
+	return len(l.Proposals), tree, nil
 }
 
 // ledgerDigest is the hex SHA-256 the certificate records for a ledger.

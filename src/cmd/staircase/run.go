@@ -24,30 +24,32 @@ import (
 )
 
 var (
-	runDryRun         bool
-	runForce          bool
-	runSkipGate       bool
-	runAutoStash      bool
-	runDebug          bool
-	runReconcile      bool
-	runApprovalPort   int
-	runApprovalToken  string
-	runMetricsAddr    string
-	runOTelEndpoint   string
-	runRecordLLM      string
-	runReplayLLM      string
-	runAllowShellExec bool
-	runSandbox        string
-	runChecks         []string
-	runAgent          string
-	runModel          string
-	runAgreedBy       string // who agreed to the task before a session started
-	runAckDrift       bool
-	runValidator      []string
-	runSignal         string
-	runSignKey        string
-	runSignAs         string
-	runRequireSigned  bool
+	runDryRun          bool
+	runForce           bool
+	runSkipGate        bool
+	runAutoStash       bool
+	runDebug           bool
+	runReconcile       bool
+	runApprovalPort    int
+	runApprovalToken   string
+	runMetricsAddr     string
+	runOTelEndpoint    string
+	runRecordLLM       string
+	runReplayLLM       string
+	runAllowShellExec  bool
+	runSandbox         string
+	runChecks          []string
+	runAgent           string
+	runModel           string
+	runAgreedBy        string // who agreed to the task before a session started
+	runAckDrift        bool
+	runValidator       []string
+	runSignal          string
+	runSignalURL       string
+	runSignKey         string
+	runSignAs          string
+	runRequireSigned   bool
+	runRequireEvidence bool
 )
 
 var runCmd = &cobra.Command{
@@ -184,10 +186,14 @@ func runCase(caseID int64) error {
 		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel}
 	case "codex":
 		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
+	case "gemini":
+		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel}
+	case "opencode":
+		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: runModel}
 	case "review":
 		ag = &agent.Review{Commit: pl.Review.Commit, By: pl.Review.By}
 	default:
-		return fmt.Errorf("unknown --agent %q: use built-in, claude-code or codex", who)
+		return fmt.Errorf("unknown --agent %q: use built-in, claude-code, codex, gemini or opencode", who)
 	}
 
 	var validator *orchestrator.Validator
@@ -201,7 +207,7 @@ func runCase(caseID int64) error {
 	}
 	var sig *orchestrator.Signal
 	if runSignal != "" {
-		sig = &orchestrator.Signal{Model: runSignal}
+		sig = &orchestrator.Signal{Model: runSignal, URL: runSignalURL}
 	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
@@ -220,6 +226,7 @@ func runCase(caseID int64) error {
 		SignAs:         orDefaultStr(runSignAs, gitConfig("user.email")),
 
 		RequireSignedApprovals: runRequireSigned,
+		RequireEvidence:        runRequireEvidence,
 		Checks:                 runChecks,
 		AckDrift:               runAckDrift,
 		Validator:              validator,
@@ -238,6 +245,9 @@ func checkFlag(cmd *cobra.Command) {
 
 // validatorFlag adds --validator and --signal to cmd.
 func validatorFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&runSignalURL, "signal-url", "",
+		"Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; "+
+			"the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)")
 	cmd.Flags().StringVar(&runSignal, "signal", "",
 		"Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; "+
 			"it can only send a change to you (risky, off the stories, or no answer), never approve one")
@@ -254,6 +264,9 @@ func signFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&runSignAs, "sign-as", "", "The name you sign decisions as (default: git user.email)")
 	cmd.Flags().BoolVar(&runRequireSigned, "require-signed-approvals", false,
 		"Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers")
+	cmd.Flags().BoolVar(&runRequireEvidence, "require-evidence", false,
+		"Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; "+
+			"the commit stays on its branch and is reported as delivered without evidence")
 }
 
 func orDefaultStr(s, def string) string {

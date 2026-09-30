@@ -20,6 +20,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
+	"github.com/b070nd/stAirCase/src/internal/webhookauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -202,4 +203,59 @@ func TestRun_certificate_shows_review_attention(t *testing.T) {
 	assert.Equal(t, 2, a.HumanDecisions)
 	assert.Equal(t, 1, a.QuickApprovals, "30 lines approved at once by the test operator")
 	assert.GreaterOrEqual(t, a.MedianSeconds, 0.0)
+}
+
+// TestRun_certificate_binds_the_policy_the_run_loaded: the policy file is read
+// once; replacing it while the run is going changes neither the decisions nor
+// the digest the certificate records (F93).
+func TestRun_certificate_binds_the_policy_the_run_loaded(t *testing.T) {
+	var policyFile string
+	var loaded []byte
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		var err error
+		if loaded, err = os.ReadFile(policyFile); err != nil {
+			return err
+		}
+		// someone swaps the policy after the run began
+		if err := os.WriteFile(policyFile, []byte(`{"version":1,"rules":[],"limits":{"max_auto_approved":99}}`), 0o600); err != nil {
+			return err
+		}
+		return writeFile("health.txt", "ok\n")(ctx, env)
+	}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent),
+		Setup: func(st *persistence.Store, wsDir string, projectID int64) {
+			require.NoError(t, crypto.GenerateSigningKey(wsDir))
+			policyFile = filepath.Join(wsDir, "policy.json")
+		}})
+	require.NoError(t, r.Err)
+	b, err := os.ReadFile(filepath.Join(r.WsDir, "audit", "run-1.certificate.json"))
+	require.NoError(t, err)
+	var env certificate.Envelope
+	require.NoError(t, json.Unmarshal(b, &env))
+	pub, err := crypto.LoadSigningPublicKey(r.WsDir)
+	require.NoError(t, err)
+	s, err := certificate.Open(env, pub)
+	require.NoError(t, err)
+	assert.Equal(t, sha256Hex(string(loaded)), s.Predicate.Policy, "the digest is of the policy the run decided under")
+	assert.Equal(t, 1, s.Predicate.Decisions["policy"], "the original policy approved the change")
+}
+
+// TestRun_a_webhook_secret_that_cannot_be_read_stops_the_run: when a secret is
+// stored for the webhook but cannot be decrypted, the run fails before it asks
+// anyone. It must not quietly carry on over an unauthenticated channel (F92).
+func TestRun_a_webhook_secret_that_cannot_be_read_stops_the_run(t *testing.T) {
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{Agent: writeFile("health.txt", "ok\n"),
+		Setup: func(st *persistence.Store, wsDir string, projectID int64) {
+			require.NoError(t, os.WriteFile(filepath.Join(wsDir, "policy.json"), []byte(`{"rules":[]}`), 0o600)) // people decide
+			webhook(t, st, projectID, op)
+			wrong := make([]byte, 32) // not the workspace key
+			sealed, err := crypto.Encrypt(wrong, "a secret sealed under another key")
+			require.NoError(t, err)
+			_, _, err = st.SetSecret(webhookauth.SecretKeyName, sealed, &projectID)
+			require.NoError(t, err)
+		}})
+	assert.ErrorContains(t, r.Err, "webhook secret")
+	assert.Empty(t, r.Run.GitCommitHash)
+	assert.Empty(t, op.seen, "nobody was asked")
 }

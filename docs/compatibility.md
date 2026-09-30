@@ -28,3 +28,20 @@ stAirCase is before 1.0 (see [CHANGELOG](../CHANGELOG.md)).
 
 Everything else, including the command-line output, the workspace layout, the
 database and the agents' prompts, can change in any version.
+
+## Which agents have actually been run
+
+A stand-in agent that speaks an agent's hook protocol proves stAirCase's side of the
+bridge. It says nothing about what a real version of that agent does. This is what
+has been exercised against the real thing:
+
+| Agent | Tested against the real program | Not yet |
+|---|---|---|
+| Codex CLI | 0.155 and 0.158: two paid runs (an edit decided before it ran, a command's changes reviewed after, certificate CAL 2 verified); all flags accepted | a refused Stop (definition of done) in a real turn |
+| Claude Code | 2.1.236, logged out: the settings stAirCase passes, and that a repository's own hooks are ignored | a logged-in run; the sandbox settings end to end (`make smoke-claude`) |
+| Gemini CLI | nothing: a stand-in, built from its documentation | everything; work in progress |
+| OpenCode | nothing: a stand-in that runs the generated plugin under Node, built from its documentation | everything; work in progress |
+
+Agent versions change often. A newer version than the one listed may behave
+differently; run the smoke test for your agent (`make smoke-claude`, `make smoke-codex`)
+after upgrading it.

@@ -75,9 +75,10 @@ staircase claude "add a /health endpoint" --sign-approvals ~/.ssh/id_ed25519 --a
 With `--sign-approvals <key>`, stAirCase signs each decision you make (in the
 terminal, the browser or the API) with your key, as `--sign-as` (default: your git
 `user.email`). A hardware-backed key (`ed25519-sk`) that needs a touch turns this
-into a real presence check. The signature covers the run, the exact request you saw
-(by its SHA-256) and your decision, so it cannot be moved to another decision, and
-a signature for "approve" is worthless as a rejection.
+into a real presence check. The signature covers the run, a fresh nonce for this one
+proposal, the exact request you saw (by its SHA-256) and your decision, so it cannot
+be moved to another decision or replayed on a later identical proposal, and a
+signature for "approve" is worthless as a rejection.
 
 Someone else can decide through the approval API and sign on their own machine: each
 pending request carries a `decision_payload`; they sign that text followed by
@@ -139,18 +140,28 @@ a token. Pass `--approval-token` to choose the token yourself.
 
 | Request | What it does |
 |---|---|
-| `GET /v1/yields` | list waiting proposals (`id`, `request`, `created`) |
+| `GET /v1/yields` | list waiting proposals (`id`, `request`, `request_sha256`, `created`) |
 | `GET /v1/yields/{id}` | one waiting proposal |
-| `POST /v1/yields/{id}/approve` | approve; optional body `{"feedback": "…"}` |
-| `POST /v1/yields/{id}/reject` | reject; optional body `{"feedback": "…"}` |
+| `POST /v1/yields/{id}/approve` | approve; optional body `{"feedback": "…", "request_sha256": "…"}` |
+| `POST /v1/yields/{id}/reject` | reject; optional body `{"feedback": "…", "request_sha256": "…"}` |
 
-Every request needs the header `Authorization: Bearer <token>`.
+Every request needs the header `Authorization: Bearer <token>`. A proposal's `id` is
+never reused, by a later proposal or a later run. Send its `request_sha256` back with
+the decision to be sure you are answering the request you read: a decision naming a
+different request is refused with `409`.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/v1/yields
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -d '{"feedback":"looks good"}' http://127.0.0.1:8765/v1/yields/<id>/approve
 ```
+
+A proposal waits for you only as long as its run lives. If the run is cancelled, or
+its `max_run_secs` limit passes, while a proposal is waiting (through the page, the API
+or a webhook), the wait ends, the proposal is withdrawn and a late answer is refused
+(`409`); it is never recorded as an approval. The run's final review, asked after the
+agent has finished, ends only when the run is cancelled. The terminal dialog cannot be
+interrupted, but an answer given after the run ended is discarded the same way.
 
 ### From a service: a webhook
 
@@ -169,7 +180,9 @@ fields the approval API shows, plus a fresh `yield_id`. Your service must answer
 { "approved": true, "feedback": "optional text for the agent" }
 ```
 
-Any error, timeout or unreadable answer counts as a rejection.
+Any error, timeout, unreadable answer or answer that is not HTTP 2xx counts as a
+rejection, and a redirect is never followed. If a secret is stored for the project
+but cannot be read, the run stops rather than carry on unsigned.
 
 **Sign the webhook.** Without a shared secret, anyone who can reach or intercept the
 connection could forge an approval. Store a secret for the project:
@@ -283,8 +296,26 @@ change is it. It can only **send the change to you**: when it rates the change r
 doubts it serves a story, or cannot answer. It never approves or rejects anything.
 Every rating is recorded (`signal_rated`).
 
+**A local model instead of the gateway.** [Laya](https://huggingface.co/convaiinnovations/laya)
+is an open model (Apache 2.0) with a Jev-shaped server; run it yourself and nothing
+leaves your machine:
+
+```bash
+pip install "laya[serve]"
+LAYA_API_KEY=some-secret laya-serve            # port 8000
+staircase secret set SIGNAL_API_KEY            # the same secret, read from stdin
+staircase claude "…" --signal laya --signal-url http://127.0.0.1:8000
+```
+
+`--signal-url` makes stAirCase speak TypeSafe's own request shape (`POST /v1/systemone`)
+to that address instead of the gateway's. `laya-serve` listens on all interfaces and
+accepts anyone unless `LAYA_API_KEY` is set, so set it and keep the port closed to
+your network. The change is sent to the address you give, so give one you trust. A key
+is sent only when you stored `SIGNAL_API_KEY`; the gateway key is never sent there.
+
 The model sees the stories and the change, the same as a validator. Measure it on
-your own kind of changes before you rely on it: `make eval-jev` runs 24 labelled
+your own kind of changes before you rely on it: `make eval-jev` (for a local Laya:
+`go run ./src/tools/jeveval -model laya -base http://127.0.0.1:8000 -api systemone`) runs 24 labelled
 changes (secrets, exfiltration, weakened tests, prompt injection, Trojan Source,
 drift) and reports what it missed and what it flagged needlessly.
 

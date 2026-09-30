@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/governance"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -25,6 +27,8 @@ var (
 	verifyCheckAnchor bool
 	verifyAll         bool
 	verifySigners     string
+	verifyRebuild     bool
+	verifyLedger      string
 )
 
 var verifyCmd = &cobra.Command{
@@ -57,6 +61,10 @@ func init() {
 		"git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4 "+
 			"(default: the team's, from staircase governance)")
 	verifyCmd.Flags().BoolVar(&verifyAll, "all", false, "In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)")
+	verifyCmd.Flags().BoolVar(&verifyRebuild, "rebuild", false,
+		"Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note "+
+			"(refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails")
+	verifyCmd.Flags().StringVar(&verifyLedger, "ledger", "", "With --rebuild, read the ledger from this file instead of the git note (one commit only)")
 	verifyCmd.Flags().BoolVar(&verifyCheckAnchor, "check-anchor", false,
 		"Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace")
 	rootCmd.AddCommand(verifyCmd)
@@ -87,11 +95,13 @@ func verifyRange(rng string) error {
 	}
 	commits := strings.Fields(string(out))
 	var failed []string
+	skipped := 0
 	for _, c := range commits {
 		trailer, _ := exec.Command("git", "log", "-1", "--format=%(trailers:key=Assisted-by,valueonly,separator=%x2C )", c).Output()
 		assisted := strings.TrimSpace(string(trailer))
 		if assisted == "" && !verifyAll {
 			fmt.Printf("·  Commit %.12s: no agent declared, no certificate needed\n", c)
+			skipped++
 			continue
 		}
 		if err := verifyCommit(c); err != nil {
@@ -105,7 +115,10 @@ func verifyRange(rng string) error {
 	if len(failed) > 0 {
 		return fmt.Errorf("%d of %d commit(s) in %s failed:\n  %s", len(failed), len(commits), rng, strings.Join(failed, "\n  "))
 	}
-	fmt.Printf("✅ %s: %d commit(s) checked\n", rng, len(commits))
+	fmt.Printf("✅ %s: %d commit(s) checked\n", rng, len(commits)-skipped)
+	if skipped > 0 {
+		fmt.Printf("⚠️  %d commit(s) were not checked because they name no agent. An agent's commit that leaves out its Assisted-by trailer looks the same; use --all where every change must be certified.\n", skipped)
+	}
 	return nil
 }
 
@@ -159,6 +172,28 @@ func verifyCommit(commit string) error {
 	if err := s.Accept(commit, level, verifyMinCAL); err != nil { // docs/spec/certificate-v1.md
 		return err
 	}
+	rebuilt := ""
+	if verifyRebuild {
+		if p.Ledger == "" {
+			return fmt.Errorf("commit %.12s: the certificate names no ledger (no ledger, nothing to rebuild from)", commit)
+		}
+		top, err := gitTopLevel()
+		if err != nil {
+			return err
+		}
+		ledger, err := ledgerFor(top, commit)
+		if err != nil {
+			return fmt.Errorf("commit %.12s: %w", commit, err)
+		}
+		if got := ledgerDigest(ledger); got != p.Ledger {
+			return fmt.Errorf("commit %.12s: the ledger found is not the one the certificate names (sha256 %.12s, want %.12s)", commit, got, p.Ledger)
+		}
+		n, tree, err := rebuildCommit(top, commit, p, ledger)
+		if err != nil {
+			return err
+		}
+		rebuilt = fmt.Sprintf("   rebuilt from %d approved proposal(s): tree %.12s is identical\n", n, tree)
+	}
 	if verifyCheckAnchor {
 		sidecar := verifyFile + ".anchor"
 		if verifyFile == "" {
@@ -173,6 +208,7 @@ func verifyCommit(commit string) error {
 		}
 	}
 	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, level)
+	fmt.Print(rebuilt)
 	if len(signers) > 0 {
 		fmt.Printf("   reviewed and signed by %s\n", strings.Join(signers, ", "))
 	}
@@ -247,4 +283,17 @@ func trustedKeys(file string) ([]ed25519.PublicKey, error) {
 		return nil, fmt.Errorf("%s is not an Ed25519 public key (%d bytes)", file, len(b))
 	}
 	return []ed25519.PublicKey{b}, nil
+}
+
+// ledgerFor returns the ledger verify --rebuild checks commit against: the file
+// given with --ledger, else the commit's git note.
+func ledgerFor(top, commit string) ([]byte, error) {
+	if verifyLedger != "" {
+		return os.ReadFile(verifyLedger)
+	}
+	out, err := exec.Command("git", "-C", top, "notes", "--ref="+orchestrator.LedgerNotesRef, "show", commit).Output()
+	if err != nil {
+		return nil, errors.New("no ledger (no git note in refs/notes/staircase-ledger; fetch it like the certificates, or pass --ledger)")
+	}
+	return bytes.TrimSuffix(out, []byte("\n")), nil // git adds a line break to a note
 }

@@ -16,7 +16,7 @@ import (
 const HookFileEnv = "STAIRCASE_HOOK_FILE"
 
 // hookAgents are the agents whose hook calls a run can decide.
-var hookAgents = []string{"claude-code", "codex"}
+var hookAgents = []string{"claude-code", "codex", "gemini"}
 
 // hookClient waits as long as a person needs to decide; the agent's own hook
 // timeout bounds it. No proxy: the token only ever goes to the local run.
@@ -34,17 +34,20 @@ func RunHook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if slices.Contains(args, "-h") || slices.Contains(args, "--help") {
-		fmt.Fprintln(stdout, "usage: staircase hook <agent> [--governed]   agents: "+strings.Join(hookAgents, ", "))
+		fmt.Fprintln(stdout, "usage: staircase hook <agent> [--governed] [--file <session file>]   agents: "+strings.Join(hookAgents, ", "))
 		return 0
 	}
-	var name string
+	var name, file string
 	governed, require := false, false
-	for _, a := range args {
-		switch {
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
 		case a == "--governed":
 			governed = true
 		case a == "--require":
 			require = true
+		case a == "--file" && i+1 < len(args): // the session file, for an agent that does not pass our environment on
+			i++
+			file = args[i]
 		case strings.HasPrefix(a, "-") || name != "":
 			return block("unexpected argument %q", a)
 		default:
@@ -55,10 +58,13 @@ func RunHook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return block("unknown agent %q (supported: %s)", name, strings.Join(hookAgents, ", "))
 	}
 
-	path := os.Getenv(HookFileEnv)
+	path := file
+	if path == "" {
+		path = os.Getenv(HookFileEnv)
+	}
 	if require && path == "" { // a company's managed hook: no ungoverned sessions
 		return block("this organisation runs %s only through stAirCase: start a session with staircase %s \"<task>\"",
-			name, map[string]string{"claude-code": "claude", "codex": "codex"}[name])
+			name, map[string]string{"claude-code": "claude", "codex": "codex", "gemini": "gemini"}[name])
 	}
 	if path == "" {
 		if governed {

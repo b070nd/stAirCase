@@ -122,12 +122,13 @@ function render(y) {
     approve.disabled = reject.disabled = true;
     const r = await api("/v1/yields/" + encodeURIComponent(y.id) + "/" + verb, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: feedback.value || verb + "d in the review page" }),
+      body: JSON.stringify({ feedback: feedback.value || verb + "d in the review page", request_sha256: y.request_sha256 }),
     });
-    if (r.ok || r.status === 409 || r.status === 404) {
+    if (r.ok || r.status === 404 || r.status === 409) { // 409: already decided, or no longer that request
       card.remove();
       shown.delete(y.id);
       if (shown.size === 0) empty();
+      if (r.status === 409) status.textContent = "That proposal was already decided or has changed; nothing was sent for it.";
     } else {
       approve.disabled = reject.disabled = false;
       status.textContent = "Could not send the decision (" + r.status + ").";
@@ -155,7 +156,7 @@ async function poll() {
       status.textContent = "This link's key is not valid for this run.";
       return;
     }
-    const yields = (await r.json()).sort((a, b) => Number(a.id) - Number(b.id));
+    const yields = (await r.json()).sort((a, b) => new Date(a.created) - new Date(b.created));
     status.textContent = yields.length ? yields.length + " waiting for you" : "Connected";
     const ids = new Set(yields.map((y) => y.id));
     for (const [id, card] of shown) if (!ids.has(id)) { card.remove(); shown.delete(id); }

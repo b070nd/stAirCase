@@ -136,7 +136,7 @@ var builtinTools = map[string]bool{"read_file": true, "list_dir": true, "request
 // Harnesses are the external agents a case can be run by instead of the
 // built-in agents: they bring their own model and login, and every tool
 // call goes through the run's hooks.
-var Harnesses = []string{"claude-code", "codex", "review"}
+var Harnesses = []string{"claude-code", "codex", "gemini", "opencode", "review"}
 
 // Review is a change made elsewhere (for example a cloud agent's pull request)
 // that a run reviews file by file.

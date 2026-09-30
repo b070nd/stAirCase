@@ -113,7 +113,9 @@ Six contracts stay stable and versioned while everything around them may change:
 
 ### Phase 2 - v0.4: any agent, anywhere
 
-- **Gemini CLI** and **OpenCode** support.
+- **Gemini CLI** and **OpenCode** support. *Gemini CLI and OpenCode: built from their
+  documentation, not yet run against a real login (`staircase gemini`,
+  `staircase opencode`).*
 - **Review-after** capture, used for **Cursor** (CAL 2). *Done: `staircase seal`
   works with any agent that edits your checkout.*
 - `staircase review <pull request>` for cloud agents.
@@ -126,8 +128,9 @@ Six contracts stay stable and versioned while everything around them may change:
 - An evaluation of fast decision models, such as Jev or the open-source Laya, on our own
   test cases. The model never decides freely: it only picks among the next steps the
   run allows, as a typed answer, and a wrong pick can only send a change to a person.
-  The numbers get published. *Built: `--signal typesafe-ai/jev` and `make eval-jev`
-  with 24 labelled changes; the numbers follow once the gateway account can run it.*
+  The numbers get published. *Built: `--signal typesafe-ai/jev` (or a local Laya with
+  `--signal-url`) and `make eval-jev` with 24 labelled changes; the numbers follow once
+  the gateway account and a local Laya can run it.*
 
 ### Phase 3 - v0.5: scale human attention
 
@@ -180,14 +183,15 @@ Six contracts stay stable and versioned while everything around them may change:
 - **Git as the control plane:**
   - rules, blueprints and trusted keys come from a governance repository; *done for
     rules and keys: `staircase governance`;*
-  - evidence is kept under git refs;
+  - evidence is kept under git refs. *Started: certificates and ledgers are git notes
+    (`refs/notes/staircase*`), and `verify --rebuild` checks them in CI;*
   - a report spans many repositories. *Done: `staircase report`.*
 
 ### Phase 5 - v1.0: a standard others can implement
 
 - A written specification of the certificate and of how a commit is rebuilt, with test
   vectors. *Done: the certificate and the rebuild are specified
-  ([spec](docs/spec/certificate-v1.md)), with 11 + 14 vectors and independent
+  ([spec](docs/spec/certificate-v1.md)), with 13 + 14 vectors and independent
   implementations; `staircase rebuild` reproduces a commit from its ledger.*
 - The certificate format proposed to in-toto, and its mapping to SLSA's source track
   published, together with a mapping to the OWASP Top 10 for LLM applications and
