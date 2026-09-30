@@ -736,6 +736,47 @@ func TestSendWebhookYield_wrong_secret_rejected(t *testing.T) {
 	assert.False(t, resp.Approved)
 }
 
+// TestSendWebhookYield_only_a_2xx_answer_counts: an error status never
+// approves, even with a body that says approved (signed or not), and a
+// redirect is not followed to another address (F92).
+func TestSendWebhookYield_only_a_2xx_answer_counts(t *testing.T) {
+	secret := []byte("project-secret")
+	for _, code := range []int{http.StatusInternalServerError, http.StatusForbidden, http.StatusBadGateway} {
+		for name, sec := range map[string][]byte{"unauthenticated": nil, "authenticated": secret} {
+			t.Run(fmt.Sprintf("%d_%s", code, name), func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					raw, _ := io.ReadAll(r.Body)
+					body := []byte(fmt.Sprintf(`{"type":"yield_response","approved":true,"request_sha256":%q,"yield_id":%q}`,
+						r.Header.Get(webhookauth.HeaderRequestSHA256), yieldIDOf(raw)))
+					ts := strconv.FormatInt(time.Now().Unix(), 10)
+					w.Header().Set(webhookauth.HeaderTimestamp, ts)
+					w.Header().Set(webhookauth.HeaderSignature, webhookauth.Sign(secret, ts, body))
+					w.WriteHeader(code)
+					_, _ = w.Write(body)
+				}))
+				defer srv.Close()
+				resp := orchestrator.ExportedSendWebhookYield(srv.URL, sec, domain.YieldRequest{Type: "yield_request"})
+				assert.False(t, resp.Approved)
+				assert.Contains(t, resp.Feedback, fmt.Sprint(code))
+			})
+		}
+	}
+
+	asked := 0
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		asked++
+		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
+	}))
+	defer elsewhere.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirecting.Close()
+	resp := orchestrator.ExportedSendWebhookYield(redirecting.URL, nil, domain.YieldRequest{Type: "yield_request"})
+	assert.False(t, resp.Approved)
+	assert.Zero(t, asked, "the approval request must not be re-sent to a redirect target")
+}
+
 // ─── Run() integration - full lifecycle ──────────────────────────────────────
 
 // agentWorkspace is a workspace for an in-process run: its key (and tmp/).

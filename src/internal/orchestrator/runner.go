@@ -421,7 +421,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	// Per-project HMAC secret for authenticating webhook approvals. When a
 	// webhook is configured without a secret the channel is unauthenticated -
 	// warn loudly so operators know to store one under __webhook_hmac_secret__.
-	webhookSecret := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
+	webhookSecret, err := r.loadWebhookSecret(caseRec.ProjectID, aesKey)
+	if err != nil && project.WebhookURL != "" { // a stored secret we cannot read is not "no secret"
+		return fmt.Errorf("webhook secret: %w", err)
+	}
 	if project.WebhookURL != "" && len(webhookSecret) == 0 {
 		obs.Log.Warn(`webhook approvals are UNAUTHENTICATED - store an HMAC secret to prevent forged approvals: printf '%s' "$SECRET" | staircase secret set __webhook_hmac_secret__ --project <id>`,
 			"project_id", caseRec.ProjectID)
@@ -813,22 +816,27 @@ func (r *Runner) runGates(caseID int64) error {
 // ─── Git helpers ──────────────────────────────────────────────────────────────
 
 // webhookClient is shared across all webhook calls within a single run.
-var webhookClient = &http.Client{Timeout: 30 * time.Second}
+// It never follows a redirect: the approval must come from the address that was configured.
+var webhookClient = &http.Client{Timeout: 30 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 // loadWebhookSecret returns the decrypted per-project webhook HMAC secret, or
-// nil when none is configured. A missing secret is not an error - it means the
-// webhook channel runs unauthenticated (legacy behaviour, warned about once).
-func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) []byte {
+// nil with no error when none is stored - that means the webhook channel runs
+// unauthenticated (legacy behaviour, warned about once). A secret that is
+// stored but cannot be looked up or decrypted is an error, never "none".
+func (r *Runner) loadWebhookSecret(projectID int64, aesKey []byte) ([]byte, error) {
 	sec, err := r.store.GetSecret(webhookauth.SecretKeyName, &projectID)
-	if err != nil || sec == nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("look up: %w", err)
+	}
+	if sec == nil {
+		return nil, nil
 	}
 	plaintext, err := crypto.Decrypt(aesKey, sec.EncryptedValue)
 	if err != nil {
-		obs.Log.Warn("webhook secret decrypt failed - treating channel as unauthenticated", "err", err)
-		return nil
+		return nil, fmt.Errorf("decrypt (was it stored under another workspace key?): %w", err)
 	}
-	return []byte(plaintext)
+	return []byte(plaintext), nil
 }
 
 // sendWebhookYield POSTs the yield to the project webhook and returns the
@@ -869,6 +877,10 @@ func sendWebhookYield(webhookURL string, secret []byte, req domain.YieldRequest)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode < 200 || resp.StatusCode > 299 { // an error page is not an answer, whatever its body says
+		obs.Log.Warn("webhook answered with an error status - auto-rejecting", "status", resp.StatusCode)
+		return reject(fmt.Sprintf("webhook error: HTTP %d", resp.StatusCode))
+	}
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		obs.Log.Warn("webhook response read failed - auto-rejecting", "err", err)

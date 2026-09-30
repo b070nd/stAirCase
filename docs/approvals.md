@@ -169,7 +169,9 @@ fields the approval API shows, plus a fresh `yield_id`. Your service must answer
 { "approved": true, "feedback": "optional text for the agent" }
 ```
 
-Any error, timeout or unreadable answer counts as a rejection.
+Any error, timeout, unreadable answer or answer that is not HTTP 2xx counts as a
+rejection, and a redirect is never followed. If a secret is stored for the project
+but cannot be read, the run stops rather than carry on unsigned.
 
 **Sign the webhook.** Without a shared secret, anyone who can reach or intercept the
 connection could forge an approval. Store a secret for the project:

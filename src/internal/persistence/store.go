@@ -342,6 +342,9 @@ func (s *Store) GetSecret(keyName string, projectID *int64) (*domain.Secret, err
 		if err == nil {
 			return sec, nil
 		}
+		if err != sql.ErrNoRows { // a failed lookup is not an absent secret
+			return nil, err
+		}
 	}
 	err := s.db.QueryRow(
 		`SELECT id, key_name, encrypted_value, scoped_to_project_id FROM secrets
