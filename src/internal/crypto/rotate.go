@@ -121,10 +121,9 @@ func ResumeIfCommitted(wsDir string) error {
 // rename (including recovery paths).  This provides power-loss durability for
 // the key file and journal on most filesystems.
 //
-// The DB is opened with synchronous=NORMAL by default, which is not
-// power-loss safe.  For full durability the caller's reencrypt callback must
-// set PRAGMA synchronous=FULL before beginning the rotation transaction and
-// restore NORMAL afterward.
+// The workspace DB is opened with synchronous=FULL, so the rotation
+// transaction is on disk when reencrypt returns; a caller that opens the DB
+// another way must set PRAGMA synchronous=FULL before the transaction.
 //
 // # Concurrency
 //

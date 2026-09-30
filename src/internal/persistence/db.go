@@ -22,7 +22,10 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 	// Inject SQLite pragmas in the connection string so the driver applies them
 	// to EVERY pooled connection, not just the first one.
 	//   busy_timeout(5000) - wait out brief write locks instead of erroring.
-	//   journal_mode(WAL) & synchronous(NORMAL) - high-throughput durability.
+	//   journal_mode(WAL) & synchronous(FULL) - a commit is on disk before it returns.
+	//     A decision is acknowledged to the agent only after it is on the audit
+	//     chain, so that commit must survive a power cut (synchronous=NORMAL in WAL
+	//     mode may lose the last commits). The write rate is a few per proposal.
 	//   foreign_keys(1) - FK enforcement is per-connection in SQLite; a one-shot
 	//     `PRAGMA foreign_keys=ON` only covered the single connection it ran on,
 	//     leaving other pooled connections unenforced. Setting it in the DSN
@@ -31,7 +34,7 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 	//     busy_timeout applies. A deferred transaction that reads, then writes
 	//     gets SQLITE_BUSY at once if another writer committed in between, so a
 	//     concurrent run could be recorded as failed after succeeding.
-	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_txlock=immediate"
+	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)&_txlock=immediate"
 
 	db, err := sql.Open("sqlite", connStr)
 	if err != nil {
