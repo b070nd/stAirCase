@@ -19,8 +19,11 @@ such as GitHub. stAirCase is not an SCS: it runs before a change reaches one, an
 | L3 Continuous technical controls | The [CI check](audit.md#require-certificates-on-pull-requests) is a technical control you can require on protected branches: agent commits need a valid certificate, a minimum CAL and passing checks. |
 | L4 Two-party review | CAL 4: a trusted reviewer whose key you list, and who is not the recorded requester, signs the certificate (`staircase sign`); the requester is an unauthenticated git email, so this is not proven two-person control unless the run's initiator signed the request and `--require-initiator` is used (two different trusted keys). SLSA L4 asks the SCS to enforce two-party review of *every* change; CAL 4 covers the agent's change and is enforced by your CI check. |
 
-A Source Verification Summary Attestation (VSA) is not issued yet; `staircase verify`
-makes the same kind of decision, and emitting a VSA is on the roadmap.
+`staircase verify --vsa-out <dir>` writes a SLSA [Verification Summary Attestation](spec/vsa-v1.md)
+for every commit that passes. It claims no SLSA source level: its levels are stAirCase's own
+(`STAIRCASE_CAL_n`, `STAIRCASE_REBUILT`, ...) next to the explicit no-claim
+`SLSA_SOURCE_LEVEL_UNEVALUATED`, because a CAL is not a SLSA level and the source level is a
+claim only a source control system can make.
 
 ## OWASP Top 10 for LLM Applications (2025)
 
