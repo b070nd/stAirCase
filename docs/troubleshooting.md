@@ -62,6 +62,15 @@ file; the message names the problem. See [Approvals](approvals.md#approving-auto
 Another `staircase` command (a run, `secret set` or `secret rotate`) is using the
 workspace. Wait for it to finish.
 
+**`a key rotation was interrupted`**
+
+`staircase secret rotate` was stopped part way (a crash, a power cut). Whether your
+secrets are under the old or the new key cannot be told safely, so nothing reads or
+writes them until it is resolved, rather than risk storing a secret under a key that is
+about to be dropped. Run `staircase secret rotate` again: it finishes the rotation if
+the secrets were already re-encrypted, and otherwise rolls the attempt back and rotates
+afresh. No secret is lost either way.
+
 ## During the run
 
 **`… has uncommitted changes; the agent works on commit … without them`**

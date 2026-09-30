@@ -59,6 +59,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Key rotation cannot be left half done unnoticed.** After an interrupted
+  `secret rotate` whose outcome is ambiguous, the workspace key is refused (by runs,
+  `secret set` and `doctor`) until `secret rotate` resolves it. Before, `secret set`
+  kept working with the old key and stored a secret that the finished rotation then
+  stranded. Tested with a real database and a simulated kill at both points.
 - **A producer cannot claim CAL 4.** A certificate that says `cal` 4 (or anything
   outside 1 to 3) is refused however validly it is signed; level 4 is only ever
   established by a verifier from a trusted reviewer's signature. Conformance vectors

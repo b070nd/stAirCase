@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -70,9 +71,19 @@ func GenerateKey(wsDir string) error {
 // crashed rotation before reading the key.  This ensures that any command
 // that loads the key self-heals an interrupted rotation without requiring the
 // user to re-run 'staircase secret rotate'.
+//
+// A "pending" journal is ambiguous (the secrets may or may not have been
+// re-encrypted already), so LoadKey refuses rather than hand out a key that
+// could be the wrong one: reading would fail and, worse, a write would leave a
+// secret under a key the finished rotation drops. 'staircase secret rotate'
+// resolves it.
 func LoadKey(wsDir string) ([]byte, error) {
 	if err := ResumeIfCommitted(wsDir); err != nil {
 		return nil, fmt.Errorf("load workspace key: rotate recovery: %w", err)
+	}
+	if j, err := readRotateJournal(filepath.Join(wsDir, rotateJournalFile)); err == nil && j.Stage == "pending" {
+		return nil, errors.New("load workspace key: a key rotation was interrupted and cannot be resolved automatically; " +
+			"run 'staircase secret rotate' to finish or roll it back (secrets cannot be read or written until then)")
 	}
 	keyPath := filepath.Join(wsDir, KeyFile)
 	if runtime.GOOS != "windows" {
