@@ -5,9 +5,11 @@
 //	policy.json      the rules and limits every run uses (required)
 //	allowed_signers  people trusted for two-person review (optional)
 //	keys/*.pub       team members' workspace signing keys (optional)
+//	blueprints/<name>/   blueprints the team shares, as `staircase blueprint import` reads them (optional)
 package governance
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -22,7 +24,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/b070nd/stAirCase/src/internal/blueprint"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/policy"
 )
 
@@ -41,6 +46,8 @@ type Pin struct {
 	Ref    string            `json:"ref"`
 	Commit string            `json:"commit"`
 	Files  map[string]string `json:"files"` // workspace path → hex SHA-256
+	// Blueprints are the team's blueprints at Commit: repository directory name → snapshot hash.
+	Blueprints map[string]string `json:"blueprints,omitempty"`
 }
 
 // State is a pin compared with its source and the workspace.
@@ -92,7 +99,18 @@ func Use(wsDir, source, ref string) (Pin, error) {
 		}
 	}
 
+	blueprints, err := loadBlueprints(dir, commit) // checked before anything is installed
+	if err != nil {
+		return Pin{}, err
+	}
+
 	pin := Pin{Source: source, Ref: ref, Commit: commit, Files: map[string]string{}}
+	if len(blueprints) > 0 {
+		pin.Blueprints = map[string]string{}
+		for name, b := range blueprints {
+			pin.Blueprints[name] = b.Hash()
+		}
+	}
 	write := func(name string, b []byte) error {
 		pin.Files[name] = digest(b)
 		return writeAtomic(filepath.Join(wsDir, name), b)
@@ -212,4 +230,98 @@ func writeAtomic(name string, b []byte) error {
 		return err
 	}
 	return os.Rename(tmp, name)
+}
+
+// loadBlueprints reads every blueprints/<name>/ of commit the way
+// `staircase blueprint import` reads a folder (unknown fields, files outside the
+// folder and the like are refused). Git is the only source: a symlink or a
+// submodule in a blueprint is refused, since it would not be the bytes the commit
+// names.
+func loadBlueprints(repo, commit string) (map[string]blueprint.Blueprint, error) {
+	out, err := git(repo, "ls-tree", "-r", "-z", "--full-tree", commit, "--", "blueprints/")
+	if err != nil {
+		return nil, nil // no blueprints directory
+	}
+	files := map[string][]string{} // blueprint directory → its paths in the repository
+	for _, entry := range bytes.Split(bytes.TrimRight(out, "\x00"), []byte{0}) {
+		meta, p, ok := strings.Cut(string(entry), "\t")
+		if !ok {
+			continue
+		}
+		dir, _, nested := strings.Cut(strings.TrimPrefix(p, "blueprints/"), "/")
+		if !nested {
+			continue // a file next to the blueprints, such as a README
+		}
+		if mode, _, _ := strings.Cut(meta, " "); mode == "120000" || mode == "160000" {
+			return nil, fmt.Errorf("blueprints/%s at %.12s: %s is a symlink or submodule; a blueprint is plain files", dir, commit, p)
+		}
+		files[dir] = append(files[dir], p)
+	}
+	found := map[string]blueprint.Blueprint{}
+	for dir, paths := range files {
+		tmp, err := os.MkdirTemp("", "governance-blueprint-")
+		if err != nil {
+			return nil, err
+		}
+		err = func() error {
+			defer func() { _ = os.RemoveAll(tmp) }()
+			for _, p := range paths {
+				b, err := git(repo, "show", commit+":"+p)
+				if err != nil {
+					return err
+				}
+				dst := filepath.Join(tmp, filepath.FromSlash(strings.TrimPrefix(p, "blueprints/"+dir+"/")))
+				if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(dst, b, 0o644); err != nil {
+					return err
+				}
+			}
+			bp, err := blueprint.Load(tmp)
+			if err != nil {
+				return fmt.Errorf("blueprints/%s at %.12s: %w", dir, commit, err)
+			}
+			found[dir] = bp
+			return nil
+		}()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return found, nil
+}
+
+// ImportedBlueprint is a team blueprint imported into the workspace.
+type ImportedBlueprint struct {
+	Dir, Name, Hash string
+	Created         bool // false: the same snapshot was already there
+}
+
+// ImportBlueprints imports the pinned commit's blueprints as snapshots whose
+// source commit is the pin, so everyone on the team gets the same hash.
+// Importing again changes nothing; snapshots of blueprints the team has since
+// removed stay, as the runs bound to them need them.
+func ImportBlueprints(store *persistence.Store, wsDir string, pin Pin) ([]ImportedBlueprint, error) {
+	if len(pin.Blueprints) == 0 {
+		return nil, nil
+	}
+	found, err := loadBlueprints(filepath.Join(wsDir, checkoutDir), pin.Commit)
+	if err != nil {
+		return nil, err
+	}
+	var out []ImportedBlueprint
+	for _, dir := range slices.Sorted(maps.Keys(pin.Blueprints)) {
+		b, ok := found[dir]
+		if !ok || b.Hash() != pin.Blueprints[dir] {
+			return nil, fmt.Errorf("blueprints/%s is not what was pinned at %.12s", dir, pin.Commit)
+		}
+		created, err := store.ImportBlueprint(domain.Blueprint{Hash: b.Hash(), Name: b.Name, Content: string(b.JSON()),
+			SourceDir: filepath.Join(wsDir, checkoutDir, "blueprints", dir), GitSHA: pin.Commit})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ImportedBlueprint{Dir: dir, Name: b.Name, Hash: b.Hash(), Created: created})
+	}
+	return out, nil
 }
