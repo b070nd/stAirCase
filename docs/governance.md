@@ -13,11 +13,19 @@ team-governance/
   keys/
     alice.pub       each member's workspace signing key (optional)
     bob.pub
+  blueprints/       blueprints the team shares (optional)
+    hello/
+      blueprint.yaml
+      prompts/coder.md
 ```
 
 - `policy.json` is the same file as a workspace's own ([approvals](approvals.md)).
   Test a change with `staircase policy test` before you merge it.
 - `allowed_signers` is git's format: `<email> <ssh public key>` per line.
+- Each `blueprints/<name>/` is a [blueprint](blueprints.md) folder, exactly as
+  `staircase blueprint import` reads one. They are checked the same way (unknown fields,
+  files outside the folder and the like are refused), and a symlink or submodule inside
+  one is refused too, since it would not be the bytes the commit names.
 - Each `keys/*.pub` is a member's `~/.staircase-workspace/.signing.pub`, the raw
   32-byte key. Add a member by adding theirs.
 
@@ -32,6 +40,13 @@ uses, and installs the files in your workspace at the branch's current commit (u
 `--ref` for another branch, a tag or a commit). The policy is signed with your
 workspace key, so runs detect a later edit. If anything is invalid, nothing
 changes.
+
+Every blueprint in `blueprints/` is imported as a snapshot, with the pinned commit as
+its source, so everyone who uses the same commit has the same blueprint under the same
+hash (`staircase blueprint list`). `governance use` prints how to bind one:
+`staircase project bind <project-id> <hash>`. A blueprint that is invalid stops the whole
+install, policy and keys included. A blueprint the team removes later stays in your
+workspace: runs bound to it need its snapshot.
 
 From then on:
 

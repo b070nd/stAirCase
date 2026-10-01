@@ -26,9 +26,13 @@ var governanceCmd = &cobra.Command{
   policy.json      the rules and limits every run uses (required)
   allowed_signers  people trusted for two-person review (git's format)
   keys/*.pub       team members' workspace signing keys (.signing.pub)
+  blueprints/<name>/  blueprints the team shares (blueprint.yaml and its files)
 
 staircase governance use installs them in your workspace, pinned to an exact
-commit; changes reach you only when you run it again. verify and report then
+commit; changes reach you only when you run it again. The blueprints are checked
+like 'blueprint import' checks a folder and imported as snapshots whose source commit
+is the pinned one, so everyone on the team gets the same hash; bind one to a project
+with 'staircase project bind'. verify and report then
 trust every team member's certificates, and verify counts the team's reviewers
 for CAL 4.`,
 }
@@ -57,6 +61,24 @@ var governanceUseCmd = &cobra.Command{
 		for _, name := range slices.Sorted(maps.Keys(pin.Files)) {
 			fmt.Printf("   %s\n", name)
 		}
+		if len(pin.Blueprints) > 0 {
+			store, db, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = db.Close() }()
+			imported, err := governance.ImportBlueprints(store, viper.GetString("STAIRCASE_DIR"), pin)
+			if err != nil {
+				return err
+			}
+			for _, b := range imported {
+				state := "imported"
+				if !b.Created {
+					state = "already imported"
+				}
+				fmt.Printf("   blueprint %s (%s) %.12s: bind it with staircase project bind <project-id> %.12s\n", b.Name, state, b.Hash, b.Hash)
+			}
+		}
 		return nil
 	},
 }
@@ -75,6 +97,9 @@ var governanceStatusCmd = &cobra.Command{
 			fmt.Printf("   ⚠️  the source is at %.12s now: review it, then run staircase governance use again\n", st.Latest)
 		} else {
 			fmt.Println("   ✅ up to date with the source")
+		}
+		for _, name := range slices.Sorted(maps.Keys(st.Pin.Blueprints)) {
+			fmt.Printf("   blueprint %s %.12s\n", name, st.Pin.Blueprints[name])
 		}
 		for _, f := range st.Modified {
 			fmt.Printf("   ⚠️  %s was changed in the workspace since it was installed\n", f)

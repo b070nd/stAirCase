@@ -17,6 +17,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Team blueprints from the governance repository.** `blueprints/<name>/` in the
+  governance repository is checked like `blueprint import` checks a folder (a symlink or
+  submodule inside it is refused too) and imported by `staircase governance use` as a
+  snapshot whose source commit is the pinned one, so everyone gets the same blueprint
+  under the same hash. A bad blueprint stops the whole install; a blueprint removed later
+  keeps its snapshot for the runs bound to it. `governance status` lists them.
+
 - **`staircase recover <run-id>`.** A run keeps each approval it gives, written before
   the agent is told the answer; if the run is interrupted before it commits, `recover`
   commits exactly what it had approved. It trusts a journal line only when the audit

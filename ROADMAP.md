@@ -183,8 +183,8 @@ Six contracts stay stable and versioned while everything around them may change:
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
   *Done: `staircase attach` and `staircase seal` (CAL 2), which also covers Cursor.*
 - **Git as the control plane:**
-  - rules, blueprints and trusted keys come from a governance repository; *done for
-    rules and keys: `staircase governance`;*
+  - rules, blueprints and trusted keys come from a governance repository; *done:
+    `staircase governance`;*
   - evidence is kept under git refs. *Started: certificates and ledgers are git notes
     (`refs/notes/staircase*`), and `verify --rebuild` checks them in CI;*
   - a report spans many repositories. *Done: `staircase report`.*

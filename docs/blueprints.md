@@ -71,6 +71,10 @@ a new hash. Old snapshots are never changed.
 If the folder is a git checkout with no uncommitted changes, the commit is recorded
 too. Otherwise import warns that the snapshot cannot be traced back to a commit.
 
+A team can keep its blueprints in its [governance repository](governance.md) under
+`blueprints/<name>/`; `staircase governance use` then imports them for everyone, from the
+pinned commit, so the hashes agree.
+
 ## 2. Bind it to a project
 
 ```bash
