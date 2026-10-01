@@ -73,6 +73,25 @@ that points nowhere. After changing a command's help, regenerate the reference:
 UPDATE_DOCS=1 go test ./src/cmd/staircase -run TestCLIReference
 ```
 
+**Kill drills** end real processes with `kill -9`, so no cleanup code runs, and check what
+a crash leaves behind:
+
+- `tests/kill_drill.bats` runs a governed session with a stand-in agent that has two changes
+  approved and then hangs, kills `staircase` itself, and checks that `staircase recover
+  --force` commits exactly those two changes, that the commit verifies (CAL 2, since the run
+  did not finish) and rebuilds, and that a run still recorded as RUNNING is not recovered
+  without `--force`.
+- `TestDrill_sigkill_during_secret_rotate` (`src/cmd/staircase`) rotates the workspace key in
+  a separate process in a loop and kills it 150 times at random moments against a real
+  database. After every kill the key either loads and every secret decrypts under it, or it
+  is refused as "interrupted" and a single `secret rotate` repairs it; no secret is ever
+  stranded, and no key file is left lying around. The timings come from a fixed seed, and the
+  test logs how often each state was hit (no journal, pending, committed). It takes about 20
+  seconds; `-short` skips it.
+
+Both fail when the protections they exist for are removed (the first drill iteration of the
+rotation drill strands a secret without the "interrupted" refusal).
+
 ## Real agents (opt-in)
 
 `demo/smoke.sh` needs credentials and costs money, so `make check` never runs

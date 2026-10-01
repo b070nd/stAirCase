@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"math/rand/v2"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/spf13/viper"
@@ -108,4 +114,87 @@ func TestSecretRotate_a_crash_before_the_database_committed(t *testing.T) {
 	v, err := crypto.Decrypt(key, all[0].EncryptedValue)
 	require.NoError(t, err)
 	assert.Equal(t, "still here", v)
+}
+
+// TestDrillRotateHelper is the process the SIGKILL drill kills: it is only a
+// test when the drill asks for it, and then rotates the workspace key over and
+// over until it is killed.
+func TestDrillRotateHelper(t *testing.T) {
+	ws := os.Getenv("STAIRCASE_DRILL_ROTATE_WS")
+	if ws == "" {
+		t.Skip("only run by the drill")
+	}
+	viper.Set("STAIRCASE_DIR", ws)
+	null, _ := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	os.Stdout = null // the command prints its success each time
+	for {
+		_ = secretRotateCmd.RunE(secretRotateCmd, nil)
+	}
+}
+
+// TestDrill_sigkill_during_secret_rotate: `secret rotate` runs as a real
+// process in a loop and is killed with SIGKILL at random moments, 150 times,
+// against a real database. After each kill the workspace must be usable again:
+// the key either loads and every secret decrypts under it, or it is refused as
+// "interrupted" and one `secret rotate` repairs it, after which every secret
+// decrypts. A secret must never be stranded (F101).
+func TestDrill_sigkill_during_secret_rotate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drill: skipped in -short mode")
+	}
+	ws := t.TempDir()
+	viper.Set("STAIRCASE_DIR", ws)
+	t.Cleanup(func() { viper.Set("STAIRCASE_DIR", "") })
+	require.NoError(t, crypto.GenerateKey(ws))
+	secrets := map[string]string{"ALPHA": "one", "BRAVO": "two", "CHARLIE": "three", "DELTA": "four", "ECHO": "five"}
+	for name, v := range secrets {
+		require.NoError(t, setSecretFromStdin(t, name, v))
+	}
+
+	check := func(when string) {
+		key, err := crypto.LoadKey(ws)
+		require.NoError(t, err, when)
+		store, db, err := openStore()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		all, err := store.ListAllSecrets()
+		require.NoError(t, err)
+		require.Len(t, all, len(secrets), when)
+		for _, s := range all {
+			v, err := crypto.Decrypt(key, s.EncryptedValue)
+			require.NoError(t, err, "%s: %s is stranded under another key", when, s.KeyName)
+			require.Equal(t, secrets[s.KeyName], v, when)
+		}
+	}
+
+	self, err := os.Executable()
+	require.NoError(t, err)
+	rng := rand.New(rand.NewPCG(1, 2)) // fixed seed: the timings are random-looking but a failure can be replayed
+	outcomes := map[string]int{}
+	for i := 0; i < 150; i++ {
+		cmd := exec.Command(self, "-test.run=^TestDrillRotateHelper$")
+		cmd.Env = append(os.Environ(), "STAIRCASE_DRILL_ROTATE_WS="+ws)
+		require.NoError(t, cmd.Start())
+		time.Sleep(time.Duration(40+rng.IntN(160)) * time.Millisecond) // past the start-up, into the rotations
+		require.NoError(t, cmd.Process.Signal(syscall.SIGKILL))
+		_ = cmd.Wait()
+
+		stage := "no journal"
+		if b, err := os.ReadFile(filepath.Join(ws, ".key-rotate-journal")); err == nil {
+			stage = "journal " + map[bool]string{true: "pending", false: "committed"}[strings.Contains(string(b), `"pending"`)]
+		}
+		if _, err := crypto.LoadKey(ws); err != nil {
+			require.ErrorContains(t, err, "rotation was interrupted", "iteration %d: the only acceptable refusal", i)
+			require.NoError(t, secretRotateCmd.RunE(secretRotateCmd, nil), "iteration %d: one rotate repairs it", i)
+			outcomes[stage+": refused, repaired by one rotate"]++
+		} else {
+			outcomes[stage+": key loads"]++
+		}
+		check(fmt.Sprintf("iteration %d (%s)", i, stage))
+	}
+	t.Logf("150 SIGKILLs of a rotating process: %v", outcomes)
+	require.NoError(t, secretRotateCmd.RunE(secretRotateCmd, nil))
+	left, _ := filepath.Glob(filepath.Join(ws, ".key-rotate-*"))
+	t.Logf("files a kill left behind after a final rotate: %v", left)
+	assert.Empty(t, left, "a killed rotation must not leave key material lying around")
 }
