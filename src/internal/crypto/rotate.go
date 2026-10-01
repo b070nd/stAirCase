@@ -185,6 +185,18 @@ func RotateKey(
 
 	// ── Normal rotation ───────────────────────────────────────────────────────
 
+	// A process killed before it used its temp key leaves that file (or the
+	// journal's temp file) behind. Whatever recovery above did not need is gone
+	// now, so none of it lies around: the caller holds the exclusive lock, so
+	// no other rotation is using one.
+	if stale, _ := filepath.Glob(filepath.Join(wsDir, ".key-rotate-*")); len(stale) > 0 {
+		for _, f := range stale {
+			if f != journalPath {
+				_ = os.Remove(f)
+			}
+		}
+	}
+
 	// 1. Load old key.
 	oldKey, err := LoadKey(wsDir)
 	if err != nil {

@@ -332,3 +332,22 @@ func TestWriteRotateJournal_is_atomic(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &got))
 	assert.Equal(t, j, got)
 }
+
+// TestRotateKey_removes_what_a_killed_rotation_left: a process killed between
+// creating the new key's temp file (or the journal's) and using it leaves that
+// file behind; the next rotation removes it, so no key material lies around.
+func TestRotateKey_removes_what_a_killed_rotation_left(t *testing.T) {
+	dir := setupWsDir(t)
+	for _, name := range []string{".key-rotate-123456", ".key-rotate-journal-tmp-789"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), make([]byte, 32), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte("{}"), 0o600)) // unrelated files stay
+
+	require.NoError(t, RotateKey(dir, noopReencrypt, alwaysFalse))
+
+	left, err := filepath.Glob(filepath.Join(dir, ".key-rotate-*"))
+	require.NoError(t, err)
+	assert.Empty(t, left)
+	_, err = os.Stat(filepath.Join(dir, "policy.json"))
+	assert.NoError(t, err)
+}

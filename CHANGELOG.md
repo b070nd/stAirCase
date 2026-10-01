@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A killed key rotation no longer leaves key material behind.** A drill that kills a
+  rotating process 150 times found that a kill between creating the new key's temp file and
+  using it left `.key-rotate-*` files in the workspace. The next `secret rotate` now removes
+  them. (The kill drills are in `docs/testing.md`: they also confirm that `recover` commits
+  exactly the approved changes after a real `kill -9`, and that no secret is ever stranded
+  by a rotation killed at a random moment.)
+
 - **Two sessions starting in one repository at the same time could fail.** Git is
   not safe against two `worktree add` at once (it could fail reading another's
   half-written `.git/worktrees/run-N/commondir`), so one run would end FAILED at
