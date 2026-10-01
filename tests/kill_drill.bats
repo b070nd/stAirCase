@@ -105,9 +105,9 @@ sc() { "$STAIRCASE_BIN" "$@" 2>&1; }
   kill -9 "$(cat "$WORK/agent.pid")" 2>/dev/null || true
   mkdir "$WORK/snap" && cp -a "$STAIRCASE_DIR" "$WORK/snap/workspace" && cp -a "$WORK/app" "$WORK/snap/app"
 
-  RANDOM=7   # fixed seed: a failure can be replayed
+  RANDOM="${DRILL_SEED:-7}"   # a failure can be replayed with the same seed
   killed=0
-  for i in $(seq 1 60); do
+  for i in $(seq 1 "${DRILL_ITERATIONS:-60}"); do
     rm -rf "$STAIRCASE_DIR" "$WORK/app"
     cp -a "$WORK/snap/workspace" "$STAIRCASE_DIR" && cp -a "$WORK/snap/app" "$WORK/app"
     cd "$WORK/app"
@@ -121,12 +121,12 @@ sc() { "$STAIRCASE_BIN" "$@" 2>&1; }
     second="$("$STAIRCASE_BIN" recover 1 --force 2>&1 3>&-)" || true
     run sc inspect log 1
     [[ "$output" == *"run_recovered"* ]] || { echo "iteration $i: no run_recovered after a second recover: $second"; false; }
-    [ "$(git show staircase/run-1:src/a.txt)" = "a content" ]
-    [ "$(git show staircase/run-1:src/b.txt)" = "b content" ]
+    a="$(git show staircase/run-1:src/a.txt 2>&1)"; b="$(git show staircase/run-1:src/b.txt 2>&1)"
+    { [ "$a" = "a content" ] && [ "$b" = "b content" ]; } || { echo "iteration $i: the files are wrong: a=[$a] b=[$b]; second recover said: $second"; false; }
     run sc verify staircase/run-1 --min-cal 2
     [ "$status" -eq 0 ] || { echo "iteration $i: verify: $output"; false; }
     run sc rebuild staircase/run-1
     [ "$status" -eq 0 ] || { echo "iteration $i: rebuild: $output"; false; }
   done
-  echo "recover was killed in $killed of 60 runs" >&3
+  echo "recover was killed in $killed of ${DRILL_ITERATIONS:-60} runs" >&3
 }
