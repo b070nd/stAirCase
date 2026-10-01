@@ -73,6 +73,7 @@ type evidence struct {
 	checks         []certificate.Check
 	ledger, policy string // SHA-256 digests
 	initiator      *certificate.Initiator
+	recovered      bool // the run was interrupted and its commit made by `recover`
 }
 
 // certify signs a change certificate about commit with the workspace key,
@@ -162,6 +163,10 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		p.Notes = append(p.Notes, "commands changed files that were reviewed after the fact")
 	}
 
+	if ev.recovered { // the end of the run (worktree check, final checks) did not happen
+		p.CAL = min(p.CAL, 2)
+		p.Notes = append(p.Notes, "the run was interrupted and its approved changes recovered afterwards: the agent's end, the check of the worktree and the definition-of-done checks did not happen")
+	}
 	env, err := certificate.Sign(certificate.New(commit, p), priv)
 	if err != nil {
 		return err

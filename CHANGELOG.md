@@ -17,6 +17,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`staircase recover <run-id>`.** A run keeps each approval it gives, written before
+  the agent is told the answer; if the run is interrupted before it commits, `recover`
+  commits exactly what it had approved. It trusts a journal line only when the audit
+  chain records the same approval (the request's hash and who decided), derives the
+  files again from the base commit, moves the branch only if it is still at the run's
+  base, asks you for the final review when part of the change was approved by the task,
+  evidence or reviewer models, and issues a certificate that says the run did not finish
+  (CAL 2 at most, ledger included). An approval that cannot be written to the journal is
+  refused and the run stops. The agent itself is not resumed.
+
 - **Approve on evidence.** `--approve-on-evidence` (with `--allow`, and `--check`
   and/or `--validator`) approves an in-scope change only when every check passes in the
   sandbox on the exact state the change would produce (the base, the approved changes

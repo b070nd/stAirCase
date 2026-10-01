@@ -187,16 +187,7 @@ func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
 // validator approved changes no human has seen; the decision is audited. The
 // request is secret-scrubbed like every proposal.
 func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error) {
-	final := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: domain.ActionFinalReview,
-		ReasoningTrace: "Final review: changes in this run were approved without you (by the validator or as part of the agreed task). Approve to commit exactly these files."}
-	for _, p := range slices.Sorted(maps.Keys(d.approvals.files)) {
-		f := d.approvals.files[p]
-		e := domain.ProposedEdit{File: p, SearchBlock: "(final content)", ReplaceBlock: string(f.content)}
-		if f.deleted {
-			e.SearchBlock, e.ReplaceBlock = MarkerDeleteFile, ""
-		}
-		final.ProposedEdits = append(final.ProposedEdits, e)
-	}
+	final := finalReviewRequest(d.approvals.files)
 	final = scrubSecrets(final, delivered)
 	start := time.Now()
 	resp, signed := d.sign.ask(final, d.askHuman)
@@ -304,4 +295,20 @@ func (d *deciders) onEvidence(ctx context.Context, req *domain.YieldRequest, rl 
 	d.display.AddActivity(fmt.Sprintf("%-14s EVIDENCE %s → approved", req.AgentName, req.ActionType))
 	rl.resp, rl.source, rl.evidence = domain.Decide(true, "approved on evidence"), "evidence", ev
 	return rl
+}
+
+// finalReviewRequest is the request to approve a run's whole change once, from
+// the files it approved.
+func finalReviewRequest(files map[string]*approvedFile) domain.YieldRequest {
+	final := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: domain.ActionFinalReview,
+		ReasoningTrace: "Final review: changes in this run were approved without you (by the validator or as part of the agreed task). Approve to commit exactly these files."}
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		f := files[p]
+		e := domain.ProposedEdit{File: p, SearchBlock: "(final content)", ReplaceBlock: string(f.content)}
+		if f.deleted {
+			e.SearchBlock, e.ReplaceBlock = MarkerDeleteFile, ""
+		}
+		final.ProposedEdits = append(final.ProposedEdits, e)
+	}
+	return final
 }

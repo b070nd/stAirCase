@@ -189,3 +189,13 @@ func TestWorkspace_backup_and_restore(t *testing.T) {
 	require.NoError(t, verifyHandler(nil, []string{commit}), "the restored signing key verifies the commit")
 	viper.Set("STAIRCASE_DIR", ws)
 }
+
+// TestRecover_command: a run that finished has nothing to recover, and the
+// command says so.
+func TestRecover_command(t *testing.T) {
+	sessionRepo(t)
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	assert.ErrorContains(t, recoverCmd.RunE(recoverCmd, []string{"1"}), "already has a commit")
+	assert.ErrorContains(t, recoverCmd.RunE(recoverCmd, []string{"999"}), "not found")
+	assert.Error(t, recoverCmd.RunE(recoverCmd, []string{"x"}))
+}
