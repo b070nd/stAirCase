@@ -6,29 +6,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
-### Fixed
+## [0.6.0] - 2026-10-01
 
-- **`recover` can be interrupted and run again.** A drill that kills `recover` itself at
-  random moments found a dead end: killed after it made its commit but before it wrote the
-  ledger, the certificate and the run's record, a second `recover` failed for good, because the
-  branch had already moved. It now recognizes its own commit (on the base, with exactly the
-  tree the approvals produce, naming an audit chain head), skips the commit and the final
-  review it already had, and finishes the rest, with the commit's own chain head in the
-  certificate. The run's record is written last.
+Reproducible, not just signed, and hardened. A commit can be rebuilt from the
+proposals that were approved for it, and a CI check can require that. An interrupted
+run's approved changes can be recovered. In-scope changes can be approved on evidence
+(your checks, reviewer models) instead of a sample, and a verified commit gets a signed
+SLSA summary. People can sign their individual decisions and the run itself. Every
+finding of an external assurance review that could be reproduced is fixed, and drills
+that end processes with `kill -9` back the claims about recovery and key rotation.
 
-- **A killed key rotation no longer leaves key material behind.** A drill that kills a
-  rotating process 150 times found that a kill between creating the new key's temp file and
-  using it left `.key-rotate-*` files in the workspace. The next `secret rotate` now removes
-  them. (The kill drills are in `docs/testing.md`: they also confirm that `recover` commits
-  exactly the approved changes after a real `kill -9`, and that no secret is ever stranded
-  by a rotation killed at a random moment.)
+What could not be verified is written down: behaviour under a real GitHub ruleset
+(squash and rebase merges, forks, merge queues) and on a Linux kernel with old Landlock
+were reasoned about, not run. Codex is exercised against the real program (0.159);
+Gemini CLI and OpenCode arrive as work in progress, built from their documentation and
+tested against stand-ins only, and a logged-in Claude Code run is not verified.
 
-- **Two sessions starting in one repository at the same time could fail.** Git is
-  not safe against two `worktree add` at once (it could fail reading another's
-  half-written `.git/worktrees/run-N/commondir`), so one run would end FAILED at
-  the start. Creating and removing run worktrees is now serialized, within a
-  process and across processes (a lock file in the repository's git directory). It
-  showed up as a test that failed about one time in forty.
+### Changed (read before upgrading)
+
+- **The verify Action's defaults are stricter.** It reads the key and allowed
+  signers from the pull request's base branch (or `trust-ref`) instead of the
+  checkout, and `all` now defaults to `true`: every commit needs a certificate. Set
+  `all: false` for the old advisory behaviour. The documented workflow uses
+  `b070nd/stAirCase@v0.6.0`; 0.5.0 of the Action still reads the key from the PR.
+- **A certificate that claims `cal` outside 1 to 3 is refused**, however validly it
+  is signed. stAirCase itself never wrote one.
+- **Proposal ids in the approval API are strings with a random part**
+  (`3-x7k2...`), not counting numbers. Treat them as opaque.
+- **A proposal whose text is not valid UTF-8 is refused** before it is decided,
+  because the ledger could not reproduce it.
+- **Linux: a kernel with Landlock older than ABI 3** (before 6.2) no longer counts
+  as a sandbox. `--sandbox required` refuses commands there and `auto` runs them
+  unsandboxed and says so; install bubblewrap.
+- **The workspace database commits with `synchronous=FULL`.**
+- **Every approval is journaled first.** A run writes each approved change to
+  `journal/run-N.approved.jsonl` in the workspace before the agent is told the answer;
+  if it cannot be written, the approval is refused and the run stops. Back the
+  directory up with the rest of the workspace.
 
 ### Added
 
@@ -80,37 +94,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   per-agent, per-scenario table of what was actually run (Codex 0.159: all of the
   above) and what was not, with how to repeat it.
 
-## [0.6.0] - 2026-09-30
-
-Reproducible, not just signed, and hardened. A commit can be rebuilt from the
-proposals that were approved for it, and a CI check can require that. People can
-sign their individual decisions. Every finding of an external assurance review
-that could be reproduced is fixed, and what could not be verified is written down:
-behaviour under a real GitHub ruleset (squash and rebase merges, forks, merge
-queues) and a Linux kernel with old Landlock were reasoned about, not run. Gemini
-CLI and OpenCode arrive as work in progress, built from their documentation and
-tested against stand-ins only.
-
-### Changed (read before upgrading)
-
-- **The verify Action's defaults are stricter.** It reads the key and allowed
-  signers from the pull request's base branch (or `trust-ref`) instead of the
-  checkout, and `all` now defaults to `true`: every commit needs a certificate. Set
-  `all: false` for the old advisory behaviour. The documented workflow uses
-  `b070nd/stAirCase@v0.6.0`; 0.5.0 of the Action still reads the key from the PR.
-- **A certificate that claims `cal` outside 1 to 3 is refused**, however validly it
-  is signed. stAirCase itself never wrote one.
-- **Proposal ids in the approval API are strings with a random part**
-  (`3-x7k2...`), not counting numbers. Treat them as opaque.
-- **A proposal whose text is not valid UTF-8 is refused** before it is decided,
-  because the ledger could not reproduce it.
-- **Linux: a kernel with Landlock older than ABI 3** (before 6.2) no longer counts
-  as a sandbox. `--sandbox required` refuses commands there and `auto` runs them
-  unsandboxed and says so; install bubblewrap.
-- **The workspace database commits with `synchronous=FULL`.**
-
-### Added
-
 - **Evidence outcomes and `--require-evidence`.** A run that makes a commit now says
   whether it is `certified` or `delivered_without_evidence` (and why) in its summary,
   and records an `evidence_failed` event when the ledger or certificate could not be
@@ -161,6 +144,28 @@ tested against stand-ins only.
   conformance vectors and an independent Python implementation run in CI.
 
 ### Fixed
+
+- **`recover` can be interrupted and run again.** A drill that kills `recover` itself at
+  random moments found a dead end: killed after it made its commit but before it wrote the
+  ledger, the certificate and the run's record, a second `recover` failed for good, because the
+  branch had already moved. It now recognizes its own commit (on the base, with exactly the
+  tree the approvals produce, naming an audit chain head), skips the commit and the final
+  review it already had, and finishes the rest, with the commit's own chain head in the
+  certificate. The run's record is written last.
+
+- **A killed key rotation no longer leaves key material behind.** A drill that kills a
+  rotating process 150 times found that a kill between creating the new key's temp file and
+  using it left `.key-rotate-*` files in the workspace. The next `secret rotate` now removes
+  them. (The kill drills are in `docs/testing.md`: they also confirm that `recover` commits
+  exactly the approved changes after a real `kill -9`, and that no secret is ever stranded
+  by a rotation killed at a random moment.)
+
+- **Two sessions starting in one repository at the same time could fail.** Git is
+  not safe against two `worktree add` at once (it could fail reading another's
+  half-written `.git/worktrees/run-N/commondir`), so one run would end FAILED at
+  the start. Creating and removing run worktrees is now serialized, within a
+  process and across processes (a lock file in the repository's git directory). It
+  showed up as a test that failed about one time in forty.
 
 - **Decisions are durable, and releases need a green build.** The workspace database
   commits with `synchronous=FULL`, so a decision acknowledged to the agent is on disk
