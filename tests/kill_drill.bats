@@ -91,3 +91,42 @@ sc() { "$STAIRCASE_BIN" "$@" 2>&1; }
   [[ "$output" == *"run_recovered"* ]]
   [[ "$output" == *"status=KILLED"* ]]
 }
+
+# What a crash of `recover` itself leaves must not be a dead end: it makes a commit,
+# then writes the ledger, the certificate and the run's record. This kills it at
+# random moments, from the same dead session, and a second `recover` must finish
+# the job every time.
+@test "kill -9 of recover itself, at random moments, never leaves a dead end" {
+  (cd "$WORK/app" && exec "$STAIRCASE_BIN" claude --yes "write two files" >"$WORK/session.log" 2>&1 3>&-) &
+  RUN_PID=$!
+  for _ in $(seq 1 300); do [ -f "$WORK/agent.pid" ] && break; sleep 0.1; done
+  [ -f "$WORK/agent.pid" ] || { cat "$WORK/session.log"; false; }
+  kill -9 "$RUN_PID"; wait "$RUN_PID" 2>/dev/null || true
+  kill -9 "$(cat "$WORK/agent.pid")" 2>/dev/null || true
+  mkdir "$WORK/snap" && cp -a "$STAIRCASE_DIR" "$WORK/snap/workspace" && cp -a "$WORK/app" "$WORK/snap/app"
+
+  RANDOM=7   # fixed seed: a failure can be replayed
+  killed=0
+  for i in $(seq 1 60); do
+    rm -rf "$STAIRCASE_DIR" "$WORK/app"
+    cp -a "$WORK/snap/workspace" "$STAIRCASE_DIR" && cp -a "$WORK/snap/app" "$WORK/app"
+    cd "$WORK/app"
+    "$STAIRCASE_BIN" recover 1 --force >/dev/null 2>&1 3>&- &
+    pid=$!
+    sleep "0.0$((RANDOM % 9))$((RANDOM % 10))"
+    if kill -9 "$pid" 2>/dev/null; then killed=$((killed + 1)); fi
+    wait "$pid" 2>/dev/null || true
+
+    # whatever was left, another recover (or none, if the first finished) must end with everything in place
+    second="$("$STAIRCASE_BIN" recover 1 --force 2>&1 3>&-)" || true
+    run sc inspect log 1
+    [[ "$output" == *"run_recovered"* ]] || { echo "iteration $i: no run_recovered after a second recover: $second"; false; }
+    [ "$(git show staircase/run-1:src/a.txt)" = "a content" ]
+    [ "$(git show staircase/run-1:src/b.txt)" = "b content" ]
+    run sc verify staircase/run-1 --min-cal 2
+    [ "$status" -eq 0 ] || { echo "iteration $i: verify: $output"; false; }
+    run sc rebuild staircase/run-1
+    [ "$status" -eq 0 ] || { echo "iteration $i: rebuild: $output"; false; }
+  done
+  echo "recover was killed in $killed of 60 runs" >&3
+}

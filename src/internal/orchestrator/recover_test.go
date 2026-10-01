@@ -214,3 +214,62 @@ func TestRecover_trusts_only_what_the_audit_chain_records(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "first\n", got)
 }
+
+// TestRecover_finishes_a_recovery_that_was_killed_after_its_commit: recover makes
+// the commit and then writes the ledger, the certificate and the run's record.
+// A kill in between left a commit nobody could complete (the branch had already
+// moved). A second recover now recognizes its own commit, by parent and tree, and
+// finishes the rest, with the commit's own chain head in the certificate.
+func TestRecover_finishes_a_recovery_that_was_killed_after_its_commit(t *testing.T) {
+	r := interrupted(t, nil, orchestrator.RunOptions{})
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	first, err := runner.Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{})
+	require.NoError(t, err)
+
+	// What a kill right after the commit leaves: the commit, and none of the rest.
+	require.NoError(t, r.Store.UpdateRunStatus(r.Run.ID, persistence.RunStatusRunning, nil, ""))
+	for _, f := range []string{"run-1.certificate.json", "run-1.ledger.json"} {
+		require.NoError(t, os.Remove(filepath.Join(r.WsDir, "audit", f)))
+	}
+	for _, ref := range []string{"staircase", "staircase-ledger"} {
+		git(t, r.Repo, "notes", "--ref="+ref, "remove", first.Commit)
+	}
+
+	second, err := runner.Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
+	require.NoError(t, err, "the commit exists; the rest is finished")
+	assert.Equal(t, first.Commit, second.Commit, "no second commit")
+	assert.Equal(t, first.Commit, strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1")))
+
+	run, err := r.Store.GetRun(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, first.Commit, run.GitCommitHash)
+	b, err := os.ReadFile(filepath.Join(r.WsDir, "audit", "run-1.certificate.json"))
+	require.NoError(t, err)
+	var env certificate.Envelope
+	require.NoError(t, json.Unmarshal(b, &env))
+	pub, _ := crypto.LoadSigningPublicKey(r.WsDir)
+	s, err := certificate.Open(env, pub)
+	require.NoError(t, err)
+	assert.Contains(t, git(t, r.Repo, "log", "-1", "--format=%B", first.Commit), "Staircase-Chain: sha256:"+s.Predicate.ChainHead,
+		"the certificate carries the chain head the commit names, not whatever the chain has grown to")
+	ledger, err := os.ReadFile(orchestrator.LedgerPath(r.WsDir, 1))
+	require.NoError(t, err)
+	tree, _, err := orchestrator.RebuildTree(r.Repo, ledger)
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(git(t, r.Repo, "rev-parse", first.Commit+"^{tree}")), tree)
+	require.NoError(t, r.Store.VerifyChain(r.Run.ID))
+}
+
+// TestRecover_does_not_adopt_someone_elses_commit: a branch tip that is not what
+// the approvals produce, even on the same base, is not the run's commit.
+func TestRecover_does_not_adopt_someone_elses_commit(t *testing.T) {
+	r := interrupted(t, nil, orchestrator.RunOptions{})
+	base := strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1"))
+	tree := strings.TrimSpace(git(t, r.Repo, "rev-parse", base+"^{tree}"))
+	other := strings.TrimSpace(git(t, r.Repo, "commit-tree", tree, "-p", base, "-m", "someone else's commit, same base, other bytes"))
+	git(t, r.Repo, "update-ref", "refs/heads/staircase/run-1", other)
+	_, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{})
+	assert.Error(t, err)
+	run, _ := r.Store.GetRun(r.Run.ID)
+	assert.Empty(t, run.GitCommitHash, "nothing was recorded for a commit that is not the run's")
+}

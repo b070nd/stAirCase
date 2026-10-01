@@ -302,26 +302,11 @@ func (a *approvals) verify() ([]violation, error) {
 // commit, and the branch moves only if it still points at the base commit.
 // Returns "" when the approved state equals the base.
 func (a *approvals) commit(branch, msg string) (string, error) {
-	tmp, err := os.MkdirTemp("", "staircase-commit-")
+	git, cleanup, err := a.privateGit()
 	if err != nil {
-		return "", fmt.Errorf("commit approvals: %w", err)
+		return "", err
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	name, email := a.repo.identity()
-	env := append(os.Environ(), "GIT_INDEX_FILE="+filepath.Join(tmp, "index"), // private index
-		"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
-		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
-	git := func(stdin []byte, args ...string) (string, error) {
-		// No hooks: a hook written by the agent must not run as the orchestrator.
-		cmd := exec.Command("git", append([]string{"-C", a.repo.path, "-c", "core.hooksPath=/dev/null"}, args...)...)
-		var stderr bytes.Buffer
-		cmd.Env, cmd.Stdin, cmd.Stderr = env, bytes.NewReader(stdin), &stderr
-		out, err := cmd.Output()
-		if err != nil {
-			return "", fmt.Errorf("commit approvals: git %s: %w: %s", args[0], err, bytes.TrimSpace(stderr.Bytes()))
-		}
-		return strings.TrimSpace(string(out)), nil
-	}
+	defer cleanup()
 	base := a.base.Hash.String()
 	tree, err := applyFiles(git, base, a.files)
 	if err != nil || tree == a.base.TreeHash.String() {
@@ -335,6 +320,42 @@ func (a *approvals) commit(branch, msg string) (string, error) {
 		return "", err
 	}
 	return c, nil
+}
+
+// tree is the git tree the approved state makes on the base commit: what commit
+// would commit, without committing it.
+func (a *approvals) tree() (string, error) {
+	git, cleanup, err := a.privateGit()
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	return applyFiles(git, a.base.Hash.String(), a.files)
+}
+
+// privateGit runs git in the run's repository with a private index, the
+// orchestrator's identity and no hooks (a hook written by the agent must not run
+// as the orchestrator).
+func (a *approvals) privateGit() (git func(stdin []byte, args ...string) (string, error), cleanup func(), err error) {
+	tmp, err := os.MkdirTemp("", "staircase-commit-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("commit approvals: %w", err)
+	}
+	name, email := a.repo.identity()
+	env := append(os.Environ(), "GIT_INDEX_FILE="+filepath.Join(tmp, "index"), // private index
+		"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
+		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
+	git = func(stdin []byte, args ...string) (string, error) {
+		cmd := exec.Command("git", append([]string{"-C", a.repo.path, "-c", "core.hooksPath=/dev/null"}, args...)...)
+		var stderr bytes.Buffer
+		cmd.Env, cmd.Stdin, cmd.Stderr = env, bytes.NewReader(stdin), &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("commit approvals: git %s: %w: %s", args[0], err, bytes.TrimSpace(stderr.Bytes()))
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	return git, func() { _ = os.RemoveAll(tmp) }, nil
 }
 
 // digest summarizes approved states for the audit record.
