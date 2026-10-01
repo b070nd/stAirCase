@@ -63,6 +63,7 @@ var ErrEvidenceIncomplete = errors.New("the commit was made but its evidence is 
 const (
 	OutcomeCertified       = "certified"                  // a signed certificate and the ledger it names
 	OutcomeWithoutEvidence = "delivered_without_evidence" // the commit exists; see RunSummary.EvidenceErrors
+	OutcomeRecovered       = "recovered"                  // the run was interrupted; `recover` committed what it had approved
 )
 
 // lostGrace is how long a run waits for its agent to stop after cancellation
@@ -732,6 +733,19 @@ runLoop:
 					attribute.String("staircase.agent", req.AgentName),
 					attribute.String("staircase.action_type", req.ActionType)))
 			rl := dec.decide(ctx, &req)
+			if rl.resp.Approved && rl.next != nil {
+				// The approval is kept before anything else: a run that dies after
+				// this point can still be recovered with exactly what it approved.
+				if err := appendJournal(r.wsDir, run.ID, req, dec.total, rl.source); err != nil {
+					yieldSpan.End()
+					p.reply <- decision{resp: domain.Decide(false, "the orchestrator could not keep this approval; the run is stopping")}
+					stopAgent()
+					agentFinished = true
+					finalStatus = persistence.RunStatusFailed
+					runErr = fmt.Errorf("journal approval: %w", err)
+					break runLoop
+				}
+			}
 			yieldSpan.SetAttributes(
 				attribute.Bool("staircase.approved", rl.resp.Approved),
 				attribute.String("staircase.decision_source", rl.source))

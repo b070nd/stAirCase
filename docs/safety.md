@@ -103,6 +103,18 @@ If something fails **after** the commit was made (for example writing the run
 summary), the commit is kept and shown. Look at it before you run again, so you do
 not deliver the same change twice.
 
+**If a run is interrupted** (a crash, a power cut, a killed terminal), the changes it had
+approved are not lost: a run keeps each approval, before the agent is told the answer,
+and `staircase recover <run-id>` commits exactly those. It takes only what the run's
+audit chain also records (a line added to the journal is ignored), derives the files
+again from the base commit, and moves the branch only if it is still where the run
+started. If part of the change was approved as part of the agreed task, by evidence or by
+reviewer models, you approve the whole change once first, as a finished run would have
+asked. The certificate says the run did not finish (CAL 2 at most), the run's record
+keeps its KILLED status with the commit named, and the commit can be verified and rebuilt
+like any other. What recovery cannot do: continue the agent's conversation, or commit
+something the run was about to propose.
+
 `staircase run <case-id> --reconcile` lists `staircase/run-*` branches that no run
 is using any more (it never deletes them) and marks runs that are still recorded as
 running, but no longer are, as stopped.

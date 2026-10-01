@@ -764,6 +764,34 @@ Flags:
       --ledger string        The run's ledger file (default: <workspace>/audit/run-N.ledger.json)
 ```
 
+## staircase recover
+
+Commit what an interrupted run had approved
+
+```
+staircase recover <run-id> [flags]
+```
+
+A run keeps every approval it gives, before the agent is told the answer. If the
+run was interrupted (a crash, a power cut, a killed terminal) before it committed,
+recover makes the commit from exactly those approvals: it takes only what the run's
+audit chain also records, derives the files again from the base commit, and moves
+the run's branch only if it is still where the run started. The change certificate
+says the run did not finish (CAL 2 at most), and its ledger is kept, so the commit
+can be rebuilt and verified like any other.
+
+When some of the change was approved as part of the agreed task, by evidence or by
+reviewer models, you are shown the whole change and approve it once, as a finished
+run would have asked, so recover needs a terminal then. The run's worktree is left
+as it is. A run whose record still says RUNNING needs --force, when you know its
+process is gone.
+
+Flags:
+
+```
+      --force   Recover a run whose record still says RUNNING (its process is known to be gone)
+```
+
 ## staircase replay
 
 Print the approval decisions of a finished run, after verifying its audit chain

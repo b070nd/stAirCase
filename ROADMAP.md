@@ -177,8 +177,9 @@ Six contracts stay stable and versioned while everything around them may change:
   are signed with your SSH key (a passkey was considered and dropped: one identity
   system is enough). *Started: every run with `--approval-port` serves a review page
   (line diffs, notes, approve or reject) and `staircase serve` shows all running
-  sessions on one page; decisions are signed with `--sign-approvals`. Resuming runs
-  after a restart is still open.*
+  sessions on one page; decisions are signed with `--sign-approvals`. An interrupted
+  run no longer loses what it had approved: `staircase recover` commits exactly that.
+  Continuing the agent itself after a restart is still open.*
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
   *Done: `staircase attach` and `staircase seal` (CAL 2), which also covers Cursor.*
 - **Git as the control plane:**
