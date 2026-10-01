@@ -80,7 +80,10 @@ a crash leaves behind:
   approved and then hangs, kills `staircase` itself, and checks that `staircase recover
   --force` commits exactly those two changes, that the commit verifies (CAL 2, since the run
   did not finish) and rebuilds, and that a run still recorded as RUNNING is not recovered
-  without `--force`.
+  without `--force`. A second test kills `recover` itself 60 times at random moments (it is
+  killed before finishing in most of them), each time starting from the same dead session,
+  and a second `recover` must always finish: the same commit, a certificate that verifies, a
+  ledger that rebuilds, and the run's record.
 - `TestDrill_sigkill_during_secret_rotate` (`src/cmd/staircase`) rotates the workspace key in
   a separate process in a loop and kills it 150 times at random moments against a real
   database. After every kill the key either loads and every secret decrypts under it, or it

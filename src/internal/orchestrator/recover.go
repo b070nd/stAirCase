@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -211,6 +212,29 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	}
 	a.repo = repo // the commit is made in the run's repository
 
+	// A recovery killed after its commit left that commit and none of the rest
+	// (ledger, certificate, the run's record). The commit is the run's own when it
+	// is on the base and has exactly the tree the approvals produce: then it is
+	// finished, not made again, and not reviewed again.
+	branch := strings.TrimPrefix(bound.Branch, "refs/heads/")
+	var hash, chainHead string
+	if tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); tip != "" && tip != bound.Base {
+		want, err := a.tree()
+		if err != nil {
+			return res, err
+		}
+		if gitOut(repo.path, "rev-parse", tip+"^") == bound.Base && gitOut(repo.path, "rev-parse", tip+"^{tree}") == want {
+			hash = tip
+			chainHead = strings.TrimSpace(strings.TrimPrefix(gitOut(repo.path, "log", "-1", "--format=%(trailers:key=Staircase-Chain,valueonly)", tip), "sha256:"))
+			if chainHead == "" {
+				return res, fmt.Errorf("commit %.12s on %s names no audit chain head: it is not a recovered commit", tip, branch)
+			}
+			needReview = false
+		} else {
+			return res, fmt.Errorf("the branch %s has moved since the run started and is not this run's recovered commit", branch)
+		}
+	}
+
 	if needReview {
 		if opts.Confirm == nil {
 			return res, errors.New("part of this change was approved as part of the agreed task, by evidence or by reviewer models: it needs the final review a finished run would have had, from a person at a terminal")
@@ -226,17 +250,17 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 		res.FinalReview = true
 	}
 
-	chainHead, err := r.store.GetLastEventHash(runID)
-	if err != nil {
-		return res, err
-	}
 	pl := &plan.Plan{Harness: bound.Harness, Digest: bound.PlanDigest, BlueprintHash: bound.Blueprint}
-	hash, err := a.commit(strings.TrimPrefix(bound.Branch, "refs/heads/"), commitMessage(runID, run.CaseID, pl, chainHead))
-	if err != nil {
-		return res, fmt.Errorf("commit the recovered change: %w", err)
-	}
 	if hash == "" {
-		return res, errors.New("the approved changes leave the files as they were: there is nothing to commit")
+		if chainHead, err = r.store.GetLastEventHash(runID); err != nil {
+			return res, err
+		}
+		if hash, err = a.commit(branch, commitMessage(runID, run.CaseID, pl, chainHead)); err != nil {
+			return res, fmt.Errorf("commit the recovered change: %w", err)
+		}
+		if hash == "" {
+			return res, errors.New("the approved changes leave the files as they were: there is nothing to commit")
+		}
 	}
 	res.Commit, res.Proposals = hash, len(kept)
 
@@ -255,9 +279,6 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	if status == persistence.RunStatusRunning {
 		status = persistence.RunStatusKilled
 	}
-	if err := r.store.UpdateRunStatus(runID, status, &now, hash); err != nil {
-		return res, fmt.Errorf("record the commit on run #%d: %w", runID, err)
-	}
 	_ = r.audit(runID, "run_recovered", map[string]any{"commit": hash, "proposals": len(kept), "final_review": res.FinalReview,
 		"forced": opts.Force, "evidence_errors": evidenceErrs})
 	outcome := OutcomeRecovered
@@ -266,5 +287,19 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	}
 	_ = writeSummary(r.wsDir, RunSummary{RunID: runID, CaseID: run.CaseID, FinalStatus: status, CommitHash: hash, EndTime: now,
 		Outcome: outcome, EvidenceErrors: evidenceErrs})
+	// The run's own record comes last: it is what says "recovered", so a kill before
+	// this point leaves a run that recover finishes again (it recognizes its commit).
+	if err := r.store.UpdateRunStatus(runID, status, &now, hash); err != nil {
+		return res, fmt.Errorf("record the commit on run #%d: %w", runID, err)
+	}
 	return res, nil
+}
+
+// gitOut is git's output in repo, or "" when it fails.
+func gitOut(repo string, args ...string) string {
+	out, err := exec.Command("git", append([]string{"-C", repo, "-c", "core.hooksPath=/dev/null"}, args...)...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

@@ -112,7 +112,9 @@ started. If part of the change was approved as part of the agreed task, by evide
 reviewer models, you approve the whole change once first, as a finished run would have
 asked. The certificate says the run did not finish (CAL 2 at most), the run's record
 keeps its KILLED status with the commit named, and the commit can be verified and rebuilt
-like any other. What recovery cannot do: continue the agent's conversation, or commit
+like any other. `recover` can itself be interrupted: run it again and it finishes (it
+recognizes its own commit by its base and tree, and writes what was still missing). What
+recovery cannot do: continue the agent's conversation, or commit
 something the run was about to propose.
 
 `staircase run <case-id> --reconcile` lists `staircase/run-*` branches that no run

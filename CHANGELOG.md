@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`recover` can be interrupted and run again.** A drill that kills `recover` itself at
+  random moments found a dead end: killed after it made its commit but before it wrote the
+  ledger, the certificate and the run's record, a second `recover` failed for good, because the
+  branch had already moved. It now recognizes its own commit (on the base, with exactly the
+  tree the approvals produce, naming an audit chain head), skips the commit and the final
+  review it already had, and finishes the rest, with the commit's own chain head in the
+  certificate. The run's record is written last.
+
 - **A killed key rotation no longer leaves key material behind.** A drill that kills a
   rotating process 150 times found that a kill between creating the new key's temp file and
   using it left `.key-rotate-*` files in the workspace. The next `secret rotate` now removes
