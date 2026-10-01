@@ -171,6 +171,22 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 		allow: []string{"src/**"}, inScope: true})
 	assert.Contains(t, inScope, "approved as part of this task")
 	assert.Contains(t, inScope, "whole change at the end")
+	onEvidence := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc",
+		allow: []string{"src/**"}, inScope: true, onEvidence: true, checks: []string{"go test ./..."}, validators: 2})
+	assert.Contains(t, onEvidence, "when the evidence is there: your 1 check(s) pass on the change and the reviewer model(s) agree")
+	assert.Contains(t, onEvidence, "nothing is sampled for you")
+	assert.NotContains(t, onEvidence, "1 in 5")
+}
+
+// TestSession_approve_on_evidence_needs_evidence_and_a_scope: approving on
+// evidence with nothing to base it on, or no scope, is refused before anything
+// starts.
+func TestSession_approve_on_evidence_needs_evidence_and_a_scope(t *testing.T) {
+	t.Cleanup(func() { sessionOnEvidence, sessionInScope, sessionAllow, runChecks = false, false, nil, nil })
+	sessionOnEvidence, sessionAllow, runChecks = true, []string{"src/**"}, nil
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--check")
+	runChecks, sessionAllow = []string{"true"}, nil
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow")
 }
 
 // TestSession_approve_in_scope_needs_a_scope: approving the task instead of

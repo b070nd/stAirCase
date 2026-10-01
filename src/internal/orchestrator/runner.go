@@ -143,6 +143,13 @@ type RunOptions struct {
 	// of the task (source "task"), with a checkpoint every few changes and a
 	// person's final review of the whole change. It needs Agreed.
 	ApproveInScope bool
+	// ApproveOnEvidence approves in-scope changes on evidence instead of on the
+	// agreed task alone: the Checks must pass on the state each change would
+	// produce, and the Validator's models, if any, must agree; otherwise a
+	// person decides. It replaces the sampled checkpoint of ApproveInScope, and
+	// the whole change is still reviewed once before it is committed. It needs
+	// Checks or a Validator.
+	ApproveOnEvidence bool
 	// Signal, when set, is a decision model asked about every change
 	// approved without a person; it can only send it to a person.
 	Signal *Signal
@@ -499,7 +506,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return err
 	}
 	limits = limits.Tighter(plan.Limits{MaxFilesChanged: maxFiles})
-	if opts.ApproveInScope {
+	if opts.ApproveInScope && !opts.ApproveOnEvidence { // evidence replaces the spot checks
 		limits = limits.Tighter(plan.Limits{CheckpointEvery: taskCheckpointEvery}) // spot checks inside the task
 	}
 	sup = policy.NewSupervisor(scope, limits)
@@ -568,6 +575,16 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if opts.Plan != nil {
 			val.brief = opts.Plan.Brief()
 		}
+	}
+	var evGate *evidenceGate
+	if opts.ApproveOnEvidence {
+		if len(opts.Checks) == 0 && val == nil {
+			return errors.New("--approve-on-evidence needs evidence to decide on: name a --check and/or a --validator")
+		}
+		if val != nil {
+			val.noSampling = true // the evidence replaces the validator's own sampling
+		}
+		evGate = &evidenceGate{approvals: appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir}
 	}
 	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs}
 	if _, err := os.Stat(filepath.Join(r.wsDir, governance.AllowedSigners)); err == nil {
@@ -651,7 +668,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			opts.Signal.brief = opts.Plan.Brief()
 		}
 	}
-	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: opts.ApproveInScope && opts.Agreed != "", approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
@@ -724,6 +741,9 @@ runLoop:
 			// is never released (CHECK 7.3.1).
 			decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
 			maps.Copy(decided, rl.signed)
+			if rl.evidence != nil {
+				decided["evidence"] = rl.evidence
+			}
 			if rl.source == "operator" {
 				decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
 			}

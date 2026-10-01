@@ -33,7 +33,9 @@ screen does not show line by line.
    is shown as `CHECK:` and recorded with the decision.
 4. **Your policy** rules (`policy.json`) can approve or reject it automatically.
 5. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
-   that are not sensitive (see [below](#approving-the-task-not-every-step)).
+   that are not sensitive (see [below](#approving-the-task-not-every-step)); with
+   `--approve-on-evidence` it approves them only when the evidence is there (see
+   [below](#approving-on-evidence)).
 6. **A validator model** or a panel of them, if you turned one on, can decide
    in-scope file changes.
 7. **A person** decides everything else.
@@ -281,6 +283,38 @@ of the agreed task, and recorded as decided by `task`. You still see:
   commits nothing.
 
 Your policy rules still come first. This works with `claude`, `codex` and `review`.
+
+## Approving on evidence
+
+```bash
+staircase claude "add a /health endpoint" --allow "src/**" --approve-on-evidence \
+  --check "go vet ./..." --check "go test ./..." --validator openai/gpt-6-astra
+```
+
+`--approve-in-scope` approves the task and samples one change in five for you, which is
+a guess about which ones need you. `--approve-on-evidence` replaces the guess with
+evidence. A change inside the scope (not a sensitive file, not flagged by a guard, not
+stopped by a limit) is approved only when:
+
+- every `--check` passes, run in the sandbox on the exact state the change would produce:
+  the base commit, the changes approved so far, and this one; and
+- the `--validator` models, if you named any, agree.
+
+Approved on evidence, the decision is recorded as `evidence`, with each check's command,
+exit code and output digest in the record, and the certificate counts it under
+`decisions.evidence`. Otherwise the change comes to you with what was missing ("no
+evidence to approve on: check "go test ./..." failed"), and a panel that unanimously
+rejects rejects. Nothing is approved on the absence of evidence, which is why you need at
+least one check or validator. Nothing is sampled for you either: you still see anything
+outside the scope, sensitive files, guard hits and shell commands, and **you approve the
+whole change once at the end**.
+
+Two things to know. A check must be able to pass on each intermediate state, or you will
+be asked about every change: a build, a linter, a type check and fast tests work; a test
+suite that fails until three files exist does not. And the evidence is as good as your
+checks: with weak tests, evidence-based approval is weak approval. The certificate
+says how many decisions were made on evidence and how many by people (`staircase verify`
+prints them), so a reviewer can see which it was.
 
 ## A decision model as a signal
 

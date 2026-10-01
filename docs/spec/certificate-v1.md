@@ -51,7 +51,7 @@ is always `commit`, so the certificate does not reveal the repository's name.
 | `planDigest` | string | no | hex SHA-256 of the compiled plan (task, stories and scope, agents) |
 | `blueprint` | string | no | the blueprint the plan was bound from |
 | `agents` | array of strings | yes | the agent harness (for example `Claude Code`) or the models of the built-in agents |
-| `decisions` | object: string → integer | yes | how many proposals each source decided: `operator`, `policy`, `task`, `validator:<model>[+<model>…]`, `orchestrator`, `drift` |
+| `decisions` | object: string → integer | yes | how many proposals each source decided: `operator`, `policy`, `task`, `evidence`, `validator:<model>[+<model>…]`, `orchestrator`, `drift` |
 | `chainHead` | string | yes | hex SHA-256 of the producer's audit chain when the commit was made; the commit's `Staircase-Chain:` trailer carries the same value |
 | `cal` | integer 1 to 3 | yes | the change assurance level the run reached (level 4 is only ever established by a verifier, section 5) |
 | `notes` | array of strings | no | why the level is not higher |

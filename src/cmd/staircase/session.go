@@ -20,10 +20,11 @@ import (
 )
 
 var (
-	sessionAllow   []string
-	sessionYes     bool
-	sessionInScope bool         // --approve-in-scope
-	sessionReview  *plan.Review // set by staircase review
+	sessionAllow      []string
+	sessionYes        bool
+	sessionInScope    bool         // --approve-in-scope
+	sessionOnEvidence bool         // --approve-on-evidence
+	sessionReview     *plan.Review // set by staircase review
 )
 
 var claudeCmd = &cobra.Command{
@@ -174,8 +175,14 @@ func session(harness, name, command string, args []string) error {
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
 	}
+	if sessionOnEvidence {
+		sessionInScope = true // approving on evidence is approving the task, with checks and reviewers instead of samples
+		if len(runChecks) == 0 && len(runValidator) == 0 {
+			return fmt.Errorf("--approve-on-evidence needs evidence to decide on: name a --check (your tests) and/or a --validator")
+		}
+	}
 	if sessionInScope && len(sessionAllow) == 0 {
-		return fmt.Errorf("--approve-in-scope needs the task's scope: name the paths it may change with --allow")
+		return fmt.Errorf("--approve-in-scope and --approve-on-evidence need the task's scope: name the paths it may change with --allow")
 	}
 	root, err := gitTopLevel()
 	if err != nil {
@@ -207,7 +214,7 @@ func session(harness, name, command string, args []string) error {
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, signed: runSignKey != "", requireSigned: runRequireSigned, model: runModel,
+			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, onEvidence: sessionOnEvidence, validators: len(runValidator), signed: runSignKey != "", requireSigned: runRequireSigned, model: runModel,
 			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
@@ -323,7 +330,8 @@ func samePath(a, b string) bool {
 type sessionSetup struct {
 	harness, name, task, root, base, model string
 	allow, checks                          []string
-	inScope                                bool
+	inScope, onEvidence                    bool
+	validators                             int
 	signed, requireSigned                  bool
 	shell                                  bool
 	budget                                 float64
@@ -347,6 +355,10 @@ func agreement(s sessionSetup) string {
 	}
 	fmt.Fprintf(&b, "  may change:  %s\n", scope)
 	switch {
+	case s.onEvidence:
+		fmt.Fprintf(&b, "  edits:       inside the scope approved when the evidence is there: %s;\n"+
+			"               otherwise the change comes to you with what was missing; nothing is sampled for you,\n"+
+			"               sensitive files and anything outside come to you, and you approve the whole change at the end\n", evidenceSources(s))
 	case s.inScope:
 		fmt.Fprintf(&b, "  edits:       inside the scope approved as part of this task, 1 in 5 shown to you;\n"+
 			"               sensitive files and anything outside come to you; you approve the whole change at the end\n")
@@ -409,8 +421,23 @@ func agree(s sessionSetup) (string, error) {
 	return "operator", nil
 }
 
-// inScopeFlag adds --approve-in-scope to cmd.
+// evidenceSources says what an evidence-based approval rests on.
+func evidenceSources(s sessionSetup) string {
+	var parts []string
+	if len(s.checks) > 0 {
+		parts = append(parts, fmt.Sprintf("your %d check(s) pass on the change", len(s.checks)))
+	}
+	if s.validators > 0 {
+		parts = append(parts, "the reviewer model(s) agree")
+	}
+	return strings.Join(parts, " and ")
+}
+
+// inScopeFlag adds --approve-in-scope and --approve-on-evidence to cmd.
 func inScopeFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&sessionOnEvidence, "approve-on-evidence", false,
+		"Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, "+
+			"and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator")
 	cmd.Flags().BoolVar(&sessionInScope, "approve-in-scope", false,
 		"Approve changes inside the --allow scope as part of the agreed task instead of one by one: "+
 			"1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end")
