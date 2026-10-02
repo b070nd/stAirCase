@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,6 +65,13 @@ type ruling struct {
 // decision.
 func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling {
 	req.Drift, req.Guard, req.Review, req.Before = "", "", "", nil // the orchestrator's to fill, never the agent's
+	for i := range req.ProposedEdits {                             // what a person is shown instead of unreadable bytes
+		e := &req.ProposedEdits[i]
+		e.BinaryBytes, e.BinarySHA256 = 0, ""
+		if b, err := base64.StdEncoding.DecodeString(e.ContentB64); err == nil && e.ContentB64 != "" {
+			e.BinaryBytes, e.BinarySHA256 = len(b), sha256Hex(b)
+		}
+	}
 	rl := d.rule(ctx, req)
 	if d.signal != nil && rl.resp.Approved && rl.source != "operator" && rl.next != nil {
 		before := map[string]*approvedFile{}

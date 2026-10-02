@@ -1,0 +1,46 @@
+{
+  "description": "A file overwritten with bytes that are not text keeps its mode.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "run.sh",
+        "search_block": "(new file)",
+        "replace_block": "",
+        "content_b64": "f0VMRv8A"
+      }
+    ]
+  ],
+  "tree": "e895f5e7de5003454c35f3c7bd782c931ce9da6d"
+}

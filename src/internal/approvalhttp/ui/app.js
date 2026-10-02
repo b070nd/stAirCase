@@ -38,6 +38,10 @@ function change(card, e, req) {
     return;
   }
   card.append(el("div", "file", e.file));
+  if (e.binary_sha256) { // not text: what it is, never unreadable bytes
+    card.append(el("pre", "add", "binary file, " + e.binary_bytes + " bytes, sha256 " + e.binary_sha256));
+    return;
+  }
   const before = (req.before || {})[e.file];
   if (before !== undefined && (e.search_block === "(new file)" || e.search_block === "(final content)")) {
     card.append(diff(before, e.replace_block));

@@ -142,6 +142,12 @@ func (m yieldModel) View() string {
 	for i, edit := range m.req.ProposedEdits {
 		sb.WriteString(styleLabel.Render(fmt.Sprintf("── Edit %d: %s ──", i+1, edit.File)))
 		sb.WriteString("\n")
+		if edit.BinarySHA256 != "" { // not text: shown by what it is, never as garbage
+			sb.WriteString(styleCode.Render("BINARY FILE, whole new content") + "\n")
+			sb.WriteString(styleBorder.Render(fmt.Sprintf("%d bytes, sha256 %s", edit.BinaryBytes, edit.BinarySHA256)))
+			sb.WriteString("\n\n")
+			continue
+		}
 		sb.WriteString(styleCode.Render("SEARCH  ") + "\n")
 		sb.WriteString(styleBorder.Render(edit.SearchBlock))
 		sb.WriteString("\n")

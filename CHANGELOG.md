@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **Changes to files that are not text.** An image, a Latin-1 source file or any other
+  whole new file that is not valid UTF-8 can now be approved, which `seal`, `attach` and
+  any command that writes such a file previously could not (the proposal was refused). It
+  travels as base64 in `content_b64` (up to 2 MiB), the ledger becomes version 2 only when
+  it holds one, and a person is shown its size and SHA-256 instead of unreadable bytes. A
+  guard sends it to a person whatever the rules, the agreed task or the models say, and it
+  is committed byte for byte and rebuilds like any other change. The rebuild
+  specification and its vectors (now 21, checked by the Go code and the independent Python
+  implementation) cover it. Search-and-replace edits of a binary file are not supported.
+
 ## [0.6.0] - 2026-10-01
 
 Reproducible, not just signed, and hardened. A commit can be rebuilt from the

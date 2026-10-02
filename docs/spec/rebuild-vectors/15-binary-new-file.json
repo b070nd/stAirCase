@@ -1,0 +1,46 @@
+{
+  "description": "A new file that is not valid UTF-8 is a whole-file change with content_b64 (ledger version 2).",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "img/logo.bin",
+        "search_block": "(new file)",
+        "replace_block": "",
+        "content_b64": "//4AgGJpbmFyeQ=="
+      }
+    ]
+  ],
+  "tree": "a8c514bc390f67de9edc6100c7786c3e4fdcccd0"
+}

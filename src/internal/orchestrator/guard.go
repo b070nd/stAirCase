@@ -1,10 +1,12 @@
 package orchestrator
 
 import (
+	"fmt"
 	"path"
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // Guards send a file change to a person when it adds something risky, even
@@ -43,6 +45,9 @@ func guard(next map[string]*approvedFile, before func(p string) *approvedFile) s
 		old := ""
 		if b := before(p); b != nil && !b.deleted {
 			old = string(b.content)
+		}
+		if !utf8.Valid(f.content) { // a person cannot read it, so no rule, task or model approves it
+			add(fmt.Sprintf("it changes a file that is not text and cannot be reviewed (%s, %d bytes)", p, len(f.content)))
 		}
 		if addsMatch(hiddenUnicode, old, string(f.content)) {
 			add("it adds hidden Unicode characters that make code read differently from how it runs (" + p + ")")

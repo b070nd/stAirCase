@@ -5,6 +5,8 @@ stAirCase's own code. Standard library only.
 
     python3 docs/spec/rebuild_vectors.py
 """
+import base64
+import binascii
 import hashlib
 import json
 import pathlib
@@ -12,6 +14,7 @@ import posixpath
 import sys
 
 MAX_NEW_FILE = 200 * 1024
+MAX_BINARY_FILE = 2 * 1024 * 1024
 NEW_FILE, DELETE_FILE = "(new file)", "(delete file)"
 
 
@@ -46,11 +49,29 @@ def derive(files: dict, proposal: list) -> dict:
     for e in proposal:
         p = clean_path(e["file"])
         search, replace = e.get("search_block", ""), e.get("replace_block", "")
+        b64 = e.get("content_b64", "")
+        if b64 and search != NEW_FILE:
+            raise Refused("content_b64 belongs to a whole new file: " + p)
         if search == NEW_FILE:
-            if len(replace.encode()) > MAX_NEW_FILE:
+            data = replace.encode()
+            if b64:
+                if replace != "":
+                    raise Refused("a change has either replace_block or content_b64, not both: " + p)
+                try:
+                    data = base64.b64decode(b64, validate=True)
+                except (binascii.Error, ValueError):
+                    raise Refused("content_b64 is not base64: " + p)
+                try:
+                    data.decode("utf-8")
+                    raise Refused("the content is valid UTF-8 text: send it as replace_block: " + p)
+                except UnicodeDecodeError:
+                    pass
+                if len(data) > MAX_BINARY_FILE:
+                    raise Refused("file is too large: " + p)
+            elif len(data) > MAX_NEW_FILE:
                 raise Refused("new file is too large: " + p)
             cur = current(p)
-            nxt[p] = (replace.encode(), cur[1] if cur else "100644")
+            nxt[p] = (data, cur[1] if cur else "100644")
         elif search == DELETE_FILE:
             if current(p) is None:
                 raise Refused("cannot delete a file that does not exist: " + p)

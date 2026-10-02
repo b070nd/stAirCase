@@ -42,6 +42,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -305,9 +306,14 @@ func (s *Server) PendSigned(req domain.YieldRequest, payload string) (id string,
 	id = fmt.Sprintf("%d-%s", s.nextID, rand.Text()[:12])
 	reqJSON, _ := json.Marshal(req)
 	sum := sha256.Sum256(reqJSON)
+	shown := req // the challenge is of the whole request; a person is not sent the bytes of a binary file, only its size and digest
+	shown.ProposedEdits = slices.Clone(req.ProposedEdits)
+	for i := range shown.ProposedEdits {
+		shown.ProposedEdits[i].ContentB64 = ""
+	}
 	py := &PendingYield{
 		ID:        id,
-		Req:       req,
+		Req:       shown,
 		Challenge: hex.EncodeToString(sum[:]),
 		Created:   time.Now(),
 		Payload:   payload,

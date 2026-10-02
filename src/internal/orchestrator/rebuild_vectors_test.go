@@ -1,6 +1,7 @@
 package orchestrator_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -37,6 +38,9 @@ var (
 	}
 	edit = func(f, s, r string) domain.ProposedEdit {
 		return domain.ProposedEdit{File: f, SearchBlock: s, ReplaceBlock: r}
+	}
+	binary = func(f string, b []byte) domain.ProposedEdit {
+		return domain.ProposedEdit{File: f, SearchBlock: orchestrator.MarkerNewFile, ContentB64: base64.StdEncoding.EncodeToString(b)}
 	}
 	del = func(f string) domain.ProposedEdit {
 		return domain.ProposedEdit{File: f, SearchBlock: orchestrator.MarkerDeleteFile}
@@ -81,6 +85,20 @@ func rebuildVectors() map[string]rebuildVector {
 			[]domain.ProposedEdit{del("nothing.txt")}), "cannot delete a file that does not exist"),
 		"14-refused-edit-of-a-deleted-file": withError(v("Editing a file that an earlier proposal deleted is refused.",
 			[]domain.ProposedEdit{del("old.txt")}, []domain.ProposedEdit{edit("old.txt", "bye\n", "hi\n")}), "cannot edit a file that does not exist"),
+		"15-binary-new-file": v("A new file that is not valid UTF-8 is a whole-file change with content_b64 (ledger version 2).",
+			[]domain.ProposedEdit{binary("img/logo.bin", []byte("\xff\xfe\x00\x80binary"))}),
+		"16-binary-overwrites-a-file-and-keeps-its-mode": v("A file overwritten with bytes that are not text keeps its mode.",
+			[]domain.ProposedEdit{binary("run.sh", []byte("\x7fELF\xff\x00"))}),
+		"17-text-with-nul-bytes-stays-text": v("Content that is valid UTF-8, NUL bytes included, is replace_block, never content_b64.",
+			[]domain.ProposedEdit{newFile("nul.txt", "a\x00b\n")}),
+		"18-refused-content-b64-that-is-text": withError(v("content_b64 for bytes that are valid UTF-8 is refused: text has one representation.",
+			[]domain.ProposedEdit{binary("t.txt", []byte("plain text\n"))}), "valid UTF-8 text"),
+		"19-refused-both-replace-block-and-content-b64": withError(v("A change has replace_block or content_b64, not both.",
+			[]domain.ProposedEdit{{File: "x.bin", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "x", ContentB64: base64.StdEncoding.EncodeToString([]byte("\xff"))}}), "not both"),
+		"20-refused-content-b64-that-is-not-base64": withError(v("content_b64 must be base64.",
+			[]domain.ProposedEdit{{File: "x.bin", SearchBlock: orchestrator.MarkerNewFile, ContentB64: "***"}}), "is not base64"),
+		"21-refused-content-b64-on-an-edit": withError(v("content_b64 belongs to a whole new file, not to a search and replace.",
+			[]domain.ProposedEdit{{File: "lf.txt", SearchBlock: "a\n", ContentB64: base64.StdEncoding.EncodeToString([]byte("\xff"))}}), "belongs to a whole new file"),
 	}
 }
 
@@ -111,6 +129,13 @@ func TestRebuildVectors(t *testing.T) {
 			git("add", "-A")
 			git("commit", "-q", "-m", "base")
 			l := orchestrator.Ledger{Version: 1, Base: git("rev-parse", "HEAD")}
+			for _, p := range v.Proposals {
+				for _, e := range p {
+					if e.ContentB64 != "" {
+						l.Version = 2 // a ledger needs version 2 only when it holds a file that is not text
+					}
+				}
+			}
 			raw, err := ledgerJSON(l, v.Proposals)
 			require.NoError(t, err)
 			tree, _, err := orchestrator.RebuildTree(repo, raw)

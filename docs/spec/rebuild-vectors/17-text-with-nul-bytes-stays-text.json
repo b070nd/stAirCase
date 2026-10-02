@@ -1,0 +1,45 @@
+{
+  "description": "Content that is valid UTF-8, NUL bytes included, is replace_block, never content_b64.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "nul.txt",
+        "search_block": "(new file)",
+        "replace_block": "a\u0000b\n"
+      }
+    ]
+  ],
+  "tree": "95aa1bbd5afa92b5708dd9261f46599bf360544b"
+}
