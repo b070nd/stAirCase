@@ -618,7 +618,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		case project.WebhookURL != "":
 			resp = sendWebhookYield(wait, project.WebhookURL, webhookSecret, req)
 		default:
-			resp = tui.RunYieldTUI(req) // ponytail: the terminal dialog cannot be interrupted; its answer is checked below
+			resp = tui.RunYieldTUI(wait, req) // ends with the run, or on Ctrl-C
 		}
 		if wait.Err() != nil { // an answer that arrives after the run ended counts for nothing
 			return ended()

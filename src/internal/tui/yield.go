@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -11,18 +12,35 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
-// RunYieldTUI blocks until the operator approves or rejects the proposed edits.
-// It renders the yield request in a full-screen Bubbletea TUI with glamour
-// Markdown rendering for the reasoning trace.
-func RunYieldTUI(req domain.YieldRequest) domain.YieldResponse {
+// RunYieldTUI blocks until the operator approves or rejects the proposed edits,
+// or ctx ends (the run was cancelled or ran out of time), which rejects them. It
+// renders the yield request in a full-screen Bubbletea TUI with glamour
+// Markdown rendering for the reasoning trace. Ctrl-C rejects the change and
+// interrupts the process, as it does outside the dialog.
+func RunYieldTUI(ctx context.Context, req domain.YieldRequest) domain.YieldResponse {
+	return runYield(ctx, req, tea.WithAltScreen())
+}
+
+// interrupt stops the run the way an operator's Ctrl-C does outside the
+// dialog (replaced in tests).
+var interrupt = raiseInterrupt
+
+func runYield(ctx context.Context, req domain.YieldRequest, opts ...tea.ProgramOption) domain.YieldResponse {
 	m := newYieldModel(req)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, append(opts, tea.WithContext(ctx))...)
 	result, err := p.Run()
-	if err != nil {
+	switch {
+	case ctx.Err() != nil:
+		return domain.Decide(false, "the run ended while this waited for a decision")
+	case err != nil:
 		// Fallback to rejection on TUI failure.
 		return domain.Decide(false, "TUI error: "+err.Error())
 	}
-	return result.(yieldModel).resp
+	final := result.(yieldModel)
+	if final.interrupted {
+		interrupt()
+	}
+	return final.resp
 }
 
 // ─── Model ────────────────────────────────────────────────────────────────────
@@ -43,6 +61,8 @@ type yieldModel struct {
 	width    int
 	height   int
 	rendered string // glamour-rendered reasoning trace
+
+	interrupted bool // the operator pressed Ctrl-C
 }
 
 func newYieldModel(req domain.YieldRequest) yieldModel {
@@ -75,6 +95,11 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rendered = rendered
 
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC { // raw mode: a key, not a signal; stop the run
+			m.resp = domain.Decide(false, "the operator interrupted the run")
+			m.interrupted, m.state = true, stateDone
+			return m, tea.Quit
+		}
 		switch m.state {
 		case stateReviewing:
 			switch msg.String() {
@@ -93,10 +118,9 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateDone
 				return m, tea.Quit
 			case tea.KeyBackspace:
-				s := m.feedback.String()
-				if len(s) > 0 {
+				if r := []rune(m.feedback.String()); len(r) > 0 { // by characters, not bytes
 					m.feedback.Reset()
-					m.feedback.WriteString(s[:len(s)-1])
+					m.feedback.WriteString(string(r[:len(r)-1]))
 				}
 			case tea.KeyRunes:
 				m.feedback.WriteString(string(msg.Runes))

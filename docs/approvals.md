@@ -160,11 +160,12 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 ```
 
 A proposal waits for you only as long as its run lives. If the run is cancelled, or
-its `max_run_secs` limit passes, while a proposal is waiting (through the page, the API
+its `max_run_secs` limit passes, while a proposal is waiting (through the terminal, the page, the API
 or a webhook), the wait ends, the proposal is withdrawn and a late answer is refused
 (`409`); it is never recorded as an approval. The run's final review, asked after the
-agent has finished, ends only when the run is cancelled. The terminal dialog cannot be
-interrupted, but an answer given after the run ended is discarded the same way.
+agent has finished, ends only when the run is cancelled. In the terminal dialog, **Ctrl-C**
+rejects the change and stops the run like a Ctrl-C anywhere else (on Windows it rejects the
+change and the run goes on to its next step; stop it from the console).
 
 ### From a service: a webhook
 

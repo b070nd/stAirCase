@@ -43,7 +43,7 @@ process is gone.`,
 		defer func() { _ = db.Close() }()
 		var confirm func(domain.YieldRequest) domain.YieldResponse
 		if stat, _ := os.Stdin.Stat(); stat != nil && stat.Mode()&os.ModeCharDevice != 0 {
-			confirm = tui.RunYieldTUI
+			confirm = func(req domain.YieldRequest) domain.YieldResponse { return tui.RunYieldTUI(context.Background(), req) }
 		}
 		res, err := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR")).Recover(context.Background(), runID, orchestrator.RecoverOptions{Force: recoverForce, Confirm: confirm})
 		if err != nil {

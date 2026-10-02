@@ -2,7 +2,13 @@
 // Exposes unexported symbols to the black-box test package (package tui_test).
 package tui
 
-import "github.com/b070nd/stAirCase/src/internal/domain"
+import (
+	"context"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/b070nd/stAirCase/src/internal/domain"
+)
 
 // NewYieldModel exposes the unexported constructor for white-box testing.
 var NewYieldModel = newYieldModel
@@ -19,4 +25,17 @@ func RespOf(m interface{}) domain.YieldResponse {
 // transitions without importing the unexported type directly.
 func StateOf(m interface{}) int {
 	return int(m.(yieldModel).state)
+}
+
+// RunYieldFor runs the dialog with the given program options (a fake input and
+// output instead of a terminal) and reports whether the operator interrupted.
+func RunYieldFor(ctx context.Context, req domain.YieldRequest, opts ...tea.ProgramOption) domain.YieldResponse {
+	return runYield(ctx, req, opts...)
+}
+
+// OnInterrupt replaces what an operator's Ctrl-C does to the process, for the test's length.
+func OnInterrupt(f func()) (restore func()) {
+	old := interrupt
+	interrupt = f
+	return func() { interrupt = old }
 }
