@@ -160,6 +160,14 @@ type ProposedEdit struct {
 	// advisory and never trusted: the orchestrator derives the approved content
 	// from the base commit and the edits shown (see orchestrator/approval.go).
 	ContentHash string `json:"content_hash,omitempty"`
+	// ContentB64 is a whole new file's content, base64, for content that is not
+	// valid UTF-8 (an image, a Latin-1 source file): SearchBlock is "(new file)" and
+	// ReplaceBlock is empty. Content that is valid UTF-8 always goes in ReplaceBlock.
+	ContentB64 string `json:"content_b64,omitempty"`
+	// BinaryBytes and BinarySHA256 describe ContentB64 for the person deciding, who
+	// is not shown unreadable bytes. The orchestrator sets them; an agent's are ignored.
+	BinaryBytes  int    `json:"binary_bytes,omitempty"`
+	BinarySHA256 string `json:"binary_sha256,omitempty"`
 }
 
 // YieldRequest is an agent's proposal (an edit or a shell command) awaiting a

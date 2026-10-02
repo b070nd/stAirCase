@@ -26,7 +26,8 @@ screen does not show line by line.
    change outside the stories' scope, too many files, or a checkpoint. See
    [Drift supervision](drift.md).
 3. **Guards** send a change to a person, whatever the rules say, when it adds
-   something risky: hidden Unicode characters that make code read differently from
+   something risky: a file that is not text and so cannot be reviewed (an image, a
+   binary: you are shown its size and digest), hidden Unicode characters that make code read differently from
    how it runs ("Trojan Source"), a change to dependencies (`go.mod`,
    `package.json`, lock files and the like), or what looks like a secret (private
    keys, cloud and API keys, tokens). Only what the change adds counts. The reason

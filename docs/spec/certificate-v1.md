@@ -142,9 +142,13 @@ unless `base` equals the certificate's `baseCommit` and the commit's parent; (4)
 replay the proposals as below on the tree of `base`; (5) accept only if the resulting
 git tree id equals the commit's tree id.
 
-A ledger is JSON and so carries only text: `file`, `search_block` and `replace_block`
-are valid UTF-8, and a producer refuses a proposal whose text is not, so a
-binary change has no ledger and no certificate that names one.
+A ledger is JSON. `file`, `search_block` and `replace_block` are valid UTF-8, and a
+producer refuses a proposal whose text is not. A whole new file whose content is not valid
+UTF-8 is carried in the edit's `content_b64` (standard base64) instead, with `search_block`
+`(new file)` and an empty `replace_block`; a ledger that has any such edit has `version` 2,
+any other `version` 1, and a verifier refuses a version 1 ledger that has `content_b64`.
+Content that is valid UTF-8 never uses `content_b64`. An edit MAY also carry `binary_bytes`
+and `binary_sha256`, which describe `content_b64` for a person and which a verifier ignores.
 
 **Replaying.** Keep a state of files, path to (bytes, mode), starting from the base
 tree (regular files only). For each proposal in order, apply its edits in order to a
@@ -156,8 +160,11 @@ normalized form (as `posixpath.normpath`); refuse if that is `.`, `..` or starts
 `../`; refuse if any component equals `.git` ignoring case. Then, by `search_block`:
 
 - `(new file)`: the file becomes the UTF-8 bytes of `replace_block` (at most 204800
-  bytes), keeping the mode of the file it overwrites, else `100644`.
-- `(delete file)`: the file must exist, and is removed.
+  bytes), keeping the mode of the file it overwrites, else `100644`. With `content_b64`:
+  `replace_block` must be empty, the value must be base64, its bytes must not be valid
+  UTF-8 and at most 2097152 bytes, and the file becomes those bytes (same mode rule).
+- `(delete file)`: the file must exist, and is removed. `content_b64` here, or on any
+  edit that is not `(new file)`, is refused.
 - otherwise: the file must exist. Read both blocks with `\r\n` as `\n`. If the file
   has no carriage return, use it and the blocks as they are. If every line end in
   the file is `\r\n` (and there is at least one), turn `\n` in both blocks into

@@ -1,0 +1,46 @@
+{
+  "description": "content_b64 for bytes that are valid UTF-8 is refused: text has one representation.",
+  "base": [
+    {
+      "path": "lf.txt",
+      "content": "a\nb\nb\n",
+      "mode": "100644"
+    },
+    {
+      "path": "crlf.txt",
+      "content": "x\r\ny\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "mixed.txt",
+      "content": "p\r\nq\nr\r\n",
+      "mode": "100644"
+    },
+    {
+      "path": "run.sh",
+      "content": "echo a\n",
+      "mode": "100755"
+    },
+    {
+      "path": "old.txt",
+      "content": "bye\n",
+      "mode": "100644"
+    },
+    {
+      "path": "dir/only.txt",
+      "content": "alone\n",
+      "mode": "100644"
+    }
+  ],
+  "proposals": [
+    [
+      {
+        "file": "t.txt",
+        "search_block": "(new file)",
+        "replace_block": "",
+        "content_b64": "cGxhaW4gdGV4dAo="
+      }
+    ]
+  ],
+  "error": "valid UTF-8 text"
+}

@@ -2,10 +2,16 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
@@ -101,4 +107,106 @@ func TestReviewAfter_nothing_changed(t *testing.T) {
 	require.NoError(t, r.Err)
 	assert.True(t, got.Approved)
 	assert.NotContains(t, r.Types(), "yield_decided")
+}
+
+// TestReviewAfter_binary_changes: a file that is not valid UTF-8 (an image, a
+// Latin-1 source file) changed by a command or an editor is decided as a
+// whole-file change shown by its size and digest, committed byte for byte, and
+// the commit still rebuilds from its ledger, which then has version 2.
+func TestReviewAfter_binary_changes(t *testing.T) {
+	png := append([]byte("\x89PNG\r\n\x1a\n"), 0xff, 0xfe, 0x00, 0x80, 'x')
+	latin1 := []byte("caf\xe9 au lait\n")
+	var shown []domain.ProposedEdit
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		for name, b := range map[string][]byte{"logo.png": png, "menu.txt": latin1} {
+			if err := os.WriteFile(filepath.Join(env.Worktree, name), b, 0o644); err != nil {
+				return err
+			}
+		}
+		got := env.ProposeWorktreeChanges(ctx, "cursor", "an editor wrote an image and a Latin-1 file")
+		if !got.Approved {
+			t.Errorf("not approved: %s", got.Feedback)
+		}
+		return nil
+	}
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent),
+		Setup: func(s *persistence.Store, ws string, p int64) {
+			require.NoError(t, crypto.GenerateSigningKey(ws))
+			scoped(op, `{"rules":[]}`)(s, ws, p) // a person decides
+		}})
+	require.NoError(t, r.Err)
+	shown = op.seen[0].ProposedEdits
+	require.Len(t, shown, 2)
+	for _, e := range shown {
+		assert.Empty(t, e.ReplaceBlock, "no unreadable text is put in front of a person")
+		assert.NotEmpty(t, e.BinarySHA256, e.File)
+		assert.NotZero(t, e.BinaryBytes, e.File)
+	}
+
+	for name, want := range map[string][]byte{"logo.png": png, "menu.txt": latin1} {
+		got, err := exec.Command("git", "-C", r.Repo, "show", fmt.Sprintf("staircase/run-%d:%s", r.Run.ID, name)).Output()
+		require.NoError(t, err)
+		assert.Equal(t, want, got, "%s is committed byte for byte", name)
+	}
+	ledger, err := os.ReadFile(orchestrator.LedgerPath(r.WsDir, r.Run.ID))
+	require.NoError(t, err)
+	assert.Contains(t, string(ledger), `"version":2`)
+	tree, _, err := orchestrator.RebuildTree(r.Repo, ledger)
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(git(t, r.Repo, "rev-parse", fmt.Sprintf("staircase/run-%d^{tree}", r.Run.ID))), tree)
+}
+
+// TestReviewAfter_binary_changes_always_go_to_a_person: a file nobody can read
+// is not approved by a rule, the agreed task or a model, whatever they say.
+func TestReviewAfter_binary_changes_always_go_to_a_person(t *testing.T) {
+	op := &operator{approve: true}
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		if err := os.WriteFile(filepath.Join(env.Worktree, "logo.png"), []byte("\x89PNG\xff\x00"), 0o644); err != nil {
+			return err
+		}
+		env.ProposeWorktreeChanges(ctx, "cursor", "an editor wrote an image")
+		return nil
+	}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent),
+		Setup: func(s *persistence.Store, ws string, p int64) {
+			scoped(op, "")(s, ws, p) // the harness policy auto-approves file edits
+		}})
+	require.NoError(t, r.Err)
+	assert.Equal(t, []string{"file_edit:operator"}, sources(t, r), "the policy rule did not decide it")
+	require.Len(t, op.seen, 1)
+	assert.Contains(t, op.seen[0].Guard, "not text and cannot be reviewed")
+}
+
+// TestBinary_limits_and_ledger_versions: a file that is not text is refused
+// above its size limit, and a version 1 ledger (text only) that carries
+// content_b64 is refused.
+func TestBinary_limits_and_ledger_versions(t *testing.T) {
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		big := append([]byte{0xff}, make([]byte, 2<<20)...)
+		ap := env.ProposeEdit(ctx, "cursor", "too big", domain.ProposedEdit{File: "big.bin", SearchBlock: orchestrator.MarkerNewFile,
+			ContentB64: base64.StdEncoding.EncodeToString(big)})
+		if ap.Approved || !strings.Contains(ap.Feedback, "at most") {
+			t.Errorf("a file over the limit was not refused: %+v", ap)
+		}
+		return nil
+	})})
+	require.NoError(t, r.Err)
+
+	repo := t.TempDir()
+	run := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		require.NoError(t, err, string(out))
+		return strings.TrimSpace(string(out))
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "t@t")
+	run("config", "user.name", "T")
+	run("commit", "-q", "--allow-empty", "-m", "base")
+	ledger := fmt.Sprintf(`{"version":1,"base":%q,"proposals":[{"seq":1,"source":"operator","edits":[{"file":"x.bin","search_block":"(new file)","replace_block":"","content_b64":%q}]}]}`,
+		run("rev-parse", "HEAD"), base64.StdEncoding.EncodeToString([]byte("\xff\x00")))
+	_, _, err := orchestrator.RebuildTree(repo, []byte(ledger))
+	assert.ErrorContains(t, err, "text only")
+	_, _, err = orchestrator.RebuildTree(repo, []byte(strings.Replace(ledger, `"version":1`, `"version":2`, 1)))
+	assert.NoError(t, err)
 }

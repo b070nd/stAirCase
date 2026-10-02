@@ -105,12 +105,16 @@ The ledger holds the approved content, so it stays in your workspace
 SHA-256. To let a reviewer rebuild, give them the ledger file, and they run
 `staircase rebuild <commit> --ledger run-7.ledger.json`. Runs from before this feature have no ledger.
 
-The ledger is JSON, so it can hold text, not arbitrary bytes. A proposal whose text is
-not valid UTF-8 (a binary file, for example) is refused, with that reason, before
-anyone decides it: a person cannot read it and a rebuild could not reproduce it.
-Text with NUL bytes, bare carriage returns, any Unicode and files up to 200 KiB
-round-trip exactly. A lossless encoding for binary changes may come later as a new
-ledger version; version 1 will not change meaning.
+The ledger is JSON. Text, including NUL bytes, bare carriage returns, any Unicode and
+files up to 200 KiB, round-trips exactly. A whole new file that is **not** valid UTF-8 (an
+image, a Latin-1 source file, a compiled blob) travels as base64 in the change's
+`content_b64`, up to 2 MiB, and makes the ledger **version 2** (a ledger is version 2 only
+when it needs to be; a version 1 ledger that has `content_b64` is refused). A person
+deciding such a change is not shown unreadable bytes but the file's size and SHA-256, and a
+rule, the agreed task or a model never approves it: it always comes to a person, with the
+reason shown as `CHECK:`. Search-and-replace edits of a binary file are not supported; a
+changed binary file is a whole-file change. A text proposal whose `replace_block` is not
+valid UTF-8 is still refused, with the reason, before anyone decides it.
 
 ## When the evidence cannot be written
 

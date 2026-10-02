@@ -6,9 +6,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -564,4 +566,23 @@ func TestServer_a_withdrawn_proposal_cannot_be_decided(t *testing.T) {
 	var out []map[string]any
 	require.NoError(t, json.NewDecoder(list.Body).Decode(&out))
 	assert.Empty(t, out)
+}
+
+// TestServer_a_binary_file_is_not_sent_to_the_person: the request a person is
+// shown has the size and digest of a file that is not text, not its bytes, and
+// the challenge is still of the whole request.
+func TestServer_a_binary_file_is_not_sent_to_the_person(t *testing.T) {
+	srv, _ := startServer(t)
+	req := domain.YieldRequest{Type: "yield_request", AgentName: "cursor", ActionType: "file_edit",
+		ProposedEdits: []domain.ProposedEdit{{File: "logo.png", SearchBlock: "(new file)", ContentB64: "/wA=", BinaryBytes: 2, BinarySHA256: "abc"}}}
+	id, _ := srv.PendYield(req)
+	resp := get(t, baseURL(srv)+"/v1/yields")
+	body, _ := io.ReadAll(resp.Body)
+	assert.NotContains(t, string(body), "content_b64", "the bytes stay out of the page and the API list")
+	assert.Contains(t, string(body), `"binary_sha256":"abc"`)
+
+	whole, _ := json.Marshal(req)
+	sum := sha256.Sum256(whole)
+	ok := post(t, baseURL(srv)+"/v1/yields/"+id+"/approve", map[string]string{"request_sha256": hex.EncodeToString(sum[:])})
+	assert.Equal(t, http.StatusOK, ok.StatusCode, "the challenge is of the request with its bytes")
 }

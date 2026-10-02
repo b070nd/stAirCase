@@ -13,8 +13,13 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
-// ledgerVersion is the ledger file's format.
-const ledgerVersion = 1
+// The ledger file's format: 1 is text only; 2 is the same with whole-file changes
+// that are not text (an edit's content_b64). A ledger is version 2 only when it
+// needs to be, so a reader that knows version 1 refuses what it cannot reproduce.
+const (
+	ledgerVersion       = 1
+	ledgerVersionBinary = 2
+)
 
 // Ledger is the record from which a run's commit can be rebuilt: the base
 // commit and, in order, every approved proposal exactly as the orchestrator
@@ -34,6 +39,18 @@ type LedgerProposal struct {
 	Edits  []domain.ProposedEdit `json:"edits"`
 }
 
+// hasBinary reports whether any edit carries a file that is not text.
+func (l Ledger) hasBinary() bool {
+	for _, p := range l.Proposals {
+		for _, e := range p.Edits {
+			if e.ContentB64 != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // add records an approved proposal.
 func (l *Ledger) add(seq int, source string, edits []domain.ProposedEdit) {
 	l.Proposals = append(l.Proposals, LedgerProposal{Seq: seq, Source: source, Edits: append([]domain.ProposedEdit(nil), edits...)})
@@ -42,6 +59,9 @@ func (l *Ledger) add(seq int, source string, edits []domain.ProposedEdit) {
 // writeLedger writes the ledger to the workspace and returns its digest.
 func (r *Runner) writeLedger(runID int64, l Ledger) (string, error) {
 	l.Version = ledgerVersion
+	if l.hasBinary() {
+		l.Version = ledgerVersionBinary
+	}
 	if l.Proposals == nil {
 		l.Proposals = []LedgerProposal{}
 	}
@@ -74,8 +94,11 @@ func RebuildTree(repoPath string, raw []byte) (string, Ledger, error) {
 	if err := dec.Decode(&l); err != nil {
 		return "", l, fmt.Errorf("ledger: %w", err)
 	}
-	if l.Version != ledgerVersion {
-		return "", l, fmt.Errorf("ledger version %d is not supported (this program reads version %d)", l.Version, ledgerVersion)
+	if l.Version != ledgerVersion && l.Version != ledgerVersionBinary {
+		return "", l, fmt.Errorf("ledger version %d is not supported (this program reads versions %d and %d)", l.Version, ledgerVersion, ledgerVersionBinary)
+	}
+	if l.Version == ledgerVersion && l.hasBinary() {
+		return "", l, fmt.Errorf("a version %d ledger holds text only, but it has content_b64", ledgerVersion)
 	}
 	repo, err := OpenGitRepo(repoPath)
 	if err != nil {

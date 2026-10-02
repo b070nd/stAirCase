@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -26,6 +27,10 @@ import (
 // maxApprovedFileBytes caps a created file: the whole proposal must fit the
 // IPC line limit (256 KiB) and stay reviewable by a human.
 const maxApprovedFileBytes = 200 << 10
+
+// maxApprovedBinaryBytes bounds a file that is not text, which is decided by its
+// size and digest and travels in the ledger as base64.
+const maxApprovedBinaryBytes = 2 << 20
 
 // search_block markers for whole-file operations.
 const (
@@ -81,7 +86,7 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 		// change could be approved but never reproduced, and a person cannot read
 		// it. Refuse it here, where a run and a rebuild derive (F94).
 		if !utf8.ValidString(e.File) || !utf8.ValidString(e.SearchBlock) || !utf8.ValidString(e.ReplaceBlock) {
-			return nil, fmt.Errorf("%q: the change is not valid UTF-8 text; binary changes cannot be approved or reproduced", strings.ToValidUTF8(e.File, "?"))
+			return nil, fmt.Errorf("%q: the text is not valid UTF-8: a whole new file that is not text goes in content_b64", strings.ToValidUTF8(e.File, "?"))
 		}
 		p, err := cleanApprovedPath(a.repo.path, e.File)
 		if err != nil {
@@ -89,7 +94,13 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 		}
 		switch e.SearchBlock {
 		case MarkerNewFile:
-			if len(e.ReplaceBlock) > maxApprovedFileBytes {
+			content := []byte(e.ReplaceBlock)
+			if e.ContentB64 != "" {
+				var err error
+				if content, err = binaryContent(p, e); err != nil {
+					return nil, err
+				}
+			} else if len(e.ReplaceBlock) > maxApprovedFileBytes {
 				return nil, fmt.Errorf("%s: new file is %d bytes; at most %d can be approved at once", p, len(e.ReplaceBlock), maxApprovedFileBytes)
 			}
 			mode := os.FileMode(0o644)
@@ -98,8 +109,11 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 			} else if f != nil && !f.deleted {
 				mode = f.mode // overwriting keeps the file's mode
 			}
-			next[p] = &approvedFile{content: []byte(e.ReplaceBlock), mode: mode}
+			next[p] = &approvedFile{content: content, mode: mode}
 		case MarkerDeleteFile:
+			if e.ContentB64 != "" {
+				return nil, fmt.Errorf("%s: content_b64 belongs to a whole new file", p)
+			}
 			f, err := current(p)
 			if err != nil {
 				return nil, err
@@ -109,6 +123,9 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 			}
 			next[p] = &approvedFile{deleted: true}
 		default:
+			if e.ContentB64 != "" {
+				return nil, fmt.Errorf("%s: content_b64 belongs to a whole new file", p)
+			}
 			f, err := current(p)
 			if err != nil {
 				return nil, err
@@ -212,7 +229,11 @@ func (a *approvals) worktreeChanges() ([]domain.ProposedEdit, error) {
 		case err != nil:
 			return nil, err
 		case want == nil || want.deleted || !bytes.Equal(got, want.content):
-			edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerNewFile, ReplaceBlock: string(got)})
+			e := domain.ProposedEdit{File: p, SearchBlock: MarkerNewFile, ReplaceBlock: string(got)}
+			if !utf8.Valid(got) { // not text: a whole-file change shown by its size and digest
+				e.ReplaceBlock, e.ContentB64 = "", base64.StdEncoding.EncodeToString(got)
+			}
+			edits = append(edits, e)
 		}
 	}
 	return edits, nil
@@ -356,6 +377,26 @@ func (a *approvals) privateGit() (git func(stdin []byte, args ...string) (string
 		return strings.TrimSpace(string(out)), nil
 	}
 	return git, func() { _ = os.RemoveAll(tmp) }, nil
+}
+
+// binaryContent decodes a new file's content_b64 and checks it is what that
+// field is for: bytes that are not valid UTF-8, in a proposal that has no
+// replace_block, within the size limit. (Text has one representation only.)
+func binaryContent(p string, e domain.ProposedEdit) ([]byte, error) {
+	if e.ReplaceBlock != "" {
+		return nil, fmt.Errorf("%s: a change has either replace_block or content_b64, not both", p)
+	}
+	b, err := base64.StdEncoding.DecodeString(e.ContentB64)
+	if err != nil {
+		return nil, fmt.Errorf("%s: content_b64 is not base64: %w", p, err)
+	}
+	if utf8.Valid(b) {
+		return nil, fmt.Errorf("%s: the content is valid UTF-8 text: send it as replace_block", p)
+	}
+	if len(b) > maxApprovedBinaryBytes {
+		return nil, fmt.Errorf("%s: file is %d bytes; at most %d can be approved at once", p, len(b), maxApprovedBinaryBytes)
+	}
+	return b, nil
 }
 
 // digest summarizes approved states for the audit record.
