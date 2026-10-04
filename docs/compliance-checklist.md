@@ -4,7 +4,8 @@
 > in the `staircase` binary: there is no Python process, venv, IPC socket or
 > generated script, and sections about them describe code that no longer exists.
 > The current boundary: [SECURITY.md](../SECURITY.md) and
-> [the safety boundary](safety.md). A full revision is planned before 1.0.
+> [the safety boundary](safety.md). A full revision is planned before 1.0. Sections 7
+> (coverage) and 8 (known gaps) were refreshed on 2026-10-05; the rest is as audited.
 
 **Module:** `github.com/b070nd/stAirCase`
 **Origin:** internal requirement notes (not published). The `CHECK x.y.z` ids in code comments refer to the items below.
@@ -249,8 +250,43 @@
 
 ## §7 - Test Coverage
 
+Measured with `go test ./src/... -count=1 -cover` on 2026-10-05 (v0.7.1 plus the fixes
+after it). The runtime was rewritten in Go, so the Python-era packages (`template`, `ipc`,
+`runtime`) this table once listed no longer exist.
+
 | Package | Coverage | Type | Notes |
 |---|---|---|---|
+| `internal/agent` | 83.9% | Integration | Claude Code, Codex, Gemini CLI and OpenCode adapters against stand-in agents that speak their hook protocols; hook server; `apply_patch` parser; review-after |
+| `internal/approvalhttp` | 94.6% | Integration | All endpoints; auth; races (409 Conflict); the review page; the hub; TLS config |
+| `internal/audit` | 81.7% | Unit | Checkpoint NDJSON, signing, Rekor anchoring against a mock log |
+| `internal/blueprint` | 79.0% | Unit | Loader, snapshots, plan check |
+| `internal/certificate` | 81.1% | Unit | DSSE, the statement, acceptance, initiator text |
+| `internal/crypto` | 77.7% | Unit | Encrypt/decrypt, key generation and rotation, signing keys, redaction |
+| `internal/engine` | 92.6% | Unit | DAG, repository map (of the last commit), `**` glob, token budget |
+| `internal/gate` | 91.5% | Integration | The pre-flight gates, plugin gates, gates.json signing |
+| `internal/governance` | 81.4% | Integration | Governance repository: policy, keys, blueprints, pinning |
+| `internal/llm` | 86.2% | Unit | OpenAI-compatible and Anthropic clients, retries, record/replay |
+| `internal/monitor` | 97.9% | Unit | Cost table and display |
+| `internal/obs` | 93.6% | Unit | Metrics, redacting logger |
+| `internal/orchestrator` | 86.0% | Integration | `Run` against real git repositories and a real store: approvals, guards, ledger and rebuild vectors, recover, certificates, evidence |
+| `internal/persistence` | 81.7% | Integration | Store methods, migrations, audit chain versions |
+| `internal/plan` | 87.3% | Unit | Plan compile, limits, review |
+| `internal/policy` | 92.0% | Unit | Rule evaluation, limits, drift supervision |
+| `internal/sandbox` | 78.2% | Integration | macOS sandbox-exec, bubblewrap and Landlock engines (the ones this machine can run) |
+| `internal/signal` | 88.5% | Unit | Decision-model client |
+| `internal/sshsig` | 82.9% | Unit | SSH signatures through `ssh-keygen` |
+| `internal/tui` | 93.1% | Unit | Review dialog model, Ctrl-C, terminal-safe text |
+| `internal/vsa` | 86.3% | Unit | SLSA verification summaries |
+| `internal/webhookauth` | 90.5% | Unit | Webhook signatures |
+| `internal/wslock` | 100% | Unit | Workspace key locks |
+| `cmd/staircase` | 58.6% | E2E | Commands against a real workspace: sessions, verify, seal, audit, clean, doctor |
+| **Total** | **83.3%** | | **770 tests passed · 0 failed · 1 skipped** (top-level tests of `go test ./src/...`) |
+
+Coverage is a floor on what is exercised, not on what is asserted: the numbers do not say
+a line was checked for the right result. The product's promises are pinned by named
+behaviour tests and by the conformance vectors in `docs/spec`.
+
+---|---|---|---|
 | `internal/crypto` | 83.1% | Unit | Encrypt/decrypt, key gen, permissions, v1 prefix, legacy compat |
 | `internal/engine` | 96.1% | Unit | DAG (all cycle/sort cases), RepoMap, `**` glob, XML pack, token budget |
 | `internal/persistence` | 85.2% | Integration | All store methods; unique constraints; migrations; CreateRun validation |
@@ -273,8 +309,23 @@
 
 ## §8 - Known Gaps & Future Work
 
+As of 2026-10-05 (v0.7.1). Gaps that were closed since the first audit (the stdlib CVEs, crash-atomic
+secret rotation, the OpenTelemetry exporter) are no longer listed; CI runs `govulncheck` on every change.
+
 | ID | Priority | Description |
 |---|---|---|
+| G-1 | Medium | **Real agents.** Only Codex CLI has been run end to end against the real program. Claude Code (logged out), Gemini CLI (no login) and OpenCode (not installed) are proven against stand-ins only; the table is in [compatibility](compatibility.md#which-agents-have-actually-been-run). |
+| G-2 | Medium | **Audit chain version 1** does not cover the event type, so an event of a run written before version 2 can be relabelled without breaking its chain. Version 2 does ([ADR 0004](adr/0004-audit-chain-version-2.md)); old runs cannot be strengthened afterwards. |
+| G-3 | Medium | **Landlock** does not restrict signals before ABI 6 (Linux 6.12): a command sandboxed by Landlock can signal and inspect your other processes. macOS and bubblewrap do restrict it. |
+| G-4 | Medium | **Windows** is experimental: no Windows CI runner, and shell commands and `--agent claude-code` need a POSIX shell. |
+| G-5 | Low | **Unexplained CI flake.** One ubuntu test failed in two runs (a CI run and a release run) and passed on re-run; it could not be reproduced in 8 Linux runs and many macOS runs. CI and release annotate failing tests publicly so the next occurrence is named. |
+| G-6 | Low | **Rekor anchoring** sends the whole record to the log and does not check a Merkle inclusion proof or a signed tree head. |
+| G-7 | Low | **Cost estimates** are the providers' standard rates at the dearer tier: no batch or cache discounts, so a budget cap is a ceiling. The table is read by hand and goes stale ([models](models.md#limit-what-a-run-may-spend)). |
+| G-8 | Low | **The repository map** is of the last commit when a case is compiled; a run starts from the last commit when it runs. |
+| G-9 | Low | **The attestation check in the GitHub Action** (`gh attestation verify`) accepts an attestation made by any workflow of this repository: it is not pinned to the release workflow's identity with `--signer-workflow`. |
+| G-10 | Info | `spf13/viper` is used only to read `STAIRCASE_DIR`; it could be `os.Getenv`. |
+
+---|---|---|
 | F-1 | **HIGH** | Go 1.26.1 has 6 active stdlib CVEs (govulncheck F-001–F-003). Upgrade to 1.26.3. |
 | F-2 | Medium | IPC server does not validate raw JSON against `proto/ipc.v1.schema.json` before unmarshal (CHECK 3.5.5). `additionalProperties:false` not enforced at wire level. |
 | F-3 | Medium | `exec.Command("git", ...)` shell-outs in orchestrator (3 sites). Replace with `go-git` library (CHECK 5.3.1). |
