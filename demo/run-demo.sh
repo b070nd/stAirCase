@@ -13,6 +13,7 @@
 #         ./demo/run-demo.sh --auto     (auto-approves via curl; used by CI)
 #         ./demo/run-demo.sh --tamper   (an approved shell command changes a
 #                                        file after its approval → reviewed, put back)
+#         DEMO_KEEP=1 ./demo/run-demo.sh --auto   (keeps the scratch folder and prints DEMO_KEPT=<path>)
 #         ./demo/run-demo.sh --drift    (the agent wanders outside its stories'
 #                                        scope → run HALTED)
 set -euo pipefail
@@ -45,7 +46,11 @@ cleanup() {
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
-  rm -rf "$WORK"
+  if [ -n "${DEMO_KEEP:-}" ]; then # for tests that need the certified repository the demo makes
+    echo "DEMO_KEPT=$WORK"
+  else
+    rm -rf "$WORK"
+  fi
 }
 trap cleanup EXIT
 

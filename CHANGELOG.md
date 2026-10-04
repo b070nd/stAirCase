@@ -13,6 +13,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   through. The command every agent calls is now `'<staircase>' hook <agent> --governed || exit 2`. Codex trusts a
   hook by the hash of its definition: it will ask once to trust the new one. If you deployed managed settings
   (`staircase hook-template`), generate them again.
+- **The verify Action pins the verifier it installs, and outside a pull request it needs `trust-ref`.**
+  The `version` input must be a release tag (`v0.7.1`); `v1.2`, `latest` or `main` used to become "the latest
+  release" and are now an error. Without the input the action's own release tag is used; used at a floating ref it
+  installs the latest release and warns. The build attestation is checked against this repository's release workflow
+  and the tag (`--signer-workflow`, `--source-ref`), not just "some attestation of this repository". Outside a pull
+  request without `trust-ref` the action refuses instead of reading the key from the checkout, and the pull request's
+  base is fetched whatever `range` is, so a custom range cannot change where the key comes from.
 
 ### Fixed
 
