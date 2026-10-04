@@ -216,3 +216,27 @@ func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 		assert.Error(t, err, name)
 	}
 }
+
+// TestAuditedHistory_names_the_policy_and_the_initiator: what a run recorded about
+// the policy it loaded and who started it is what a recovered certificate names.
+func TestAuditedHistory_names_the_policy_and_the_initiator(t *testing.T) {
+	ev := func(typ string, payload map[string]any) domain.RunEventLog {
+		b, _ := json.Marshal(payload)
+		return domain.RunEventLog{EventType: typ, Payload: string(b)}
+	}
+	policy, who, sig, err := orchestrator.ExportedRunContext([]domain.RunEventLog{
+		ev("run_bound", map[string]any{"base_sha": "b", "branch": "x"}),
+		ev("initiator_signed", map[string]any{"principal": "dev@example.com", "signature": "c2ln"}),
+		ev("policy_snapshot", map[string]any{"digest": "abc123", "signed": true}),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"abc123", "dev@example.com", "c2ln"}, []string{policy, who, sig})
+
+	policy, who, _, err = orchestrator.ExportedRunContext([]domain.RunEventLog{
+		ev("run_bound", map[string]any{"base_sha": "b", "branch": "x"}),
+		ev("initiator_signed", map[string]any{"principal": "old@example.com"}), // a record from before the signature was kept
+	})
+	require.NoError(t, err)
+	assert.Empty(t, policy)
+	assert.Empty(t, who, "without a signature there is nothing to carry into a certificate")
+}

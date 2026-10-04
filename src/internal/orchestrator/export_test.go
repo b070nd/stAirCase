@@ -110,3 +110,13 @@ func ExportedAuditedHistory(events []domain.RunEventLog) (approved []int, lastDe
 func ExportedOwnsCommit(repo, op, base, tree, tip string) bool {
 	return (&recoveryOp{Op: op, Base: base, Tree: tree}).owns(repo, tip)
 }
+
+// ExportedRunContext is the policy digest and the initiator's principal and
+// signature a run's history records.
+func ExportedRunContext(events []domain.RunEventLog) (policy, principal, signature string, err error) {
+	h, err := auditedHistory(events)
+	if h.Initiator != nil {
+		principal, signature = h.Initiator.Principal, h.Initiator.Signature
+	}
+	return h.PolicyDigest, principal, signature, err
+}
