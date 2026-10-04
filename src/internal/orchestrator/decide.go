@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/monitor"
@@ -313,8 +314,11 @@ func finalReviewRequest(files map[string]*approvedFile) domain.YieldRequest {
 	for _, p := range slices.Sorted(maps.Keys(files)) {
 		f := files[p]
 		e := domain.ProposedEdit{File: p, SearchBlock: "(final content)", ReplaceBlock: string(f.content)}
-		if f.deleted {
+		switch {
+		case f.deleted:
 			e.SearchBlock, e.ReplaceBlock = MarkerDeleteFile, ""
+		case !utf8.Valid(f.content): // not text: its size and digest, as in the proposal, never its bytes
+			e.ReplaceBlock, e.BinaryBytes, e.BinarySHA256 = "", len(f.content), sha256Hex(f.content)
 		}
 		final.ProposedEdits = append(final.ProposedEdits, e)
 	}

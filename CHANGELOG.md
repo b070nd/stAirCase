@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The final review shows a file that is not text by its size and digest.** The whole-change
+  review at the end of a run (and of a `recover`) listed such a file as its raw bytes, garbled
+  by the encoding and as large as the file. It now shows what the proposal showed.
+
 ### Added
 
 - **`--check-timeout`.** How long one `--check` may run (default 15 minutes), wherever checks
