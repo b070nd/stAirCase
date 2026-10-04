@@ -58,12 +58,14 @@ want make-check && step "make check" make check
 want go-tests && {
 golog="$out/go_tests.jsonl"
 go test ./... -count=1 -timeout=600s -json >"$golog" 2>"$out/go_tests.stderr"; gorc=$?
-counts="$(jq -sc '[.[] | select(.Test != null and (.Action == "pass" or .Action == "fail" or .Action == "skip"))]
+# TestDrillRotateHelper is the child process of a drill, which skips unless the drill starts it: not a check that was skipped
+helpers='["TestDrillRotateHelper"]'
+counts="$(jq -sc --argjson helpers "$helpers" '[.[] | select(.Test != null and (.Test as $t | $helpers | index($t) | not) and (.Action == "pass" or .Action == "fail" or .Action == "skip"))]
   | {tests: length, passed: map(select(.Action == "pass")) | length, failed: map(select(.Action == "fail")) | length, skipped: map(select(.Action == "skip")) | length}' "$golog")"
 if [ "$(jq .tests <<<"$counts")" -eq 0 ]; then record "go tests" failed "no tests ran" "$counts" "$golog"
 elif [ "$gorc" -ne 0 ]; then record "go tests" failed "$(jq .failed <<<"$counts") failed" "$counts" "$golog"
 elif [ "$(jq .skipped <<<"$counts")" -ne 0 ]; then
-  record "go tests" skipped "$(jq .skipped <<<"$counts") test(s) skipped on this platform: $(jq -sr '[.[] | select(.Action == "skip") | .Test] | unique | join(", ")' "$golog" | cut -c1-300)" "$counts" "$golog"
+  record "go tests" skipped "$(jq .skipped <<<"$counts") test(s) skipped on this platform: $(jq -sr --argjson helpers "$helpers" '[.[] | select(.Action == "skip" and .Test != null and (.Test as $t | $helpers | index($t) | not)) | .Test] | unique | join(", ")' "$golog" | cut -c1-300)" "$counts" "$golog"
 else record "go tests" passed "" "$counts" "$golog"; fi
 }
 
