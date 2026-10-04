@@ -37,8 +37,21 @@ type deciders struct {
 	tracker   *monitor.Tracker
 	audit     func(event string, fields map[string]any) error
 
+	// What ends a decision: waitCtx the run's cancellation and its time limit (for every
+	// decision in the loop, automatic or a person's), ctx cancellation alone (for the
+	// final review, which comes after the agent and is not bound by its limit). Nil: nothing.
+	waitCtx, ctx context.Context
+
 	total, autoApproved int  // proposals so far, and those the policy approved (limits)
 	taskApproved        bool // something was approved as part of the task: a person reviews the result
+}
+
+// orBackground is ctx, or a context nothing ends when there is none.
+func orBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 // taskCheckpointEvery: with ApproveInScope, a person still sees at least one
@@ -179,7 +192,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
 	start := time.Now()
 	rl.source = "operator"
-	rl.resp, rl.signed = d.sign.ask(*req, d.askHuman)
+	rl.resp, rl.signed = d.sign.ask(orBackground(d.waitCtx), *req, d.askHuman)
 	rl.decideMS = time.Since(start).Milliseconds()
 	if rl.next != nil {
 		before := map[string]*approvedFile{}
@@ -199,7 +212,7 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 	final := finalReviewRequest(d.approvals.files)
 	final = scrubSecrets(final, delivered)
 	start := time.Now()
-	resp, signed := d.sign.ask(final, d.askHuman)
+	resp, signed := d.sign.ask(orBackground(d.ctx), final, d.askHuman)
 	decided := yieldDecided(d.total+1, "operator", final, resp, baseSHA, d.approvals.files, "")
 	maps.Copy(decided, signed)
 	decided["decide_ms"] = time.Since(start).Milliseconds()

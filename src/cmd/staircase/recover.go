@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
@@ -39,7 +40,7 @@ finishes the missing evidence on the same commit and says what is still missing.
 A commit on the run's branch that it did not make is never adopted. With
 --require-evidence the command exits with an error while the evidence is incomplete.`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		runID, err := parseID("run-id", args[0])
 		if err != nil {
 			return err
@@ -49,11 +50,17 @@ A commit on the run's branch that it did not make is never adopted. With
 			return err
 		}
 		defer func() { _ = db.Close() }()
+		parent := cmd.Context()
+		if parent == nil {
+			parent = context.Background()
+		}
+		ctx, stop := signal.NotifyContext(parent, os.Interrupt) // Ctrl-C ends the recovery before it delivers
+		defer stop()
 		var confirm func(domain.YieldRequest) domain.YieldResponse
 		if stat, _ := os.Stdin.Stat(); stat != nil && stat.Mode()&os.ModeCharDevice != 0 {
-			confirm = func(req domain.YieldRequest) domain.YieldResponse { return tui.RunYieldTUI(context.Background(), req) }
+			confirm = func(req domain.YieldRequest) domain.YieldResponse { return tui.RunYieldTUI(ctx, req) }
 		}
-		res, err := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR")).Recover(context.Background(), runID,
+		res, err := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR")).Recover(ctx, runID,
 			orchestrator.RecoverOptions{Force: recoverForce, Confirm: confirm, RequireEvidence: recoverRequireEvidence})
 		if err != nil && res.Commit == "" {
 			return err

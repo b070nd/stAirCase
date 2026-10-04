@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -35,19 +36,19 @@ func (g *decisionSigning) payload(req domain.YieldRequest, nonce string) string 
 
 // ask puts req to a person through put, which is given the text to sign, and
 // settles the answer with check. Every call uses a fresh nonce.
-func (g *decisionSigning) ask(req domain.YieldRequest, put func(domain.YieldRequest, string) domain.YieldResponse) (domain.YieldResponse, map[string]any) {
+func (g *decisionSigning) ask(ctx context.Context, req domain.YieldRequest, put func(domain.YieldRequest, string) domain.YieldResponse) (domain.YieldResponse, map[string]any) {
 	if g == nil { // nothing signs or checks: the answer stands as given
 		return put(req, ""), nil
 	}
 	prefix := g.payload(req, rand.Text())
-	return g.check(prefix, put(req, prefix))
+	return g.check(ctx, prefix, put(req, prefix))
 }
 
 // check settles a human decision made on the text prefix+verb: an invalid
 // signature never approves anything, and with require an unsigned or untrusted
 // one does not either. It returns the decision and what to record on the audit
 // chain about the signature.
-func (g *decisionSigning) check(prefix string, resp domain.YieldResponse) (domain.YieldResponse, map[string]any) {
+func (g *decisionSigning) check(ctx context.Context, prefix string, resp domain.YieldResponse) (domain.YieldResponse, map[string]any) {
 	refuse := func(why string) (domain.YieldResponse, map[string]any) {
 		return domain.Decide(false, why), map[string]any{"signature_refused": why}
 	}
@@ -57,7 +58,7 @@ func (g *decisionSigning) check(prefix string, resp domain.YieldResponse) (domai
 	}
 	text := prefix + verb
 	if g.signKey != "" && resp.Signature == "" {
-		sig, err := sshsig.Sign(g.signKey, decisionNamespace, []byte(text))
+		sig, err := sshsig.SignContext(ctx, g.signKey, decisionNamespace, []byte(text))
 		if err != nil {
 			return refuse("the decision could not be signed: " + err.Error())
 		}
@@ -73,12 +74,12 @@ func (g *decisionSigning) check(prefix string, resp domain.YieldResponse) (domai
 	if err != nil {
 		return refuse("the decision's signature is not valid base64")
 	}
-	fp, err := sshsig.Check(decisionNamespace, []byte(text), sig)
+	fp, err := sshsig.CheckContext(ctx, decisionNamespace, []byte(text), sig)
 	if err != nil {
 		return refuse("the decision's signature is not valid: " + err.Error())
 	}
 	trusted := g.signers != "" && resp.Signer != "" &&
-		sshsig.Verify(g.signers, resp.Signer, decisionNamespace, []byte(text), sig) == nil
+		sshsig.VerifyContext(ctx, g.signers, resp.Signer, decisionNamespace, []byte(text), sig) == nil
 	if g.require && !trusted {
 		return refuse(fmt.Sprintf("%q is not a trusted signer: the key %s is not listed for them in allowed_signers", resp.Signer, fp))
 	}

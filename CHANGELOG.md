@@ -16,6 +16,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A run's time limit also ends the automatic work of a decision, and cancellation reaches signing and recovery.**
+  `max_run_secs` ended a person's wait, but a check that decides a change (evidence), a reviewer model, a signal and the
+  signing of a decision ran under the run's cancellation only, so the run sat in a long check past its limit; they are now
+  bound by the limit too, and an approval is not consumed (journaled, put on the audit chain, answered) once the run is
+  over. `ssh-keygen` (signing a decision, a run's initiator request) is stopped when its context ends instead of waiting
+  forever for a passphrase or a touch. `staircase recover` now honours Ctrl-C and cancellation: it delivers nothing and
+  begins no operation when cancelled before delivery, and an answer to its final review that arrives after cancellation
+  counts for nothing. The final review at the end of a run is still bound by cancellation only, not by the agent's limit.
 - **A hook answer that is not a decision blocks, and so do hook calls it cannot read.** `staircase hook` printed
   whatever the run answered. An empty, cut-off or unrecognised answer to "may this tool run?" is read by agents as no
   objection, so it is now a block; so is a hook call that is not JSON, names no event, or names an event the agent's
