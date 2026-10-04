@@ -15,6 +15,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -209,4 +210,70 @@ func TestBinary_limits_and_ledger_versions(t *testing.T) {
 	assert.ErrorContains(t, err, "text only")
 	_, _, err = orchestrator.RebuildTree(repo, []byte(strings.Replace(ledger, `"version":1`, `"version":2`, 1)))
 	assert.NoError(t, err)
+}
+
+// TestReviewAfter_keeps_file_modes: what an editor or a command did to a file's
+// executable bit is part of the change: a new script made executable, a file
+// made executable without a content change, and an executable file made plain
+// are committed as the worktree has them, and the commit rebuilds from its ledger.
+func TestReviewAfter_keeps_file_modes(t *testing.T) {
+	base := map[string]runtest.File{
+		"plain.sh":   {Content: "echo plain\n", Mode: 0o644},
+		"tool.sh":    {Content: "echo tool\n", Mode: 0o755},
+		"changed.sh": {Content: "echo old\n", Mode: 0o755},
+	}
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		wt := env.Worktree
+		must := func(err error) {
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		must(os.WriteFile(filepath.Join(wt, "new.sh"), []byte("echo new\n"), 0o755))     // a new executable script
+		must(os.Chmod(filepath.Join(wt, "plain.sh"), 0o755))                             // made executable, content unchanged
+		must(os.Chmod(filepath.Join(wt, "tool.sh"), 0o644))                              // made plain, content unchanged
+		must(os.WriteFile(filepath.Join(wt, "changed.sh"), []byte("echo new\n"), 0o755)) // edited, stays executable
+		must(os.WriteFile(filepath.Join(wt, "new.txt"), []byte("text\n"), 0o644))
+		got := env.ProposeWorktreeChanges(ctx, "cursor", "an editor changed modes")
+		if !got.Approved {
+			t.Errorf("not approved: %s", got.Feedback)
+		}
+		return nil
+	}
+	r, commit, _ := certified(t, agent, orchestrator.RunOptions{Plan: &plan.Plan{Harness: "claude-code"}}, nil, base)
+	modes := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(git(t, r.Repo, "ls-tree", "-r", commit)), "\n") {
+		f := strings.Fields(line)
+		modes[f[3]] = f[0]
+	}
+	assert.Equal(t, map[string]string{"new.sh": "100755", "plain.sh": "100755", "tool.sh": "100644", "changed.sh": "100755", "new.txt": "100644"}, modes)
+
+	ledger, err := os.ReadFile(orchestrator.LedgerPath(r.WsDir, r.Run.ID))
+	require.NoError(t, err)
+	tree, _, err := orchestrator.RebuildTree(r.Repo, ledger)
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^{tree}")), tree, "the ledger reproduces the modes too")
+}
+
+// TestReviewAfter_never_reads_through_a_symlink: a command (or an agent) that
+// leaves a symlink to a file outside the worktree must not make stAirCase read
+// that file: its content would be put in a proposal, the audit log and in front
+// of reviewers. The symlink is refused, and the secret is nowhere in the record.
+func TestReviewAfter_never_reads_through_a_symlink(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "id_secret")
+	require.NoError(t, os.WriteFile(secret, []byte("TOP-SECRET-KEY-MATERIAL\n"), 0o600))
+	var got orchestrator.Approval
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		if err := os.Symlink(secret, filepath.Join(env.Worktree, "innocent.txt")); err != nil {
+			return err
+		}
+		got = env.ProposeWorktreeChanges(ctx, "cursor", "a command left a link")
+		return nil
+	}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent)})
+	require.NoError(t, r.Err)
+	assert.False(t, got.Approved, "a symlink is refused")
+	for _, e := range r.Events {
+		assert.NotContains(t, e.Payload, "TOP-SECRET-KEY-MATERIAL", "%s must not hold what the link points at", e.EventType)
+	}
 }

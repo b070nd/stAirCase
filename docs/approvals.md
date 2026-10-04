@@ -318,7 +318,9 @@ whole change once at the end**.
 Two things to know. A check must be able to pass on each intermediate state, or you will
 be asked about every change: a build, a linter, a type check and fast tests work; a test
 suite that fails until three files exist does not. And the evidence is as good as your
-checks: with weak tests, evidence-based approval is weak approval. The certificate
+checks: with weak tests, evidence-based approval is weak approval. A check reads the files
+the agent changes, so an agent that may edit a test (or the script a check runs) can make
+the check pass; keep the files your checks read out of the story's scope. The certificate
 says how many decisions were made on evidence and how many by people (`staircase verify`
 prints them), so a reviewer can see which it was.
 

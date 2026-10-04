@@ -164,6 +164,10 @@ type ProposedEdit struct {
 	// valid UTF-8 (an image, a Latin-1 source file): SearchBlock is "(new file)" and
 	// ReplaceBlock is empty. Content that is valid UTF-8 always goes in ReplaceBlock.
 	ContentB64 string `json:"content_b64,omitempty"`
+	// Mode, on a whole new file, is its git mode, "100644" or "100755", when that is
+	// not what the file would get anyway (the mode of the file it overwrites, else
+	// "100644"): a new script made executable, or a mode changed with no change of content.
+	Mode string `json:"mode,omitempty"`
 	// BinaryBytes and BinarySHA256 describe ContentB64 for the person deciding, who
 	// is not shown unreadable bytes. The orchestrator sets them; an agent's are ignored.
 	BinaryBytes  int    `json:"binary_bytes,omitempty"`

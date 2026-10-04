@@ -246,3 +246,33 @@ func TestUse_keeps_old_blueprint_snapshots(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, all, 1, "the snapshot a bound run may depend on is kept")
 }
+
+// TestUse_refuses_a_blueprint_path_that_climbs_out: git trees can hold an entry
+// named "..", which a clone does not check for; a blueprint materialized from
+// such a tree must not write outside its scratch folder.
+func TestUse_refuses_a_blueprint_path_that_climbs_out(t *testing.T) {
+	src, _ := sourceRepo(t, map[string][]byte{"policy.json": []byte(`{"rules":[]}`)})
+	git := func(stdin string, args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", src}, args...)...)
+		cmd.Stdin = strings.NewReader(stdin)
+		out, err := cmd.Output()
+		require.NoError(t, err, "git %v", args)
+		return strings.TrimSpace(string(out))
+	}
+	blob := func(s string) string { return git(s, "hash-object", "-w", "--stdin") }
+	dotdot := git("100644 blob "+blob("planted\n")+"\tx\n", "mktree")
+	hello := git("100644 blob "+blob(helloBlueprint)+"\tblueprint.yaml\n"+"040000 tree "+dotdot+"\t..\n", "mktree")
+	blueprints := git("040000 tree "+hello+"\thello\n", "mktree")
+	root := git("100644 blob "+blob(`{"rules":[]}`)+"\tpolicy.json\n"+"040000 tree "+blueprints+"\tblueprints\n", "mktree")
+	commit := git("", "commit-tree", root, "-m", "a tree with a .. entry")
+	git("", "update-ref", "refs/heads/main", commit)
+
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", filepath.Join(scratch, "tmp"))
+	require.NoError(t, os.MkdirAll(filepath.Join(scratch, "tmp"), 0o755))
+	ws := t.TempDir()
+	_, err := Use(ws, src, "main")
+	require.Error(t, err)
+	_, statErr := os.Stat(filepath.Join(scratch, "tmp", "x"))
+	assert.True(t, os.IsNotExist(statErr), "nothing was written outside the blueprint's folder")
+}

@@ -147,7 +147,10 @@ producer refuses a proposal whose text is not. A whole new file whose content is
 UTF-8 is carried in the edit's `content_b64` (standard base64) instead, with `search_block`
 `(new file)` and an empty `replace_block`; a ledger that has any such edit has `version` 2,
 any other `version` 1, and a verifier refuses a version 1 ledger that has `content_b64`.
-Content that is valid UTF-8 never uses `content_b64`. An edit MAY also carry `binary_bytes`
+Content that is valid UTF-8 never uses `content_b64`. A whole new file MAY carry `mode`
+(`100644` or `100755`; any other value is refused), which sets the file's mode instead of
+keeping the one it overwrites; a ledger that has any `mode` also has `version` 2, and a
+verifier refuses a version 1 ledger that has one. An edit MAY also carry `binary_bytes`
 and `binary_sha256`, which describe `content_b64` for a person and which a verifier ignores.
 
 **Replaying.** Keep a state of files, path to (bytes, mode), starting from the base
@@ -160,11 +163,12 @@ normalized form (as `posixpath.normpath`); refuse if that is `.`, `..` or starts
 `../`; refuse if any component equals `.git` ignoring case. Then, by `search_block`:
 
 - `(new file)`: the file becomes the UTF-8 bytes of `replace_block` (at most 204800
-  bytes), keeping the mode of the file it overwrites, else `100644`. With `content_b64`:
+  bytes), keeping the mode of the file it overwrites, else `100644`; if the edit has `mode`, that
+  is the mode. With `content_b64`:
   `replace_block` must be empty, the value must be base64, its bytes must not be valid
   UTF-8 and at most 2097152 bytes, and the file becomes those bytes (same mode rule).
 - `(delete file)`: the file must exist, and is removed. `content_b64` here, or on any
-  edit that is not `(new file)`, is refused.
+  edit that is not `(new file)`, is refused, and so is `mode`.
 - otherwise: the file must exist. Read both blocks with `\r\n` as `\n`. If the file
   has no carriage return, use it and the blocks as they are. If every line end in
   the file is `\r\n` (and there is at least one), turn `\n` in both blocks into

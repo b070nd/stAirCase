@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A change of a file's mode is part of the change.** In review-after and attach, a new
+  executable script was committed as `100644`, and a `chmod +x` with the same content was
+  not noticed. A whole-file change now carries `mode` (`100644` or `100755`), the ledger is
+  version 2 when any change has one, and the rebuild reproduces the mode (vectors 22-25).
+- **A symlink in the worktree is never read.** `review-after` followed a symlink the agent
+  left and put the file it pointed to into the proposal and the audit chain; it is now a
+  change that is shown by its path and is never read.
+- **A blueprint in the governance repository cannot write outside its folder.** A git tree
+  may hold an entry named `..`; importing such a blueprint is refused.
+- **`staircase recover` ends the case of a crashed run.** The case stayed RUNNING for good.
 - **The final review shows a file that is not text by its size and digest.** The whole-change
   review at the end of a run (and of a `recover`) listed such a file as its raw bytes, garbled
   by the encoding and as large as the file. It now shows what the proposal showed.

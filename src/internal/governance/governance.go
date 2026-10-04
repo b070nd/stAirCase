@@ -252,6 +252,10 @@ func loadBlueprints(repo, commit string) (map[string]blueprint.Blueprint, error)
 		if !nested {
 			continue // a file next to the blueprints, such as a README
 		}
+		if rel := strings.TrimPrefix(p, "blueprints/"+dir+"/"); !filepath.IsLocal(filepath.FromSlash(rel)) || !filepath.IsLocal(dir) {
+			// a git tree may hold an entry named ".."; a clone does not check
+			return nil, fmt.Errorf("blueprints/%s at %.12s: %q climbs out of the blueprint", dir, commit, p)
+		}
 		if mode, _, _ := strings.Cut(meta, " "); mode == "120000" || mode == "160000" {
 			return nil, fmt.Errorf("blueprints/%s at %.12s: %s is a symlink or submodule; a blueprint is plain files", dir, commit, p)
 		}

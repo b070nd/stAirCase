@@ -1,5 +1,5 @@
 {
-  "description": "content_b64 belongs to a whole new file, not to a search and replace.",
+  "description": "A new file with mode 100755 is executable: the mode is part of the change.",
   "base": [
     {
       "path": "lf.txt",
@@ -35,12 +35,12 @@
   "proposals": [
     [
       {
-        "file": "lf.txt",
-        "search_block": "a\n",
-        "replace_block": "",
-        "content_b64": "/w=="
+        "file": "bin/deploy.sh",
+        "search_block": "(new file)",
+        "replace_block": "echo deploy\n",
+        "mode": "100755"
       }
     ]
   ],
-  "error": "belong to a whole new file"
+  "tree": "22a5d05e9f23b59daed339feef36c02dbd9f5818"
 }

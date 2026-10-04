@@ -1,5 +1,5 @@
 {
-  "description": "content_b64 belongs to a whole new file, not to a search and replace.",
+  "description": "A whole-file change with the same content and another mode changes only the mode, both ways.",
   "base": [
     {
       "path": "lf.txt",
@@ -35,12 +35,18 @@
   "proposals": [
     [
       {
+        "file": "run.sh",
+        "search_block": "(new file)",
+        "replace_block": "echo a\n",
+        "mode": "100644"
+      },
+      {
         "file": "lf.txt",
-        "search_block": "a\n",
-        "replace_block": "",
-        "content_b64": "/w=="
+        "search_block": "(new file)",
+        "replace_block": "a\nb\nb\n",
+        "mode": "100755"
       }
     ]
   ],
-  "error": "belong to a whole new file"
+  "tree": "7656fff53e8703ff9434bf15813ff9a161d1989c"
 }

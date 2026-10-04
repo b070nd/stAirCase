@@ -1,5 +1,5 @@
 {
-  "description": "content_b64 belongs to a whole new file, not to a search and replace.",
+  "description": "Only 100644 and 100755 are modes.",
   "base": [
     {
       "path": "lf.txt",
@@ -35,12 +35,12 @@
   "proposals": [
     [
       {
-        "file": "lf.txt",
-        "search_block": "a\n",
-        "replace_block": "",
-        "content_b64": "/w=="
+        "file": "x.txt",
+        "search_block": "(new file)",
+        "replace_block": "x",
+        "mode": "120000"
       }
     ]
   ],
-  "error": "belong to a whole new file"
+  "error": "mode must be 100644 or 100755"
 }

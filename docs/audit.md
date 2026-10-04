@@ -109,7 +109,9 @@ The ledger is JSON. Text, including NUL bytes, bare carriage returns, any Unicod
 files up to 200 KiB, round-trips exactly. A whole new file that is **not** valid UTF-8 (an
 image, a Latin-1 source file, a compiled blob) travels as base64 in the change's
 `content_b64`, up to 2 MiB, and makes the ledger **version 2** (a ledger is version 2 only
-when it needs to be; a version 1 ledger that has `content_b64` is refused). A person
+when it needs to be; a version 1 ledger that has `content_b64` is refused). A change of a file's mode (a new
+script that is executable, or `chmod +x` of an existing one) is a whole-file change with the
+change's `mode`, and also makes the ledger version 2. A person
 deciding such a change is not shown unreadable bytes but the file's size and SHA-256, and a
 rule, the agreed task or a model never approves it: it always comes to a person, with the
 reason shown as `CHECK:`. Search-and-replace edits of a binary file are not supported; a
