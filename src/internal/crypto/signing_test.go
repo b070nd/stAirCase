@@ -265,3 +265,21 @@ func TestSign_verify_large_payload(t *testing.T) {
 	sig := crypto.Sign(priv, big)
 	assert.NoError(t, crypto.Verify(pub, big, sig))
 }
+
+// TestGenerateSigningKey_repairs_a_missing_public_key: a crash between writing
+// the private key and the public one leaves a key that init would never
+// complete, and a workspace that cannot verify its own certificates.
+func TestGenerateSigningKey_repairs_a_missing_public_key(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, crypto.GenerateSigningKey(dir))
+	priv, err := crypto.LoadSigningKey(dir)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(dir, crypto.SigningPubFile)))
+
+	require.NoError(t, crypto.GenerateSigningKey(dir))
+	pub, err := crypto.LoadSigningPublicKey(dir)
+	require.NoError(t, err)
+	assert.Equal(t, priv.Public(), pub, "the public key is the private key's own")
+	again, _ := crypto.LoadSigningKey(dir)
+	assert.Equal(t, priv, again, "the private key is not replaced")
+}

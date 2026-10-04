@@ -1075,12 +1075,7 @@ func scrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRe
 
 // redact removes the delivered secret values from s.
 func redact(s string, values []string) string {
-	for _, v := range values {
-		if v != "" {
-			s = strings.ReplaceAll(s, v, "<REDACTED>")
-		}
-	}
-	return s
+	return string(crypto.ScrubBytes([]byte(s), values))
 }
 
 // runAgent runs a; a panic becomes the run's error instead of the process's.

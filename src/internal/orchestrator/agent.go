@@ -2,6 +2,8 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -238,8 +240,9 @@ func (h *agentHost) audit(event string, v any) {
 		return
 	}
 	payload := string(crypto.ScrubBytes(b, h.deliveredSecrets()))
-	if len(payload) > maxAuditPayload {
-		payload = payload[:maxAuditPayload]
+	if len(payload) > maxAuditPayload { // a cut payload would be neither JSON nor, perhaps, UTF-8: say what was dropped instead
+		sum := sha256.Sum256([]byte(payload))
+		payload = fmt.Sprintf(`{"truncated":true,"bytes":%d,"sha256":%q}`, len(payload), hex.EncodeToString(sum[:]))
 	}
 	if h.debug != nil {
 		_, _ = fmt.Fprintf(h.debug, "%s %s %s\n", time.Now().UTC().Format(time.RFC3339Nano), event, payload)

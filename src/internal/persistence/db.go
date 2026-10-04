@@ -41,6 +41,10 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	if err := refuseNewerWorkspace(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	freshSchema, err := isFreshSchema(db)
 	if err != nil {
 		return nil, fmt.Errorf("inspect schema: %w", err)
@@ -88,6 +92,20 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// refuseNewerWorkspace fails when the database records a migration this version
+// does not have: it was written by a newer stAirCase.
+func refuseNewerWorkspace(db *sql.DB) error {
+	var newest sql.NullInt64
+	if err := db.QueryRow(`SELECT MAX(idx) FROM schema_migrations`).Scan(&newest); err != nil {
+		return nil // a new database has no such table yet
+	}
+	if newest.Valid && int(newest.Int64) >= len(Migrations) {
+		return fmt.Errorf("this workspace was written by a newer version of stAirCase (its database has migration %d, this version knows %d): upgrade stAirCase",
+			newest.Int64, len(Migrations))
+	}
+	return nil
 }
 
 func isFreshSchema(db *sql.DB) (bool, error) {

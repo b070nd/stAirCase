@@ -792,3 +792,30 @@ func TestSetSecret_replaces_a_value(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "project", scoped.EncryptedValue)
 }
+
+// TestDeleteSecret removes one secret of one scope, and says whether there was one.
+func TestDeleteSecret(t *testing.T) {
+	s := newTestStore(t)
+	v, _ := s.CreateVendor("V")
+	p, _ := s.CreateProject(v.ID, "P", "")
+	s.CreateSecret("KEY", "global", nil)
+	s.CreateSecret("KEY", "project", &p.ID)
+
+	gone, err := s.DeleteSecret("KEY", &p.ID)
+	require.NoError(t, err)
+	assert.True(t, gone)
+	got, err := s.GetSecret("KEY", &p.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "global", got.EncryptedValue, "the global secret is left")
+
+	gone, err = s.DeleteSecret("KEY", &p.ID)
+	require.NoError(t, err)
+	assert.False(t, gone, "nothing left to delete in that scope")
+	gone, err = s.DeleteSecret("KEY", nil)
+	require.NoError(t, err)
+	assert.True(t, gone)
+	got, err = s.GetSecret("KEY", nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}

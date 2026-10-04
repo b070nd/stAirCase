@@ -330,6 +330,17 @@ func (s *Store) SetSecret(keyName, encryptedValue string, projectID *int64) (rep
 	return replaced, version, tx.Commit()
 }
 
+// DeleteSecret removes the secret of keyName in one scope (global when projectID
+// is nil) and reports whether there was one.
+func (s *Store) DeleteSecret(keyName string, projectID *int64) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM secrets WHERE key_name = ? AND scoped_to_project_id IS ?`, keyName, projectID)
+	if err != nil {
+		return false, fmt.Errorf("delete secret: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // GetSecret returns the most specific secret for keyName: project-scoped first, global fallback.
 func (s *Store) GetSecret(keyName string, projectID *int64) (*domain.Secret, error) {
 	sec := &domain.Secret{}

@@ -264,8 +264,36 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 	},
 }
 
+var secretDeleteCmd = &cobra.Command{
+	Use:   "delete <key-name>",
+	Short: "Remove a stored secret (the one in the scope given by --project, else the global one)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(_ *cobra.Command, args []string) error {
+		store, db, err := openStore()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+		var pid *int64
+		scope := "global"
+		if secretProjectID != 0 {
+			pid, scope = &secretProjectID, fmt.Sprintf("project #%d", secretProjectID)
+		}
+		gone, err := store.DeleteSecret(args[0], pid)
+		if err != nil {
+			return err
+		}
+		if !gone {
+			return fmt.Errorf("no secret %q in scope %s (staircase secret list)", args[0], scope)
+		}
+		fmt.Printf("✅ Secret %q removed (%s).\n", args[0], scope)
+		return nil
+	},
+}
+
 func init() {
+	secretDeleteCmd.Flags().Int64Var(&secretProjectID, "project", 0, "The project the secret is scoped to (0 = global)")
 	secretSetCmd.Flags().Int64Var(&secretProjectID, "project", 0, "Scope secret to a specific project ID (0 = global)")
-	secretCmd.AddCommand(secretSetCmd, secretListCmd, secretRotateCmd)
+	secretCmd.AddCommand(secretSetCmd, secretListCmd, secretDeleteCmd, secretRotateCmd)
 	rootCmd.AddCommand(secretCmd)
 }
