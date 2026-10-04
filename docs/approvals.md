@@ -260,6 +260,31 @@ Shell commands, refused proposals and proposals that drift or a guard sent to a 
 are never the policy's to decide, so they stay as they were. The replay applies the
 rules, not the per-run limits.
 
+Replay shows history; it does not fail. To keep a policy from drifting, write the outcomes
+you require as scenarios and run them in CI:
+
+```bash
+staircase policy test policy.json --scenarios policy-scenarios.json
+```
+
+```json
+{"scenarios": [
+  {"name": "docs are approved without a person",
+   "proposals": [{"edits": [{"file": "docs/setup.md", "content": "# Setup\n"}], "expect": "approve"}]},
+  {"name": "a secret in a doc still goes to a person",
+   "proposals": [{"edits": [{"file": "notes.md", "content": "AKIAABCDEFGHIJKLMNOP\n"}],
+                  "expect": "human", "reason_contains": "secret"}]}
+]}
+```
+
+Each scenario runs through the real admission code with this policy, so limits
+(`max_auto_approved`), guards and a story's `scope` apply, in order, as in a run.
+`expect` is `approve` (a rule, no person), `reject`, `refuse` (the orchestrator refuses the
+edit) or `human` (a person is asked). A scenario may set `base` (files that already exist),
+`scope` (the story's paths), `approve_in_scope` and `approve_on_evidence` (the run options of the
+same names) and `human_answer` (`approve` or `reject`, default `reject`).
+The command exits non-zero on any outcome that differs, and on a file that asserts nothing.
+
 Protect the file against silent edits by signing it:
 
 ```bash

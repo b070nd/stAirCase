@@ -606,7 +606,7 @@ signature file is absent and refuses to run when the signature is invalid.
 Show what a policy would have decided differently on the proposals of past runs
 
 ```
-staircase policy test <policy-file>
+staircase policy test <policy-file> [flags]
 ```
 
 Replays every proposal recorded in this workspace's runs against the rules of
@@ -617,6 +617,19 @@ approve. Run it before you put a new rule into policy.json.
 Shell commands, proposals refused by the orchestrator and proposals that drift
 or a guard sent to a person are never the policy's to decide, so they stay as
 they were. The replay applies the rules only, not the per-run limits.
+
+With --scenarios <file> it asserts instead. Each scenario in the file (JSON: a
+base tree, an optional scope, and proposals with the outcome you expect:
+approve, reject, refuse or human) is run through the real admission code with
+this policy, limits and guards included. The command exits non-zero when any
+outcome differs or the file asserts nothing, so CI can keep a policy from
+approving what it must not, or from escalating what it should approve.
+
+Flags:
+
+```
+      --scenarios string   assert expected outcomes from this scenarios file instead of replaying past runs
+```
 
 ## staircase policy verify
 

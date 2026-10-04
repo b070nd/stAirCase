@@ -70,6 +70,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A policy can be asserted, not only replayed.** `staircase policy test <policy> --scenarios <file>`
+  runs scenarios (a tree, a scope, proposals and the outcome expected: approve, reject, refuse or a
+  person) through the real admission code, limits and guards included, and exits non-zero when an
+  outcome differs or the file asserts nothing. See [approvals](docs/approvals.md).
 - **A failing CI test names itself in an annotation.** The CI and release workflows run their tests
   through `packaging/test-report.sh`, which adds an error annotation listing the failing tests, so a
   failure on a runner can be read without signing in to read the job log.

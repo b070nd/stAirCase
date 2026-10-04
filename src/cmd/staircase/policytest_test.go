@@ -52,3 +52,28 @@ func TestPolicyReplay(t *testing.T) {
 	assert.Contains(t, rep.RejectedByPerson[0], "CHANGES.md")
 	assert.Equal(t, 3, rep.Unchanged, "main.go (no rule), the shell command, the guarded change")
 }
+
+// TestPolicyScenarios_command: --scenarios asserts. A met expectation exits
+// zero; a forbidden approval or an unintended escalation exits non-zero with the
+// scenario named; an inventory that asserts nothing is an error, not a pass.
+func TestPolicyScenarios_command(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+		return p
+	}
+	pol := write("policy.json", `{"rules":[{"action_types":["file_edit"],"allowed_extensions":[".md"],"effect":"approve"}]}`)
+	sc := func(expect string) string {
+		return `{"scenarios":[{"name":"docs","proposals":[{"edits":[{"file":"docs/a.md","content":"x\n"}],"expect":"` + expect + `"}]}]}`
+	}
+	run := func(scen string) error {
+		cmd := policyTestCmd
+		require.NoError(t, cmd.Flags().Set("scenarios", scen))
+		defer func() { _ = cmd.Flags().Set("scenarios", "") }()
+		return cmd.RunE(cmd, []string{pol})
+	}
+	assert.NoError(t, run(write("ok.json", sc("approve"))))
+	assert.ErrorContains(t, run(write("bad.json", sc("human"))), "1 expectation(s) failed")
+	assert.Error(t, run(write("empty.json", `{"scenarios":[]}`)))
+}
