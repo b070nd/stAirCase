@@ -28,6 +28,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   /proc are not readable). The Landlock engine does not restrict signals before Landlock ABI 6
   (Linux 6.12). The sandbox also hides more credential stores: `~/.vault-token`, cargo, terraform,
   OCI, pass, doppler, glab, stripe, heroku, Maven settings and shell history.
+- **Pull requests for repositories with a dot in their name.** `staircase push` read the
+  repository name of `github.com/vercel/next.js` as `next` (and `socket.io` as `socket`), so it
+  opened the pull request, and sent the GitHub token, to another repository's name.
+- **The secret guard knows more credentials.** Stripe live keys, GitLab and npm tokens, Hugging
+  Face tokens, SendGrid keys and Slack webhook URLs now send a change to a person like the others.
+- **An anchor must be signed by a trusted key, and `audit verify --rekor-url` is honoured.**
+  Checking a record against the Rekor log accepted an entry made with any key, so anyone could
+  anchor a copy of your record and have it pass; the logged key must now be the workspace's
+  (`audit verify`) or a trusted key (`verify --check-anchor`). And the `--rekor-url` flag of
+  `audit verify` was ignored in favour of the address in the sidecar file, which anyone can edit.
 - **A negative limit no longer beats a real one, and a policy rule with an unknown `effect` is
   refused.** When a blueprint and policy.json both set a limit the stricter applies, but a
   negative number counted as the smaller one and then meant "no limit". Negative limits now

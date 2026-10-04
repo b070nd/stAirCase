@@ -116,8 +116,9 @@ func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 	srv := httptest.NewServer(mock.handler())
 	t.Cleanup(srv.Close)
 
-	_, priv, err := ed25519.GenerateKey(nil)
+	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
+	trusted := []ed25519.PublicKey{pub}
 
 	record := []byte(`{"run_id":7,"entries":[{"event_type":"yield_decided"}],"signature":"ab"}`)
 	recordHash := hex.EncodeToString(sha256NewSum(record))
@@ -139,22 +140,31 @@ func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 	assert.Equal(t, anchor, anchors[0])
 
 	// ── verify against the log ────────────────────────────────────────────
-	got, err := audit.VerifyAnchor(record, recordHash, anchors)
+	got, err := audit.VerifyAnchor(record, recordHash, anchors, trusted)
 	require.NoError(t, err)
 	assert.Equal(t, anchor.UUID, got.UUID)
 
 	// ── tampered local record must fail ───────────────────────────────────
 	tampered := []byte(`{"run_id":7,"entries":[{"event_type":"FORGED"}],"signature":"ab"}`)
 	// same anchor list, but the hash lookup uses the tampered record's hash → no anchor
-	_, err = audit.VerifyAnchor(tampered, hex.EncodeToString(sha256NewSum(tampered)), anchors)
+	_, err = audit.VerifyAnchor(tampered, hex.EncodeToString(sha256NewSum(tampered)), anchors, trusted)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no anchor found")
 
 	// ── log/local content divergence must fail ───────────────────────────
 	// Force the lookup to match (reuse original hash) but present different bytes:
-	_, err = audit.VerifyAnchor(tampered, recordHash, anchors)
+	_, err = audit.VerifyAnchor(tampered, recordHash, anchors, trusted)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "MISMATCH")
+
+	// ── an entry anyone made with their own key proves nothing about ours ──
+	_, other, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	foreign, err := audit.AnchorRecord(srv.URL, record, recordHash, other)
+	require.NoError(t, err)
+	_, err = audit.VerifyAnchor(record, recordHash, []audit.Anchor{foreign}, trusted)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not signed by a trusted key")
 }
 
 // TestRekor_anchor_rejects_bad_signature: the mock (like real Rekor) refuses

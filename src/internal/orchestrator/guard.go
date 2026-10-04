@@ -20,7 +20,7 @@ import (
 var hiddenUnicode = regexp.MustCompile("[\u202a-\u202e\u2066-\u2069\u200b-\u200f\u061c\u2060-\u2064\u180e\ufeff\U000e0000-\U000e007f\U000e0100-\U000e01ef]")
 
 // secretPatterns look like credentials written into code.
-var secretPatterns = regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-(ant-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}`)
+var secretPatterns = regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-(ant-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|[sr]k_live_[0-9A-Za-z]{24,}|glpat-[0-9A-Za-z_-]{20,}|npm_[0-9A-Za-z]{36}|hf_[0-9A-Za-z]{34,}|SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}|hooks\.slack\.com/services/T[0-9A-Z]+/B[0-9A-Z]+/[0-9A-Za-z]{20,}`)
 
 // dependencyFiles are manifests and lock files of common package managers.
 var dependencyFiles = []string{"go.mod", "go.sum", "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",

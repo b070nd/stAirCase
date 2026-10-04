@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -90,7 +91,7 @@ func readCertificate(path string) (certificate.Envelope, []byte, error) {
 
 // checkAnchor confirms the certificate's payload is in a Rekor log, using the
 // anchor sidecar next to the certificate file.
-func checkAnchor(sidecar string, payload []byte) error {
+func checkAnchor(sidecar string, payload []byte, trusted []ed25519.PublicKey) error {
 	anchors, err := audit.LoadAnchors(sidecar)
 	if err != nil {
 		return err
@@ -99,7 +100,7 @@ func checkAnchor(sidecar string, payload []byte) error {
 		return fmt.Errorf("the certificate was never anchored (no %s) - run 'staircase audit anchor'", sidecar)
 	}
 	sum := sha256.Sum256(payload)
-	a, err := audit.VerifyAnchor(payload, hex.EncodeToString(sum[:]), anchors)
+	a, err := audit.VerifyAnchor(payload, hex.EncodeToString(sum[:]), anchors, trusted)
 	if err != nil {
 		return err
 	}

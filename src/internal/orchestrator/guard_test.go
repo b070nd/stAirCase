@@ -112,3 +112,23 @@ func TestAudit_a_large_payload_stays_valid(t *testing.T) {
 	}
 	assert.True(t, seen, "the large proposal was capped")
 }
+
+// TestGuards_secret_patterns: the credentials people most often paste into
+// code are recognised; ordinary text with similar words is not.
+func TestGuards_secret_patterns(t *testing.T) {
+	for name, text := range map[string]string{
+		"stripe live key":   "key = \"sk_live_" + strings.Repeat("a1B2", 7) + "\"",
+		"stripe restricted": "rk_live_" + strings.Repeat("a1B2", 7),
+		"gitlab token":      "glpat-" + strings.Repeat("a1B2", 5),
+		"npm token":         "//registry.npmjs.org/:_authToken=npm_" + strings.Repeat("a1B2c3D4e", 4),
+		"huggingface":       "hf_" + strings.Repeat("aB3dE", 7),
+		"sendgrid":          "SG." + strings.Repeat("a1B2c3", 3) + "a1B2" + "." + strings.Repeat("a1B2c3", 7) + "a",
+		"slack webhook":     "https://hooks.slack.com/services/T0123ABCD/B0123ABCD/" + strings.Repeat("a1B2", 6),
+		"private key":       "-----BEGIN OPENSSH PRIVATE KEY-----",
+	} {
+		assert.Contains(t, orchestrator.ExportedGuardNewFile("config.txt", text), "secret", name)
+	}
+	for _, text := range []string{"the sk_live_ prefix is documented", "glpat is a prefix", "see hf_ models", "SG. is short"} {
+		assert.Empty(t, orchestrator.ExportedGuardNewFile("notes.md", text), text)
+	}
+}

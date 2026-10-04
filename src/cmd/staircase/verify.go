@@ -255,7 +255,7 @@ func verifyCommit(commit string) error {
 		if err != nil {
 			return err
 		}
-		if err := checkAnchor(sidecar, payload); err != nil {
+		if err := checkAnchor(sidecar, payload, keys); err != nil {
 			return fmt.Errorf("commit %.12s: %w", commit, err)
 		}
 	}

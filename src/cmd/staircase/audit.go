@@ -30,6 +30,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -245,8 +246,13 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 				fmt.Printf("❌ record %d: load anchors: %v\n", lineNum, aErr)
 				anyFailed = true
 			} else {
+				if auditRekorURL != audit.DefaultRekorURL { // --rekor-url: the log to ask, not the sidecar's say-so
+					for i := range anchors {
+						anchors[i].RekorURL = auditRekorURL
+					}
+				}
 				recordHash := sha256.Sum256(line)
-				if anchor, vErr := audit.VerifyAnchor(line, hex.EncodeToString(recordHash[:]), anchors); vErr != nil {
+				if anchor, vErr := audit.VerifyAnchor(line, hex.EncodeToString(recordHash[:]), anchors, []ed25519.PublicKey{pubKey}); vErr != nil {
 					fmt.Printf("❌ record %d: %v\n", lineNum, vErr)
 					anyFailed = true
 				} else {
