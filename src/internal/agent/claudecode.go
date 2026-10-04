@@ -379,6 +379,9 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		if in.Tool == "Glob" && filepath.IsAbs(a.Pattern) { // an absolute pattern names its own root
 			paths = append(paths, a.Pattern[:strings.IndexAny(a.Pattern+"*", "*?[{")])
 		}
+		if in.Tool == "Read" && paths[0] == "" {
+			return "staircase: the file to read is not named"
+		}
 		for _, p := range paths {
 			if p == "" {
 				continue

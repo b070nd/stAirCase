@@ -142,6 +142,8 @@ func TestGemini_every_tool_call_is_governed(t *testing.T) {
 		{Tool: "run_shell_command", Input: map[string]any{"command": "touch shell.txt"}},
 		{Tool: "web_fetch", Input: map[string]any{"prompt": "https://example.com"}},
 		{Tool: "write_todos", Input: map[string]any{"todos": []string{"a"}}},
+		{Tool: "read_file", Input: map[string]any{"absolute_path": "/etc/hosts"}}, // the name older Gemini CLI versions use
+		{Tool: "read_file", Input: map[string]any{}},                              // no file named: no way to tell where it reads
 	})
 	r := runtest.Run(t, runtest.Options{
 		Base:  map[string]runtest.File{"f.txt": {Content: "a\nb\na2\n", Mode: 0o644}},
@@ -152,7 +154,7 @@ func TestGemini_every_tool_call_is_governed(t *testing.T) {
 	require.NoError(t, err)
 	decisions := strings.Split(strings.TrimSpace(string(log)), "\n")
 	want := []string{"write_file allow", "replace allow", "replace deny", "replace deny", "read_file allow", "read_file deny",
-		"list_directory deny", "glob deny", "write_file deny", "run_shell_command deny", "web_fetch deny", "write_todos allow"}
+		"list_directory deny", "glob deny", "write_file deny", "run_shell_command deny", "web_fetch deny", "write_todos allow", "read_file deny", "read_file deny"}
 	require.Len(t, decisions, len(want), string(log))
 	for i, w := range want {
 		assert.True(t, strings.HasPrefix(decisions[i], w), "call %d: %s", i, decisions[i])

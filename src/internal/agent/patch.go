@@ -42,8 +42,11 @@ func parsePatch(patch string) ([]domain.ProposedEdit, error) {
 	flush := func() error {
 		switch kind {
 		case "add":
-			edits = append(edits, domain.ProposedEdit{File: file, SearchBlock: orchestrator.MarkerNewFile,
-				ReplaceBlock: strings.Join(body, "\n") + "\n"})
+			content := ""
+			if len(body) > 0 {
+				content = strings.Join(body, "\n") + "\n"
+			}
+			edits = append(edits, domain.ProposedEdit{File: file, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: content})
 		case "update":
 			if err := flushHunk(); err != nil {
 				return err
