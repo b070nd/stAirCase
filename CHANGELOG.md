@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ctrl-C works in the terminal approval dialog.** In raw mode Ctrl-C is a key, not a
+  signal, and the dialog ignored it: an operator could not stop a run that was waiting for
+  them. It now rejects the change and stops the run (SIGINT, as outside the dialog). The
+  dialog also ends, rejecting the change, when the run is cancelled or its time limit
+  passes, which closes the last open part of that finding, and backspace in the feedback
+  line removes a character, not a byte.
+
 ### Added
 
 - **Changes to files that are not text.** An image, a Latin-1 source file or any other

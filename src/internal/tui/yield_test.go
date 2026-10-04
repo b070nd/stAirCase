@@ -1,8 +1,11 @@
 package tui_test
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
@@ -208,4 +211,81 @@ func TestView_shows_drift(t *testing.T) {
 	req.Drift = "outside the stories' scope: main.go"
 	assert.Contains(t, tui.NewYieldModel(req).View(), "DRIFT: outside the stories' scope: main.go")
 	assert.NotContains(t, tui.NewYieldModel(basicReq()).View(), "DRIFT")
+}
+
+// ─── Interruption ─────────────────────────────────────────────────────────────
+
+// TestUpdate_ctrl_c_rejects_and_stops: in raw mode Ctrl-C is a key, not a
+// signal, and used to do nothing, so an operator could not stop a run that was
+// waiting for them. It rejects the change, in either state.
+func TestUpdate_ctrl_c_rejects_and_stops(t *testing.T) {
+	for name, keys := range map[string][]tea.KeyMsg{
+		"while reviewing": {{Type: tea.KeyCtrlC}},
+		"while typing feedback": {
+			{Type: tea.KeyRunes, Runes: []rune{'n'}},
+			{Type: tea.KeyRunes, Runes: []rune{'x'}},
+			{Type: tea.KeyCtrlC},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var m tea.Model = tui.NewYieldModel(basicReq())
+			var cmd tea.Cmd
+			for _, k := range keys {
+				m, cmd = m.Update(k)
+			}
+			resp := tui.RespOf(m)
+			assert.False(t, resp.Approved)
+			assert.Contains(t, resp.Feedback, "interrupted")
+			require.NotNil(t, cmd, "the program is told to quit")
+			assert.IsType(t, tea.QuitMsg{}, cmd())
+		})
+	}
+}
+
+// TestRunYield_ends_with_the_run: a run that is cancelled, or runs out of time,
+// while the dialog is open ends the dialog and rejects the change; it does not
+// wait for a key.
+func TestRunYield_ends_with_the_run(t *testing.T) {
+	pr, pw := io.Pipe() // an input that never has a key
+	defer func() { _ = pw.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan domain.YieldResponse, 1)
+	go func() { done <- tui.RunYieldFor(ctx, basicReq(), tea.WithInput(pr), tea.WithOutput(io.Discard)) }()
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+	select {
+	case resp := <-done:
+		assert.False(t, resp.Approved)
+		assert.Contains(t, resp.Feedback, "run ended")
+	case <-time.After(3 * time.Second):
+		t.Fatal("the dialog kept waiting for a key after the run was cancelled")
+	}
+}
+
+// TestRunYield_ctrl_c_stops_the_run: the key reaches the program, the change is
+// rejected, and the process is interrupted the way a Ctrl-C outside the dialog
+// would, so the run is stopped and its outcome recorded.
+func TestRunYield_ctrl_c_stops_the_run(t *testing.T) {
+	interrupted := make(chan struct{}, 1)
+	defer tui.OnInterrupt(func() { interrupted <- struct{}{} })()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // a dialog that ignores the key would wait for one for ever
+	defer cancel()
+	resp := tui.RunYieldFor(ctx, basicReq(), tea.WithInput(strings.NewReader("\x03")), tea.WithOutput(io.Discard))
+	assert.False(t, resp.Approved)
+	select {
+	case <-interrupted:
+	default:
+		t.Fatal("the process was not interrupted")
+	}
+}
+
+// TestUpdate_backspace_removes_a_character: feedback typed with accents is edited by
+// characters, not bytes.
+func TestUpdate_backspace_removes_a_character(t *testing.T) {
+	var m tea.Model = tui.NewYieldModel(basicReq())
+	for _, k := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune{'n'}}, {Type: tea.KeyRunes, Runes: []rune("é")}, {Type: tea.KeyBackspace},
+		{Type: tea.KeyRunes, Runes: []rune{'a'}}, {Type: tea.KeyEnter}} {
+		m, _ = m.Update(k)
+	}
+	assert.Equal(t, "a", tui.RespOf(m).Feedback)
 }
