@@ -927,3 +927,20 @@ func TestPlugin_a_broken_gates_file_blocks(t *testing.T) {
 	require.NotEmpty(t, report.Gates)
 	assert.Contains(t, report.Gates[0].Message, "gates.json")
 }
+
+// TestBlockingGates_do_not_skip_over_a_store_error: a gate that exists to stop a
+// run cannot answer "skipped" because it could not read what it checks, which
+// would let the run go on.
+func TestBlockingGates_do_not_skip_over_a_store_error(t *testing.T) {
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	store := persistence.NewStore(db)
+	require.NoError(t, db.Close()) // every query now fails
+	ctx := gate.Context{WsDir: wsDir, Store: store, CaseID: 1}
+	for _, g := range []gate.Gate{gate.RuntimeNoConcurrentRunGate, gate.DepNoCycleGate} {
+		assert.Equal(t, gate.SeverityBlock, g.Severity())
+		res := g.Run(ctx)
+		assert.Equal(t, gate.StatusFail, res.Status, "%s: %s", g.Name(), res.Message)
+	}
+}

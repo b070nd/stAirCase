@@ -145,7 +145,7 @@ func (*runtimeNoConcurrentRunGate) Run(ctx Context) Result {
 	const name = "runtime.no_concurrent_run"
 	runs, err := ctx.Store.ListRunsByCase(ctx.CaseID)
 	if err != nil {
-		return skip(name, "runtime", SeverityBlock, "cannot load runs: "+err.Error())
+		return fail(name, "runtime", SeverityBlock, "cannot load runs: "+err.Error())
 	}
 	for _, r := range runs {
 		if r.Status == persistence.RunStatusRunning {

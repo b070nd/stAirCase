@@ -20,6 +20,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **The blocking gates that read the database no longer skip when they cannot.** The
+  no-concurrent-run and no-dependency-cycle gates answered "skipped", which does not block, when
+  the store returned an error; they now fail.
 - **The repository map in a plan does not follow symbolic links.** A link to a file outside the
   repository put that file's `func` lines into the plan, which goes to the model.
 - **Plugin gates cannot fail open over a spelling or a broken file.** A plugin that answered

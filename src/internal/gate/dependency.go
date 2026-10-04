@@ -23,11 +23,11 @@ func (*depNoCycleGate) Run(ctx Context) Result {
 	const name = "deps.no_cycle"
 	projects, err := ctx.Store.ListAllProjects()
 	if err != nil {
-		return skip(name, "dependency", SeverityBlock, "cannot load projects: "+err.Error())
+		return fail(name, "dependency", SeverityBlock, "cannot load projects: "+err.Error())
 	}
 	deps, err := ctx.Store.ListAllProjectDependencies()
 	if err != nil {
-		return skip(name, "dependency", SeverityBlock, "cannot load dependencies: "+err.Error())
+		return fail(name, "dependency", SeverityBlock, "cannot load dependencies: "+err.Error())
 	}
 	if _, err := engine.TopoSort(projects, deps); err != nil {
 		return fail(name, "dependency", SeverityBlock, err.Error())
