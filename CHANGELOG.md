@@ -21,6 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 - **An older stAirCase refuses a workspace written by a newer one.** The database records its
   migrations; one this version does not know now stops the command with "upgrade stAirCase"
   instead of working on a layout it may damage.
+- **A sandboxed command cannot signal your other processes.** In the macOS sandbox and with
+  bubblewrap a command could stop or kill any process of yours (stAirCase itself, your editor);
+  macOS now allows signals only inside the sandbox, and bubblewrap runs the command in its own
+  process namespace, where your other processes are not visible (and their environments in
+  /proc are not readable). The Landlock engine does not restrict signals before Landlock ABI 6
+  (Linux 6.12). The sandbox also hides more credential stores: `~/.vault-token`, cargo, terraform,
+  OCI, pass, doppler, glab, stripe, heroku, Maven settings and shell history.
 - **A negative limit no longer beats a real one, and a policy rule with an unknown `effect` is
   refused.** When a blueprint and policy.json both set a limit the stricter applies, but a
   negative number counted as the smaller one and then meant "no limit". Negative limits now

@@ -50,6 +50,8 @@ func Command(ctx context.Context, root, cwd, command, mode string, hide ...strin
 // system); add a path here when a tool keeps its tokens elsewhere.
 var Credentials = []string{".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials",
 	".npmrc", ".pypirc", ".config/gh", ".config/gcloud", ".config/git", "Library/Keychains",
+	".vault-token", ".cargo/credentials.toml", ".cargo/credentials", ".terraform.d/credentials.tfrc.json", ".oci", ".password-store",
+	".config/doppler", ".config/glab-cli", ".config/stripe", ".config/heroku", ".m2/settings.xml", ".bash_history", ".zsh_history",
 	// the agents' own login stores
 	".claude", ".claude.json", ".codex", ".gemini", ".config/opencode", ".local/share/opencode"}
 
@@ -152,6 +154,8 @@ func sandboxExec(root, tmp string, hide []string) ([]string, error) {
 	profile := fmt.Sprintf(`(version 1)
 (allow default)
 (deny network*)
+(deny signal)
+(allow signal (target same-sandbox))
 (deny file-write*)
 (allow file-write* (subpath %q) (subpath %q)
   (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/fd/"))`, root, tmp)
@@ -171,7 +175,9 @@ func bubblewrap(root, tmp string, hide []string) ([]string, error) {
 	if err := bwrapUsable(bin); err != nil {
 		return nil, fmt.Errorf("bwrap cannot run here: %w", err)
 	}
-	args := []string{bin, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"}
+	// --unshare-pid: the command sees only its own processes, so it can neither
+	// signal the user's others nor read their environments in /proc.
+	args := []string{bin, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-pid"}
 	for _, h := range hide { // an empty folder or file in its place; root is bound back below
 		if info, err := os.Stat(h); err == nil && info.IsDir() {
 			args = append(args, "--tmpfs", h)
@@ -212,7 +218,7 @@ func bwrapUsable(bin string) error {
 		return e
 	}
 	var err error
-	if out, rerr := exec.Command(bin, "--ro-bind", "/", "/", "--unshare-net", "--", "/bin/true").CombinedOutput(); rerr != nil {
+	if out, rerr := exec.Command(bin, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-net", "--unshare-pid", "--", "/bin/true").CombinedOutput(); rerr != nil {
 		err = fmt.Errorf("%w: %s", rerr, strings.TrimSpace(string(out)))
 	}
 	bwrapChecked.Store(bin, err)
