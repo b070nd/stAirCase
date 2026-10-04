@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -186,5 +187,42 @@ func TestStatus_names_this_machines_engines(t *testing.T) {
 		if e.Err != nil {
 			assert.NotEmpty(t, e.Err.Error(), "%s: a sandbox that does not work says why", e.Name)
 		}
+	}
+}
+
+// TestSandbox_cannot_signal_other_processes: a command in the sandbox must not
+// be able to stop or interrupt the user's other processes (this one included),
+// which it could with only files and the network taken away.
+func TestSandbox_cannot_signal_other_processes(t *testing.T) {
+	eachEngine(t, func(t *testing.T) {
+		if only == "landlock" {
+			t.Skip("Landlock restricts signals only from ABI 6 (Linux 6.12); this engine does not yet")
+		}
+		victim := exec.Command("sleep", "60")
+		require.NoError(t, victim.Start())
+		t.Cleanup(func() { _ = victim.Process.Kill(); _, _ = victim.Process.Wait() })
+		wt := t.TempDir()
+		on, off := sandboxRun(t, wt, "kill -0 "+strconv.Itoa(victim.Process.Pid))
+		assert.True(t, off, "without the sandbox the command can signal the process")
+		assert.False(t, on, "in the sandbox it cannot")
+	})
+}
+
+// TestHidden_credential_stores: the tokens of common tools are hidden from a
+// command, when they exist.
+func TestHidden_credential_stores(t *testing.T) {
+	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(home)
+	require.NoError(t, err)
+	t.Setenv("HOME", home)
+	stores := []string{".vault-token", ".cargo/credentials.toml", ".terraform.d/credentials.tfrc.json", ".oci", ".password-store",
+		".config/doppler", ".config/glab-cli", ".m2/settings.xml", ".bash_history", ".zsh_history", ".config/stripe", ".config/heroku"}
+	for _, s := range stores {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(home, s)), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(home, s), []byte("x"), 0o600))
+	}
+	got := hidden(nil)
+	for _, s := range stores {
+		assert.Contains(t, got, filepath.Join(home, s), s)
 	}
 }

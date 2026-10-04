@@ -34,7 +34,10 @@ stAirCase is **pre-1.0**.
   sandbox). In it a command can write only in the worktree and its own temporary
   folder, has no network, and cannot read the stAirCase workspace or common
   credential folders (`~/.ssh`, `~/.aws`, `~/.config/gh`, the agents' own login stores
-  such as `~/.claude`, `~/.codex`, `~/.gemini` and OpenCode's, and others). It can read
+  such as `~/.claude`, `~/.codex`, `~/.gemini` and OpenCode's, and others, `~/.vault-token`
+  and shell history among them). On macOS and with bubblewrap it cannot signal your other
+  processes (with bubblewrap it does not see them at all); the Landlock engine does not yet
+  restrict that, so a command there can signal and inspect your other processes. It can read
   the rest of your files, and what it prints goes to the model. Where no sandbox is
   found, `auto` runs commands as you and says so; `--sandbox required` refuses
   them. Files a command changes come to you afterwards: approved, they are kept;
