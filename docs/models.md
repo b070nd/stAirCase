@@ -63,9 +63,13 @@ staircase project config show 1
 ```
 
 The run shows tokens and estimated cost per agent as it goes, and stops (`KILLED`)
-when the estimate reaches the cap. A model without a known price counts at the
-highest known rate, so an unknown model can never slip past the cap. The validator's
-calls count too.
+when the estimate reaches the cap. The prices are the providers' published standard
+rates, read from their price pages on 2026-10-05 (Anthropic, OpenAI and Google; where a
+price depends on the prompt's size the dearer tier is used), so the estimate is a ceiling,
+not an invoice: it ignores batch and cache discounts. A model without a known price (a
+newer one, or Claude Code) counts at $15 per million tokens in and $75 out, so an unknown
+model can never slip past the cap. A dated name (`claude-haiku-4-5-20251001`) or a gateway
+name (`provider/model`) is priced by its model. The validator's calls count too.
 
 ## Record once, replay offline
 

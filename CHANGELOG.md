@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The price table was out of date, and in places below what the providers charge.** A budget cap
+  counts tokens at these prices, and `claude-haiku-4-5` was priced at $0.80 / $4 per million
+  tokens against the published $1 / $5, so a run on it could spend a quarter more than its cap. The
+  table is re-read from Anthropic's, OpenAI's and Google's price pages (2026-10-05), with the Claude 5
+  family, current GPT and Gemini models, and the pro reasoning models, which cost far more than
+  the rest. Claude Opus 4.5 and 4.6 were priced at $15 / $75 against the published $5 / $25, which
+  stopped runs earlier than the cap said. A dated model name
+  (`claude-haiku-4-5-20251001`) or `-latest` is priced as the model it pins instead of falling back
+  to the ceiling. A model not in the table still counts at $15 / $75.
+
 ### Added
 
 - **A failing CI test names itself in an annotation.** The CI and release workflows run their tests
