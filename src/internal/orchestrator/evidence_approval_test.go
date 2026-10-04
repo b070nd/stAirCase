@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
@@ -156,4 +157,32 @@ func TestApproveOnEvidence_needs_evidence_to_exist(t *testing.T) {
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
 	require.Error(t, r.Err)
 	assert.Contains(t, r.Err.Error(), "--check")
+}
+
+// TestCheckTimeout: a check that does not finish within the run's check
+// timeout counts as not passed: evidence-based approval then goes to a person
+// (who is told it timed out) instead of waiting out the default, and the
+// certificate records the check as one that could not run.
+func TestCheckTimeout(t *testing.T) {
+	start := time.Now()
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{
+		Setup: inSrc(op),
+		Run: orchestrator.RunOptions{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com",
+			Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			write(ctx, env, "src/a.txt", "a\n")
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	assert.Less(t, time.Since(start), 20*time.Second, "the check was cut off, not waited for")
+	assert.Equal(t, []string{"file_edit:operator"}, sources(t, r), "no evidence, so a person decided (and no final review: nothing was approved without one)")
+	require.NotEmpty(t, op.seen)
+	assert.Contains(t, op.seen[0].Review, "timed out")
+
+	// After the commit the same timeout applies, and the certificate says the check could not run.
+	_, _, s := certified(t, writeFile("health.txt", "ok\n"),
+		orchestrator.RunOptions{Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond}, nil)
+	require.Len(t, s.Predicate.Checks, 1)
+	assert.Equal(t, -1, s.Predicate.Checks[0].ExitCode)
 }
