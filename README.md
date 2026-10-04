@@ -28,10 +28,13 @@ agreed to it, and whether what was committed is what was reviewed.
 - at the end, stAirCase commits **exactly the approved bytes** on a new branch, and
   nothing else;
 - every decision is recorded on a **tamper-evident audit chain**, and the commit
-  carries a signed **change certificate** that anyone can verify.
+  carries a signed **change certificate** that anyone can verify, and **rebuild**: from
+  the base commit and the approved proposals, anyone can reproduce the commit's exact
+  tree.
 
-It is one program with no dependencies except git. Your agent setup, plans and
-evidence live in a workspace outside your repositories.
+It is one program with no dependencies except git (and `ssh-keygen`, if you sign
+decisions or reviews with SSH keys). Your agent setup, plans and evidence live in a
+workspace outside your repositories.
 
 ## Put `staircase` in front of your agent
 
@@ -49,11 +52,15 @@ staircase verify staircase/run-1
 ```
 
 ```
-✅ Commit 8a4ae8705334: valid change certificate, CAL 3
-   run #1 from 1ec6a66040cc, assisted by Claude Code
+✅ Commit 33279b77f9ba: valid change certificate, CAL 3
+   requested by dev@example.com (the git email of the checkout: unauthenticated)
+   run #1 from 188a7dda520e, assisted by Claude Code
+   1 decision(s) by operator
 ```
 
-A pull request can be required to carry such certificates with the
+Add `--rebuild` and it also replays the approved proposals and checks that the commit
+holds exactly what they produce. A pull request can be required to carry such
+certificates (and that rebuild) with the
 [stAirCase GitHub Action](docs/audit.md#require-certificates-on-pull-requests).
 
 ## See it work in one minute
@@ -94,8 +101,12 @@ minutes.
 |---|---|
 | **Approval bound to bytes** | stAirCase computes itself what each approved change produces, and commits only that. Anything else fails the run. |
 | **Your checkout untouched** | every run works in its own git worktree, on its own `staircase/run-N` branch. |
-| **Evidence you can hand over** | a hash-chained audit log, Ed25519-signed exports, optional anchoring in the public Rekor log. |
-| **Approve your way** | in the terminal, from a script (local HTTP API), from a service (signed webhook), with rules, or with a reviewer model. |
+| **Evidence you can hand over** | a hash-chained audit log, Ed25519-signed exports, a signed certificate per commit, a [SLSA verification summary](docs/spec/vsa-v1.md), optional anchoring in the public Rekor log. |
+| **Reproducible, not just signed** | `staircase rebuild` (or `verify --rebuild`) reproduces a commit's tree from its approved proposals; the [specification](docs/spec/certificate-v1.md) has test vectors and an independent implementation. |
+| **Approve your way** | in the terminal, in a browser page, from a script (local HTTP API), from a service (signed webhook), with rules, or with a reviewer model; sign your decisions with an SSH key. |
+| **Approve the task, on evidence** | agree a task and its scope once, and let your checks and reviewer models decide each change inside it instead of a sample; you approve the whole change at the end. |
+| **Survives a crash** | each approval is kept before the agent hears it; `staircase recover` commits exactly what an interrupted run had approved. |
+| **For teams** | rules, trusted keys and blueprints from one governance repository, pinned in every workspace; a CI check that requires certificates, from the protected branch. |
 | **Runs stay on task** | give each story the paths it may change; anything else comes to you, and a run that keeps wandering is stopped. |
 | **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |
 | **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway - mixed in one team. Budget caps per project. |
@@ -113,6 +124,7 @@ on your machine:
 | Shell commands and checks | an OS sandbox (macOS `sandbox-exec`, Linux bubblewrap or Landlock, Claude Code's own sandbox): no network, writes only in the worktree, no access to your credentials or stAirCase's keys; `--sandbox required` refuses to run without one |
 | The agent program itself | as your user (Claude Code, Codex, or stAirCase's runtime); for stronger isolation, run stAirCase in a container or VM |
 | Agents that edit your checkout (Cursor) | outside stAirCase until you `seal` their staged changes (CAL 2) |
+| What the agent reads, and what the model provider receives | not confined: a run sends code to your model provider, and a sandboxed command can read files you can; pick a [confidentiality profile](docs/safety.md#confidentiality-pick-a-profile) |
 
 Read the [safety boundary](docs/safety.md) before you use it on a project you care
 about. stAirCase is pre-1.0.
@@ -130,9 +142,13 @@ vulnerability privately: [SECURITY.md](SECURITY.md).
 ## Roadmap
 
 Where stAirCase is going: every change an AI agent makes carries a signed, verifiable
-**change certificate**. Next up: `staircase claude "task"` with no setup, more agents
-(Codex, Gemini CLI, OpenCode, Cursor), and a CI check that requires certificates. The
-full plan and its reasoning are in **[ROADMAP.md](ROADMAP.md)**.
+**change certificate**, and the repository can require it. Built so far: zero-setup
+sessions for Claude Code and Codex (Gemini CLI and OpenCode in progress), the certificate and its
+specification, rebuild from a ledger, signed decisions, approval on evidence, recovery,
+team governance and the CI check. Next is what only users can show: real pilots on
+sensitive repositories, and the agents that have not yet run against a real login. The full
+plan, what has been verified against real agents and what has not, and its reasoning are in
+**[ROADMAP.md](ROADMAP.md)** and the [compatibility table](docs/compatibility.md#which-agents-have-actually-been-run).
 
 ## Contributing
 

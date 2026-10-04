@@ -9,13 +9,13 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Concepts](concepts.md) | the idea, how a run works, and the words the docs use |
 | [Install](install.md) | install, verify a download, shell completion |
 | [Getting started](../QUICKSTART.md) | the offline demo, then your first real run |
-| [Safety boundary](safety.md) | what stAirCase guarantees, and what it does not |
+| [Safety boundary](safety.md) | what stAirCase guarantees and what it does not, the confidentiality profiles, and recovering an interrupted run |
 
 ## How to
 
 | Page | What you learn |
 |---|---|
-| [Approvals](approvals.md) | approve in the terminal, from a script, from a service; rules; a reviewer model |
+| [Approvals](approvals.md) | approve in the terminal, a browser page, a script or a service; rules; a reviewer model; approve on evidence; sign your decisions |
 | [Models and API keys](models.md) | providers, storing keys, budget caps, record and replay |
 | [Blueprints](blueprints.md) | keep your agent setup as files in its own repository |
 | [Drift supervision](drift.md) | keep runs on their stories with scope and limits |
@@ -27,7 +27,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Governing Gemini CLI](gemini.md) | use Google's Gemini CLI as the agent (work in progress: not yet run against a real login) |
 | [Agents in your own checkout](attach.md) | Cursor and other tools that edit your files directly: seal what you approve |
 | [Reviewing changes made elsewhere](review.md) | certify what you accept from a cloud agent's pull request |
-| [Working as a team](governance.md) | one repository for the team's rules and trusted keys, pinned in every workspace |
+| [Working as a team](governance.md) | one repository for the team's rules, trusted keys and blueprints, pinned in every workspace |
 | [Governing every session in a company](managed.md) | managed settings that send every Claude Code or Codex session through stAirCase |
 | [Troubleshooting](troubleshooting.md) | common messages and what to do |
 
@@ -39,7 +39,8 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Verification summary (SLSA VSA)](spec/vsa-v1.md) | the signed summary `verify --vsa-out` writes for a verified commit, its levels (none of them a SLSA level) and what a consumer checks |
 | [Change certificate specification](spec/certificate-v1.md) | the certificate format, how to verify it and how to rebuild a commit from its ledger, with [test vectors](spec/vectors) for other implementations |
 | [Security standards](standards.md) | how stAirCase relates to SLSA's source track, the OWASP Top 10 for LLM applications and NIST's SSDF |
-| [Compatibility](compatibility.md) | the six interfaces other tools build on, and what you can rely on |
+| [Change certificate in-toto proposal](spec/in-toto-predicate.md) | the draft proposal of the certificate as an in-toto predicate |
+| [Compatibility](compatibility.md) | the six interfaces other tools build on, what you can rely on, and which agents have actually been run |
 | [Security](../SECURITY.md) | the security model, known limits, reporting a vulnerability |
 | [Changelog](../CHANGELOG.md) | what changed in each release |
 | [Roadmap](../ROADMAP.md) | where stAirCase is going, and why |
