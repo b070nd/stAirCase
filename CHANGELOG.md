@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **The workspace database is readable by its owner only.** It was created with the process's
+  umask (usually world-readable) and holds every proposal, decision and ciphertext of the
+  workspace. It and its `-wal` and `-shm` files are now `0600`, and an existing workspace is
+  tightened the next time a command opens it.
+- **A model provider's address cannot redirect your key elsewhere.** The HTTP client followed
+  redirects, and a custom key header (`x-api-key`) travels with them. Redirects are not followed.
+- **Webhook signatures made with an empty secret are refused.** An HMAC with an empty key is one
+  anybody can compute.
 - **An oversized audit entry stays valid JSON.** An entry over 64 KiB (a large proposal) was cut
   at a byte, which left text that was not JSON and could end inside a character. It is now a
   small record that says it was truncated, with the original size and SHA-256.

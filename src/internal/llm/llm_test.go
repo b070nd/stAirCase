@@ -199,3 +199,24 @@ func TestRecordReplay(t *testing.T) {
 	_, err = rp.Chat(context.Background(), Request{Model: "m"})
 	assert.ErrorContains(t, err, "no recorded response")
 }
+
+// TestPost_never_follows_a_redirect: an API address that redirects must not
+// take the key (a custom header, which an HTTP client forwards) to another host.
+func TestPost_never_follows_a_redirect(t *testing.T) {
+	var leaked atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "" || r.Header.Get("Authorization") != "" {
+			leaked.Store(true)
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(other.Close)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1/messages", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(api.Close)
+
+	_, err := (&Anthropic{Key: "sk-ant-secret-key-value", BaseURL: api.URL}).Chat(context.Background(), convo)
+	require.Error(t, err)
+	assert.False(t, leaked.Load(), "the key reached another host")
+}

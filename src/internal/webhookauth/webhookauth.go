@@ -58,6 +58,9 @@ func Sign(secret []byte, timestamp string, body []byte) string {
 // using a constant-time comparison, and that the timestamp is within maxSkew of
 // now. Returns nil when valid, a descriptive error otherwise.
 func Verify(secret []byte, timestampHeader, sigHeader string, body []byte, now time.Time, maxSkew time.Duration) error {
+	if len(secret) == 0 { // an HMAC with an empty key is one anyone can compute
+		return fmt.Errorf("no secret to verify with")
+	}
 	if timestampHeader == "" || sigHeader == "" {
 		return fmt.Errorf("missing %s/%s header", HeaderTimestamp, HeaderSignature)
 	}
