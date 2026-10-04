@@ -1,5 +1,5 @@
 {
-  "description": "content_b64 belongs to a whole new file, not to a search and replace.",
+  "description": "mode belongs to a whole new file, not to a search and replace.",
   "base": [
     {
       "path": "lf.txt",
@@ -37,8 +37,8 @@
       {
         "file": "lf.txt",
         "search_block": "a\n",
-        "replace_block": "",
-        "content_b64": "/w=="
+        "replace_block": "A\n",
+        "mode": "100755"
       }
     ]
   ],

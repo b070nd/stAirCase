@@ -275,8 +275,8 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 		evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
 	}
 	now := time.Now()
-	status := run.Status
-	if status == persistence.RunStatusRunning {
+	status, crashed := run.Status, run.Status == persistence.RunStatusRunning
+	if crashed {
 		status = persistence.RunStatusKilled
 	}
 	_ = r.audit(runID, "run_recovered", map[string]any{"commit": hash, "proposals": len(kept), "final_review": res.FinalReview,
@@ -289,7 +289,11 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 		Outcome: outcome, EvidenceErrors: evidenceErrs})
 	// The run's own record comes last: it is what says "recovered", so a kill before
 	// this point leaves a run that recover finishes again (it recognizes its commit).
-	if err := r.store.UpdateRunStatus(runID, status, &now, hash); err != nil {
+	update := func() error { return r.store.UpdateRunStatus(runID, status, &now, hash) }
+	if crashed { // nobody finished the run, so nobody finished its case either
+		update = func() error { return r.store.FinishRun(runID, status, now, hash) }
+	}
+	if err := update(); err != nil {
 		return res, fmt.Errorf("record the commit on run #%d: %w", runID, err)
 	}
 	return res, nil

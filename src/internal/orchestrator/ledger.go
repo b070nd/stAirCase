@@ -39,11 +39,12 @@ type LedgerProposal struct {
 	Edits  []domain.ProposedEdit `json:"edits"`
 }
 
-// hasBinary reports whether any edit carries a file that is not text.
+// hasBinary reports whether any edit needs version 2: a file that is not text,
+// or an explicit mode.
 func (l Ledger) hasBinary() bool {
 	for _, p := range l.Proposals {
 		for _, e := range p.Edits {
-			if e.ContentB64 != "" {
+			if e.ContentB64 != "" || e.Mode != "" {
 				return true
 			}
 		}
@@ -98,7 +99,7 @@ func RebuildTree(repoPath string, raw []byte) (string, Ledger, error) {
 		return "", l, fmt.Errorf("ledger version %d is not supported (this program reads versions %d and %d)", l.Version, ledgerVersion, ledgerVersionBinary)
 	}
 	if l.Version == ledgerVersion && l.hasBinary() {
-		return "", l, fmt.Errorf("a version %d ledger holds text only, but it has content_b64", ledgerVersion)
+		return "", l, fmt.Errorf("a version %d ledger holds text only with default modes, but it has content_b64 or mode", ledgerVersion)
 	}
 	repo, err := OpenGitRepo(repoPath)
 	if err != nil {

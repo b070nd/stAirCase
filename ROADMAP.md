@@ -193,7 +193,7 @@ Six contracts stay stable and versioned while everything around them may change:
 
 - A written specification of the certificate and of how a commit is rebuilt, with test
   vectors. *Done: the certificate and the rebuild are specified
-  ([spec](docs/spec/certificate-v1.md)), with 13 + 21 vectors and independent
+  ([spec](docs/spec/certificate-v1.md)), with 13 + 25 vectors and independent
   implementations; `staircase rebuild` reproduces a commit from its ledger.*
 - The certificate format proposed to in-toto, and its mapping to SLSA's source track
   published, together with a mapping to the OWASP Top 10 for LLM applications and

@@ -273,3 +273,21 @@ func TestRecover_does_not_adopt_someone_elses_commit(t *testing.T) {
 	run, _ := r.Store.GetRun(r.Run.ID)
 	assert.Empty(t, run.GitCommitHash, "nothing was recorded for a commit that is not the run's")
 }
+
+// TestRecover_a_crashed_case_is_not_left_running: a process that died holds no
+// chance to finish its run or its case, so both still say RUNNING; recovering
+// it ends them the way a killed run ends.
+func TestRecover_a_crashed_case_is_not_left_running(t *testing.T) {
+	r := interrupted(t, nil, orchestrator.RunOptions{})
+	require.NoError(t, r.Store.UpdateRunStatus(r.Run.ID, persistence.RunStatusRunning, nil, ""))
+	require.NoError(t, r.Store.UpdateCaseStatus(r.Run.CaseID, persistence.CaseStatusRunning))
+
+	_, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
+	require.NoError(t, err)
+	run, err := r.Store.GetRun(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.RunStatusKilled, run.Status)
+	c, err := r.Store.GetCase(r.Run.CaseID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.CaseStatusFailed, c.Status)
+}

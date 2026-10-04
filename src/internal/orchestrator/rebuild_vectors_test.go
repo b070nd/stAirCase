@@ -98,7 +98,16 @@ func rebuildVectors() map[string]rebuildVector {
 		"20-refused-content-b64-that-is-not-base64": withError(v("content_b64 must be base64.",
 			[]domain.ProposedEdit{{File: "x.bin", SearchBlock: orchestrator.MarkerNewFile, ContentB64: "***"}}), "is not base64"),
 		"21-refused-content-b64-on-an-edit": withError(v("content_b64 belongs to a whole new file, not to a search and replace.",
-			[]domain.ProposedEdit{{File: "lf.txt", SearchBlock: "a\n", ContentB64: base64.StdEncoding.EncodeToString([]byte("\xff"))}}), "belongs to a whole new file"),
+			[]domain.ProposedEdit{{File: "lf.txt", SearchBlock: "a\n", ContentB64: base64.StdEncoding.EncodeToString([]byte("\xff"))}}), "belong to a whole new file"),
+		"22-new-executable-script": v("A new file with mode 100755 is executable: the mode is part of the change.",
+			[]domain.ProposedEdit{{File: "bin/deploy.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo deploy\n", Mode: "100755"}}),
+		"23-modes-change-without-content-changing": v("A whole-file change with the same content and another mode changes only the mode, both ways.",
+			[]domain.ProposedEdit{{File: "run.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo a\n", Mode: "100644"},
+				{File: "lf.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "a\nb\nb\n", Mode: "100755"}}),
+		"24-refused-a-mode-that-is-not-a-file-mode": withError(v("Only 100644 and 100755 are modes.",
+			[]domain.ProposedEdit{{File: "x.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "x", Mode: "120000"}}), "mode must be 100644 or 100755"),
+		"25-refused-mode-on-an-edit": withError(v("mode belongs to a whole new file, not to a search and replace.",
+			[]domain.ProposedEdit{{File: "lf.txt", SearchBlock: "a\n", ReplaceBlock: "A\n", Mode: "100755"}}), "belong to a whole new file"),
 	}
 }
 
@@ -131,8 +140,8 @@ func TestRebuildVectors(t *testing.T) {
 			l := orchestrator.Ledger{Version: 1, Base: git("rev-parse", "HEAD")}
 			for _, p := range v.Proposals {
 				for _, e := range p {
-					if e.ContentB64 != "" {
-						l.Version = 2 // a ledger needs version 2 only when it holds a file that is not text
+					if e.ContentB64 != "" || e.Mode != "" {
+						l.Version = 2 // a ledger needs version 2 only when it holds a file that is not text, or a mode
 					}
 				}
 			}

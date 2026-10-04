@@ -49,9 +49,11 @@ def derive(files: dict, proposal: list) -> dict:
     for e in proposal:
         p = clean_path(e["file"])
         search, replace = e.get("search_block", ""), e.get("replace_block", "")
-        b64 = e.get("content_b64", "")
-        if b64 and search != NEW_FILE:
-            raise Refused("content_b64 belongs to a whole new file: " + p)
+        b64, mode = e.get("content_b64", ""), e.get("mode", "")
+        if (b64 or mode) and search != NEW_FILE:
+            raise Refused("content_b64 and mode belong to a whole new file: " + p)
+        if mode not in ("", "100644", "100755"):
+            raise Refused("mode must be 100644 or 100755, not %r: %s" % (mode, p))
         if search == NEW_FILE:
             data = replace.encode()
             if b64:
@@ -71,7 +73,7 @@ def derive(files: dict, proposal: list) -> dict:
             elif len(data) > MAX_NEW_FILE:
                 raise Refused("new file is too large: " + p)
             cur = current(p)
-            nxt[p] = (data, cur[1] if cur else "100644")
+            nxt[p] = (data, mode or (cur[1] if cur else "100644"))
         elif search == DELETE_FILE:
             if current(p) is None:
                 raise Refused("cannot delete a file that does not exist: " + p)

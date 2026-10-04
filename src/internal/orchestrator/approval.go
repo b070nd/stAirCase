@@ -109,10 +109,19 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 			} else if f != nil && !f.deleted {
 				mode = f.mode // overwriting keeps the file's mode
 			}
+			switch e.Mode {
+			case "":
+			case "100644":
+				mode = 0o644
+			case "100755":
+				mode = 0o755
+			default:
+				return nil, fmt.Errorf("%s: mode must be 100644 or 100755, not %q", p, e.Mode)
+			}
 			next[p] = &approvedFile{content: content, mode: mode}
 		case MarkerDeleteFile:
-			if e.ContentB64 != "" {
-				return nil, fmt.Errorf("%s: content_b64 belongs to a whole new file", p)
+			if e.ContentB64 != "" || e.Mode != "" {
+				return nil, fmt.Errorf("%s: content_b64 and mode belong to a whole new file", p)
 			}
 			f, err := current(p)
 			if err != nil {
@@ -123,8 +132,8 @@ func (a *approvals) derive(edits []domain.ProposedEdit) (map[string]*approvedFil
 			}
 			next[p] = &approvedFile{deleted: true}
 		default:
-			if e.ContentB64 != "" {
-				return nil, fmt.Errorf("%s: content_b64 belongs to a whole new file", p)
+			if e.ContentB64 != "" || e.Mode != "" {
+				return nil, fmt.Errorf("%s: content_b64 and mode belong to a whole new file", p)
 			}
 			f, err := current(p)
 			if err != nil {
@@ -220,16 +229,36 @@ func (a *approvals) worktreeChanges() ([]domain.ProposedEdit, error) {
 		if err != nil {
 			return nil, err
 		}
-		got, err := os.ReadFile(filepath.Join(a.repo.path, filepath.FromSlash(p)))
+		full := filepath.Join(a.repo.path, filepath.FromSlash(p))
+		info, serr := os.Lstat(full)
+		if serr == nil && !info.Mode().IsRegular() {
+			// A symlink (or anything else that is not a file) is never read: a link to a
+			// key outside the worktree would put the key in the proposal and the audit
+			// record. The proposal names the path with no content, and derive refuses it.
+			edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerNewFile})
+			continue
+		}
+		if serr == nil && info.Size() > maxApprovedBinaryBytes {
+			return nil, fmt.Errorf("%s is %d bytes; at most %d can be approved at once", p, info.Size(), maxApprovedBinaryBytes) // before it is read
+		}
+		got, err := os.ReadFile(full)
+		gotMode := os.FileMode(0o644)
+		if serr == nil && info.Mode()&0o111 != 0 {
+			gotMode = 0o755
+		}
+		known := want != nil && !want.deleted // the file exists in the approved state
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			if want != nil && !want.deleted {
+			if known {
 				edits = append(edits, domain.ProposedEdit{File: p, SearchBlock: MarkerDeleteFile})
 			}
 		case err != nil:
 			return nil, err
-		case want == nil || want.deleted || !bytes.Equal(got, want.content):
+		case !known || !bytes.Equal(got, want.content) || gotMode != want.mode:
 			e := domain.ProposedEdit{File: p, SearchBlock: MarkerNewFile, ReplaceBlock: string(got)}
+			if differs := (known && gotMode != want.mode) || (!known && gotMode != 0o644); differs {
+				e.Mode = map[os.FileMode]string{0o644: "100644", 0o755: "100755"}[gotMode] // what overwriting would not give by itself
+			}
 			if !utf8.Valid(got) { // not text: a whole-file change shown by its size and digest
 				e.ReplaceBlock, e.ContentB64 = "", base64.StdEncoding.EncodeToString(got)
 			}
