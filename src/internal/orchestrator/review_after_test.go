@@ -240,7 +240,7 @@ func TestReviewAfter_keeps_file_modes(t *testing.T) {
 		}
 		return nil
 	}
-	r, commit, _ := certified(t, agent, orchestrator.RunOptions{Plan: &plan.Plan{Harness: "claude-code"}}, nil, base)
+	r, commit, _ := certified(t, agent, orchestrator.RunOptions{Plan: &plan.Plan{Harness: "claude-code"}}, &operator{approve: true}, base) // a guard sends the executables to a person
 	modes := map[string]string{}
 	for _, line := range strings.Split(strings.TrimSpace(git(t, r.Repo, "ls-tree", "-r", commit)), "\n") {
 		f := strings.Fields(line)

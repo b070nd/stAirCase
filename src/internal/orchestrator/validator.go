@@ -43,12 +43,23 @@ const (
 // sensitivePaths always go to a human: build, CI, dependency and secret files,
 // where a small change has a large effect.
 // ("**/" also matches at the root.) ponytail: fixed list; make it policy if projects need their own.
-var sensitivePaths = []string{".github/**", "**/.gitlab-ci.yml", "**/Makefile", "**/Dockerfile", "**/go.mod", "**/go.sum",
-	"**/package.json", "**/*.lock", "**/.env*", "**/*.sh"}
+var sensitivePaths = []string{".github/**", ".gitlab/**", ".circleci/**", ".husky/**", "**/.gitlab-ci.yml", "**/.travis.yml", "**/azure-pipelines.yml",
+	"**/Jenkinsfile", "**/Makefile", "**/GNUmakefile", "**/justfile", "**/Dockerfile", "**/go.mod", "**/go.sum", "**/package.json", "**/*.lock",
+	"**/.npmrc", "**/.gitattributes", "**/.gitmodules", "**/.pre-commit-config.yaml", "**/.env*", "**/*.sh"}
+
+// matchesFold matches in any letter case: the file systems of macOS and
+// Windows do not tell "makefile" from "Makefile".
+func matchesFold(patterns []string, name string) bool {
+	lower := make([]string, len(patterns))
+	for i, p := range patterns {
+		lower[i] = strings.ToLower(p)
+	}
+	return engine.MatchAny(lower, strings.ToLower(name))
+}
 
 func sensitive(files []string) string {
 	for _, f := range files {
-		if engine.MatchAny(sensitivePaths, f) {
+		if matchesFold(sensitivePaths, f) {
 			return f
 		}
 	}

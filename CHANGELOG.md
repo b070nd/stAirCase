@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Sensitive files match in any letter case and cover more build and CI files.** A person
+  always decides a change to a file that decides what runs, but `makefile` or `DOCKERFILE`
+  was not recognised (macOS and Windows treat them as the same file), and `GNUmakefile` (which
+  GNU make reads before `Makefile`), `Jenkinsfile`, `.circleci`, `.husky`, `.gitlab`,
+  `.gitattributes`, `.gitmodules`, `.npmrc`, `.pre-commit-config.yaml`, `justfile`,
+  `.travis.yml` and `azure-pipelines.yml` were not on the list.
+- **Guards cover invisible tag characters and a file made executable.** Text hidden in
+  Unicode tag characters (U+E0000 to U+E007F), which a person cannot see and a model reads, and
+  the other invisible marks (left-to-right and right-to-left marks, invisible math operators),
+  now send the change to a person like the other hidden characters. So does a change that
+  makes a file executable, which the review of a file's content did not show.
 - **A change of a file's mode is part of the change.** In review-after and attach, a new
   executable script was committed as `100644`, and a `chmod +x` with the same content was
   not noticed. A whole-file change now carries `mode` (`100644` or `100755`), the ledger is

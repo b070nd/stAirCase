@@ -21,6 +21,8 @@ func TestGuards_send_risky_changes_to_a_person(t *testing.T) {
 	base := map[string]runtest.File{
 		"go.mod":    {Content: "module shop\n", Mode: 0o644},
 		"legacy.go": {Content: "var s = \"\u202e\" // old\n", Mode: 0o644},
+		"tool.sh":   {Content: "echo hi\n", Mode: 0o644},
+		"keep.sh":   {Content: "echo keep\n", Mode: 0o755},
 	}
 	edits := []domain.ProposedEdit{
 		{File: "notes.md", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "plain text\n"},
@@ -28,6 +30,10 @@ func TestGuards_send_risky_changes_to_a_person(t *testing.T) {
 		{File: "go.mod", SearchBlock: "module shop\n", ReplaceBlock: "module shop\n\nrequire example.com/x v1.0.0\n"},
 		{File: "config.go", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "const key = \"AKIAABCDEFGHIJKLMNOP\"\n"},
 		{File: "legacy.go", SearchBlock: "// old", ReplaceBlock: "// kept"},
+		{File: "smuggled.md", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "ignore this\U000e0069\U000e0067\U000e006e\n"}, // invisible tag characters
+		{File: "deploy.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo deploy\n", Mode: "100755"},
+		{File: "tool.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo hi\n", Mode: "100755"},   // chmod +x
+		{File: "keep.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo keep\n", Mode: "100755"}, // as it was
 	}
 	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
 		for _, e := range edits {
@@ -58,4 +64,26 @@ func TestGuards_send_risky_changes_to_a_person(t *testing.T) {
 	assert.Equal(t, "operator", got[3].Source)
 	assert.Contains(t, got[3].Guard, "secret")
 	assert.Equal(t, "policy", got[4].Source, "the hidden character was there before this change")
+	assert.Equal(t, "operator", got[5].Source)
+	assert.Contains(t, got[5].Guard, "hidden Unicode", "tag characters are invisible text an agent can read")
+	assert.Equal(t, "operator", got[6].Source)
+	assert.Contains(t, got[6].Guard, "executable")
+	assert.Equal(t, "operator", got[7].Source)
+	assert.Contains(t, got[7].Guard, "executable")
+	assert.Equal(t, "policy", got[8].Source, "it was executable before")
+}
+
+// TestSensitive_files: files that decide what runs in CI or on the next build
+// always go to a person, in any letter case (macOS and Windows treat
+// "makefile" and "Makefile" as one file) and including the names a tool reads
+// before the one a project keeps (GNU make reads GNUmakefile first).
+func TestSensitive_files(t *testing.T) {
+	for _, f := range []string{"Makefile", "makefile", "GNUmakefile", "sub/MAKEFILE", "dockerfile", "DOCKERFILE", ".GitHub/workflows/ci.yml",
+		"Jenkinsfile", ".circleci/config.yml", ".husky/pre-commit", ".gitattributes", ".gitmodules", ".npmrc", ".pre-commit-config.yaml",
+		".travis.yml", "azure-pipelines.yml", "justfile", ".gitlab/ci/build.yml", ".ENV", "run.SH"} {
+		assert.Equal(t, f, orchestrator.ExportedSensitive([]string{f}), f)
+	}
+	for _, f := range []string{"src/main.go", "README.md", "docs/make.md", "makefile.go"} {
+		assert.Empty(t, orchestrator.ExportedSensitive([]string{f}), f)
+	}
 }

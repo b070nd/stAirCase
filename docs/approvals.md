@@ -28,7 +28,8 @@ screen does not show line by line.
 3. **Guards** send a change to a person, whatever the rules say, when it adds
    something risky: a file that is not text and so cannot be reviewed (an image, a
    binary: you are shown its size and digest), hidden Unicode characters that make code read differently from
-   how it runs ("Trojan Source"), a change to dependencies (`go.mod`,
+   how it runs ("Trojan Source") or text only a model can read (invisible tag characters), a file made
+   executable (a new script with mode 100755, or `chmod +x`), a change to dependencies (`go.mod`,
    `package.json`, lock files and the like), or what looks like a secret (private
    keys, cloud and API keys, tokens). Only what the change adds counts. The reason
    is shown as `CHECK:` and recorded with the decision.
