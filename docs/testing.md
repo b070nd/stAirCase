@@ -3,6 +3,12 @@
 `make check` is the gate: every change passes it locally and in CI
 (`.github/workflows/ci.yml` runs it on Ubuntu and macOS).
 
+In CI (and in the release workflow's test step) the command runs through
+`packaging/test-report.sh`, which passes its output and exit status through and, when
+it fails, adds an error annotation that names the failing tests. A job log can be read
+only when signed in; an annotation is served by the public check-runs API, so a failure
+on a runner can be diagnosed without one.
+
 | Stage of `make check` | What it catches |
 |---|---|
 | `golangci-lint run` | govet, staticcheck, errcheck, ineffassign, unused (`.golangci.yaml`) |

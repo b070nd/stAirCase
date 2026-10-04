@@ -34,7 +34,7 @@ jobs:
       # The single gate: lint, gofmt, tidy, the Windows build, full + race tests,
       # bats CLI smoke tests, and the offline demo.
       - name: make check
-        run: make check
+        run: ./packaging/test-report.sh make check
         env:
           # the OS sandbox engines that must be tested here, not skipped
           STAIRCASE_REQUIRE_SANDBOX: ${{ runner.os == 'Linux' && 'landlock' || 'sandbox-exec' }}
