@@ -118,7 +118,11 @@ func New(model string, secret func(name string) (string, error)) (Model, error) 
 
 // httpClient has no overall timeout: requests carry the run's context, and a
 // model may take minutes to answer.
-var httpClient = &http.Client{}
+var httpClient = &http.Client{
+	// No redirects: an API address does not redirect, and a custom key header
+	// (x-api-key) would be forwarded to wherever it pointed.
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // retryDelay is the wait before retry n (0-based); tests shorten it.
 var retryDelay = func(n int) time.Duration { return time.Duration(1+3*n) * time.Second }

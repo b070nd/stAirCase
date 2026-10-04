@@ -55,3 +55,14 @@ func TestVerify_rejects_stale_timestamp(t *testing.T) {
 	assert.Error(t, webhookauth.Verify(secret, ts, sig, body, now, webhookauth.DefaultMaxSkew),
 		"a replayed/stale request must be rejected")
 }
+
+// TestVerify_refuses_an_empty_secret: a signature made with an empty key is one
+// anybody can make, so a missing secret must never be a way in.
+func TestVerify_refuses_an_empty_secret(t *testing.T) {
+	ts, body := "1700000000", []byte("x")
+	now := time.Unix(1700000000, 0)
+	for _, secret := range [][]byte{nil, {}} {
+		sig := webhookauth.Sign(secret, ts, body)
+		assert.Error(t, webhookauth.Verify(secret, ts, sig, body, now, webhookauth.DefaultMaxSkew))
+	}
+}

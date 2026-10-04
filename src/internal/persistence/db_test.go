@@ -3,6 +3,7 @@ package persistence_test
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -234,4 +235,25 @@ func TestInitDB_refuses_a_workspace_from_a_newer_version(t *testing.T) {
 	_, err = persistence.InitDB(dir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "newer version of stAirCase")
+}
+
+// TestInitDB_database_is_private: the database holds every proposal, decision
+// and ciphertext of the workspace, so it is readable by its owner only, also
+// when the workspace folder already existed with wider permissions.
+func TestInitDB_database_is_private(t *testing.T) {
+	dir := t.TempDir() // 0700 by TempDir; make it as wide as a folder made by hand
+	require.NoError(t, os.Chmod(dir, 0o755))
+	db, err := persistence.InitDB(dir)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS probe(x)`) // WAL and shm files exist now
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	matches, err := filepath.Glob(filepath.Join(dir, "workspace.db*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+	for _, m := range matches {
+		info, err := os.Stat(m)
+		require.NoError(t, err)
+		assert.Zero(t, info.Mode().Perm()&0o077, "%s is %v", filepath.Base(m), info.Mode().Perm())
+	}
 }

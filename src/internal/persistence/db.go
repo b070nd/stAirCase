@@ -19,6 +19,16 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create workspace dir: %w", err)
 	}
 
+	// The database holds every proposal, decision and ciphertext: owner-only,
+	// whatever the folder's own mode or umask (SQLite gives its -wal and -shm files
+	// the database's mode). An existing workspace is tightened too.
+	if f, err := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0o600); err == nil {
+		_ = f.Close()
+	}
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		_ = os.Chmod(p, 0o600) // best effort; a missing file or Windows is fine
+	}
+
 	// Inject SQLite pragmas in the connection string so the driver applies them
 	// to EVERY pooled connection, not just the first one.
 	//   busy_timeout(5000) - wait out brief write locks instead of erroring.
