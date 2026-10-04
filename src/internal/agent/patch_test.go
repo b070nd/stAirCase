@@ -55,3 +55,14 @@ func TestParsePatch_refuses(t *testing.T) {
 		assert.Error(t, err, name)
 	}
 }
+
+// TestParsePatch_an_empty_new_file_is_empty: a file added with no lines is
+// zero bytes, not one newline: the bytes approved are the bytes Codex writes.
+func TestParsePatch_an_empty_new_file_is_empty(t *testing.T) {
+	edits, err := parsePatch("*** Begin Patch\n*** Add File: pkg/.keep\n*** Add File: b.txt\n+\n*** End Patch\n")
+	require.NoError(t, err)
+	assert.Equal(t, []domain.ProposedEdit{
+		{File: "pkg/.keep", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: ""},
+		{File: "b.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "\n"},
+	}, edits)
+}

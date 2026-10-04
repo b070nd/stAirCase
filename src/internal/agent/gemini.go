@@ -153,6 +153,9 @@ func geminiInput(in hookInput) hookInput {
 	if d, ok := args["dir_path"]; ok {
 		args["path"] = d
 	}
+	if a, ok := args["absolute_path"]; ok && args["file_path"] == nil { // older Gemini CLI versions name the file this way
+		args["file_path"] = a
+	}
 	if m, ok := args["allow_multiple"].(bool); ok && m {
 		args["replace_all"] = true
 	}

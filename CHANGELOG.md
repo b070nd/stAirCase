@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A governed Gemini CLI cannot read outside the project with the older argument name.**
+  `read_file` called with `absolute_path` (the name older Gemini CLI versions use) had no path
+  to check and was allowed; it is now read as `file_path` and checked, and a `read_file` that
+  names no file is refused.
+- **An empty file added by a Codex patch is empty.** `*** Add File:` with no lines was
+  proposed as a file holding one newline, so the approved bytes were not the bytes Codex wrote
+  and the run failed at the end.
 - **The approval API needs `Authorization: Bearer <key>`, and a broken decision decides nothing.**
   The key alone, without "Bearer ", was accepted. An approve or reject whose JSON body was
   malformed (cut short, say, before the `request_sha256` that names the request) approved
