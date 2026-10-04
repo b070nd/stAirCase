@@ -91,3 +91,6 @@ func ExportedSensitive(files []string) string { return sensitive(files) }
 func ExportedGuardNewFile(path, content string) string {
 	return guard(map[string]*approvedFile{path: {content: []byte(content), mode: 0o644}}, func(string) *approvedFile { return nil })
 }
+
+// ExportedIndent is how a check's output is shown on the terminal.
+func ExportedIndent(s string) string { return indent(s) }

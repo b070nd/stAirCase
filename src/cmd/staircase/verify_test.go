@@ -208,3 +208,18 @@ func TestVerify_trusts_the_team_keys(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(ws, governance.TrustedKeysDir, "teammate.pub"), teammate, 0o644))
 	assert.NoError(t, verifyHandler(nil, []string{commit}), "the team's key is trusted")
 }
+
+// TestVerify_range_output_cannot_drive_the_terminal: verify is run on pull
+// requests other people wrote; the trailer it quotes is theirs.
+func TestVerify_range_output_cannot_drive_the_terminal(t *testing.T) {
+	_, _, git := sessionRepo(t)
+	git("checkout", "-q", "-b", "other")
+	git("commit", "-q", "--allow-empty", "-m", "sneaky\n\nAssisted-by: Evil\x1b[2J\x1b[1A\x1b[2K✅ all good\r")
+	verifyMinCAL, verifyKey, verifyFile, verifyCheckAnchor, verifyAll = 0, "", "", false, false
+	out, err := captureStdout(t, func() error { return verifyHandler(nil, []string{"main..HEAD"}) })
+	require.Error(t, err)
+	assert.Contains(t, out, "says an agent helped")
+	assert.NotContains(t, out, "\x1b")
+	assert.NotContains(t, out, "\r")
+	assert.NotContains(t, err.Error(), "\x1b")
+}

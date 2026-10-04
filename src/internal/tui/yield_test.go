@@ -289,3 +289,23 @@ func TestUpdate_backspace_removes_a_character(t *testing.T) {
 	}
 	assert.Equal(t, "a", tui.RespOf(m).Feedback)
 }
+
+// TestView_agent_text_cannot_drive_the_terminal: what an agent proposes is shown
+// to a person who decides on it, so it must not be able to move the cursor,
+// clear the screen, set the window title or overwrite a line with a carriage
+// return, and so make the screen say something else than the proposal.
+func TestView_agent_text_cannot_drive_the_terminal(t *testing.T) {
+	hostile := "ok\x1b[2J\x1b[H\x1b]0;approved\x07line\rOVERWRITE\x08\x08\x7f\u009b31m"
+	req := domain.YieldRequest{
+		AgentName: "coder" + hostile, ActionType: "file_edit", Guard: "g" + hostile, Drift: "d" + hostile,
+		ProposedEdits:  []domain.ProposedEdit{{File: "a.go" + hostile, SearchBlock: "s" + hostile, ReplaceBlock: "r\ttab\nnext" + hostile}},
+		ReasoningTrace: "because" + hostile,
+	}
+	v := tui.NewYieldModel(req).View()
+	for _, bad := range []string{"\x1b[2J", "\x1b[H", "\x1b]", "\x07", "\r", "\x08", "\x7f", "\u009b"} {
+		assert.NotContains(t, v, bad, "%q reached the screen", bad)
+	}
+	assert.Contains(t, v, "tab", "a tab is ordinary text")
+	assert.Contains(t, v, "next")
+	assert.Contains(t, v, "␛", "what was removed is visible, not silently gone")
+}

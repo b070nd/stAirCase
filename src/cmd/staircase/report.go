@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -161,6 +162,18 @@ func report(repo, since string, keys []ed25519.PublicKey) (repoReport, error) {
 }
 
 func printReport(r repoReport) {
+	// commit subjects, trailers and certificates come from repositories other people wrote
+	r.Repository = tui.Safe(r.Repository)
+	for _, list := range [][]problem{r.Problems, r.Hurried} {
+		for i := range list {
+			list[i].Subject, list[i].Reason = tui.Safe(list[i].Subject), tui.Safe(list[i].Reason)
+		}
+	}
+	agents := map[string]int{}
+	for a, n := range r.Agents {
+		agents[tui.Safe(a)] += n
+	}
+	r.Agents = agents
 	agentCommits := r.Commits - r.Human
 	fmt.Printf("📊 %s: %d commit(s), %d by people, %d with an agent\n", r.Repository, r.Commits, r.Human, agentCommits)
 	for _, cal := range slices.Sorted(maps.Keys(r.Certified)) {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/obs"
@@ -33,11 +34,18 @@ type PluginGate struct{ def pluginGateDef }
 
 func (p *PluginGate) Name() string     { return p.def.Name }
 func (p *PluginGate) Category() string { return p.def.Category }
+
+// Severity is the gate's own, read case-insensitively; an empty one advises, and
+// one this version does not know blocks: a gate that was meant to stop a run must
+// not stop doing so over a spelling.
 func (p *PluginGate) Severity() Severity {
-	if p.def.Severity == "" {
+	switch strings.ToUpper(strings.TrimSpace(p.def.Severity)) {
+	case "":
+		return SeverityWarn
+	case string(SeverityWarn):
 		return SeverityWarn
 	}
-	return Severity(p.def.Severity)
+	return SeverityBlock
 }
 
 // Run executes the plugin script and returns the gate result.
@@ -101,18 +109,26 @@ func (p *PluginGate) Run(ctx Context) Result {
 			fmt.Sprintf("plugin malformed output: %v (raw: %s)", err, string(out)))
 	}
 
+	status := Status(strings.ToUpper(strings.TrimSpace(pluginResult.Status)))
+	switch status {
+	case StatusPass, StatusWarn, StatusFail, StatusSkip:
+	default: // anything else is not a pass
+		return fail(p.def.Name, p.def.Category, p.Severity(),
+			fmt.Sprintf("plugin answered with a status gates do not have: %q (PASS, WARN, FAIL or SKIP)", pluginResult.Status))
+	}
 	return Result{
 		Name:     p.def.Name,
 		Category: p.def.Category,
 		Severity: p.Severity(),
-		Status:   Status(pluginResult.Status),
+		Status:   status,
 		Message:  pluginResult.Message,
 	}
 }
 
 // loadPluginGates reads $wsDir/gates.json and returns one PluginGate per entry.
-// Returns nil (no plugin gates) when the file is absent - not an error.
-// Invalid JSON is logged as a warning and treated as zero plugin gates.
+// Returns nil (no plugin gates) when the file is absent - not an error. A file
+// that cannot be read or parsed is a blocking gate that says so: gates that
+// cannot be loaded are not "no gates".
 func loadPluginGates(wsDir string) []Gate {
 	path := filepath.Join(wsDir, "gates.json")
 	data, err := os.ReadFile(path)
@@ -121,16 +137,26 @@ func loadPluginGates(wsDir string) []Gate {
 	}
 	if err != nil {
 		obs.Log.Warn("load plugin gates", "path", path, "err", err)
-		return nil
+		return []Gate{brokenGates{fmt.Sprintf("gates.json cannot be read: %v", err)}}
 	}
 	var defs []pluginGateDef
 	if err := json.Unmarshal(data, &defs); err != nil {
 		obs.Log.Warn("gates.json parse error", "path", path, "err", err)
-		return nil
+		return []Gate{brokenGates{fmt.Sprintf("gates.json is not valid: %v", err)}}
 	}
 	gates := make([]Gate, len(defs))
 	for i, d := range defs {
 		gates[i] = &PluginGate{def: d}
 	}
 	return gates
+}
+
+// brokenGates stands for a gates.json that could not be loaded.
+type brokenGates struct{ why string }
+
+func (brokenGates) Name() string       { return "plugin.gates_file" }
+func (brokenGates) Category() string   { return "plugin" }
+func (brokenGates) Severity() Severity { return SeverityBlock }
+func (b brokenGates) Run(Context) Result {
+	return fail(b.Name(), b.Category(), SeverityBlock, b.why+": the plugin gates it defines would not run; fix it or remove it")
 }

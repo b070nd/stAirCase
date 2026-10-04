@@ -841,3 +841,20 @@ func TestAudit_verify_chain_versions(t *testing.T) {
 	assert.Error(t, auditVerifyHandler(nil, []string{write("relabelled.checkpoint.json", cur)}), "a relabelled event in a signed record")
 	_ = s
 }
+
+// TestInspectLog_cannot_be_driven_by_the_log: payloads can hold text an agent
+// wrote; `inspect log` prints them for a person, and verifies the chain.
+func TestInspectLog_cannot_be_driven_by_the_log(t *testing.T) {
+	_, s := e2eWorkspace(t)
+	runID := seedRunWithLogs(t, s, 1)
+	_, err := s.AppendEventLogChained(runID, "note\x1b[2J", "evil\x1b[1A\x1b[2K\rall good", "")
+	require.NoError(t, err)
+	inspectLogFull = true
+	t.Cleanup(func() { inspectLogFull = false })
+	out, err := captureStdout(t, func() error { return inspectLogCmd.RunE(inspectLogCmd, []string{strconv.FormatInt(runID, 10)}) })
+	require.NoError(t, err)
+	assert.Contains(t, out, "evil")
+	assert.NotContains(t, out, "\x1b")
+	assert.NotContains(t, out, "\r")
+	assert.NotContains(t, out, "TAMPERED")
+}

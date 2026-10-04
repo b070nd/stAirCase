@@ -878,3 +878,69 @@ func TestPlugin_timeout(t *testing.T) {
 	require.Len(t, report.Gates, 1)
 	assert.Equal(t, gate.StatusFail, report.Gates[0].Status, "timed-out plugin must be FAIL")
 }
+
+// TestPlugin_answers_are_read_strictly: a plugin that blocks must not stop
+// blocking because it spelt its answer in lower case, or in a way the gate does
+// not know; the only thing that passes is PASS.
+func TestPlugin_answers_are_read_strictly(t *testing.T) {
+	for _, c := range []struct {
+		answer string
+		want   gate.Status
+	}{{"FAIL", gate.StatusFail}, {"fail", gate.StatusFail}, {"failed", gate.StatusFail}, {"error", gate.StatusFail}, {"", gate.StatusFail},
+		{"pass", gate.StatusPass}, {"PASS", gate.StatusPass}, {"warn", gate.StatusWarn}, {"skip", gate.StatusSkip}} {
+		wsDir := t.TempDir()
+		ctx := writePluginScript(t, wsDir, `printf '{"status":"`+c.answer+`","message":"m"}\n'`, gate.SeverityBlock)
+		gate.ReplaceRegistry(t, nil)
+		report := gate.RunAll(ctx)
+		require.Len(t, report.Gates, 1)
+		assert.Equal(t, c.want, report.Gates[0].Status, "status %q", c.answer)
+		assert.Equal(t, c.want == gate.StatusFail, report.Blocking(), "status %q", c.answer)
+	}
+}
+
+// TestPlugin_severity_is_read_strictly: "block" in lower case blocks, and a
+// severity the gate does not know blocks too, rather than silently advising.
+func TestPlugin_severity_is_read_strictly(t *testing.T) {
+	for _, severity := range []string{"block", "Block", "oops"} {
+		wsDir := t.TempDir()
+		ctx := writePluginScript(t, wsDir, `printf '{"status":"FAIL","message":"no"}\n'`, gate.Severity(severity))
+		gate.ReplaceRegistry(t, nil)
+		assert.True(t, gate.RunAll(ctx).Blocking(), "severity %q", severity)
+	}
+	wsDir := t.TempDir()
+	ctx := writePluginScript(t, wsDir, `printf '{"status":"FAIL","message":"no"}\n'`, gate.Severity("warn"))
+	gate.ReplaceRegistry(t, nil)
+	assert.False(t, gate.RunAll(ctx).Blocking(), "warn is advisory")
+}
+
+// TestPlugin_a_broken_gates_file_blocks: gates that cannot be read are not
+// "no gates".
+func TestPlugin_a_broken_gates_file_blocks(t *testing.T) {
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "gates.json"), []byte(`[{"name": "x",`), 0o644))
+	gate.ReplaceRegistry(t, nil)
+	report := gate.RunAll(gate.Context{WsDir: wsDir, Store: persistence.NewStore(db)})
+	assert.True(t, report.Blocking())
+	require.NotEmpty(t, report.Gates)
+	assert.Contains(t, report.Gates[0].Message, "gates.json")
+}
+
+// TestBlockingGates_do_not_skip_over_a_store_error: a gate that exists to stop a
+// run cannot answer "skipped" because it could not read what it checks, which
+// would let the run go on.
+func TestBlockingGates_do_not_skip_over_a_store_error(t *testing.T) {
+	wsDir := t.TempDir()
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	store := persistence.NewStore(db)
+	require.NoError(t, db.Close()) // every query now fails
+	ctx := gate.Context{WsDir: wsDir, Store: store, CaseID: 1}
+	for _, g := range []gate.Gate{gate.RuntimeNoConcurrentRunGate, gate.DepNoCycleGate} {
+		assert.Equal(t, gate.SeverityBlock, g.Severity())
+		res := g.Run(ctx)
+		assert.Equal(t, gate.StatusFail, res.Status, "%s: %s", g.Name(), res.Message)
+	}
+}

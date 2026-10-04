@@ -242,3 +242,18 @@ func TestPackXML_escapes_special_chars_in_path(t *testing.T) {
 	assert.Contains(t, xml, `&lt;`)
 	assert.NotContains(t, xml, `"quotes"`)
 }
+
+// TestRepoMap_never_reads_through_a_symlink: the map goes to the model; a link
+// to a file outside the repository must not put that file's lines into it.
+func TestRepoMap_never_reads_through_a_symlink(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret.go")
+	require.NoError(t, os.WriteFile(outside, []byte("package x\nfunc LeakedSecretSignature() {}\n"), 0o644))
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0o644))
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "link.go")))
+
+	result, err := engine.RepoMap(dir)
+	require.NoError(t, err)
+	assert.Contains(t, result, "func main()")
+	assert.NotContains(t, result, "LeakedSecretSignature")
+}

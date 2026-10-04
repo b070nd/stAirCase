@@ -66,7 +66,7 @@ type yieldModel struct {
 }
 
 func newYieldModel(req domain.YieldRequest) yieldModel {
-	rendered, _ := glamour.Render(req.ReasoningTrace, "dark")
+	rendered, _ := glamour.Render(Safe(req.ReasoningTrace), "dark")
 	return yieldModel{req: req, rendered: rendered, width: 120, height: 40}
 }
 
@@ -91,7 +91,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		rendered, _ := glamour.Render(m.req.ReasoningTrace, "dark")
+		rendered, _ := glamour.Render(Safe(m.req.ReasoningTrace), "dark")
 		m.rendered = rendered
 
 	case tea.KeyMsg:
@@ -138,24 +138,24 @@ func (m yieldModel) View() string {
 	sb.WriteString(styleHeader.Render("⚠  HITL Yield Request"))
 	sb.WriteString("\n\n")
 	if m.req.Guard != "" {
-		sb.WriteString(styleReject.Render("CHECK: " + m.req.Guard))
+		sb.WriteString(styleReject.Render("CHECK: " + Safe(m.req.Guard)))
 		sb.WriteString("\n")
 	}
 	if m.req.Drift != "" {
-		sb.WriteString(styleReject.Render("DRIFT: " + m.req.Drift))
+		sb.WriteString(styleReject.Render("DRIFT: " + Safe(m.req.Drift)))
 		sb.WriteString("\n\n")
 	}
 
 	sb.WriteString(styleLabel.Render("Agent:  "))
-	sb.WriteString(m.req.AgentName)
+	sb.WriteString(Safe(m.req.AgentName))
 	sb.WriteString("   ")
 	sb.WriteString(styleLabel.Render("Action: "))
-	sb.WriteString(m.req.ActionType)
+	sb.WriteString(Safe(m.req.ActionType))
 	if m.req.ConfidenceScore > 0 {
 		sb.WriteString(styleMeta.Render(fmt.Sprintf("   Confidence: %.0f%%", m.req.ConfidenceScore*100)))
 	}
 	if m.req.BatchID != "" {
-		sb.WriteString(styleMeta.Render(fmt.Sprintf("   Batch: %s", m.req.BatchID)))
+		sb.WriteString(styleMeta.Render(fmt.Sprintf("   Batch: %s", Safe(m.req.BatchID))))
 	}
 	sb.WriteString("\n\n")
 
@@ -164,7 +164,7 @@ func (m yieldModel) View() string {
 	sb.WriteString(m.rendered)
 
 	for i, edit := range m.req.ProposedEdits {
-		sb.WriteString(styleLabel.Render(fmt.Sprintf("── Edit %d: %s ──", i+1, edit.File)))
+		sb.WriteString(styleLabel.Render(fmt.Sprintf("── Edit %d: %s ──", i+1, Safe(edit.File))))
 		sb.WriteString("\n")
 		if edit.BinarySHA256 != "" { // not text: shown by what it is, never as garbage
 			sb.WriteString(styleCode.Render("BINARY FILE, whole new content") + "\n")
@@ -173,10 +173,10 @@ func (m yieldModel) View() string {
 			continue
 		}
 		sb.WriteString(styleCode.Render("SEARCH  ") + "\n")
-		sb.WriteString(styleBorder.Render(edit.SearchBlock))
+		sb.WriteString(styleBorder.Render(Safe(edit.SearchBlock)))
 		sb.WriteString("\n")
 		sb.WriteString(styleCode.Render("REPLACE ") + "\n")
-		sb.WriteString(styleBorder.Render(edit.ReplaceBlock))
+		sb.WriteString(styleBorder.Render(Safe(edit.ReplaceBlock)))
 		sb.WriteString("\n\n")
 	}
 

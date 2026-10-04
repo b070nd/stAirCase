@@ -71,7 +71,7 @@ Make it executable (`chmod +x`). Full examples, in shell and Python, are in
 
 | Field | Meaning |
 |---|---|
-| `status` | `PASS`, `WARN`, `FAIL` or `SKIP` |
+| `status` | `PASS`, `WARN`, `FAIL` or `SKIP` (any letter case). Anything else counts as `FAIL`. |
 | `message` | the text shown in the report |
 
 ### 2. Register it
@@ -94,11 +94,12 @@ List your gates in `gates.json` in the workspace (`~/.staircase-workspace/gates.
 |---|---|---|
 | `name` | yes | a unique name, e.g. `custom.license-header` |
 | `category` | yes | the group shown in the report |
-| `severity` | yes | `BLOCK` (stops the run) or `WARN` |
+| `severity` | yes | `BLOCK` (stops the run) or `WARN`, in any letter case; one that is not recognised counts as `BLOCK` |
 | `script` | yes | the absolute path of the program |
 | `timeout_seconds` | no | default 30. The first start of a new script can take seconds on macOS; leave a margin. |
 
-No `gates.json`, or an empty one, means no plugin gates.
+No `gates.json`, or an empty one, means no plugin gates. A `gates.json` that cannot be read
+or is not valid JSON is a blocking gate that says so, not "no gates".
 
 Start new gates as `WARN` and change them to `BLOCK` once they work reliably.
 

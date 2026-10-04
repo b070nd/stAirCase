@@ -20,6 +20,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **The blocking gates that read the database no longer skip when they cannot.** The
+  no-concurrent-run and no-dependency-cycle gates answered "skipped", which does not block, when
+  the store returned an error; they now fail.
+- **The repository map in a plan does not follow symbolic links.** A link to a file outside the
+  repository put that file's `func` lines into the plan, which goes to the model.
+- **Plugin gates cannot fail open over a spelling or a broken file.** A plugin that answered
+  `"fail"` (lower case) or any status gates do not have was counted as skipped and the run
+  went on; a `"severity": "block"` in lower case, or one with a typo, only advised; and an invalid
+  `gates.json` meant no plugin gates at all. Statuses and severities are read in any letter case,
+  an unknown status is a `FAIL`, an unknown severity blocks, and a `gates.json` that cannot be
+  loaded blocks the run and says why.
+- **What an agent or a repository wrote cannot drive your terminal.** The review screen, the
+  output of checks, `staircase verify`, `report` and `inspect log` printed text from agents and
+  from commit messages as it was, escape sequences included, which can clear the screen, move the
+  cursor or overwrite a line so that it says something else than the proposal. Control characters
+  are now shown as symbols (ESC as ␛).
+- **A rejection that has no files in the audit log is still a lesson.** The lessons given to the
+  next plan began with an empty file list (`: reason`) when the proposal was too large to be
+  recorded with its files.
 - **The workspace database is readable by its owner only.** It was created with the process's
   umask (usually world-readable) and holds every proposal, decision and ciphertext of the
   workspace. It and its `-wal` and `-shm` files are now `0600`, and an existing workspace is

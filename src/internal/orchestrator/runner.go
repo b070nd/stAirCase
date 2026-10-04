@@ -703,7 +703,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	driftHalt := func(reason string) {
 		sup.Halt(reason)
 		_ = r.audit(run.ID, "drift_halt", map[string]any{"reason": reason})
-		fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s - halting run #%d\n", reason, run.ID)
+		fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s - halting run #%d\n", tui.Safe(reason), run.ID)
 		cancelled()
 	}
 
