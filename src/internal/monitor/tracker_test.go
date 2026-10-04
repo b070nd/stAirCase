@@ -53,7 +53,7 @@ func TestEstimateCost_known_model(t *testing.T) {
 // stops the run; gateway names are priced by their model.
 func TestEstimateCost_never_free(t *testing.T) {
 	assert.Equal(t, monitor.EstimateCost("claude-sonnet-4-6", 1000, 1000), monitor.EstimateCost("anthropic/claude-sonnet-4-6", 1000, 1000))
-	assert.Equal(t, monitor.EstimateCost("claude-opus-4-6", 1_000_000, 1_000_000), monitor.EstimateCost("unknown-model-xyz", 1_000_000, 1_000_000))
+	assert.InDelta(t, 90.0, monitor.EstimateCost("unknown-model-xyz", 1_000_000, 1_000_000), 0.001, "the ceiling: $15 in, $75 out per million")
 	assert.Greater(t, monitor.EstimateCost("claude-code", 1000, 0), 0.0)
 }
 
