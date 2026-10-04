@@ -2,6 +2,7 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -185,4 +186,37 @@ func TestCheckTimeout(t *testing.T) {
 		orchestrator.RunOptions{Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond}, nil)
 	require.Len(t, s.Predicate.Checks, 1)
 	assert.Equal(t, -1, s.Predicate.Checks[0].ExitCode)
+}
+
+// TestFinalReview_shows_a_binary_file_by_its_digest: the whole-change review at
+// the end lists a file that is not text by its size and digest, like the
+// proposal did, never its bytes as garbled text.
+func TestFinalReview_shows_a_binary_file_by_its_digest(t *testing.T) {
+	op := &operator{approve: true}
+	r := runtest.Run(t, runtest.Options{
+		Setup: inSrc(op),
+		Run:   orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			write(ctx, env, "src/a.txt", "approved as part of the task\n") // so a final review is asked
+			ap := env.ProposeEdit(ctx, "coder", "an image", domain.ProposedEdit{File: "src/logo.png", SearchBlock: orchestrator.MarkerNewFile,
+				ContentB64: base64.StdEncoding.EncodeToString([]byte("\x89PNG\xff\x00\x80"))})
+			if ap.Approved {
+				_ = ap.Apply(env.Worktree)
+			}
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	require.NotEmpty(t, op.seen)
+	final := op.seen[len(op.seen)-1]
+	require.Equal(t, domain.ActionFinalReview, final.ActionType)
+	var png *domain.ProposedEdit
+	for i := range final.ProposedEdits {
+		if final.ProposedEdits[i].File == "src/logo.png" {
+			png = &final.ProposedEdits[i]
+		}
+	}
+	require.NotNil(t, png)
+	assert.Empty(t, png.ReplaceBlock, "no garbled bytes")
+	assert.NotEmpty(t, png.BinarySHA256)
+	assert.Equal(t, 7, png.BinaryBytes)
 }
