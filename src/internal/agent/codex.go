@@ -176,3 +176,17 @@ func (h *hookServer) postCodexCommand(ctx context.Context, in hookInput) string 
 func tomlString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
+
+// FindCodex is the Codex program a session would run: "codex" on PATH, else the
+// ChatGPT app's; "" when there is neither.
+func FindCodex() string {
+	if p, err := exec.LookPath("codex"); err == nil {
+		return p
+	}
+	for _, app := range codexApp {
+		if _, err := os.Stat(app); err == nil {
+			return app
+		}
+	}
+	return ""
+}

@@ -87,6 +87,32 @@ var engines = map[string][]engine{
 	"linux":  {{"bwrap", bubblewrap}, {"landlock", landlockWrapper}},
 }
 
+// EngineStatus is whether one of this machine's sandboxes can run, and if not why.
+type EngineStatus struct {
+	Name string
+	Err  error
+}
+
+// Status tries each of this machine's sandbox engines, as a command would use it.
+func Status() []EngineStatus {
+	var out []EngineStatus
+	for _, e := range engines[runtime.GOOS] {
+		st := EngineStatus{Name: e.name}
+		root, err := os.MkdirTemp("", "staircase-sandbox-probe-")
+		if err == nil {
+			defer func() { _ = os.RemoveAll(root) }()
+			if root, err = filepath.EvalSymlinks(root); err == nil {
+				_, st.Err = e.wrap(root, root, nil)
+			}
+		}
+		if err != nil {
+			st.Err = err
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
 // only, when set, limits the engines to one (tests).
 var only string
 

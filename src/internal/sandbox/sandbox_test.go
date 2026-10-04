@@ -170,3 +170,21 @@ func TestReadable(t *testing.T) {
 		assert.False(t, p == "/" || p == in("home") || p == in("home/.config"), "%s covers a hidden path", p)
 	}
 }
+
+// TestStatus_names_this_machines_engines: doctor can say which sandbox works here
+// and why another does not.
+func TestStatus_names_this_machines_engines(t *testing.T) {
+	var names, want []string
+	for _, e := range Status() {
+		names = append(names, e.Name)
+	}
+	for _, e := range engines[runtime.GOOS] {
+		want = append(want, e.name)
+	}
+	assert.Equal(t, want, names)
+	for _, e := range Status() {
+		if e.Err != nil {
+			assert.NotEmpty(t, e.Err.Error(), "%s: a sandbox that does not work says why", e.Name)
+		}
+	}
+}
