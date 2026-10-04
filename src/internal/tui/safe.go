@@ -16,7 +16,7 @@ func Safe(s string) string {
 		case r == 0x7f:
 			return '␡'
 		case r >= 0x80 && r <= 0x9f: // C1 controls, such as the 8-bit CSI
-			return '�'
+			return '\uFFFD'
 		}
 		return r
 	}, s)
