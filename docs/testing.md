@@ -95,6 +95,14 @@ a crash leaves behind:
 Both fail when the protections they exist for are removed (the first drill iteration of the
 rotation drill strands a secret without the "interrupted" refusal).
 
+**The terminal dialog on a real pseudo-terminal** (`tests/pty_ctrl_c.bats`): a Python
+harness runs `staircase claude` under a pty with a stand-in agent and no rules, so every
+change goes to the person, and types the keys a person types: `y` for the first change,
+Ctrl-C at the second. The run must stop and record KILLED, the journal must hold exactly the
+approved change, and `staircase recover` must commit that change and not the one interrupted
+at. With Ctrl-C handling taken out of the dialog both tests fail ("the process did not end
+after the last keys").
+
 ## Real agents (opt-in)
 
 `demo/smoke.sh` needs credentials and costs money, so `make check` never runs
