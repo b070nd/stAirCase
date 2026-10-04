@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,4 +83,29 @@ func TestAttach_stops_plain_commits(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\nexit 0\n"), 0o755))
 	attachOff = false
 	assert.ErrorContains(t, attachHandler(nil, nil), "already has a pre-commit hook", "never overwrites your own hook")
+}
+
+// TestSeal_names_with_spaces_and_accents: a file whose name git would quote or
+// that has spaces is sealed like any other, and the report does not say that an
+// approved file was left out.
+func TestSeal_names_with_spaces_and_accents(t *testing.T) {
+	repo, ws, git := sessionRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(ws, "policy.json"), []byte(`{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`), 0o600))
+	name := "docs/my notes é.md"
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, name), []byte("hello\n"), 0o644))
+	git("add", name)
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	stdout := os.Stdout
+	os.Stdout = w
+	sealErr := sealHandler(nil, nil)
+	os.Stdout = stdout
+	_ = w.Close()
+	out, _ := io.ReadAll(r)
+	require.NoError(t, sealErr)
+
+	assert.Equal(t, name, strings.TrimSpace(git("-c", "core.quotepath=off", "diff-tree", "--no-commit-id", "--name-only", "-r", "main")))
+	assert.NotContains(t, string(out), "left out, still", string(out))
 }
