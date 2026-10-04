@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The repository map in a plan describes the last commit, not the working tree.** Agents work
+  on the last commit, but the map walked the folder, so it listed files that were never
+  committed (a `credentials.json`, scratch files) by name and quoted the `func` lines of edits
+  that were not committed, and it missed what a commit holds that the folder no longer does. In
+  a git repository with a commit it is now the map of that commit, built with one git process;
+  a folder that is not a repository is walked as before.
+
 ## [0.7.0] - 2026-10-05
 
 Hardening release: a review of the whole code base, each finding reproduced by a test first, and the audit chain now covers the event type (read "Changed").

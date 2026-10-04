@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -256,4 +257,93 @@ func TestRepoMap_never_reads_through_a_symlink(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, result, "func main()")
 	assert.NotContains(t, result, "LeakedSecretSignature")
+}
+
+// repoWithCommit makes a git repository whose last commit holds files.
+func repoWithCommit(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	git := func(args ...string) {
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "T")
+	for name, content := range files {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	return dir
+}
+
+// TestRepoMap_is_the_last_commit_not_the_working_tree: agents work on the last
+// commit, so the map they are given describes it, and says nothing of files
+// that were never committed or of edits that were not.
+func TestRepoMap_is_the_last_commit_not_the_working_tree(t *testing.T) {
+	dir := repoWithCommit(t, map[string]string{
+		"main.go":       "package main\nfunc committed() {}\n",
+		"pkg/util.go":   "package pkg\nfunc Helper() {}\n",
+		".gitignore":    "ignored.log\n",
+		"pkg/other.txt": "x\n",
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc committed() {}\nfunc UncommittedEdit() {}\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "scratch_notes.go"), []byte("package main\nfunc Untracked() {}\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "credentials.json"), []byte("{}"), 0o644))
+	require.NoError(t, os.Remove(filepath.Join(dir, "pkg", "util.go")))
+
+	result, err := engine.RepoMap(dir)
+	require.NoError(t, err)
+	assert.Contains(t, result, "main.go")
+	assert.Contains(t, result, "func committed()")
+	assert.Contains(t, result, "pkg/util.go", "deleted in the working tree, still in the commit")
+	assert.Contains(t, result, "func Helper()")
+	assert.NotContains(t, result, "UncommittedEdit")
+	assert.NotContains(t, result, "scratch_notes.go")
+	assert.NotContains(t, result, "credentials.json")
+}
+
+// TestRepoMap_of_a_commit_keeps_the_ignore_rules: the same files and order as a
+// walk of a checkout would give, with the default and .staircaseignore rules.
+func TestRepoMap_of_a_commit_keeps_the_ignore_rules(t *testing.T) {
+	dir := repoWithCommit(t, map[string]string{
+		"b.go":                  "package b\nfunc B() {}\n",
+		"a-b.go":                "package a\n",
+		"a/x.go":                "package a\nfunc X() {}\n",
+		"node_modules/dep/i.js": "function dep() {}\n",
+		"logo.png":              "png",
+		"gen/out.go":            "package gen\n",
+		".staircaseignore":      "gen\n",
+		"vendor/v.go":           "package v\n",
+	})
+	require.NoError(t, os.Symlink("/etc/hosts", filepath.Join(dir, "link.go")))
+
+	result, err := engine.RepoMap(dir)
+	require.NoError(t, err)
+	assert.NotContains(t, result, "node_modules")
+	assert.NotContains(t, result, "logo.png")
+	assert.NotContains(t, result, "gen/out.go", ".staircaseignore applies, read from the commit")
+	assert.NotContains(t, result, "link.go")
+	var order []string
+	for _, line := range strings.Split(result, "\n") {
+		if line != "" && !strings.HasPrefix(line, " ") {
+			order = append(order, line)
+		}
+	}
+	assert.Equal(t, []string{".staircaseignore", "a/x.go", "a-b.go", "b.go", "vendor/v.go"}, order, "directory entries sort by name, as in a walk")
+}
+
+// TestRepoMap_of_a_folder_inside_a_repository: only that folder, with paths
+// relative to it, as a walk of it would give.
+func TestRepoMap_of_a_folder_inside_a_repository(t *testing.T) {
+	dir := repoWithCommit(t, map[string]string{
+		"top.go":        "package top\nfunc Top() {}\n",
+		"svc/api/a.go":  "package api\nfunc A() {}\n",
+		"other/leak.go": "package other\nfunc Leak() {}\n",
+	})
+	result, err := engine.RepoMap(filepath.Join(dir, "svc"))
+	require.NoError(t, err)
+	assert.Equal(t, "api/a.go\n  func A() {}\n", result)
 }
