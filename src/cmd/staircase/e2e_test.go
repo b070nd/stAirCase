@@ -772,3 +772,26 @@ func fakeRekor(t *testing.T) *httptest.Server {
 	t.Cleanup(mock.Close)
 	return mock
 }
+
+// TestAudit_verify_honours_rekor_url: --rekor-url on verify names the log to
+// ask, whatever URL the sidecar (a file anyone can edit) records.
+func TestAudit_verify_honours_rekor_url(t *testing.T) {
+	wsDir, s := e2eWorkspace(t)
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+	runID := seedRunWithLogs(t, s, 2)
+	mock := fakeRekor(t)
+	auditAnchor, auditRekorURL = true, mock.URL
+	t.Cleanup(func() { auditAnchor, auditCheckAnchor, auditRekorURL = false, false, audit.DefaultRekorURL })
+	require.NoError(t, auditExportHandler(nil, []string{strconv.FormatInt(runID, 10)}))
+	cpPath := filepath.Join(wsDir, "audit", fmt.Sprintf("run-%d.checkpoint.json", runID))
+
+	side, err := os.ReadFile(cpPath + ".anchor")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(cpPath+".anchor", bytes.ReplaceAll(side, []byte(mock.URL), []byte("http://127.0.0.1:1")), 0o600))
+
+	auditCheckAnchor = true
+	auditAnchor = false
+	assert.NoError(t, auditVerifyHandler(nil, []string{cpPath}), "the log named on the command line is the one asked")
+	auditRekorURL = audit.DefaultRekorURL
+	assert.Error(t, auditVerifyHandler(nil, []string{cpPath}), "without it the sidecar's own (dead) address is used")
+}

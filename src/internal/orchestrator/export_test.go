@@ -86,3 +86,8 @@ func AddWorktreeForTest(repo, path, branch, base string) error {
 
 // ExportedSensitive exposes sensitive for whitebox tests.
 func ExportedSensitive(files []string) string { return sensitive(files) }
+
+// ExportedGuardNewFile is what the guards say about a new file with this content.
+func ExportedGuardNewFile(path, content string) string {
+	return guard(map[string]*approvedFile{path: {content: []byte(content), mode: 0o644}}, func(string) *approvedFile { return nil })
+}

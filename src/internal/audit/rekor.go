@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -199,8 +200,10 @@ func LoadAnchors(path string) ([]Anchor, error) {
 // VerifyAnchor confirms that a checkpoint record (identified by recordSHA256,
 // with content record) has a matching anchor in anchors, fetches the entry
 // from its Rekor log, and verifies the log's inlined artifact equals the local
-// record byte-for-byte. Returns the matched anchor on success.
-func VerifyAnchor(record []byte, recordSHA256 string, anchors []Anchor) (Anchor, error) {
+// record byte-for-byte, and that the key it was logged with is one of trusted:
+// an entry anyone can make with their own key proves only that the record
+// existed. Returns the matched anchor on success.
+func VerifyAnchor(record []byte, recordSHA256 string, anchors []Anchor, trusted []ed25519.PublicKey) (Anchor, error) {
 	var match *Anchor
 	for i := range anchors {
 		if anchors[i].RecordSHA256 == recordSHA256 {
@@ -261,8 +264,11 @@ func VerifyAnchor(record []byte, recordSHA256 string, anchors []Anchor) (Anchor,
 	}
 	pubAny, err := x509.ParsePKIXPublicKey(block.Bytes)
 	pub, ok := pubAny.(ed25519.PublicKey)
-	if err != nil || !ok || !ed25519.Verify(pub, record, sig) {
+	if err != nil || !ok || len(pub) != ed25519.PublicKeySize || !ed25519.Verify(pub, record, sig) {
 		return Anchor{}, fmt.Errorf("rekor anchor MISMATCH: the logged signature does not match the local record (uuid %s)", match.UUID)
+	}
+	if !slices.ContainsFunc(trusted, func(k ed25519.PublicKey) bool { return pub.Equal(k) }) {
+		return Anchor{}, fmt.Errorf("rekor anchor MISMATCH: the entry (uuid %s) is not signed by a trusted key", match.UUID)
 	}
 	return *match, nil
 }

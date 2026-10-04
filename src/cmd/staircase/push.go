@@ -157,8 +157,8 @@ is skipped and the PR URL is printed for manual use.`,
 // Anchored (^) so a malicious URL embedding "github.com" in its path
 // (e.g. https://evil.example/https://github.com/o/r) is never treated as
 // a GitHub remote - that decision also gates token attachment on push.
-var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://(?:[^@/]+@)?github\.com/([^/]+)/([^/.]+)`)
-var reGitHubSSH = regexp.MustCompile(`^(?i)git@github\.com:([^/]+)/([^/.]+)`)
+var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://(?:[^@/]+@)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$`)
+var reGitHubSSH = regexp.MustCompile(`^(?i)git@github\.com:([^/]+)/([^/]+?)(?:\.git)?/?$`)
 
 func parseGitHubOwnerRepo(remoteURL string) (owner, repo string, ok bool) {
 	for _, re := range []*regexp.Regexp{reGitHubHTTPS, reGitHubSSH} {

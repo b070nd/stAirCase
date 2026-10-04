@@ -20,6 +20,12 @@ func TestParseGitHubOwnerRepo(t *testing.T) {
 		// Credentials embedded in the URL (e.g. a token-bearing origin) are still GitHub.
 		{"https://user:ghp_secret@github.com/acme/my-repo.git", "acme", "my-repo", true},
 		{"https://ghp_secret@github.com/acme/my-repo", "acme", "my-repo", true},
+		// A repository name may hold dots.
+		{"https://github.com/vercel/next.js.git", "vercel", "next.js", true},
+		{"https://github.com/vercel/next.js", "vercel", "next.js", true},
+		{"git@github.com:socketio/socket.io.git", "socketio", "socket.io", true},
+		{"https://github.com/acme/my-repo/", "acme", "my-repo", true},
+		{"https://github.com/acme/my.repo.git/", "acme", "my.repo", true},
 		{"https://gitlab.com/acme/repo.git", "", "", false},
 		// Embedded-github.com bypass attempts must NOT be treated as GitHub -
 		// this decision gates whether the PAT is attached to the push.
