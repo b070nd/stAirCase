@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-05
+
+Two fixes after v0.7.0.
+
 ### Fixed
 
 - **`clean --aggressive` removes whole runs from the audit log, never the front of one.** Beyond a
