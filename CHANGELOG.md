@@ -6,7 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
-### Changed
+## [0.7.0] - 2026-10-05
+
+Hardening release: a review of the whole code base, each finding reproduced by a test first, and the audit chain now covers the event type (read "Changed").
+
+### Changed (read before upgrading)
 
 - **The audit chain covers the event type (chain version 2).** The hash of each event was over
   the payload, the previous hash and the commit, so an event could be relabelled, a
@@ -17,6 +21,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   still verify, and a run may hold both. The database gets a `hash_version` column; an older
   stAirCase will refuse a workspace written by this one. Conformance vectors:
   `docs/spec/audit-chain-vectors.json`, checked by `docs/spec/audit_chain_vectors.py`.
+
+### Added
+
+- **`staircase secret delete <key> [--project N]`.** A stored secret could only be replaced,
+  never removed.
+- **`--check-timeout`.** How long one `--check` may run (default 15 minutes), wherever checks
+  run: approving on evidence, the definition of done and after the commit. A check that takes
+  longer counts as not passed: the change goes to a person with "timed out", and the
+  certificate records the check as one that could not run. With approve-on-evidence, which runs
+  the checks once per change, a short limit stops a hung check holding up a whole session.
+- **`staircase doctor` reports the optional tools and interrupted runs.** Besides the
+  workspace checks it now lists ssh-keygen (and whether OpenSSH is new enough to sign,
+  8.0), which OS sandbox works on this machine and why another does not, and whether Claude
+  Code, Codex, Gemini CLI and OpenCode are installed, their versions and (Claude Code and
+  Codex, which can say without a model call) whether they are logged in. It points at runs
+  interrupted before they committed that hold approved changes (`staircase recover N`), and
+  at a legal hold. A missing optional tool never fails the check.
+- **Changes to files that are not text.** An image, a Latin-1 source file or any other
+  whole new file that is not valid UTF-8 can now be approved, which `seal`, `attach` and
+  any command that writes such a file previously could not (the proposal was refused). It
+  travels as base64 in `content_b64` (up to 2 MiB), the ledger becomes version 2 only when
+  it holds one, and a person is shown its size and SHA-256 instead of unreadable bytes. A
+  guard sends it to a person whatever the rules, the agreed task or the models say, and it
+  is committed byte for byte and rebuilds like any other change. The rebuild
+  specification and its vectors (now 21, checked by the Go code and the independent Python
+  implementation) cover it. Search-and-replace edits of a binary file are not supported.
 
 ### Fixed
 
@@ -122,48 +152,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 - **The final review shows a file that is not text by its size and digest.** The whole-change
   review at the end of a run (and of a `recover`) listed such a file as its raw bytes, garbled
   by the encoding and as large as the file. It now shows what the proposal showed.
-
-### Added
-
-- **`staircase secret delete <key> [--project N]`.** A stored secret could only be replaced,
-  never removed.
-
-- **`--check-timeout`.** How long one `--check` may run (default 15 minutes), wherever checks
-  run: approving on evidence, the definition of done and after the commit. A check that takes
-  longer counts as not passed: the change goes to a person with "timed out", and the
-  certificate records the check as one that could not run. With approve-on-evidence, which runs
-  the checks once per change, a short limit stops a hung check holding up a whole session.
-
-### Added
-
-- **`staircase doctor` reports the optional tools and interrupted runs.** Besides the
-  workspace checks it now lists ssh-keygen (and whether OpenSSH is new enough to sign,
-  8.0), which OS sandbox works on this machine and why another does not, and whether Claude
-  Code, Codex, Gemini CLI and OpenCode are installed, their versions and (Claude Code and
-  Codex, which can say without a model call) whether they are logged in. It points at runs
-  interrupted before they committed that hold approved changes (`staircase recover N`), and
-  at a legal hold. A missing optional tool never fails the check.
-
-### Fixed
-
 - **Ctrl-C works in the terminal approval dialog.** In raw mode Ctrl-C is a key, not a
   signal, and the dialog ignored it: an operator could not stop a run that was waiting for
   them. It now rejects the change and stops the run (SIGINT, as outside the dialog). The
   dialog also ends, rejecting the change, when the run is cancelled or its time limit
   passes, which closes the last open part of that finding, and backspace in the feedback
   line removes a character, not a byte.
-
-### Added
-
-- **Changes to files that are not text.** An image, a Latin-1 source file or any other
-  whole new file that is not valid UTF-8 can now be approved, which `seal`, `attach` and
-  any command that writes such a file previously could not (the proposal was refused). It
-  travels as base64 in `content_b64` (up to 2 MiB), the ledger becomes version 2 only when
-  it holds one, and a person is shown its size and SHA-256 instead of unreadable bytes. A
-  guard sends it to a person whatever the rules, the agreed task or the models say, and it
-  is committed byte for byte and rebuilds like any other change. The rebuild
-  specification and its vectors (now 21, checked by the Go code and the independent Python
-  implementation) cover it. Search-and-replace edits of a binary file are not supported.
 
 ## [0.6.0] - 2026-10-01
 
