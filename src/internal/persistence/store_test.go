@@ -1,7 +1,6 @@
 package persistence_test
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"testing"
 	"time"
@@ -180,9 +179,8 @@ func TestAppendEventLog_first_entry_hash(t *testing.T) {
 	entry, err := s.AppendEventLog(run.ID, "state_emit", payload, "", "")
 	require.NoError(t, err)
 
-	// Verify: hash = SHA256(payload + "" + "")
-	expected := fmt.Sprintf("%x", sha256.Sum256([]byte(payload)))
-	assert.Equal(t, expected, entry.EventHash, "first chain entry hash must match SHA256(payload)")
+	assert.Equal(t, persistence.ComputeEventHashV2("state_emit", payload, "", ""), entry.EventHash, "the first entry is the version 2 hash of its event type and payload")
+	assert.Equal(t, 2, entry.HashVersion)
 }
 
 func TestAppendEventLog_chain_extends_correctly(t *testing.T) {
@@ -195,9 +193,8 @@ func TestAppendEventLog_chain_extends_correctly(t *testing.T) {
 	e2, err := s.AppendEventLog(run.ID, "state_emit", "payload2", e1.EventHash, "gitabc")
 	require.NoError(t, err)
 
-	// hash2 = SHA256("payload2" + e1.EventHash + "gitabc")
-	expected := fmt.Sprintf("%x", sha256.Sum256([]byte("payload2"+e1.EventHash+"gitabc")))
-	assert.Equal(t, expected, e2.EventHash, "second chain entry hash must include prevHash and gitCommitHash")
+	assert.Equal(t, persistence.ComputeEventHashV2("state_emit", "payload2", e1.EventHash, "gitabc"), e2.EventHash,
+		"second chain entry hash must include prevHash and gitCommitHash")
 }
 
 func TestGetLastEventHash_empty_returns_empty_string(t *testing.T) {

@@ -203,7 +203,7 @@
 | Path traversal prevention in `read_file` | 🔒✅ | `os.path.realpath` + root-prefix check |
 | Path traversal prevention in `request_edit` | 🔒✅ | Same pattern |
 | Path traversal prevention in `list_dir` | 🔒✅ | Same pattern |
-| SOC2 tamper-proof event log (SHA-256 chain) | 🔒✅ | `payload + prevHash + gitCommitHash` |
+| SOC2 tamper-proof event log (SHA-256 chain) | 🔒✅ | version 2: event type, payload, previous hash and commit hash, length-prefixed ([audit](audit.md#the-hash-chain)); runs before it are version 1 and do not cover the event type |
 
 ---
 

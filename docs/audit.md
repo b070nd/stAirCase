@@ -41,6 +41,32 @@ took, so a run that stopped early shows where.
 A decision is written to the chain **before** the agent learns it. Secrets are
 removed from every event before it is stored.
 
+### The hash chain
+
+Each event has an `event_hash`, and a `hash_version` that says how it was computed.
+Both are in the checkpoints you export and in the `staircase inspect log` output.
+
+- **Version 2** (written by stAirCase from the release after v0.6.0): the SHA-256, in
+  lowercase hex, of the ASCII text `staircase-chain-v2` and a line feed, then four
+  fields in this order - the **event type**, the payload, the previous event's
+  `event_hash` (empty for the first event) and the git commit hash the event carries
+  (empty before the run's commit) - each written as its length in bytes (8 bytes,
+  big-endian) followed by the bytes. Because the event type is covered, relabelling an
+  event (say, turning a `yield_decided` into something else) breaks the chain; because
+  each field is length-prefixed, moving bytes from one field to the next does too.
+- **Version 1** (earlier runs, and an entry with no `hash_version`): the SHA-256 of the
+  payload, the previous hash and the commit hash, joined without separators. It does not
+  cover the event type: **an event of a version 1 run can be relabelled without breaking
+  its chain**. Such runs still verify as they always did; the weakness is why a version 2
+  exists, and an export of an old run is no stronger than it was.
+- A run can hold both (it began before an upgrade and continued after). An entry cannot
+  be passed off as another version: its stored hash only matches the version it was
+  computed under. A `hash_version` this stAirCase does not know is refused.
+
+Conformance vectors are in [`spec/audit-chain-vectors.json`](spec/audit-chain-vectors.json);
+`python3 docs/spec/audit_chain_vectors.py` checks them with a program that shares no code
+with stAirCase.
+
 ## The change certificate on every commit
 
 Each run that commits leaves a **change certificate** about exactly that commit: a

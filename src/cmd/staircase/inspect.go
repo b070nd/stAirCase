@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
@@ -118,10 +117,8 @@ var inspectLogCmd = &cobra.Command{
 		prevHash := ""
 		chainOK := true
 		for _, l := range logs {
-			expected := fmt.Sprintf("%x", sha256.Sum256(
-				[]byte(l.Payload+prevHash+l.GitCommitHash),
-			))
-			intact := l.EventHash == expected
+			expected, verr := persistence.ExpectedEventHash(l, prevHash)
+			intact := verr == nil && l.EventHash == expected
 			if !intact {
 				chainOK = false
 			}

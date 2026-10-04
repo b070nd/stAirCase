@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+
+- **The audit chain covers the event type (chain version 2).** The hash of each event was over
+  the payload, the previous hash and the commit, so an event could be relabelled, a
+  `yield_decided` renamed to something else, without breaking the chain. New events hash the
+  event type too, with every part length-prefixed ([ADR 0004](docs/adr/0004-audit-chain-version-2.md),
+  [the format](docs/audit.md#the-hash-chain)). Runs written before keep verifying as they did
+  (they are version 1 and do not cover the event type), checkpoints already exported and signed
+  still verify, and a run may hold both. The database gets a `hash_version` column; an older
+  stAirCase will refuse a workspace written by this one. Conformance vectors:
+  `docs/spec/audit-chain-vectors.json`, checked by `docs/spec/audit_chain_vectors.py`.
+
 ### Fixed
 
 - **The workspace database is readable by its owner only.** It was created with the process's
