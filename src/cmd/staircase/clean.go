@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -148,8 +149,9 @@ type archiveLine struct {
 	Data any    `json:"data"`
 }
 
-// purgeAudit deletes the cases flagged for deletion and the oldest event-log
-// rows beyond cleanKeepEventRows, after writing them all to one file under
+// purgeAudit deletes the cases flagged for deletion and the event-log rows of
+// the oldest whole runs beyond cleanKeepEventRows (a run's chain is never cut
+// in the middle), after writing them all to one file under
 // archive/. If the archive cannot be written, nothing is deleted.
 func purgeAudit(store *persistence.Store, wsDir string) {
 	var lines []archiveLine
@@ -179,7 +181,7 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 			}
 		}
 	}
-	old, err := store.OldestEventLogs(cleanKeepEventRows)
+	old, err := store.PrunableEventLogs(cleanKeepEventRows) // whole runs only
 	if err != nil {
 		fmt.Printf("   ⚠️  Listing old event log rows: %v\n", err)
 		return
@@ -204,10 +206,16 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 		fmt.Printf("   🗑  Purged %d flagged case(s).\n", n)
 	}
 	if len(old) > 0 {
-		if n, err := store.PruneEventLogsThrough(old[len(old)-1].ID); err != nil {
+		var runIDs []int64
+		for _, e := range old {
+			if !slices.Contains(runIDs, e.RunID) {
+				runIDs = append(runIDs, e.RunID)
+			}
+		}
+		if n, err := store.PruneEventLogsOfRuns(runIDs); err != nil {
 			fmt.Printf("   ⚠️  PruneEventLogs: %v\n", err)
 		} else if n > 0 {
-			fmt.Printf("   🗑  Pruned %d old event log row(s).\n", n)
+			fmt.Printf("   🗑  Pruned %d old event log row(s) of %d run(s).\n", n, len(runIDs))
 		}
 	}
 }

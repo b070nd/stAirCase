@@ -167,8 +167,12 @@ away silently:
   the only copy of its commit and is kept, with a message. A squash-merge does not count
   as merged, so those branches stay until you delete them yourself.
 - Audit rows go to `archive/clean-<time>.jsonl` (readable only by you) **before** they
-  are deleted: flagged cases with their runs and events, and the oldest event-log rows
-  beyond a million. If the archive cannot be written, nothing is deleted.
+  are deleted: flagged cases with their runs and events, and the event-log rows of the
+  oldest runs beyond a million rows. A run goes whole or not at all (cutting the front off
+  a run's audit chain would leave one that can no longer be verified), so a run that is
+  still running, or that has an entry newer than the cut such as a story accepted later, is
+  kept, and fewer rows than the excess may go. If the archive cannot be written, nothing is
+  deleted.
 - A file named `legal-hold` in the workspace stops all of it: no audit rows, cases or
   run branches are deleted until you remove the file.
 

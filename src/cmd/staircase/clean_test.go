@@ -111,30 +111,53 @@ func TestClean_archives_audit_rows_before_deleting_them(t *testing.T) {
 	viper.Set("STAIRCASE_DIR", ws)
 }
 
-// TestClean_archives_pruned_event_rows: rows beyond the keep limit are
-// archived before the oldest are pruned.
-func TestClean_archives_pruned_event_rows(t *testing.T) {
+// TestClean_prunes_whole_runs_only: rows beyond the keep limit are archived
+// before they are pruned, and only a run whose rows all fall in the excess goes:
+// the front of a run's chain is never cut off, so what stays still verifies.
+func TestClean_prunes_whole_runs_only(t *testing.T) {
 	_, ws, _ := sessionRepo(t)
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "second", "file"}))
 	store, db, err := openStore()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	runs, _ := store.ListRunsByStatus("SUCCESS")
-	events, _ := store.ListEventLogs(runs[0].ID)
-	require.Greater(t, len(events), 2)
+	require.Len(t, runs, 2)
+	first, second := runs[len(runs)-1], runs[0] // newest first
+	if first.ID > second.ID {
+		first, second = second, first
+	}
+	oldEvents, _ := store.ListEventLogs(first.ID)
+	newEvents, _ := store.ListEventLogs(second.ID)
+	require.Greater(t, len(oldEvents), 2)
 	cleanFlags(t, true)
-	cleanKeepEventRows = int64(len(events) - 2)
 
+	// the cut falls inside the older run: nothing may go
+	cleanKeepEventRows = int64(len(oldEvents) + len(newEvents) - 2)
 	_, err = captureStdout(t, func() error { return cleanHandler(nil, nil) })
 	require.NoError(t, err)
-	left, _ := store.ListEventLogs(runs[0].ID)
-	assert.Len(t, left, len(events)-2)
+	left, _ := store.ListEventLogs(first.ID)
+	assert.Len(t, left, len(oldEvents), "a run is not cut in the middle")
 	files, _ := filepath.Glob(filepath.Join(ws, "archive", "*.jsonl"))
+	assert.Empty(t, files, "nothing was pruned, so nothing was archived")
+	require.NoError(t, store.VerifyChain(first.ID))
+
+	// the older run fits in the excess: it goes whole, into the archive; the newer stays
+	cleanKeepEventRows = int64(len(newEvents))
+	_, err = captureStdout(t, func() error { return cleanHandler(nil, nil) })
+	require.NoError(t, err)
+	left, _ = store.ListEventLogs(first.ID)
+	assert.Empty(t, left)
+	left, _ = store.ListEventLogs(second.ID)
+	assert.Len(t, left, len(newEvents))
+	require.NoError(t, store.VerifyChain(second.ID), "what stays still verifies")
+	files, _ = filepath.Glob(filepath.Join(ws, "archive", "*.jsonl"))
 	require.Len(t, files, 1)
 	b, _ := os.ReadFile(files[0])
-	assert.Contains(t, string(b), events[0].EventHash)
-	assert.Contains(t, string(b), events[1].EventHash)
-	assert.NotContains(t, string(b), events[2].EventHash, "only what was pruned")
+	for _, e := range oldEvents {
+		assert.Contains(t, string(b), e.EventHash, "every row of the pruned run is in the archive")
+	}
+	assert.NotContains(t, string(b), newEvents[0].EventHash, "only what was pruned")
 }
 
 // copyDir copies a directory tree (files only, modes kept), as a backup would.

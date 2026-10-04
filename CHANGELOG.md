@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`clean --aggressive` removes whole runs from the audit log, never the front of one.** Beyond a
+  million rows it deleted the oldest rows, which could cut a run's chain in the middle and leave one
+  that no longer verified. It now removes the rows of the oldest complete runs, archived first as
+  before; a run that is still running, or that has an entry newer than the cut (a story accepted
+  later), stays whole, so fewer rows than the excess may go.
 - **The repository map in a plan describes the last commit, not the working tree.** Agents work
   on the last commit, but the map walked the folder, so it listed files that were never
   committed (a `credentials.json`, scratch files) by name and quoted the `func` lines of edits
