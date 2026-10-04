@@ -37,7 +37,9 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net"
 	"net/http"
@@ -212,15 +214,18 @@ func localOnly(h http.Handler) http.Handler {
 // Constant-time comparison prevents timing attacks.
 func (s *Server) requireAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.token != "" {
-			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
+		if s.token != "" && !bearer(r, s.token) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
 		}
 		h(w, r)
 	}
+}
+
+// bearer reports whether r carries exactly "Authorization: Bearer <token>".
+func bearer(r *http.Request, token string) bool {
+	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return ok && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
 }
 
 // Start binds the listener, serves in a goroutine, and registers a shutdown
@@ -389,7 +394,10 @@ func (s *Server) handleGet(w http.ResponseWriter, _ *http.Request, id string) {
 
 func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id string, approved bool) {
 	var body feedbackBody
-	_ = json.NewDecoder(r.Body).Decode(&body) // feedback is optional
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) { // the body is optional, not a broken one
+		http.Error(w, "the decision is not valid JSON", http.StatusBadRequest)
+		return
+	}
 
 	s.mu.Lock()
 	py, ok := s.pending[id]

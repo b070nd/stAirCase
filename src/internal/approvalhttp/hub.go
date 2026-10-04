@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -80,8 +79,7 @@ func (h *Hub) ReviewURL() string { return h.srv.ReviewURL() }
 
 func (h *Hub) auth(f http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(h.token)) != 1 {
+		if !bearer(r, h.token) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

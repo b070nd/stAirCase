@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -585,4 +586,43 @@ func TestServer_a_binary_file_is_not_sent_to_the_person(t *testing.T) {
 	sum := sha256.Sum256(whole)
 	ok := post(t, baseURL(srv)+"/v1/yields/"+id+"/approve", map[string]string{"request_sha256": hex.EncodeToString(sum[:])})
 	assert.Equal(t, http.StatusOK, ok.StatusCode, "the challenge is of the request with its bytes")
+}
+
+// TestServer_auth_needs_the_bearer_scheme: the key alone, or under another
+// scheme, is not "Bearer <key>".
+func TestServer_auth_needs_the_bearer_scheme(t *testing.T) {
+	srv, _ := startServerWithToken(t, "the-key")
+	hub := approvalhttp.NewHub(t.TempDir(), "the-key")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, hub.Start(ctx, "127.0.0.1:0"))
+	for name, base := range map[string]string{"session": baseURL(srv), "hub": "http://" + hub.ListenAddr()} {
+		for _, header := range []string{"the-key", "Basic the-key", "bearer the-key"} {
+			req, err := http.NewRequest(http.MethodGet, base+"/v1/yields", nil)
+			require.NoError(t, err)
+			req.Header.Set("Authorization", header)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "%s with %q", name, header)
+		}
+	}
+}
+
+// TestServer_a_decision_that_is_not_json_decides_nothing: a body that cannot
+// be read may have held the request digest the client meant to name, so it
+// cannot approve; the proposal stays pending.
+func TestServer_a_decision_that_is_not_json_decides_nothing(t *testing.T) {
+	srv, _ := startServer(t)
+	id, ch := pendReq(t, srv)
+	resp, err := http.Post(fmt.Sprintf("%s/v1/yields/%s/approve", baseURL(srv), id), "application/json", strings.NewReader(`{"request_sha256": "abc`)) //nolint:noctx
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	select {
+	case <-ch:
+		t.Fatal("a decision nobody could read decided the proposal")
+	default:
+	}
+	assert.Equal(t, http.StatusOK, get(t, fmt.Sprintf("%s/v1/yields/%s", baseURL(srv), id)).StatusCode, "still pending")
 }

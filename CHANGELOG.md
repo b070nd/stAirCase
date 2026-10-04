@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **The approval API needs `Authorization: Bearer <key>`, and a broken decision decides nothing.**
+  The key alone, without "Bearer ", was accepted. An approve or reject whose JSON body was
+  malformed (cut short, say, before the `request_sha256` that names the request) approved
+  or rejected anyway; it is now refused with 400 and the proposal stays pending. An empty
+  body is still fine.
+- **`staircase seal` reports left-out files correctly.** A file with a space or an accent in
+  its name was listed as "left out, still in your working files" even though it was sealed.
 - **Sensitive files match in any letter case and cover more build and CI files.** A person
   always decides a change to a file that decides what runs, but `makefile` or `DOCKERFILE`
   was not recognised (macOS and Windows treat them as the same file), and `GNUmakefile` (which

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/plan"
@@ -82,7 +83,7 @@ func sealHandler(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	staged, _ := git("diff", "--cached", "--name-only")
+	staged, _ := git("diff", "--cached", "--name-only", "-z") // NUL-separated: names with spaces or accents are not quoted
 	tree, err := git("write-tree")
 	if err != nil {
 		return fmt.Errorf("git write-tree: %w", err)
@@ -127,10 +128,10 @@ func sealHandler(_ *cobra.Command, _ []string) error {
 			return err
 		}
 		_, _ = git("branch", "-D", runBranch)
-		kept, _ := git("diff-tree", "--no-commit-id", "--name-only", "-r", run)
+		kept, _ := git("diff-tree", "--no-commit-id", "--name-only", "-r", "-z", run)
 		fmt.Printf("\n✅ Sealed %.12s on %s: %s (CAL 2, change certificate in refs/notes/staircase)\n", run, branch, msg)
-		for _, f := range strings.Fields(staged) {
-			if !strings.Contains("\n"+kept+"\n", "\n"+f+"\n") {
+		for _, f := range strings.Split(strings.Trim(staged, "\x00"), "\x00") {
+			if !slices.Contains(strings.Split(strings.Trim(kept, "\x00"), "\x00"), f) {
 				fmt.Printf("   left out, still in your working files: %s\n", f)
 			}
 		}
