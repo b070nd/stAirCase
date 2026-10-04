@@ -83,3 +83,6 @@ func CommitApprovedForTest(repoPath, file, content string, tamper func()) (strin
 func AddWorktreeForTest(repo, path, branch, base string) error {
 	return addWorktree(repo, path, branch, base)
 }
+
+// ExportedSensitive exposes sensitive for whitebox tests.
+func ExportedSensitive(files []string) string { return sensitive(files) }
