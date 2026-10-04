@@ -50,11 +50,13 @@ staircase claude "add a /health endpoint that returns 200 and the body ok"
 
 stAirCase creates what it needs (workspace, project, case) and first shows you what
 is about to happen: the task, where it may change files, how edits and commands are
-handled, the model and the budget. Press **`y`** to start. It then runs Claude Code in
+handled, the model and the budget. Type **`y`** and press Enter to start (`--yes` in
+scripts). It then runs Claude Code in
 a separate worktree and shows you every change it wants to make: press **`y`** to
 approve, **`n`** to reject with a reason. At the end, exactly the approved changes
-are on a new branch, `staircase/run-N`, and your checkout is untouched. Continue
-with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).
+are on a new branch, `staircase/run-N`, and your checkout is untouched. If the run is
+interrupted (a crash, a killed terminal), `staircase recover N` commits exactly what it had
+approved. Continue with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).
 With OpenAI's Codex it is the same: `staircase codex "..."` ([Governing Codex](docs/codex.md)).
 
 The rest of this page sets up stAirCase's own agents, with the model provider of
@@ -157,6 +159,12 @@ git -C ~/code/shop log --stat -1 staircase/run-1     # what was committed
 git -C ~/code/shop diff HEAD...staircase/run-1       # the full change
 staircase inspect runs                               # all runs and their status
 staircase inspect log 1                              # every event of run 1
+```
+
+Check the commit's certificate, and prove it holds exactly what was approved:
+
+```bash
+staircase verify staircase/run-1 --rebuild
 ```
 
 A commit does not prove that a story is done - you decide that. Check the work,

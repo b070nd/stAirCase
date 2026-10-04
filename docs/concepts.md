@@ -30,15 +30,16 @@ commits exactly the approved bytes - nothing else - on a new branch.
    repository) and starts the agents there. Each time an agent wants to change a
    file or run a command, it sends a *proposal* and waits.
 5. **Decide.** stAirCase refuses proposals it cannot apply safely, then asks - in
-   order - *drift supervision*, your *policy*, an optional *validator* model, and
-   finally a person. Every decision is written to the *audit chain* before the agent
-   sees it.
+   order - *drift supervision*, the *guards*, your *policy*, the agreed task (with
+   its checks and reviewer models as evidence, if you chose that), and finally a
+   person. Every decision is written to the *audit chain*, and kept in a journal, before
+   the agent sees it.
 6. **Commit.** When the agents finish, stAirCase checks that the worktree holds
    exactly what was approved and commits it on a branch named `staircase/run-N`.
    Your own checkout is never touched.
 7. **Accept.** You review the branch and *accept* each story. When all stories are
-   accepted, the case is *completed*. You can export the signed audit chain as
-   evidence.
+   accepted, the case is *completed*. The commit carries a signed *change
+   certificate*, and you can export the signed audit chain as evidence.
 
 ## Glossary
 
@@ -113,6 +114,17 @@ person, with a person approving the final result. See [Approvals](approvals.md).
 violations). Each event includes the hash of the one before, so a change anywhere
 breaks the chain. `staircase audit export` writes a signed copy. See
 [Audit evidence](audit.md).
+
+**Change certificate** - a signed statement about one commit: which agent proposed the
+change, how many decisions each kind of decider made, the checks that ran, and the
+*assurance level* it reached. `staircase verify` checks it. It names the *ledger*.
+
+**Assurance level (CAL)** - how much a certificate vouches for, from 1 (attributed)
+to 4 (a second, trusted reviewer signed). A CAL is not a SLSA level. See
+[Audit evidence](audit.md).
+
+**Ledger** - the base commit and every approved proposal, in order. Replaying it must
+produce exactly the commit's tree: `staircase rebuild`.
 
 **Secret** - a value such as an API key, stored encrypted in the workspace and given
 only to the code that needs it. Secrets never appear in logs or in the audit chain.

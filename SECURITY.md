@@ -75,8 +75,14 @@ are only governed from the moment you stage their changes. See the
   its public, permanent log keeps only the record's SHA-256, the signature and
   your public key. To keep the record from any third party, use your own Rekor
   instance (`--rekor-url`).
-- **Supply chain.** Releases ship an SBOM and a cosign (keyless, Sigstore OIDC)
-  signature over the checksums; GitHub Actions are SHA-pinned.
+- **Supply chain.** Releases ship an SBOM, a cosign (keyless, Sigstore OIDC)
+  signature over the checksums and SLSA build provenance; GitHub Actions are SHA-pinned,
+  and the release workflow refuses a tag whose commit is not on the default branch with
+  a green CI run.
+- **Content kept in the workspace.** Approved file content is also in the run's ledger
+  (`audit/run-N.ledger.json`), its approval journal (`journal/`) and, after
+  `clean --aggressive`, `archive/`; all readable by your user only. Treat the workspace
+  like the repository: it holds what the commits hold.
 
 ### Known limitations (pre-1.0)
 
@@ -85,11 +91,13 @@ These are documented, not hidden:
 - Approved shell commands (`--allow-shell-exec`, built-in agents) run in an OS
   sandbox by default (`--sandbox auto`): macOS `sandbox-exec`; on Linux
   `bwrap` (bubblewrap) when it can run, otherwise Landlock (built into kernels
-  since 5.13, nothing to install) with a seccomp filter that refuses sockets. In it a command can write only in the worktree and its own
+  since 6.2, nothing to install; an older Landlock cannot stop a command truncating
+  files outside its folders, so it does not count as a sandbox) with a seccomp filter
+  that refuses sockets. In it a command can write only in the worktree and its own
   temporary folder, and has no network. It cannot read the stAirCase workspace
   (signing key, secrets) or common credential locations in the home folder
   (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.config/git`, `~/.netrc`,
-  `~/.npmrc`, keychains and others); it can still **read** the rest of what the
+  `~/.npmrc`, keychains, the agents' own login stores and others); it can still **read** the rest of what the
   user can, and its output goes back to the agent's model. Without a sandbox tool, `auto` runs the command as the user and says so;
   `--sandbox required` refuses it instead. `bwrap` is tested in a Linux
   container; Landlock is tested by CI on Ubuntu (Docker Desktop's kernel has no
@@ -121,6 +129,12 @@ These are documented, not hidden:
   the repository and send them to OpenAI. Codex is started with
   `--dangerously-bypass-hook-trust`, which also runs the user's own unreviewed
   Codex hooks for that session; a run whose hooks never report in fails.
+- Gemini CLI (`staircase gemini`) and OpenCode (`staircase opencode`) are work in
+  progress, built from their documentation and tested against stand-ins only. Their hook
+  and plugin systems fail open except where documented (a hook that crashes lets the call
+  through unless it exits 2; a plugin that fails to load runs no checks); stAirCase's
+  bridge blocks on every failure of its own and refuses a session whose hooks never
+  reported in, but other hooks or plugins a user has installed still run.
 - The `--validator` reviewer is a model and can be misled by what it reviews;
   it only ever decides in-scope, non-sensitive edits, and a human approves the
   run's final change whenever it decided anything.
