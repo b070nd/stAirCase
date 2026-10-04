@@ -14,6 +14,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
+	"github.com/b070nd/stAirCase/src/internal/tui"
 )
 
 // defaultCheckTimeout bounds one check, such as a test suite, unless the run sets
@@ -111,7 +112,7 @@ func (l *lastBytes) Write(p []byte) (int, error) {
 }
 
 func indent(s string) string {
-	s = strings.TrimRight(strings.ToValidUTF8(s, ""), "\n")
+	s = strings.TrimRight(tui.Safe(strings.ToValidUTF8(s, "")), "\n") // the output of code an agent wrote
 	if s == "" {
 		return ""
 	}

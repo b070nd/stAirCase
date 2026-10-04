@@ -132,3 +132,13 @@ func TestGuards_secret_patterns(t *testing.T) {
 		assert.Empty(t, orchestrator.ExportedGuardNewFile("notes.md", text), text)
 	}
 }
+
+// TestChecks_output_cannot_drive_the_terminal: a check runs code the agent
+// wrote, and its output is printed for the person watching.
+func TestChecks_output_cannot_drive_the_terminal(t *testing.T) {
+	got := orchestrator.ExportedIndent("FAIL\n\x1b[2J\x1b[1A\x1b[2K✅ Check passed\rall good\x07")
+	for _, bad := range []string{"\x1b", "\r", "\x07"} {
+		assert.NotContains(t, got, bad)
+	}
+	assert.Contains(t, got, "FAIL")
+}

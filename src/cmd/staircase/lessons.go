@@ -58,7 +58,10 @@ func projectLessons(store *persistence.Store, projectID int64) ([]string, error)
 						continue
 					}
 					if fb := strings.TrimSpace(d.Feedback); fb != "" {
-						l := strings.Join(files, ", ") + ": " + fb
+						l := fb
+						if len(files) > 0 {
+							l = strings.Join(files, ", ") + ": " + fb
+						}
 						if !slices.Contains(lessons, l) {
 							lessons = append(lessons, l)
 						}

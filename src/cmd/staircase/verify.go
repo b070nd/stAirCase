@@ -21,6 +21,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/governance"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
+	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/b070nd/stAirCase/src/internal/vsa"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -128,7 +129,7 @@ func verifyRange(rng string) error {
 	skipped := 0
 	for _, c := range commits {
 		trailer, _ := exec.Command("git", "log", "-1", "--format=%(trailers:key=Assisted-by,valueonly,separator=%x2C )", c).Output()
-		assisted := strings.TrimSpace(string(trailer))
+		assisted := tui.Safe(strings.TrimSpace(string(trailer))) // the committer's own text, printed for a person
 		if assisted == "" && !verifyAll {
 			fmt.Printf("·  Commit %.12s: no agent declared, no certificate needed\n", c)
 			skipped++
@@ -268,25 +269,25 @@ func verifyCommit(commit string) error {
 	}
 	switch {
 	case initiator != "" && initiatorTrusted:
-		fmt.Printf("   started by %s (signed, key %s, trusted)\n", initiator, initiatorKey)
+		fmt.Printf("   started by %s (signed, key %s, trusted)\n", tui.Safe(initiator), initiatorKey)
 	case initiator != "":
-		fmt.Printf("   started by %s (signed, key %s, not in the trusted signers)\n", initiator, initiatorKey)
+		fmt.Printf("   started by %s (signed, key %s, not in the trusted signers)\n", tui.Safe(initiator), initiatorKey)
 	case p.RequestedBy != "":
-		fmt.Printf("   requested by %s (the git email of the checkout: unauthenticated)\n", p.RequestedBy)
+		fmt.Printf("   requested by %s (the git email of the checkout: unauthenticated)\n", tui.Safe(p.RequestedBy))
 	}
 	if len(signers) > 0 {
-		fmt.Printf("   reviewed and signed by %s\n", strings.Join(signers, ", "))
+		fmt.Printf("   reviewed and signed by %s\n", tui.Safe(strings.Join(signers, ", ")))
 	}
-	fmt.Printf("   run #%d from %.12s, assisted by %s\n", p.Run, p.BaseCommit, strings.Join(p.Agents, ", "))
+	fmt.Printf("   run #%d from %.12s, assisted by %s\n", p.Run, p.BaseCommit, tui.Safe(strings.Join(p.Agents, ", ")))
 	for source, n := range p.Decisions {
-		fmt.Printf("   %d decision(s) by %s\n", n, source)
+		fmt.Printf("   %d decision(s) by %s\n", n, tui.Safe(source))
 	}
 	for _, c := range p.Checks {
 		where := "in the sandbox"
 		if !c.Sandboxed {
 			where = "without a sandbox"
 		}
-		fmt.Printf("   check passed %s: %s\n", where, c.Command)
+		fmt.Printf("   check passed %s: %s\n", where, tui.Safe(c.Command))
 	}
 	if sg := p.Signed; sg != nil {
 		fmt.Printf("   %d decision(s) signed with SSH keys", sg.Decisions)
@@ -303,7 +304,7 @@ func verifyCommit(commit string) error {
 		fmt.Println()
 	}
 	for _, n := range p.Notes {
-		fmt.Printf("   note: %s\n", n)
+		fmt.Printf("   note: %s\n", tui.Safe(n))
 	}
 	return nil
 }

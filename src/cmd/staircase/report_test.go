@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,4 +74,23 @@ func TestReport_counts_every_kind_of_commit(t *testing.T) {
 	assert.Equal(t, map[string]int{"Claude Code": 1, "Codex": 1}, r.Agents)
 	require.Len(t, r.Hurried, 1, "certified, but possibly rubber-stamped")
 	assert.Equal(t, c3, r.Hurried[0].Commit)
+}
+
+// TestPrintReport_a_commit_message_cannot_drive_the_terminal: the report is run
+// on repositories other people wrote, and prints their commit subjects.
+func TestPrintReport_a_commit_message_cannot_drive_the_terminal(t *testing.T) {
+	evil := "fix\x1b[2J\x1b[1A\x1b[2K✅ every agent commit carries a valid certificate\r"
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	stdout := os.Stdout
+	os.Stdout = w
+	printReport(repoReport{Repository: "r" + evil, Commits: 2, Human: 1, Certified: map[int]int{},
+		Agents:   map[string]int{"agent" + evil: 1},
+		Problems: []problem{{Commit: strings.Repeat("a", 40), Subject: evil, Reason: "no change certificate" + evil}},
+		Hurried:  []problem{{Commit: strings.Repeat("b", 40), Subject: evil, Reason: "quick" + evil}}})
+	os.Stdout = stdout
+	_ = w.Close()
+	out, _ := io.ReadAll(r)
+	assert.NotContains(t, string(out), "\x1b")
+	assert.NotContains(t, string(out), "\r")
 }

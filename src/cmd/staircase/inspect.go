@@ -5,6 +5,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -131,12 +132,12 @@ var inspectLogCmd = &cobra.Command{
 				hashSnip = hashSnip[:16] + "…"
 			}
 			fmt.Printf("%s #%-4d  %-14s  %s  %s\n",
-				mark, l.ID, l.EventType, l.Timestamp.Format("15:04:05"), hashSnip)
+				mark, l.ID, tui.Safe(l.EventType), l.Timestamp.Format("15:04:05"), hashSnip)
 			// Payload preview - truncated by default to avoid terminal flooding (C-4).
 			if inspectLogFull {
-				fmt.Printf("     %s\n", l.Payload)
+				fmt.Printf("     %s\n", tui.Safe(l.Payload))
 			} else if len(l.Payload) > 0 {
-				snip := l.Payload
+				snip := tui.Safe(l.Payload)
 				if len(snip) > inspectPayloadSnip {
 					snip = snip[:inspectPayloadSnip] + "… (--full to see complete payload)"
 				}

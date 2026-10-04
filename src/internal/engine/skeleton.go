@@ -38,7 +38,7 @@ func RepoMap(repoPath string) (string, error) {
 			}
 			return nil
 		}
-		if shouldIgnoreFile(rel, ignorePatterns) {
+		if shouldIgnoreFile(rel, ignorePatterns) || !d.Type().IsRegular() { // a link could lead outside the repository
 			return nil
 		}
 

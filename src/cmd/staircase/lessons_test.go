@@ -36,10 +36,14 @@ func TestProjectLessons(t *testing.T) {
 	decided("operator", true, "fine")
 	request("docs/x.md")
 	decided("operator", false, "")
+	// a proposal too large for the audit log is recorded as a truncation note: no files known
+	event("yield_request", map[string]any{"truncated": true, "bytes": 90000, "sha256": "ab"})
+	decided("operator", false, "split this into smaller changes")
 
 	lessons, err := projectLessons(s, mustProject(t, s, caseID))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"src/api.go: no global variables, use the Server struct"}, lessons)
+	assert.Equal(t, []string{"split this into smaller changes", "src/api.go: no global variables, use the Server struct"}, lessons,
+		"newest first, and a reason is not prefixed with an empty file list")
 }
 
 func mustProject(t *testing.T, s *persistence.Store, caseID int64) int64 {
