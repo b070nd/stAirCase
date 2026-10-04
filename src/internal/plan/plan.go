@@ -70,8 +70,10 @@ func (l Limits) Tighter(o Limits) Limits {
 	}
 }
 
-// Stricter is the smaller of two limits, where 0 means no limit.
+// Stricter is the smaller of two limits, where 0 means no limit (and so does
+// a negative number, which must not beat a real limit).
 func Stricter(a, b int) int {
+	a, b = max(a, 0), max(b, 0)
 	if a == 0 || (b != 0 && b < a) {
 		return b
 	}

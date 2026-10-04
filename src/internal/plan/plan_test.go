@@ -105,3 +105,14 @@ func TestPlan_Brief_lessons(t *testing.T) {
 	assert.Contains(t, p.Brief(), "Reviewers of this project rejected before - do not repeat:\n- src/api.go: no global variables, use the Server struct")
 	assert.NotContains(t, plan.Plan{PRD: "x"}.Brief(), "rejected before")
 }
+
+// TestStricter: the stricter of two limits, where 0 means no limit; a negative
+// number is no limit either, and never beats a real one.
+func TestStricter(t *testing.T) {
+	for _, c := range []struct{ a, b, want int }{
+		{0, 0, 0}, {0, 5, 5}, {5, 0, 5}, {3, 5, 3}, {5, 3, 3},
+		{-1, 5, 5}, {5, -1, 5}, {-1, -1, 0}, {-1, 0, 0}, {0, -2, 0},
+	} {
+		assert.Equal(t, c.want, plan.Stricter(c.a, c.b), "Stricter(%d, %d)", c.a, c.b)
+	}
+}

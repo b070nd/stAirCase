@@ -574,3 +574,16 @@ func TestLoadEngine_fails_closed(t *testing.T) {
 	assert.Equal(t, 60, e.Limits.MaxRunSecs)
 	assert.Equal(t, 2, e.Limits.MaxAutoApproved)
 }
+
+// TestPolicyLoad_refuses_an_effect_it_does_not_know: "allow" or "Approve" would
+// otherwise be read as reject, and the rule would do the opposite of what it says.
+func TestPolicyLoad_refuses_an_effect_it_does_not_know(t *testing.T) {
+	for _, effect := range []string{"allow", "Approve", "deny", "approved"} {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"),
+			[]byte(`{"rules":[{"action_types":["file_edit"],"effect":"`+effect+`"}]}`), 0o600))
+		_, err := loadEngine(dir)
+		require.Error(t, err, effect)
+		assert.Contains(t, err.Error(), `effect must be "approve" or "reject"`, effect)
+	}
+}
