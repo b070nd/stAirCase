@@ -41,13 +41,28 @@ tests drive, not against the real program.
 |---|---|---|---|---|
 | Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (logged out) | 0.46.0 (no login) | not installed |
 | Its hooks run, every tool call is governed | yes (real run) | not run: needs a login | stand-in only | stand-in only |
-| Session refused when its hooks never ran | stand-in only | stand-in only | stand-in only | stand-in only |
+| Session refused when its hooks never ran | stand-in only | not implemented: a run whose hooks never ran is caught by the end-of-run check, which commits nothing unapproved | stand-in only | stand-in only |
+| A hook answer that is empty, cut off or not a decision, a hook call that is unreadable or for an unregistered event, a hook program that is missing, crashes or is killed | stand-in host only: the hook turns each into a block (exit 2); a host that carries on after any other exit status is modelled on its documented behaviour | stand-in host only (same) | stand-in host only (same) | not applicable: the plugin asks the run itself |
+| The host gives up on a slow hook | stand-in only: the tool runs, the end-of-run check commits nothing unapproved | not run | not run | not run |
 | An approval held longer than a hook's default timeout | yes: held 70 s, then answered | not run | not run | not run |
 | A rejection, then the agent's retry | yes: rejected once, the retry approved | not run | not run | not run |
 | Stop refused until a failing check passes | yes: the first attempt to stop blocked by the check, the second allowed | stand-in only | not applicable | not applicable |
 | Commit verified and rebuilt by a fresh clone with only the public key | yes | not run | not run | not run |
 | Commands: no network, no credentials | Codex's own sandbox plus stAirCase's checks; not probed with a real model | not run | not run | not run |
 | Only staircase's settings are read (a repository's own hooks are ignored) | not applicable | yes, logged out | not run | not run |
+
+Two rows above are easy to misread. "Stand-in host only" means a fake program that follows what the
+host documents (Claude Code: only exit status 2, or a "deny" answer, stops a tool; any other failure of a
+hook is a non-blocking error and the tool runs), not a real run. And a host that gives up on a slow hook
+runs the tool whatever stAirCase does: what holds then is that **nothing unapproved is committed**, not that
+the tool did not run. A hook that cannot answer therefore ends as a block when it can (the hook command ends
+in `|| exit 2`, so even a missing program blocks), and the end-of-run check is the backstop when it cannot.
+
+How each host's tool calls are read (names and arguments) is pinned by fixtures in
+`internal/agent/normalize_test.go`, each marked with its host version and where it came from. All of them are
+**synthetic** so far (written from the host's documentation, Gemini CLI 0.46.0 for Gemini; OpenCode is not
+installed); none was captured from a real session. When a host names one argument twice with different
+values (for example `absolute_path` and `file_path`), the call is refused as ambiguous rather than guessed.
 
 What a cell means is the same everywhere: "yes" cites a run whose result is in the
 audit chain of that run and that anyone can repeat; everything else is unverified.

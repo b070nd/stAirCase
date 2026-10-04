@@ -48,7 +48,7 @@ func TestHookTemplate(t *testing.T) {
 	assert.True(t, s.ManagedOnly, "user and repository hooks do not load")
 	pre := s.Hooks["PreToolUse"][0]
 	assert.Equal(t, "*", pre.Matcher)
-	assert.Equal(t, "'/opt/homebrew/bin/staircase' hook claude-code --require", pre.Hooks[0].Command)
+	assert.Equal(t, "'/opt/homebrew/bin/staircase' hook claude-code --require || exit 2", pre.Hooks[0].Command)
 	assert.Greater(t, pre.Hooks[0].Timeout, 3600, "a person may take long to decide")
 	assert.NotEmpty(t, s.Hooks["PostToolUse"])
 
@@ -69,7 +69,7 @@ func TestHookTemplate(t *testing.T) {
 		} `json:"hooks"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &g), out)
-	assert.Equal(t, "'/opt/homebrew/bin/staircase' hook gemini --require", g.Hooks["BeforeTool"][0].Hooks[0].Command)
+	assert.Equal(t, "'/opt/homebrew/bin/staircase' hook gemini --require || exit 2", g.Hooks["BeforeTool"][0].Hooks[0].Command)
 	assert.Greater(t, g.Hooks["BeforeTool"][0].Hooks[0].Timeout, 3600*1000, "milliseconds: a person may take long to decide")
 	assert.NotEmpty(t, g.Hooks["SessionStart"])
 	assert.NotEmpty(t, g.Hooks["AfterTool"])

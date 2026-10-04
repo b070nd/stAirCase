@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
@@ -76,9 +79,20 @@ func fakeClaude() int {
 		in, _ := json.Marshal(map[string]any{"hook_event_name": event, "tool_name": c.Tool,
 			"tool_input": c.Input, "tool_use_id": fmt.Sprint("t", id), "cwd": "."})
 		run := func() (int, string) {
-			cmd := exec.Command("/bin/sh", "-c", s.Hooks[event][0].Hooks[0].Command)
+			ctx := context.Background()
+			if ms, _ := strconv.Atoi(os.Getenv("FAKE_CLAUDE_HOOK_TIMEOUT_MS")); ms > 0 { // the host gives up on a slow hook
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
+				defer cancel()
+			}
+			cmd := exec.CommandContext(ctx, "/bin/sh", "-c", s.Hooks[event][0].Hooks[0].Command)
 			cmd.Stdin = bytes.NewReader(in)
+			ownGroup(cmd)
+			cmd.WaitDelay = time.Second
 			out, _ := cmd.Output()
+			if ctx.Err() != nil {
+				return -2, "" // timed out
+			}
 			code := 0
 			if cmd.ProcessState != nil {
 				code = cmd.ProcessState.ExitCode()
@@ -121,9 +135,26 @@ func fakeClaude() int {
 		if code == 2 {
 			d.Out.Decision = "blocked"
 		}
-		fmt.Fprintf(log, "%s %s %s\n", c.Tool, d.Out.Decision, d.Out.Reason)
-		if code != 0 || d.Out.Decision != "allow" {
-			continue
+		if os.Getenv("FAKE_CLAUDE_HOST") == "documented" {
+			// Claude Code's documented behaviour: only exit status 2 or a deny blocks the tool;
+			// any other failure of the hook (it is missing, it crashes, it times out, it prints
+			// nothing) is a non-blocking error and the tool runs.
+			if code != 2 && d.Out.Decision != "deny" {
+				if d.Out.Decision != "allow" {
+					d.Out.Decision = "proceeded-after-hook-failure"
+				}
+			} else {
+				d.Out.Decision = "blocked"
+			}
+			fmt.Fprintf(log, "%s %s %s\n", c.Tool, d.Out.Decision, d.Out.Reason)
+			if d.Out.Decision == "blocked" {
+				continue
+			}
+		} else {
+			fmt.Fprintf(log, "%s %s %s\n", c.Tool, d.Out.Decision, d.Out.Reason)
+			if code != 0 || d.Out.Decision != "allow" {
+				continue
+			}
 		}
 		path, _ := c.Input["file_path"].(string)
 		switch c.Tool {

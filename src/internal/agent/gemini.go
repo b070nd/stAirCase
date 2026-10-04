@@ -150,14 +150,8 @@ func geminiInput(in hookInput) hookInput {
 	if json.Unmarshal(in.Input, &args) != nil {
 		return in
 	}
-	if d, ok := args["dir_path"]; ok {
-		args["path"] = d
-	}
-	if a, ok := args["absolute_path"]; ok && args["file_path"] == nil { // older Gemini CLI versions name the file this way
-		args["file_path"] = a
-	}
-	if m, ok := args["allow_multiple"].(bool); ok && m {
-		args["replace_all"] = true
+	if conflict := aliasArgs(args, map[string]string{"dir_path": "path", "absolute_path": "file_path", "allow_multiple": "replace_all"}); conflict != "" {
+		return refuseAmbiguous(in, conflict)
 	}
 	in.Tool = tool
 	in.Input, _ = json.Marshal(args)

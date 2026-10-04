@@ -156,11 +156,9 @@ func opencodeInput(in hookInput) hookInput {
 	if json.Unmarshal(in.Input, &args) != nil {
 		return in
 	}
-	for from, to := range map[string]string{"filePath": "file_path", "oldString": "old_string", "newString": "new_string",
-		"replaceAll": "replace_all", "patchText": "command"} {
-		if v, ok := args[from]; ok {
-			args[to] = v
-		}
+	if conflict := aliasArgs(args, map[string]string{"filePath": "file_path", "oldString": "old_string", "newString": "new_string",
+		"replaceAll": "replace_all", "patchText": "command"}); conflict != "" {
+		return refuseAmbiguous(in, conflict)
 	}
 	in.Tool = tool
 	in.Input, _ = json.Marshal(args)

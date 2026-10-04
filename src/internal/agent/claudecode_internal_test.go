@@ -47,3 +47,33 @@ func TestReadInside_refuses_symlinks_out_of_the_worktree(t *testing.T) {
 	_, err = h.readInside("link.txt")
 	assert.Error(t, err, "a symlink leaving the worktree must not be followed")
 }
+
+// TestHookCommand_every_way_the_program_can_fail_blocks: an agent runs the hook
+// through a shell, and treats an exit status other than 2 as "the hook broke,
+// carry on". A program that is not there (127), that crashes or is killed (137)
+// or that exits 1 must therefore end as 2. The controls: a program that succeeds
+// stays 0, and one that blocks stays 2.
+func TestHookCommand_every_way_the_program_can_fail_blocks(t *testing.T) {
+	script := func(body string) string {
+		bin := filepath.Join(t.TempDir(), "staircase")
+		assert.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"+body+"\n"), 0o755))
+		return bin
+	}
+	status := func(bin string) int {
+		err := exec.Command("/bin/sh", "-c", HookCommand(bin, "claude-code", "--governed")).Run()
+		if err == nil {
+			return 0
+		}
+		var exitErr *exec.ExitError
+		if assert.ErrorAs(t, err, &exitErr) {
+			return exitErr.ExitCode()
+		}
+		return -1
+	}
+	assert.Equal(t, 0, status(script("exit 0")), "control: a program that succeeds")
+	assert.Equal(t, 2, status(script("exit 2")), "control: a program that blocks")
+	assert.Equal(t, 2, status(filepath.Join(t.TempDir(), "not-installed")), "the program is not there")
+	assert.Equal(t, 2, status(script("exit 1")), "it fails")
+	assert.Equal(t, 2, status(script("kill -9 $$")), "it is killed")
+	assert.Equal(t, 2, status(script("exit 126")), "it cannot be executed")
+}
