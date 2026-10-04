@@ -16,14 +16,15 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
-// checkTimeout bounds one check, such as a test suite.
-const checkTimeout = 15 * time.Minute
+// defaultCheckTimeout bounds one check, such as a test suite, unless the run sets
+// its own (--check-timeout).
+const defaultCheckTimeout = 15 * time.Minute
 
 // runChecks runs each check on a clean checkout of commit, in the sandbox
 // (mode as for approved commands), and returns their results for the
 // certificate. A check that fails is reported and recorded; it does not undo
 // the commit (staircase verify refuses it).
-func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, commit string, checks []string, mode string) []certificate.Check {
+func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, commit string, checks []string, mode string, timeout time.Duration) []certificate.Check {
 	if len(checks) == 0 {
 		return nil
 	}
@@ -39,7 +40,7 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 		c := certificate.Check{Command: command, ExitCode: -1}
 		var tail string
 		if err == nil {
-			c, tail = runCheck(ctx, dir, command, mode, r.wsDir)
+			c, tail = runCheck(ctx, dir, command, mode, r.wsDir, timeout)
 		} else {
 			tail = "no checkout of the commit: " + err.Error()
 		}
@@ -61,9 +62,12 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 
 // runCheck runs one check in dir; it returns the result and the end of the
 // output, for the terminal only.
-func runCheck(ctx context.Context, dir, command, mode, workspace string) (certificate.Check, string) {
+func runCheck(ctx context.Context, dir, command, mode, workspace string, timeout time.Duration) (certificate.Check, string) {
 	c := certificate.Check{Command: command, ExitCode: -1}
-	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	if timeout <= 0 {
+		timeout = defaultCheckTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, dir, dir, command, mode, workspace)
 	if err != nil {
@@ -81,7 +85,7 @@ func runCheck(ctx context.Context, dir, command, mode, workspace string) (certif
 	var exitErr *exec.ExitError
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return c, fmt.Sprintf("timed out after %s", checkTimeout)
+		return c, fmt.Sprintf("timed out after %s", timeout)
 	case errors.As(err, &exitErr):
 		c.ExitCode = exitErr.ExitCode()
 	case err != nil:

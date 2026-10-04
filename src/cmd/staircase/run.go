@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/llm"
 	"github.com/b070nd/stAirCase/src/internal/obs"
@@ -50,6 +51,7 @@ var (
 	runSignAs          string
 	runRequireSigned   bool
 	runRequireEvidence bool
+	runCheckTimeout    time.Duration
 )
 
 var runCmd = &cobra.Command{
@@ -229,6 +231,7 @@ func runCase(caseID int64) error {
 		RequireSignedApprovals: runRequireSigned,
 		RequireEvidence:        runRequireEvidence,
 		Checks:                 runChecks,
+		CheckTimeout:           runCheckTimeout,
 		AckDrift:               runAckDrift,
 		Validator:              validator,
 		Agreed:                 runAgreedBy,
@@ -239,6 +242,9 @@ func runCase(caseID int64) error {
 
 // checkFlag adds --check to cmd.
 func checkFlag(cmd *cobra.Command) {
+	cmd.Flags().DurationVar(&runCheckTimeout, "check-timeout", 0,
+		"How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); "+
+			"a check that takes longer counts as not passed. Default 15m")
 	cmd.Flags().StringArrayVar(&runChecks, "check", nil,
 		"A command (such as your tests) to run on the commit once it is made, in the sandbox; "+
 			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")

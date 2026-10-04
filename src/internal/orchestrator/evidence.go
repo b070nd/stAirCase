@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 )
@@ -20,6 +21,7 @@ type evidenceGate struct {
 	checks    []string
 	sandbox   string // as for approved commands
 	wsDir     string
+	timeout   time.Duration // for each check; 0 is the default
 }
 
 // runChecks runs every check on the proposed state and returns the results and,
@@ -35,7 +37,7 @@ func (g *evidenceGate) runChecks(ctx context.Context, next map[string]*approvedF
 	defer cleanup()
 	var why []string
 	for _, command := range g.checks {
-		c, tail := runCheck(ctx, dir, command, g.sandbox, g.wsDir)
+		c, tail := runCheck(ctx, dir, command, g.sandbox, g.wsDir, g.timeout)
 		results = append(results, c)
 		if c.ExitCode != 0 {
 			why = append(why, fmt.Sprintf("check %q failed (exit %d): %s", command, c.ExitCode, strings.TrimSpace(tail)))

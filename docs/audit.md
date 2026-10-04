@@ -179,7 +179,7 @@ staircase claude "fix the date parser" --check "go test ./..." --check "go vet .
 
 Each check runs on a clean checkout of exactly that commit, in the same OS sandbox
 as approved commands (no network, writes only in the checkout and a temporary
-folder), for at most 15 minutes. The certificate records the command, its exit code,
+folder), for at most 15 minutes (`--check-timeout 5m` sets another limit for every place checks run; a check that takes longer counts as not passed, and the certificate records it as one that could not run, exit code -1). The certificate records the command, its exit code,
 whether it ran sandboxed and the SHA-256 of its output, never the output itself.
 
 **The agent cannot finish until the checks pass.** In `staircase claude` and

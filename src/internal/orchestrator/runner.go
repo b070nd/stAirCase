@@ -167,6 +167,9 @@ type RunOptions struct {
 	// Checks are commands run on the commit the run made (--check), such as
 	// its tests; their results are evidence in the change certificate.
 	Checks []string
+	// CheckTimeout is how long one check may run, wherever checks run (approving on
+	// evidence, the definition of done, after the commit): 0 means 15 minutes.
+	CheckTimeout time.Duration
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -567,7 +570,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 	defer cancelAgent()
 	stopped := make(chan struct{})
-	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, proposals: proposals, usage: usage, host: host}
+	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: proposals, usage: usage, host: host}
 	val := opts.Validator
 	if val != nil {
 		if val.Chat == nil {
@@ -585,7 +588,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if val != nil {
 			val.noSampling = true // the evidence replaces the validator's own sampling
 		}
-		evGate = &evidenceGate{approvals: appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir}
+		evGate = &evidenceGate{approvals: appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir, timeout: opts.CheckTimeout}
 	}
 	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs}
 	if _, err := os.Stat(filepath.Join(r.wsDir, governance.AllowedSigners)); err == nil {
@@ -863,7 +866,7 @@ runLoop:
 			// The commit is made and stays delivered. Evidence that cannot be written
 			// is reported, recorded and named in the run summary; with RequireEvidence
 			// the run also ends with ErrEvidenceIncomplete.
-			ev := evidence{checks: r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox)}
+			ev := evidence{checks: r.runChecks(ctx, run.ID, gr, hash, opts.Checks, opts.Sandbox, opts.CheckTimeout)}
 			if ev.ledger, err = r.writeLedger(run.ID, ledger); err != nil {
 				fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
 				evidenceErrs = append(evidenceErrs, "ledger: "+err.Error())

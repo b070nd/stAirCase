@@ -302,6 +302,10 @@ stopped by a limit) is approved only when:
   the base commit, the changes approved so far, and this one; and
 - the `--validator` models, if you named any, agree.
 
+Each check runs for at most 15 minutes, or `--check-timeout`; one that takes longer counts as
+not passed, so the change comes to you ("timed out after …") rather than waiting. Set it to what
+your checks need: with evidence-based approval they run once per change.
+
 Approved on evidence, the decision is recorded as `evidence`, with each check's command,
 exit code and output digest in the record, and the certificate counts it under
 `decisions.evidence`. Otherwise the change comes to you with what was missing ("no

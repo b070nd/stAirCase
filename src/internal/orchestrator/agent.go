@@ -36,11 +36,12 @@ func (f AgentFunc) Run(ctx context.Context, env *AgentEnv) error { return f(ctx,
 
 // AgentEnv is the run as its agent sees it.
 type AgentEnv struct {
-	Worktree   string   // the run's git worktree: the agent's project root
-	AllowShell bool     // shell_exec may be proposed (--allow-shell-exec)
-	Sandbox    string   // approved commands: "auto", "required" or "off" (--sandbox)
-	Workspace  string   // the stAirCase workspace: keys and secrets, hidden from commands
-	Checks     []string // run before the agent may end (Done) and on the commit (--check)
+	Worktree     string        // the run's git worktree: the agent's project root
+	AllowShell   bool          // shell_exec may be proposed (--allow-shell-exec)
+	Sandbox      string        // approved commands: "auto", "required" or "off" (--sandbox)
+	Workspace    string        // the stAirCase workspace: keys and secrets, hidden from commands
+	CheckTimeout time.Duration // how long one check may run (0: the default)
+	Checks       []string      // run before the agent may end (Done) and on the commit (--check)
 
 	doneMu       sync.Mutex
 	doneAttempts int

@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`--check-timeout`.** How long one `--check` may run (default 15 minutes), wherever checks
+  run: approving on evidence, the definition of done and after the commit. A check that takes
+  longer counts as not passed: the change goes to a person with "timed out", and the
+  certificate records the check as one that could not run. With approve-on-evidence, which runs
+  the checks once per change, a short limit stops a hung check holding up a whole session.
+
+### Added
+
 - **`staircase doctor` reports the optional tools and interrupted runs.** Besides the
   workspace checks it now lists ssh-keygen (and whether OpenSSH is new enough to sign,
   8.0), which OS sandbox works on this machine and why another does not, and whether Claude
