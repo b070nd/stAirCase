@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +49,9 @@ func TestRecover_a_commit_that_looks_like_its_own_but_is_not(t *testing.T) {
 			git(t, r.Repo, "fetch", "-q", scratch, "HEAD") // brings the tree into the run's repository
 			other := strings.TrimSpace(git(t, r.Repo, "commit-tree", base+"^{tree}", "-m", "other history"))
 			args := append([]string{"-c", "user.email=t@t", "-c", "user.name=T", "commit-tree", tree}, parents(base, other)...)
-			args = append(args, "-m", "staircase: run #1\n\nStaircase-Chain: sha256:abc\nStaircase-Recovery: 0000")
+			// as the run's own commit would read: its case, and a chain head that really is on the chain
+			head := r.Events[len(r.Events)-1].EventHash
+			args = append(args, "-m", fmt.Sprintf("staircase: run #1 - case #%d\n\nStaircase-Chain: sha256:%s\nStaircase-Recovery: 0000", r.Run.CaseID, head))
 			fake := strings.TrimSpace(git(t, r.Repo, args...))
 			git(t, r.Repo, "update-ref", "refs/heads/staircase/run-1", fake)
 

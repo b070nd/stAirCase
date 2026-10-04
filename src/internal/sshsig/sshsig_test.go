@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/testdeps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,9 +14,7 @@ import (
 // keypair makes an SSH key and an allowed_signers file that trusts it for
 // principal.
 func keypair(t *testing.T, principal string) (key, signers string) {
-	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		t.Skip("ssh-keygen is needed")
-	}
+	testdeps.Need(t, "ssh-keygen")
 	dir := t.TempDir()
 	key = filepath.Join(dir, "id")
 	out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", principal, "-f", key).CombinedOutput()

@@ -13,6 +13,8 @@ import pathlib
 import posixpath
 import sys
 
+import vectorreport
+
 MAX_NEW_FILE = 200 * 1024
 MAX_BINARY_FILE = 2 * 1024 * 1024
 NEW_FILE, DELETE_FILE = "(new file)", "(delete file)"
@@ -136,7 +138,7 @@ def rebuild(vector: dict) -> str:
 
 
 def main() -> int:
-    failures = 0
+    results = []
     for f in sorted(pathlib.Path(__file__).with_name("rebuild-vectors").glob("*.json")):
         v = json.loads(f.read_text())
         try:
@@ -147,9 +149,9 @@ def main() -> int:
             ok = got is None and v["error"] in why
         else:
             ok = got == v["tree"]
-        failures += not ok
+        results.append((f.stem, ok))
         print("%s %s: %s" % ("ok  " if ok else "FAIL", f.stem, got[:12] if got else "refused (%s)" % why))
-    return 1 if failures else 0
+    return vectorreport.finish("rebuild_vectors", results, 25)
 
 
 if __name__ == "__main__":

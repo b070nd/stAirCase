@@ -24,14 +24,13 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
+	"github.com/b070nd/stAirCase/src/internal/testdeps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func sshKey(t *testing.T, principal string) (key, pub string) {
-	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		t.Skip("ssh-keygen is needed")
-	}
+	testdeps.Need(t, "ssh-keygen")
 	key = filepath.Join(t.TempDir(), "id")
 	out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", principal, "-f", key).CombinedOutput()
 	require.NoError(t, err, string(out))

@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/wslock"
 )
 
@@ -112,6 +115,47 @@ func (o *recoveryOp) owns(repoPath, tip string) bool {
 		return false
 	}
 	return gitOut(repoPath, "log", "-1", "--format=%(trailers:key="+recoveryTrailer+",valueonly)", tip) == o.Op
+}
+
+// runMadeCommit reports whether tip is the commit the run itself made before its
+// process died, and the chain head that commit names. It is that commit when it has
+// the base as its only parent and the approved tree, says it is this run's, names a
+// chain head that is on this run's audit chain, and, where a person's final review was
+// needed, the chain holds that review approving exactly these files. Such a commit
+// holds exactly the approved bytes under the run's own audit record: a recovery that
+// kept it finishes the run's evidence instead of leaving a branch nothing can complete.
+func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *approvals, events []domain.RunEventLog, needReview bool) (string, bool) {
+	if gitOut(repoPath, "rev-list", "--parents", "-n", "1", tip) != tip+" "+base {
+		return "", false
+	}
+	want, err := a.tree()
+	if err != nil || gitOut(repoPath, "rev-parse", tip+"^{tree}") != want {
+		return "", false
+	}
+	msg := gitOut(repoPath, "log", "-1", "--format=%B", tip)
+	if !strings.Contains(msg, fmt.Sprintf("staircase: run #%d - case #%d\n", runID, caseID)) {
+		return "", false
+	}
+	head := gitOut(repoPath, "log", "-1", "--format=%(trailers:key=Staircase-Chain,valueonly)", tip)
+	head = strings.TrimPrefix(head, "sha256:")
+	onChain, reviewed := false, false
+	for _, e := range events {
+		onChain = onChain || (head != "" && e.EventHash == head)
+		var d struct {
+			Source     string            `json:"source"`
+			ActionType string            `json:"action_type"`
+			Approved   bool              `json:"approved"`
+			Files      map[string]string `json:"files"`
+		}
+		if e.EventType == "yield_decided" && json.Unmarshal([]byte(e.Payload), &d) == nil &&
+			d.Source == "operator" && d.ActionType == domain.ActionFinalReview && d.Approved && maps.Equal(d.Files, digest(a.files)) {
+			reviewed = true
+		}
+	}
+	if !onChain || (needReview && !reviewed) {
+		return "", false
+	}
+	return head, true
 }
 
 func newOpID() (string, error) {

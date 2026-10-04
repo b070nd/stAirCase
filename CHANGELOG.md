@@ -23,6 +23,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A run killed right after its own commit can be recovered.** When the process died after the run moved its
+  branch to the commit but before the run's record or evidence was complete, `staircase recover` refused ("the
+  branch has moved ... not this recovery's") and nothing could finish the run. It now recognizes the run's own
+  commit (the base as the only parent, the approved tree, a chain head that is on this run's audit chain, and the
+  final review on the chain where one was needed), keeps it, writes the evidence that is missing, keeps a
+  certificate the run had already issued, and completes the run's record. Found by the new named-boundary kill
+  drill.
+- **The release gate counts only the default branch's own push run.** It accepted any successful CI run for the
+  commit, including a pull request run or one from a fork. It now asks for `event=push` on the default branch,
+  checks the answer again (event, branch, repository, commit) and ignores everything else.
+
 - **A run's time limit also ends the automatic work of a decision, and cancellation reaches signing and recovery.**
   `max_run_secs` ended a person's wait, but a check that decides a change (evidence), a reviewer model, a signal and the
   signing of a decision ran under the run's cancellation only, so the run sat in a long check past its limit; they are now
@@ -69,6 +80,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   to the ceiling. A model not in the table still counts at $15 / $75.
 
 ### Added
+
+- **Kill drills at named boundaries.** `tests/barrier_drill.bats` holds a `-tags barriers` build at the journal
+  sync, the audit commit, the consumption of an approval, the branch update, the evidence, the run's record and
+  inside `recover`, waits for the marker, kills it with SIGKILL and checks what a fresh process finds. A release
+  build contains none of it.
+- **Release evidence you can count.** `make evidence` runs the canonical release checks and writes
+  `evidence/evidence.json` (commit, tool versions, platform, fixture digests, per-step status and counts). The
+  conformance scripts fail on a missing, empty or shrunken vector inventory and write `--json` results; tests that
+  drive `ssh-keygen`, `node` or `python3` fail instead of skipping when `STAIRCASE_REQUIRE_DEPS` is set (CI).
 
 - **A policy can be asserted, not only replayed.** `staircase policy test <policy> --scenarios <file>`
   runs scenarios (a tree, a scope, proposals and the outcome expected: approve, reject, refuse or a

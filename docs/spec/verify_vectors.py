@@ -10,6 +10,8 @@ import json
 import pathlib
 import sys
 
+import vectorreport
+
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -59,7 +61,7 @@ def verify(envelope: dict, public_key: bytes, commit: str, min_cal: int) -> int:
 
 
 def main() -> int:
-    failures = 0
+    results = []
     for f in sorted(pathlib.Path(__file__).with_name("vectors").glob("*.json")):
         v = json.loads(f.read_text())
         try:
@@ -67,9 +69,9 @@ def main() -> int:
         except ValueError as e:
             got, why = None, str(e)
         ok = (got is not None) == v["valid"] and (not v["valid"] or got == v["cal"])
-        failures += not ok
+        results.append((f.stem, ok))
         print("%s %s: %s" % ("ok  " if ok else "FAIL", f.stem, "level %d" % got if got is not None else "refused (%s)" % why))
-    return 1 if failures else 0
+    return vectorreport.finish("verify_vectors", results, 13)
 
 
 if __name__ == "__main__":

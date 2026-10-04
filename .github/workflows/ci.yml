@@ -38,6 +38,8 @@ jobs:
         env:
           # the OS sandbox engines that must be tested here, not skipped
           STAIRCASE_REQUIRE_SANDBOX: ${{ runner.os == 'Linux' && 'landlock' || 'sandbox-exec' }}
+          # the programs the tests drive (ssh-keygen, node, python3): missing is a failure, not a skip
+          STAIRCASE_REQUIRE_DEPS: "1"
 
       # An implementation written from docs/spec alone must decide the
       # certificate's conformance vectors as stAirCase does.

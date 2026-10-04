@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/approvalhttp"
+	"github.com/b070nd/stAirCase/src/internal/barrier"
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
@@ -354,6 +355,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 				runErr = errors.Join(runErr, err)
 			}
 		}
+		barrier.Hit(barrier.DBCompleted)
 		summary := RunSummary{RunID: run.ID, CaseID: caseID, FinalStatus: finalStatus, CommitHash: commitHash, EndTime: endTime,
 			EvidenceErrors: evidenceErrs}
 		if commitHash != "" {
@@ -759,6 +761,7 @@ runLoop:
 					runErr = fmt.Errorf("journal approval: %w", err)
 					break runLoop
 				}
+				barrier.Hit(barrier.JournalSynced)
 			}
 			yieldSpan.SetAttributes(
 				attribute.Bool("staircase.approved", rl.resp.Approved),
@@ -783,6 +786,7 @@ runLoop:
 				runErr = fmt.Errorf("audit yield_decided: %w", err)
 				break runLoop
 			}
+			barrier.Hit(barrier.AuditCommitted)
 			d := decision{resp: rl.resp}
 			if rl.resp.Approved && rl.next != nil {
 				appr.record(rl.next)
@@ -797,6 +801,7 @@ runLoop:
 					d.resp = domain.Decide(false, d.resp.Feedback+"; reverting the changes failed: "+err.Error())
 				}
 			}
+			barrier.Hit(barrier.Consumed)
 			p.reply <- d
 			if rl.halt {
 				driftHalt(fmt.Sprintf("more than %d proposals reached outside the stories' scope", limits.MaxScopeViolations))
@@ -873,6 +878,7 @@ runLoop:
 			return err
 		}
 		if hash != "" {
+			barrier.Hit(barrier.GitCAS)
 			commitHash = hash
 			// The commit is made and stays delivered. Evidence that cannot be written
 			// is reported, recorded and named in the run summary; with RequireEvidence
@@ -891,6 +897,7 @@ runLoop:
 				_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
 				evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
 			}
+			barrier.Hit(barrier.EvidencePublished)
 			if len(evidenceErrs) > 0 {
 				_ = r.audit(run.ID, "evidence_failed", map[string]any{"commit": hash, "errors": evidenceErrs})
 			}

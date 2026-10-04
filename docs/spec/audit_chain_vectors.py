@@ -11,6 +11,8 @@ import pathlib
 import struct
 import sys
 
+import vectorreport
+
 
 def v1(entry, prev):
     return hashlib.sha256((entry["payload"] + prev + entry["git_commit_hash"]).encode()).hexdigest()
@@ -38,12 +40,12 @@ def chain_ok(entries):
 
 def main():
     path = pathlib.Path(__file__).with_name("audit-chain-vectors.json")
-    failures = 0
+    results = []
     for name, vec in json.loads(path.read_text()).items():
         ok = chain_ok(vec["entries"]) == vec["valid"]
-        failures += not ok
+        results.append((name, ok))
         print("%s %s" % ("ok  " if ok else "FAIL", name))
-    return 1 if failures else 0
+    return vectorreport.finish("audit_chain_vectors", results, 6)
 
 
 if __name__ == "__main__":
