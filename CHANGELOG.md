@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **`staircase doctor` reports the optional tools and interrupted runs.** Besides the
+  workspace checks it now lists ssh-keygen (and whether OpenSSH is new enough to sign,
+  8.0), which OS sandbox works on this machine and why another does not, and whether Claude
+  Code, Codex, Gemini CLI and OpenCode are installed, their versions and (Claude Code and
+  Codex, which can say without a model call) whether they are logged in. It points at runs
+  interrupted before they committed that hold approved changes (`staircase recover N`), and
+  at a legal hold. A missing optional tool never fails the check.
+
 ### Fixed
 
 - **Ctrl-C works in the terminal approval dialog.** In raw mode Ctrl-C is a key, not a

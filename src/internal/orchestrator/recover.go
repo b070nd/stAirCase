@@ -303,3 +303,13 @@ func gitOut(repo string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// JournaledApprovals is how many approved changes a run's journal holds, for
+// `staircase doctor` to point at a run that can be recovered.
+func JournaledApprovals(wsDir string, runID int64) int {
+	j, err := readJournal(wsDir, runID)
+	if err != nil {
+		return 0
+	}
+	return len(j)
+}

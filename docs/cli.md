@@ -328,6 +328,15 @@ Run diagnostics on the stAirCase workspace
 staircase doctor
 ```
 
+Checks that the workspace is healthy (directory, keys, database, git), and reports
+what stAirCase works without but gains from: ssh-keygen for signed decisions and
+reviews (OpenSSH 8.0 or newer), which OS sandbox works on this machine and why another
+does not, and which of Claude Code, Codex, Gemini CLI and OpenCode are installed, with
+their versions and, where it can be asked without a model call, whether they are logged
+in. It also lists runs that were interrupted before they committed and hold approved
+changes (staircase recover), and says when a legal hold is in effect. A missing optional
+tool is information, not a failed check.
+
 ## staircase gate
 
 Run pre-flight quality gates for a case and generate a report

@@ -15,7 +15,7 @@ New to the words used here (case, story, topology, proposal)? Read
 ```bash
 brew install b070nd/staircase/staircase
 staircase init       # creates the workspace in ~/.staircase-workspace
-staircase doctor     # checks that everything is ready
+staircase doctor     # checks that everything is ready, and which agents, sandbox and signing tools you have
 ```
 
 Other ways to install, and how to verify a download: [Install](docs/install.md).
