@@ -187,6 +187,11 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		return fmt.Errorf("attach the change certificate to %s: %w", commit, err)
 	}
 	fmt.Fprintf(os.Stdout, "   📜 Change certificate (CAL %d): %s, also in git notes (refs/notes/staircase)\n", p.CAL, path)
+	for _, e := range events { // signing again gives the same certificate: it is on the chain once
+		if e.EventType == "certificate_issued" && strings.Contains(e.Payload, `"envelope_sha256":"`+sha256Hex(b)+`"`) {
+			return nil
+		}
+	}
 	return r.audit(runID, "certificate_issued", map[string]any{"commit": commit, "cal": p.CAL,
 		"envelope_sha256": sha256Hex(b)})
 }

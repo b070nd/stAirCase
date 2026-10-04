@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 
+	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
@@ -35,6 +36,11 @@ type history struct {
 	Bound       runBinding
 	Approvals   []auditedApproval // in the order the chain recorded them
 	LastDecided int               // the highest proposal number the chain decided, approved or not
+	// What the run loaded and was started with, as it recorded it: the policy it
+	// ran under (not whatever policy.json holds now) and the signed request of the
+	// person who started it.
+	PolicyDigest string
+	Initiator    *certificate.Initiator
 }
 
 // auditedHistory reads a run's audit events, oldest first, and refuses a history
@@ -57,6 +63,9 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 			ActionType    string            `json:"action_type"`
 			RequestSHA256 string            `json:"request_sha256"`
 			Files         map[string]string `json:"files"`
+			Digest        string            `json:"digest"`
+			Principal     string            `json:"principal"`
+			Signature     string            `json:"signature"`
 		}
 		if i == 0 && e.EventType != "run_bound" {
 			return h, fmt.Errorf("the audit history begins with %q, not run_bound", e.EventType)
@@ -71,6 +80,14 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 				return h, errors.New("the run_bound record is unreadable")
 			}
 			h.Bound = runBinding{p.BaseSHA, p.Branch, p.Harness, p.PlanDigest, p.BlueprintHash}
+		case "policy_snapshot":
+			if json.Unmarshal([]byte(e.Payload), &p) == nil {
+				h.PolicyDigest = p.Digest
+			}
+		case "initiator_signed":
+			if json.Unmarshal([]byte(e.Payload), &p) == nil && p.Signature != "" {
+				h.Initiator = &certificate.Initiator{Principal: p.Principal, Signature: p.Signature}
+			}
 		case "certificate_issued", "run_recovered":
 			sealed = e.EventType
 		case "yield_decided":

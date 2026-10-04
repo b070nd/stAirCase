@@ -104,3 +104,9 @@ func ExportedAuditedHistory(events []domain.RunEventLog) (approved []int, lastDe
 	}
 	return approved, h.LastDecided, err
 }
+
+// ExportedOwnsCommit reports whether a recovery operation of that name, from that
+// base and expecting that tree, owns the commit tip.
+func ExportedOwnsCommit(repo, op, base, tree, tip string) bool {
+	return (&recoveryOp{Op: op, Base: base, Tree: tree}).owns(repo, tip)
+}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -108,4 +109,26 @@ func TestSeal_names_with_spaces_and_accents(t *testing.T) {
 
 	assert.Equal(t, name, strings.TrimSpace(git("-c", "core.quotepath=off", "diff-tree", "--no-commit-id", "--name-only", "-r", "main")))
 	assert.NotContains(t, string(out), "left out, still", string(out))
+}
+
+// TestReportRecovery_is_honest_about_the_evidence: a recovery whose evidence is
+// incomplete is not reported as a certified commit.
+func TestReportRecovery_is_honest_about_the_evidence(t *testing.T) {
+	var done strings.Builder
+	reportRecovery(&done, 7, orchestrator.RecoverResult{Commit: strings.Repeat("a", 40), Proposals: 2})
+	assert.Contains(t, done.String(), "Run #7 recovered")
+	assert.Contains(t, done.String(), "The certificate says the run did not finish")
+	assert.NotContains(t, done.String(), "incomplete")
+
+	var partial strings.Builder
+	reportRecovery(&partial, 7, orchestrator.RecoverResult{Commit: strings.Repeat("a", 40), Proposals: 2,
+		EvidenceErrors: []string{"ledger: disk full", "certificate: no signing key"}})
+	assert.Contains(t, partial.String(), "evidence is incomplete")
+	assert.Contains(t, partial.String(), "ledger: disk full")
+	assert.Contains(t, partial.String(), "staircase recover 7")
+	assert.NotContains(t, partial.String(), "The certificate says", "no certificate was claimed")
+
+	var repaired strings.Builder
+	reportRecovery(&repaired, 7, orchestrator.RecoverResult{Commit: strings.Repeat("a", 40), Proposals: 2, Repaired: true})
+	assert.Contains(t, repaired.String(), "already committed")
 }

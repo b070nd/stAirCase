@@ -70,6 +70,9 @@ type RecoverOptions struct {
 	// approved by the agreed task, evidence or reviewer models, as a run's final
 	// review would. Nil refuses such a recovery.
 	Confirm func(domain.YieldRequest) domain.YieldResponse
+	// RequireEvidence makes a recovery whose commit is made but whose evidence is
+	// incomplete end with ErrEvidenceIncomplete (the result still names the commit).
+	RequireEvidence bool
 }
 
 // RecoverResult is what a recovery committed.
@@ -77,24 +80,36 @@ type RecoverResult struct {
 	Commit      string
 	Proposals   int
 	FinalReview bool
+	// EvidenceErrors says what of the evidence (ledger, certificate, notes, audit
+	// record, summary, the run's record) could not be written. The commit exists
+	// either way; running recover again repairs the evidence on the same commit.
+	EvidenceErrors []string
+	Repaired       bool // the commit was already there: this run of recover finished what was missing
 }
 
 // ErrRecoveryRejected: the person refused the final review of a recovery.
 var ErrRecoveryRejected = errors.New("the recovered change was rejected in its final review")
 
-// Recover commits the proposals an interrupted run had approved. It trusts a
-// journal entry only when the run's audit chain records the same approval, derives
-// the files again from the base commit exactly as the run did, and moves the
-// run's branch only if it is still where the run started. The certificate says the
-// run did not finish. The run's worktree is left as it is.
+// Recover commits the proposals an interrupted run had approved. It trusts the
+// audit chain only after verifying it, a journal entry only when the chain also
+// records that approval, derives the files again from the base commit exactly as
+// the run did, and moves the run's branch only if it is still where the run
+// started. It writes a record of the operation before touching git, names it in the
+// commit, and so can finish its own work after a crash and tell it from a commit
+// anyone else made. The certificate says the run did not finish. The run's worktree
+// is left as it is.
 func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (RecoverResult, error) {
 	var res RecoverResult
 	run, err := r.store.GetRun(runID)
 	if err != nil || run == nil {
 		return res, fmt.Errorf("run #%d not found", runID)
 	}
+	op, err := loadOp(r.wsDir, runID)
+	if err != nil {
+		return res, err
+	}
 	switch {
-	case run.GitCommitHash != "":
+	case run.GitCommitHash != "" && (op == nil || op.Commit != run.GitCommitHash):
 		return res, fmt.Errorf("run #%d already has a commit (%.12s): there is nothing to recover", runID, run.GitCommitHash)
 	case run.Status == persistence.RunStatusSuccess:
 		return res, fmt.Errorf("run #%d finished: there is nothing to recover", runID)
@@ -169,67 +184,121 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 		a.record(next)
 	}
 	a.repo = repo // the commit is made in the run's repository
-
-	// A recovery killed after its commit left that commit and none of the rest
-	// (ledger, certificate, the run's record). The commit is the run's own when it
-	// is on the base and has exactly the tree the approvals produce: then it is
-	// finished, not made again, and not reviewed again.
+	want, err := a.tree()
+	if err != nil {
+		return res, err
+	}
 	branch := strings.TrimPrefix(bound.Branch, "refs/heads/")
-	var hash, chainHead string
-	if tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); tip != "" && tip != bound.Base {
-		want, err := a.tree()
-		if err != nil {
-			return res, err
-		}
-		if gitOut(repo.path, "rev-parse", tip+"^") == bound.Base && gitOut(repo.path, "rev-parse", tip+"^{tree}") == want {
-			hash = tip
-			chainHead = strings.TrimSpace(strings.TrimPrefix(gitOut(repo.path, "log", "-1", "--format=%(trailers:key=Staircase-Chain,valueonly)", tip), "sha256:"))
-			if chainHead == "" {
-				return res, fmt.Errorf("commit %.12s on %s names no audit chain head: it is not a recovered commit", tip, branch)
-			}
-			needReview = false
-		} else {
-			return res, fmt.Errorf("the branch %s has moved since the run started and is not this run's recovered commit", branch)
-		}
+	fingerprint := approvalsOf(hist.Approvals)
+
+	// One recovery of a run at a time.
+	unlock, err := lockRecovery(r.wsDir, runID)
+	if err != nil {
+		return res, err
+	}
+	defer unlock()
+	if op, err = loadOp(r.wsDir, runID); err != nil { // read again: another recovery may have finished meanwhile
+		return res, err
+	}
+	if run, err = r.store.GetRun(runID); err != nil || run == nil {
+		return res, fmt.Errorf("run #%d not found", runID)
+	}
+	if run.GitCommitHash != "" && (op == nil || op.Commit != run.GitCommitHash) {
+		return res, fmt.Errorf("run #%d already has a commit (%.12s): there is nothing to recover", runID, run.GitCommitHash)
+	}
+	if op != nil && !op.matches(bound.Base, bound.Branch, want, fingerprint) {
+		return res, errors.New("a recovery of this run was started for other approvals than the ones it has now: not continuing it")
+	}
+	if run.GitCommitHash != "" && r.recoveryEvidenceComplete(run, repo) {
+		return res, fmt.Errorf("run #%d is already recovered (%.12s): there is nothing to recover", runID, run.GitCommitHash)
 	}
 
-	if needReview {
+	pl := &plan.Plan{Harness: bound.Harness, Digest: bound.PlanDigest, BlueprintHash: bound.Blueprint}
+	// The final review a finished run would have had, kept durably before any commit
+	// is made: if it cannot be recorded, nothing is committed.
+	review := func() error {
 		if opts.Confirm == nil {
-			return res, errors.New("part of this change was approved as part of the agreed task, by evidence or by reviewer models: it needs the final review a finished run would have had, from a person at a terminal")
+			return errors.New("part of this change was approved as part of the agreed task, by evidence or by reviewer models: it needs the final review a finished run would have had, from a person at a terminal")
 		}
 		req := finalReviewRequest(a.files)
 		req.ReasoningTrace = "Final review of a recovered run: the run was interrupted. Approve to commit exactly these files."
 		resp := opts.Confirm(req)
 		reqJSON, _ := json.Marshal(req)
-		_ = r.audit(runID, "recovery_final_review", map[string]any{"approved": resp.Approved, "feedback": resp.Feedback, "request_sha256": sha256Hex(reqJSON)})
+		if err := r.audit(runID, "recovery_final_review", map[string]any{"approved": resp.Approved, "feedback": resp.Feedback, "request_sha256": sha256Hex(reqJSON)}); err != nil {
+			return fmt.Errorf("record the final review: %w", err)
+		}
 		if !resp.Approved {
-			return res, ErrRecoveryRejected
+			return ErrRecoveryRejected
 		}
 		res.FinalReview = true
+		return nil
 	}
-
-	pl := &plan.Plan{Harness: bound.Harness, Digest: bound.PlanDigest, BlueprintHash: bound.Blueprint}
-	if hash == "" {
-		if chainHead, err = r.store.GetLastEventHash(runID); err != nil {
+	if op == nil {
+		if needReview {
+			if err := review(); err != nil {
+				return res, err
+			}
+		}
+		chainHead, err := r.store.GetLastEventHash(runID)
+		if err != nil {
 			return res, err
 		}
-		if hash, err = a.commit(branch, commitMessage(runID, run.CaseID, pl, chainHead)); err != nil {
+		id, err := newOpID()
+		if err != nil {
+			return res, err
+		}
+		op = &recoveryOp{Op: id, RunID: runID, Base: bound.Base, Branch: bound.Branch, Tree: want, Approvals: fingerprint,
+			ChainHead: chainHead, NeedsReview: needReview, Reviewed: needReview}
+		if err := op.save(r.wsDir); err != nil {
+			return res, fmt.Errorf("keep the recovery record: %w", err)
+		}
+	} else if op.NeedsReview && !op.Reviewed {
+		if err := review(); err != nil {
+			return res, err
+		}
+		op.Reviewed = true
+		if err := op.save(r.wsDir); err != nil {
+			return res, fmt.Errorf("keep the recovery record: %w", err)
+		}
+	}
+
+	// Delivery: the branch moves from the base to this operation's commit, or it is
+	// already there.
+	var hash string
+	switch tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); {
+	case tip == "":
+		return res, fmt.Errorf("the branch %s no longer exists", branch)
+	case tip == bound.Base:
+		if hash, err = a.commit(branch, commitMessage(runID, run.CaseID, pl, op.ChainHead)+recoveryTrailer+": "+op.Op+"\n"); err != nil {
 			return res, fmt.Errorf("commit the recovered change: %w", err)
 		}
 		if hash == "" {
 			return res, errors.New("the approved changes leave the files as they were: there is nothing to commit")
 		}
+	case op.owns(repo.path, tip):
+		hash, res.Repaired = tip, true
+	default:
+		return res, fmt.Errorf("the branch %s has moved since the run started and its commit is not this recovery's", branch)
 	}
 	res.Commit, res.Proposals = hash, len(kept)
-
 	var evidenceErrs []string
-	ev := evidence{recovered: true}
-	if ev.ledger, err = r.writeLedger(runID, Ledger{Base: bound.Base, Proposals: kept}); err != nil {
+	if op.Commit != hash {
+		op.Commit = hash
+		if err := op.save(r.wsDir); err != nil {
+			evidenceErrs = append(evidenceErrs, "recovery record: "+err.Error())
+		}
+	}
+
+	// The evidence. Every step is safe to do again, so a recover after a crash or a
+	// failure repairs what is missing on the same commit.
+	ev := evidence{recovered: true, policy: hist.PolicyDigest, initiator: hist.Initiator}
+	ledger := Ledger{Base: bound.Base, Proposals: kept}
+	if ev.ledger, err = r.writeLedger(runID, ledger); err != nil {
 		evidenceErrs = append(evidenceErrs, "ledger: "+err.Error())
 	} else if err := attachNote(repo, LedgerNotesRef, LedgerPath(r.wsDir, runID), hash); err != nil {
 		evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 	}
-	if err := r.certify(runID, hash, bound.Base, chainHead, pl, repo, ev); err != nil {
+	if err := r.certify(runID, hash, bound.Base, op.ChainHead, pl, repo, ev); err != nil {
 		evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
 	}
 	now := time.Now()
@@ -237,24 +306,81 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	if crashed {
 		status = persistence.RunStatusKilled
 	}
-	_ = r.audit(runID, "run_recovered", map[string]any{"commit": hash, "proposals": len(kept), "final_review": res.FinalReview,
-		"forced": opts.Force, "evidence_errors": evidenceErrs})
+	if !hasEvent(r.store, runID, "run_recovered", hash) {
+		if err := r.audit(runID, "run_recovered", map[string]any{"commit": hash, "proposals": len(kept), "final_review": op.Reviewed,
+			"forced": opts.Force, "evidence_errors": evidenceErrs}); err != nil {
+			evidenceErrs = append(evidenceErrs, "audit record: "+err.Error())
+		}
+	} else if res.Repaired {
+		if err := r.audit(runID, "recovery_repaired", map[string]any{"commit": hash, "evidence_errors": evidenceErrs}); err != nil {
+			evidenceErrs = append(evidenceErrs, "audit record: "+err.Error())
+		}
+	}
 	outcome := OutcomeRecovered
 	if len(evidenceErrs) > 0 {
 		outcome = OutcomeWithoutEvidence
 	}
-	_ = writeSummary(r.wsDir, RunSummary{RunID: runID, CaseID: run.CaseID, FinalStatus: status, CommitHash: hash, EndTime: now,
-		Outcome: outcome, EvidenceErrors: evidenceErrs})
+	if err := writeSummary(r.wsDir, RunSummary{RunID: runID, CaseID: run.CaseID, FinalStatus: status, CommitHash: hash, EndTime: now,
+		Outcome: outcome, EvidenceErrors: evidenceErrs}); err != nil {
+		evidenceErrs = append(evidenceErrs, "summary: "+err.Error())
+	}
 	// The run's own record comes last: it is what says "recovered", so a kill before
 	// this point leaves a run that recover finishes again (it recognizes its commit).
-	update := func() error { return r.store.UpdateRunStatus(runID, status, &now, hash) }
-	if crashed { // nobody finished the run, so nobody finished its case either
-		update = func() error { return r.store.FinishRun(runID, status, now, hash) }
+	if run.GitCommitHash != hash {
+		update := func() error { return r.store.UpdateRunStatus(runID, status, &now, hash) }
+		if crashed { // nobody finished the run, so nobody finished its case either
+			update = func() error { return r.store.FinishRun(runID, status, now, hash) }
+		}
+		if err := update(); err != nil {
+			evidenceErrs = append(evidenceErrs, "the run's record: "+err.Error())
+		}
 	}
-	if err := update(); err != nil {
-		return res, fmt.Errorf("record the commit on run #%d: %w", runID, err)
+	res.EvidenceErrors = evidenceErrs
+	if len(evidenceErrs) > 0 && opts.RequireEvidence {
+		return res, fmt.Errorf("%w: %s", ErrEvidenceIncomplete, strings.Join(evidenceErrs, "; "))
 	}
 	return res, nil
+}
+
+// hasEvent reports whether the run's chain holds an event of that type about commit.
+func hasEvent(store *persistence.Store, runID int64, eventType, commit string) bool {
+	events, err := store.ListEventLogs(runID)
+	if err != nil {
+		return false
+	}
+	for _, e := range events {
+		if e.EventType == eventType && strings.Contains(e.Payload, `"commit":"`+commit+`"`) {
+			return true
+		}
+	}
+	return false
+}
+
+// recoveryEvidenceComplete reports whether everything a recovery writes is there for
+// the run's commit: ledger and certificate files, both notes, the audit record, the
+// summary and the run's record. Presence is what is checked, not a flag: files and
+// notes are things that go missing.
+func (r *Runner) recoveryEvidenceComplete(run *persistence.Run, repo *GitRepo) bool {
+	commit := run.GitCommitHash
+	for _, f := range []string{LedgerPath(r.wsDir, run.ID), filepath.Join(r.wsDir, "audit", fmt.Sprintf("run-%d.certificate.json", run.ID))} {
+		if _, err := os.Stat(f); err != nil {
+			return false
+		}
+	}
+	for _, ref := range []string{NotesRef, LedgerNotesRef} {
+		if gitOut(repo.path, "notes", "--ref="+ref, "show", commit) == "" {
+			return false
+		}
+	}
+	if !hasEvent(r.store, run.ID, "run_recovered", commit) || !hasEvent(r.store, run.ID, "certificate_issued", commit) {
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(r.wsDir, "runs", fmt.Sprintf("%d", run.ID), "summary.json"))
+	if err != nil {
+		return false
+	}
+	var s RunSummary
+	return json.Unmarshal(b, &s) == nil && s.Outcome == OutcomeRecovered && s.CommitHash == commit
 }
 
 // gitOut is git's output in repo, or "" when it fails.

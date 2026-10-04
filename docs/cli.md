@@ -799,10 +799,18 @@ run would have asked, so recover needs a terminal then. The run's worktree is le
 as it is. A run whose record still says RUNNING needs --force, when you know its
 process is gone.
 
+Recovery writes a record of what it is about to do before it touches git and names
+itself in the commit it makes, so a recover that was interrupted, or whose ledger,
+certificate, notes or records could not all be written, can be run again: it
+finishes the missing evidence on the same commit and says what is still missing.
+A commit on the run's branch that it did not make is never adopted. With
+--require-evidence the command exits with an error while the evidence is incomplete.
+
 Flags:
 
 ```
-      --force   Recover a run whose record still says RUNNING (its process is known to be gone)
+      --force              Recover a run whose record still says RUNNING (its process is known to be gone)
+      --require-evidence   Fail (exit status 1) when the commit is made but its evidence is incomplete
 ```
 
 ## staircase replay

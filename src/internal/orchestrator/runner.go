@@ -445,7 +445,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			return fmt.Errorf("sign as the run's initiator: %w", err)
 		}
 		initiator = &certificate.Initiator{Principal: opts.SignAs, Signature: base64.StdEncoding.EncodeToString(sig)}
-		if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs}); err != nil {
+		if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs, "signature": initiator.Signature}); err != nil {
 			return fmt.Errorf("audit initiator_signed: %w", err)
 		}
 	}
@@ -501,6 +501,11 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("load policy: %w", err)
 	}
 	policyEngine := snap.Engine
+	// The policy this run decides under, on the chain, so evidence made later (a
+	// recovery) names it and not whatever policy.json holds by then.
+	if err := r.audit(run.ID, "policy_snapshot", map[string]any{"digest": snap.Digest, "signed": snap.Signed}); err != nil {
+		return fmt.Errorf("audit policy_snapshot: %w", err)
+	}
 	limits := policyEngine.Limits.Limits // the drift-supervision limits of the policy …
 	if opts.Plan != nil {
 		limits = limits.Tighter(opts.Plan.Limits) // … and of the plan (its blueprint's)
