@@ -144,6 +144,9 @@ type RunEventLog struct {
 	Timestamp     time.Time `json:"timestamp"`
 	EventHash     string    `json:"event_hash"`
 	GitCommitHash string    `json:"git_commit_hash,omitempty"`
+	// HashVersion is the chain format EventHash was computed under: 2 covers the
+	// event type too; 0 or 1 is the original (payload, previous hash, commit).
+	HashVersion int `json:"hash_version,omitempty"`
 }
 
 // ─── HITL yield types ─────────────────────────────────────────────────────────

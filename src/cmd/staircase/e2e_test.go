@@ -33,6 +33,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/audit"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/viper"
@@ -794,4 +795,49 @@ func TestAudit_verify_honours_rekor_url(t *testing.T) {
 	assert.NoError(t, auditVerifyHandler(nil, []string{cpPath}), "the log named on the command line is the one asked")
 	auditRekorURL = audit.DefaultRekorURL
 	assert.Error(t, auditVerifyHandler(nil, []string{cpPath}), "without it the sidecar's own (dead) address is used")
+}
+
+// TestAudit_verify_chain_versions: a checkpoint exported before chain version 2
+// (entries without hash_version) still verifies; one that was relabelled and
+// signed again - by someone with the workspace key - does not, because version 2
+// entries commit to their event type.
+func TestAudit_verify_chain_versions(t *testing.T) {
+	wsDir, s := e2eWorkspace(t)
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+	priv, err := crypto.LoadSigningKey(wsDir)
+	require.NoError(t, err)
+	write := func(name string, entries []domain.RunEventLog) string {
+		canonical, err := marshalEntries(entries)
+		require.NoError(t, err)
+		line, err := json.Marshal(AuditCheckpoint{RunID: 1, Exported: time.Now().UTC(), Entries: entries, Signature: crypto.Sign(priv, canonical)})
+		require.NoError(t, err)
+		path := filepath.Join(wsDir, name)
+		require.NoError(t, os.WriteFile(path, append(line, '\n'), 0o600))
+		return path
+	}
+
+	// what an older stAirCase exported: version 1 hashes, no hash_version field
+	var old []domain.RunEventLog
+	prev := ""
+	for i, typ := range []string{"run_started", "yield_decided"} {
+		e := domain.RunEventLog{ID: int64(i + 1), RunID: 1, EventType: typ, Payload: fmt.Sprintf(`{"n":%d}`, i), Timestamp: time.Now().UTC()}
+		e.EventHash = persistence.ComputeEventHash(e.Payload, prev, "")
+		prev = e.EventHash
+		old = append(old, e)
+	}
+	assert.NoError(t, auditVerifyHandler(nil, []string{write("old.checkpoint.json", old)}), "an export from before version 2")
+
+	// a version 2 export, relabelled and signed again
+	var cur []domain.RunEventLog
+	prev = ""
+	for i, typ := range []string{"run_started", "yield_decided"} {
+		e := domain.RunEventLog{ID: int64(i + 1), RunID: 1, EventType: typ, Payload: fmt.Sprintf(`{"n":%d}`, i), Timestamp: time.Now().UTC(), HashVersion: 2}
+		e.EventHash = persistence.ComputeEventHashV2(e.EventType, e.Payload, prev, "")
+		prev = e.EventHash
+		cur = append(cur, e)
+	}
+	assert.NoError(t, auditVerifyHandler(nil, []string{write("cur.checkpoint.json", cur)}))
+	cur[1].EventType = "validator_note"
+	assert.Error(t, auditVerifyHandler(nil, []string{write("relabelled.checkpoint.json", cur)}), "a relabelled event in a signed record")
+	_ = s
 }

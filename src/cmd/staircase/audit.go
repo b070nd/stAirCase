@@ -302,18 +302,9 @@ func marshalEntries(entries []domain.RunEventLog) ([]byte, error) {
 	return json.Marshal(entries)
 }
 
-// verifyHashChain re-derives each entry's event_hash using
-// persistence.ComputeEventHash - the single source of truth for the algorithm
-// - and confirms it matches the stored value.
+// verifyHashChain re-derives each entry's event_hash under the chain version
+// the entry names (persistence.VerifyEntries, the one place the algorithm
+// lives) and confirms it matches the stored value.
 func verifyHashChain(entries []domain.RunEventLog) error {
-	prevHash := ""
-	for i, e := range entries {
-		got := persistence.ComputeEventHash(e.Payload, prevHash, e.GitCommitHash)
-		if got != e.EventHash {
-			return fmt.Errorf("entry #%d (id=%d): hash mismatch: stored=%s computed=%s",
-				i, e.ID, e.EventHash, got)
-		}
-		prevHash = e.EventHash
-	}
-	return nil
+	return persistence.VerifyEntries(entries)
 }

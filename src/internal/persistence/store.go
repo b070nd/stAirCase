@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -611,7 +613,7 @@ func (s *Store) ListFlaggedCases() ([]domain.Case, error) {
 // OldestEventLogs returns the run_event_logs rows PruneEventLogsThrough would
 // delete to keep only the newest keep rows, oldest first.
 func (s *Store) OldestEventLogs(keep int64) ([]domain.RunEventLog, error) {
-	rows, err := s.db.Query(`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash
+	rows, err := s.db.Query(`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version
 		FROM run_event_logs ORDER BY id ASC
 		LIMIT MAX(0, (SELECT COUNT(*) FROM run_event_logs) - ?)`, keep)
 	if err != nil {
@@ -621,7 +623,7 @@ func (s *Store) OldestEventLogs(keep int64) ([]domain.RunEventLog, error) {
 	var out []domain.RunEventLog
 	for rows.Next() {
 		var e domain.RunEventLog
-		if err := rows.Scan(&e.ID, &e.RunID, &e.EventType, &e.Payload, &e.Timestamp, &e.EventHash, &e.GitCommitHash); err != nil {
+		if err := rows.Scan(&e.ID, &e.RunID, &e.EventType, &e.Payload, &e.Timestamp, &e.EventHash, &e.GitCommitHash, &e.HashVersion); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -1070,8 +1072,8 @@ func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseS
 		return 0, "", fmt.Errorf("accept story: %w", err)
 	}
 	now := time.Now()
-	if _, err := tx.Exec(`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash) VALUES (?, ?, ?, ?, ?, ?)`,
-		runID, "story_accepted", string(payload), now, ComputeEventHash(string(payload), prevHash, commit), commit); err != nil {
+	if _, err := tx.Exec(`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		runID, "story_accepted", string(payload), now, ComputeEventHashV2("story_accepted", string(payload), prevHash, commit), commit, ChainVersion); err != nil {
 		return 0, "", fmt.Errorf("accept story: audit: %w", err)
 	}
 	if _, err := tx.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, StoryStatusImplemented, storyID); err != nil {
@@ -1168,7 +1170,60 @@ func ComputeEventHash(payload, prevHash, gitCommitHash string) string {
 	return fmt.Sprintf("%x", h)
 }
 
-// AppendEventLog writes a tamper-proof entry: hash = SHA-256(payload + prevHash + gitCommitHash).
+// ChainVersion is the chain format new entries are written under.
+//
+// Version 1 (SHA-256(payload ‖ prev ‖ commit)) did not cover the event type, and
+// joined its parts without separators. Version 2 covers the event type and
+// length-prefixes every part (see docs/audit.md, "The hash chain"). Entries
+// written before it stay version 1 and verify as they always did.
+const ChainVersion = 2
+
+// ComputeEventHashV2 is the version 2 chain hash: SHA-256 of the label
+// "staircase-chain-v2\n" followed by event type, payload, previous hash and
+// commit, each as an 8-byte big-endian length and its bytes.
+func ComputeEventHashV2(eventType, payload, prevHash, gitCommitHash string) string {
+	h := sha256.New()
+	h.Write([]byte("staircase-chain-v2\n"))
+	for _, field := range []string{eventType, payload, prevHash, gitCommitHash} {
+		var n [8]byte
+		binary.BigEndian.PutUint64(n[:], uint64(len(field)))
+		h.Write(n[:])
+		h.Write([]byte(field))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// ExpectedEventHash is the hash entry e must carry, given the hash of the entry
+// before it, under the chain version e names.
+func ExpectedEventHash(e domain.RunEventLog, prevHash string) (string, error) {
+	switch e.HashVersion {
+	case 0, 1:
+		return ComputeEventHash(e.Payload, prevHash, e.GitCommitHash), nil
+	case 2:
+		return ComputeEventHashV2(e.EventType, e.Payload, prevHash, e.GitCommitHash), nil
+	}
+	return "", fmt.Errorf("entry id=%d uses chain version %d, which this version of stAirCase does not know", e.ID, e.HashVersion)
+}
+
+// VerifyEntries recomputes every hash of a run's entries, oldest first, and
+// names the first one that does not match: the single check that the store,
+// `staircase audit verify` and `staircase inspect log` share.
+func VerifyEntries(entries []domain.RunEventLog) error {
+	prevHash := ""
+	for i, e := range entries {
+		want, err := ExpectedEventHash(e, prevHash)
+		if err != nil {
+			return err
+		}
+		if e.EventHash != want {
+			return fmt.Errorf("hash mismatch at entry %d (id=%d, %s): stored=%s computed=%s", i+1, e.ID, e.EventType, e.EventHash, want)
+		}
+		prevHash = e.EventHash
+	}
+	return nil
+}
+
+// AppendEventLog writes a tamper-proof entry: hash = SHA-256 over event type, payload, prevHash and gitCommitHash (ChainVersion).
 // gitCommitHash is stored per-entry so that inspect log can verify each entry
 // with the exact value that was current when the entry was written - the hash
 // changes from "" to the real commit hash at teardown, so a single run-level
@@ -1177,12 +1232,12 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 	if len(payload) > maxEventLogPayload {
 		payload = payload[:maxEventLogPayload]
 	}
-	eventHash := ComputeEventHash(payload, prevHash, gitCommitHash)
+	eventHash := ComputeEventHashV2(eventType, payload, prevHash, gitCommitHash)
 	now := time.Now()
 	res, err := s.db.Exec(
-		`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		runID, eventType, payload, now, eventHash, gitCommitHash,
+		`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		runID, eventType, payload, now, eventHash, gitCommitHash, ChainVersion,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("append event log: %w", err)
@@ -1196,6 +1251,7 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 		Timestamp:     now,
 		EventHash:     eventHash,
 		GitCommitHash: gitCommitHash,
+		HashVersion:   ChainVersion,
 	}, nil
 }
 
@@ -1219,7 +1275,7 @@ func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommit
 
 func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 	rows, err := s.db.Query(
-		`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash
+		`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version
 		 FROM run_event_logs WHERE run_id = ? ORDER BY id ASC`, runID,
 	)
 	if err != nil {
@@ -1229,7 +1285,7 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 	var logs []domain.RunEventLog
 	for rows.Next() {
 		var l domain.RunEventLog
-		if err := rows.Scan(&l.ID, &l.RunID, &l.EventType, &l.Payload, &l.Timestamp, &l.EventHash, &l.GitCommitHash); err != nil {
+		if err := rows.Scan(&l.ID, &l.RunID, &l.EventType, &l.Payload, &l.Timestamp, &l.EventHash, &l.GitCommitHash, &l.HashVersion); err != nil {
 			return nil, err
 		}
 		logs = append(logs, l)
@@ -1247,14 +1303,8 @@ func (s *Store) VerifyChain(runID int64) error {
 	if err != nil {
 		return fmt.Errorf("verify chain: list events: %w", err)
 	}
-	prevHash := ""
-	for i, entry := range logs {
-		want := ComputeEventHash(entry.Payload, prevHash, entry.GitCommitHash)
-		if entry.EventHash != want {
-			return fmt.Errorf("verify chain: hash mismatch at entry %d (id=%d): stored=%s computed=%s",
-				i+1, entry.ID, entry.EventHash, want)
-		}
-		prevHash = entry.EventHash
+	if err := VerifyEntries(logs); err != nil {
+		return fmt.Errorf("verify chain: %w", err)
 	}
 	return nil
 }

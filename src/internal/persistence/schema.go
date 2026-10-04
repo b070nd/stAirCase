@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS run_event_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     event_hash TEXT NOT NULL,
     git_commit_hash TEXT NOT NULL DEFAULT '',
+    hash_version INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 
@@ -233,4 +234,7 @@ var Migrations = []string{
 	`ALTER TABLE projects ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE cases ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE cases ADD COLUMN blueprint_slug TEXT NOT NULL DEFAULT ''`,
+	// Audit chain version 2: the hash covers the event type too (docs/audit.md).
+	// Rows written before it are version 1.
+	`ALTER TABLE run_event_logs ADD COLUMN hash_version INTEGER NOT NULL DEFAULT 1`,
 }
