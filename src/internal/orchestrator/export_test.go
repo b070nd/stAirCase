@@ -94,3 +94,13 @@ func ExportedGuardNewFile(path, content string) string {
 
 // ExportedIndent is how a check's output is shown on the terminal.
 func ExportedIndent(s string) string { return indent(s) }
+
+// ExportedAuditedHistory exposes the lifecycle checks of recovery: the approvals
+// the history holds (their proposal numbers) and the last proposal it decided.
+func ExportedAuditedHistory(events []domain.RunEventLog) (approved []int, lastDecided int, err error) {
+	h, err := auditedHistory(events)
+	for _, a := range h.Approvals {
+		approved = append(approved, a.Seq)
+	}
+	return approved, h.LastDecided, err
+}

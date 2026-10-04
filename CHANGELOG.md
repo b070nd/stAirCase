@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`staircase recover` refuses a history it cannot fully trust.** It now verifies the run's audit
+  chain before believing a row of it, applies the approvals in the order the chain recorded (a
+  journal whose lines were reordered gave a different tree), and refuses, committing nothing, when
+  an approval the chain holds is missing from the journal or differs from it, when the journal has a
+  repeated line, a corrupt line with others after it, or cannot be read, or when the audit history
+  is one no run could have written. A last journal line cut short by the crash, or written but never
+  audited, is still tolerated, so a legitimately interrupted run remains recoverable.
+
+### Fixed
+
 - **The price table was out of date, and in places below what the providers charge.** A budget cap
   counts tokens at these prices, and `claude-haiku-4-5` was priced at $0.80 / $4 per million
   tokens against the published $1 / $5, so a run on it could spend a quarter more than its cap. The

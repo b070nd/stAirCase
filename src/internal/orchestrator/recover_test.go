@@ -184,8 +184,9 @@ func TestRun_an_approval_that_cannot_be_kept_is_not_given(t *testing.T) {
 }
 
 // TestRecover_trusts_only_what_the_audit_chain_records: a journal line the
-// audit chain has no approval for, or whose request differs from the one the
-// chain recorded, is never committed, so nobody can add bytes by editing the file.
+// audit chain has no approval for is never committed, so nobody can add bytes by
+// editing the file. (One that reuses an approved number with other bytes makes the
+// recovery refuse: TestRecover_refuses_to_certify_a_prefix.)
 func TestRecover_trusts_only_what_the_audit_chain_records(t *testing.T) {
 	r := interrupted(t, nil, orchestrator.RunOptions{})
 	path := filepath.Join(r.WsDir, "journal", "run-1.approved.jsonl")
@@ -202,7 +203,7 @@ func TestRecover_trusts_only_what_the_audit_chain_records(t *testing.T) {
 		out, _ := json.Marshal(first)
 		return string(out)
 	}
-	forged := append(lines, evil(99), evil(1)) // one the chain never approved, one that reuses a real seq with other bytes
+	forged := append(lines, evil(99)) // a proposal the chain never approved, numbered after every decision it holds
 	require.NoError(t, os.WriteFile(path, []byte(strings.Join(forged, "\n")+"\n"), 0o600))
 
 	res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{})

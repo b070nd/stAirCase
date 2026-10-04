@@ -1,7 +1,7 @@
 package orchestrator
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,25 +61,6 @@ func appendJournal(wsDir string, runID int64, req domain.YieldRequest, seq int, 
 	return f.Close()
 }
 
-func readJournal(wsDir string, runID int64) ([]journalEntry, error) {
-	f, err := os.Open(journalPath(wsDir, runID))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	var out []journalEntry
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 64<<20)
-	for sc.Scan() {
-		var e journalEntry
-		if json.Unmarshal(sc.Bytes(), &e) != nil {
-			break // a line cut short by the crash ends the journal
-		}
-		out = append(out, e)
-	}
-	return out, nil
-}
-
 // RecoverOptions are for [Runner.Recover].
 type RecoverOptions struct {
 	// Force recovers a run whose record still says RUNNING: only when its
@@ -120,64 +101,38 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	case run.Status == persistence.RunStatusRunning && !opts.Force:
 		return res, fmt.Errorf("run #%d may still be running: if its process is gone, recover it with --force", runID)
 	}
+	// The audit chain must verify before any row of it is believed.
+	if err := r.store.VerifyChain(runID); err != nil {
+		return res, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
+	}
 	events, err := r.store.ListEventLogs(runID)
 	if err != nil {
 		return res, err
 	}
-	var bound struct {
-		Base, Branch, Harness, PlanDigest, Blueprint string
+	hist, err := auditedHistory(events)
+	if err != nil {
+		return res, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
 	}
-	type decidedRec struct{ hash, source string }
-	approved := map[int]decidedRec{} // seq → what the audit chain recorded about each approval
-	for _, e := range events {
-		var p struct {
-			Type          string `json:"type"`
-			BaseSHA       string `json:"base_sha"`
-			Branch        string `json:"branch"`
-			Harness       string `json:"harness"`
-			PlanDigest    string `json:"plan_digest"`
-			BlueprintHash string `json:"blueprint_hash"`
-			Seq           int    `json:"seq"`
-			Source        string `json:"source"`
-			Approved      bool   `json:"approved"`
-			ActionType    string `json:"action_type"`
-			RequestSHA256 string `json:"request_sha256"`
-		}
-		if json.Unmarshal([]byte(e.Payload), &p) != nil {
-			continue
-		}
-		switch e.EventType {
-		case "run_bound":
-			bound.Base, bound.Branch, bound.Harness, bound.PlanDigest, bound.Blueprint = p.BaseSHA, p.Branch, p.Harness, p.PlanDigest, p.BlueprintHash
-		case "yield_decided":
-			if p.Approved && p.ActionType == domain.ActionFileEdit {
-				approved[p.Seq] = decidedRec{p.RequestSHA256, p.Source}
-			}
-		}
-	}
+	bound := hist.Bound
 	if bound.Base == "" || bound.Branch == "" {
 		return res, fmt.Errorf("run #%d never got as far as a run branch: there is nothing to recover", runID)
 	}
-	journal, err := readJournal(r.wsDir, runID)
-	if err != nil {
+	journal, err := readJournalFile(r.wsDir, runID)
+	if errors.Is(err, os.ErrNotExist) {
 		return res, fmt.Errorf("run #%d has no journal of approvals: there is nothing to recover", runID)
+	} else if err != nil {
+		return res, fmt.Errorf("the approval journal of run #%d cannot be trusted: %w", runID, err)
 	}
-	var kept []LedgerProposal
-	needReview := false
-	for _, e := range journal {
-		rec, ok := approved[e.Seq]
-		if !ok || rec.hash != sha256Hex(e.Request) {
-			continue // not on the audit chain, or not the request it recorded: never released, never committed
-		}
-		var req domain.YieldRequest
-		if json.Unmarshal(e.Request, &req) != nil {
-			continue
-		}
-		kept = append(kept, LedgerProposal{Seq: e.Seq, Source: rec.source, Edits: req.ProposedEdits}) // who decided is the chain's word, not the journal's
-		needReview = needReview || (rec.source != "operator" && rec.source != "policy")
+	kept, err := reconcile(hist, journal)
+	if err != nil {
+		return res, fmt.Errorf("run #%d cannot be recovered: %w", runID, err)
 	}
 	if len(kept) == 0 {
 		return res, fmt.Errorf("run #%d had nothing approved: there is nothing to recover", runID)
+	}
+	needReview := false
+	for _, p := range kept {
+		needReview = needReview || (p.Source != "operator" && p.Source != "policy")
 	}
 
 	c, err := r.store.GetCase(run.CaseID)
@@ -203,10 +158,13 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	if err != nil {
 		return res, err
 	}
-	for _, p := range kept {
+	for i, p := range kept {
 		next, err := a.derive(p.Edits)
 		if err != nil {
 			return res, fmt.Errorf("proposal %d no longer applies: %w", p.Seq, err)
+		}
+		if !matchesDigest(hist.Approvals[i].Files, next) { // what the chain says was approved is what is derived
+			return res, fmt.Errorf("proposal %d derives other bytes than the audit chain recorded as approved", p.Seq)
 		}
 		a.record(next)
 	}
@@ -311,9 +269,16 @@ func gitOut(repo string, args ...string) string {
 // JournaledApprovals is how many approved changes a run's journal holds, for
 // `staircase doctor` to point at a run that can be recovered.
 func JournaledApprovals(wsDir string, runID int64) int {
-	j, err := readJournal(wsDir, runID)
+	raw, err := os.ReadFile(journalPath(wsDir, runID))
 	if err != nil {
 		return 0
 	}
-	return len(j)
+	n := 0 // counted leniently: a damaged journal is still a reason to run recover, which says what is wrong
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		var e journalEntry
+		if json.Unmarshal(line, &e) == nil && e.Seq > 0 {
+			n++
+		}
+	}
+	return n
 }

@@ -111,7 +111,15 @@ approved are not lost: a run keeps each approval, before the agent is told the a
 and `staircase recover <run-id>` commits exactly those. It takes only what the run's
 audit chain also records (a line added to the journal is ignored), derives the files
 again from the base commit, and moves the branch only if it is still where the run
-started. If part of the change was approved as part of the agreed task, by evidence or by
+started. It verifies the audit chain first, applies the approvals in the order the chain
+recorded them (not the order of the journal's lines), and refuses, committing nothing, when
+the two records do not fit: an approval the chain holds that the journal lacks or holds with
+other bytes, a repeated or corrupt journal line followed by others, a journal that cannot be
+read, or a history no run could have written (a decision before the run began, numbers that do
+not increase, a decision after the certificate). The one thing it tolerates is what a crash
+leaves: a last journal line that was cut short, or written but never audited and so never
+released. (A run written before audit chain version 2 can have an event relabelled without the
+chain noticing; see [the hash chain](audit.md#the-hash-chain).) If part of the change was approved as part of the agreed task, by evidence or by
 reviewer models, you approve the whole change once first, as a finished run would have
 asked. The certificate says the run did not finish (CAL 2 at most), the run's record
 keeps its KILLED status with the commit named, and the commit can be verified and rebuilt
