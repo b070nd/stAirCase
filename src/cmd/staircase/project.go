@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -185,6 +186,14 @@ var (
 	configBudgetCap    float64
 )
 
+// checkBudgetCap refuses a cap that would be stored as set and cap nothing.
+func checkBudgetCap(usd float64) error {
+	if math.IsNaN(usd) || math.IsInf(usd, 0) || usd < 0 {
+		return fmt.Errorf("--budget-cap is an amount in dollars, 0 or more (0 = no cap), not %v", usd)
+	}
+	return nil
+}
+
 var projectConfigSetCmd = &cobra.Command{
 	Use:   "set <project-id>",
 	Short: "Set default model or budget cap for a project",
@@ -211,6 +220,9 @@ var projectConfigSetCmd = &cobra.Command{
 			fmt.Printf("✅ Default model for project #%d set to %q.\n", id, configDefaultModel)
 		}
 		if cmd.Flags().Changed("budget-cap") {
+			if err := checkBudgetCap(configBudgetCap); err != nil {
+				return err
+			}
 			if err := store.SetProjectBudgetCap(id, configBudgetCap); err != nil {
 				return fmt.Errorf("set budget cap: %w", err)
 			}

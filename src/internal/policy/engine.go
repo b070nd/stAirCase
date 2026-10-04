@@ -178,6 +178,11 @@ func parseEngine(data []byte, path string) (*Engine, error) {
 		}
 		return nil, fmt.Errorf("parse policy file %s: %w", path, err)
 	}
+	for i, r := range e.Rules {
+		if r.Effect != "" && r.Effect != EffectApprove && r.Effect != EffectReject { // anything else would read as reject
+			return nil, fmt.Errorf("parse policy file %s: rule #%d: effect must be \"approve\" or \"reject\", not %q", path, i, r.Effect)
+		}
+	}
 	// Blanket-deny guard: a rule that matches everything and rejects is dangerous
 	// because it silently blocks all automation.  Require an explicit opt-in.
 	if !e.AllowBlanketDeny {

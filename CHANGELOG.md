@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A negative limit no longer beats a real one, and a policy rule with an unknown `effect` is
+  refused.** When a blueprint and policy.json both set a limit the stricter applies, but a
+  negative number counted as the smaller one and then meant "no limit". Negative limits now
+  count as none. A rule whose `effect` was misspelt (`allow`, `Approve`) was read as a
+  rejection, the opposite of what it says; loading the policy now fails and names the rule.
+- **`project config set --budget-cap` refuses a negative or non-numeric amount.** It stored
+  the value and reported "set to $-5.00/run" while capping nothing.
 - **A governed Gemini CLI cannot read outside the project with the older argument name.**
   `read_file` called with `absolute_path` (the name older Gemini CLI versions use) had no path
   to check and was allowed; it is now read as `file_path` and checked, and a `read_file` that
