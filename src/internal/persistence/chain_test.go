@@ -111,3 +111,55 @@ func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	_, err := db.Exec(query, args...)
 	require.NoError(t, err)
 }
+
+// TestPrunableEventLogs_are_whole_runs: retention removes runs, never the front
+// of a run's chain, which would leave a chain that can no longer be verified.
+func TestPrunableEventLogs_are_whole_runs(t *testing.T) {
+	s, db, a := chainStore(t)
+	c, _ := s.GetRun(a)
+	mk := func() int64 {
+		r, err := s.CreateRun(c.CaseID, 1, "main")
+		require.NoError(t, err)
+		require.NoError(t, s.FinishRun(r.ID, persistence.RunStatusSuccess, time.Now(), "c"))
+		return r.ID
+	}
+	require.NoError(t, s.FinishRun(a, persistence.RunStatusSuccess, time.Now(), "c"))
+	b, cRun := mk(), mk()
+	add := func(run int64, n int) {
+		for i := 0; i < n; i++ {
+			_, err := s.AppendEventLogChained(run, "state_emit", `{}`, "")
+			require.NoError(t, err)
+		}
+	}
+	add(a, 3)
+	add(b, 3)
+	add(cRun, 3)
+	rowsOf := func(rows []domain.RunEventLog) map[int64]int {
+		m := map[int64]int{}
+		for _, r := range rows {
+			m[r.RunID]++
+		}
+		return m
+	}
+
+	rows, err := s.PrunableEventLogs(5) // 9 rows, 4 over: the first run (3) fits, the second is cut in the middle
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]int{a: 3}, rowsOf(rows))
+	n, err := s.PruneEventLogsOfRuns([]int64{a})
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, n)
+	require.NoError(t, s.VerifyChain(b), "a run that was not pruned still verifies")
+	require.NoError(t, s.VerifyChain(cRun))
+
+	// a late entry on an old run (a story accepted afterwards) keeps that run whole
+	add(b, 1)
+	rows, err = s.PrunableEventLogs(4) // 7 rows, 3 over: b's last row is newer than the cut
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+
+	// a run that is still running is never pruned
+	mustExec(t, db, `UPDATE runs SET status = 'RUNNING' WHERE id = ?`, b)
+	rows, err = s.PrunableEventLogs(0)
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]int{cRun: 3}, rowsOf(rows))
+}

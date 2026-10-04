@@ -610,12 +610,29 @@ func (s *Store) ListFlaggedCases() ([]domain.Case, error) {
 	return cs, rows.Err()
 }
 
-// OldestEventLogs returns the run_event_logs rows PruneEventLogsThrough would
-// delete to keep only the newest keep rows, oldest first.
-func (s *Store) OldestEventLogs(keep int64) ([]domain.RunEventLog, error) {
+// PrunableEventLogs returns the run_event_logs rows retention may remove to keep
+// about keep rows: those of runs whose every row is among the oldest rows over
+// that number, oldest first. A run is removed whole or not at all, because the
+// front of a run's chain cut off leaves a chain nobody can verify; a run that is
+// still RUNNING, or has a row newer than the cut (a story accepted later), stays.
+// It can return fewer rows than are over keep, or none.
+func (s *Store) PrunableEventLogs(keep int64) ([]domain.RunEventLog, error) {
+	var total int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM run_event_logs`).Scan(&total); err != nil {
+		return nil, err
+	}
+	if total-keep <= 0 {
+		return nil, nil
+	}
+	var cut int64 // the id of the newest row among the ones over keep
+	if err := s.db.QueryRow(`SELECT id FROM run_event_logs ORDER BY id ASC LIMIT 1 OFFSET ?`, total-keep-1).Scan(&cut); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version
-		FROM run_event_logs ORDER BY id ASC
-		LIMIT MAX(0, (SELECT COUNT(*) FROM run_event_logs) - ?)`, keep)
+		FROM run_event_logs
+		WHERE run_id IN (SELECT run_id FROM run_event_logs GROUP BY run_id HAVING MAX(id) <= ?)
+		  AND run_id NOT IN (SELECT id FROM runs WHERE status = 'RUNNING')
+		ORDER BY id ASC`, cut)
 	if err != nil {
 		return nil, err
 	}
@@ -631,15 +648,19 @@ func (s *Store) OldestEventLogs(keep int64) ([]domain.RunEventLog, error) {
 	return out, rows.Err()
 }
 
-// PruneEventLogsThrough deletes the run_event_logs rows with id <= maxID, which
+// PruneEventLogsOfRuns deletes every run_event_logs row of the given runs, which
 // the caller has already archived.
-func (s *Store) PruneEventLogsThrough(maxID int64) (int64, error) {
-	res, err := s.db.Exec(`DELETE FROM run_event_logs WHERE id <= ?`, maxID)
-	if err != nil {
-		return 0, err
+func (s *Store) PruneEventLogsOfRuns(runIDs []int64) (int64, error) {
+	var total int64
+	for _, id := range runIDs {
+		res, err := s.db.Exec(`DELETE FROM run_event_logs WHERE run_id = ?`, id)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	return total, nil
 }
 
 // DeleteFlaggedCases permanently removes cases where deleted_at IS NOT NULL.
