@@ -219,3 +219,19 @@ func TestInitDB_commits_are_durable(t *testing.T) {
 		assert.Equal(t, "wal", mode)
 	}
 }
+
+// TestInitDB_refuses_a_workspace_from_a_newer_version: a database that has a
+// migration this version does not know was written by a newer stAirCase;
+// reading and writing it with older code could damage it.
+func TestInitDB_refuses_a_workspace_from_a_newer_version(t *testing.T) {
+	dir := t.TempDir()
+	db, err := persistence.InitDB(dir)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO schema_migrations(idx) VALUES (?)`, len(persistence.Migrations))
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	_, err = persistence.InitDB(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "newer version of stAirCase")
+}

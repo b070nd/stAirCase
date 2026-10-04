@@ -35,7 +35,16 @@ func GenerateSigningKey(wsDir string) error {
 	pubPath := filepath.Join(wsDir, SigningPubFile)
 
 	if _, err := os.Stat(keyPath); err == nil {
-		return nil // already initialised
+		// Already initialised; a crash between the two writes may have left no public
+		// key, which is the private key's own second half.
+		if _, err := os.Stat(pubPath); os.IsNotExist(err) {
+			priv, err := LoadSigningKey(wsDir)
+			if err != nil {
+				return err
+			}
+			return writeFileAtomic(wsDir, pubPath, priv.Public().(ed25519.PublicKey), 0o644)
+		}
+		return nil
 	}
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)

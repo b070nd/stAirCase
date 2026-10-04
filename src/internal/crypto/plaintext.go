@@ -1,13 +1,18 @@
 package crypto
 
-import "bytes"
+import (
+	"bytes"
+	"slices"
+)
 
 // ScrubBytes replaces every occurrence of each secret value in data with
 // []byte("<REDACTED>") and returns the result. It is safe to call with a nil
 // or empty secrets slice (returns data unchanged). Empty secret strings are
 // skipped to avoid replacing every empty match in the payload.
 func ScrubBytes(data []byte, secrets []string) []byte {
-	for _, s := range secrets {
+	// Longest first: a secret that contains another would otherwise be left
+	// half-readable once the shorter one is replaced.
+	for _, s := range slices.SortedStableFunc(slices.Values(secrets), func(a, b string) int { return len(b) - len(a) }) {
 		if s == "" {
 			continue
 		}

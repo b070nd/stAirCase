@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **An oversized audit entry stays valid JSON.** An entry over 64 KiB (a large proposal) was cut
+  at a byte, which left text that was not JSON and could end inside a character. It is now a
+  small record that says it was truncated, with the original size and SHA-256.
+- **Redaction handles a secret that contains another.** Secrets were replaced in the order
+  they were delivered, so with `abc` and `abcdef` the first pass left `def` readable. Longest
+  first now, in the audit log and in what a person is shown.
+- **`staircase init` repairs a missing public signing key.** A crash between writing the private
+  and the public key left a workspace that could not verify its own certificates, and init
+  (which stops when the private key exists) never fixed it. The public key is the private
+  key's second half and is written again.
+- **An older stAirCase refuses a workspace written by a newer one.** The database records its
+  migrations; one this version does not know now stops the command with "upgrade stAirCase"
+  instead of working on a layout it may damage.
 - **A negative limit no longer beats a real one, and a policy rule with an unknown `effect` is
   refused.** When a blueprint and policy.json both set a limit the stricter applies, but a
   negative number counted as the smaller one and then meant "no limit". Negative limits now
@@ -55,6 +68,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   by the encoding and as large as the file. It now shows what the proposal showed.
 
 ### Added
+
+- **`staircase secret delete <key> [--project N]`.** A stored secret could only be replaced,
+  never removed.
 
 - **`--check-timeout`.** How long one `--check` may run (default 15 minutes), wherever checks
   run: approving on evidence, the definition of done and after the commit. A check that takes

@@ -3,7 +3,9 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
@@ -86,4 +88,27 @@ func TestSensitive_files(t *testing.T) {
 	for _, f := range []string{"src/main.go", "README.md", "docs/make.md", "makefile.go"} {
 		assert.Empty(t, orchestrator.ExportedSensitive([]string{f}), f)
 	}
+}
+
+// TestAudit_a_large_payload_stays_valid: an audit entry is capped, and the
+// capped entry is still valid UTF-8 and JSON (a cut in the middle of an accent
+// or a document would make the exported chain differ from the stored one).
+func TestAudit_a_large_payload_stays_valid(t *testing.T) {
+	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		env.ProposeEdit(ctx, "coder", "r", domain.ProposedEdit{File: "big.txt", SearchBlock: orchestrator.MarkerNewFile,
+			ReplaceBlock: strings.Repeat("é", 40000)}).Apply(env.Worktree)
+		return nil
+	}
+	r := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(agent),
+		Setup: func(s *persistence.Store, _ string, projectID int64) {
+			webhook(t, s, projectID, &operator{approve: true})
+		}})
+	require.NoError(t, r.Err)
+	seen := false
+	for _, e := range r.Events {
+		assert.True(t, utf8.ValidString(e.Payload), "%s is valid UTF-8", e.EventType)
+		assert.True(t, json.Valid([]byte(e.Payload)), "%s is valid JSON", e.EventType)
+		seen = seen || (e.EventType == "yield_request" && strings.Contains(e.Payload, "truncated"))
+	}
+	assert.True(t, seen, "the large proposal was capped")
 }

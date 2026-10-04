@@ -57,3 +57,13 @@ func TestPlaintextRedaction(t *testing.T) {
 	pt.Zero()
 	assert.Equal(t, "", pt.Value())
 }
+
+// TestScrubBytes_a_secret_inside_another: scrubbing the shorter one first would
+// leave the rest of the longer one in the text.
+func TestScrubBytes_a_secret_inside_another(t *testing.T) {
+	for _, secrets := range [][]string{{"abc", "abcdef"}, {"abcdef", "abc"}} {
+		got := string(crypto.ScrubBytes([]byte("key=abcdef end"), secrets))
+		assert.NotContains(t, got, "def", "%v", secrets)
+		assert.Equal(t, "key=<REDACTED> end", got, "%v", secrets)
+	}
+}

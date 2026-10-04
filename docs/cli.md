@@ -964,6 +964,20 @@ Flags:
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 
+## staircase secret delete
+
+Remove a stored secret (the one in the scope given by --project, else the global one)
+
+```
+staircase secret delete <key-name> [flags]
+```
+
+Flags:
+
+```
+      --project int   The project the secret is scoped to (0 = global)
+```
+
 ## staircase secret list
 
 List stored secret key names (values are never shown)
