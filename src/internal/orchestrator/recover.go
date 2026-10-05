@@ -185,6 +185,13 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		}
 		a.record(next)
 	}
+	// A final review the person already gave, of exactly this state, is the review recovery
+	// would ask for; one of other bytes means the chain and the approvals disagree.
+	reviewed, err := hist.finalReviewed(a.files)
+	if err != nil {
+		return res, err
+	}
+	needReview = needReview && !reviewed
 	a.repo = repo // the commit is made in the run's repository
 	want, err := a.tree()
 	if err != nil {

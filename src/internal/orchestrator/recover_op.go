@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -138,21 +137,11 @@ func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *ap
 	}
 	head := gitOut(repoPath, "log", "-1", "--format=%(trailers:key=Staircase-Chain,valueonly)", tip)
 	head = strings.TrimPrefix(head, "sha256:")
-	onChain, reviewed := false, false
+	onChain := false
 	for _, e := range events {
 		onChain = onChain || (head != "" && e.EventHash == head)
-		var d struct {
-			Source     string            `json:"source"`
-			ActionType string            `json:"action_type"`
-			Approved   bool              `json:"approved"`
-			Files      map[string]string `json:"files"`
-		}
-		if e.EventType == "yield_decided" && json.Unmarshal([]byte(e.Payload), &d) == nil &&
-			d.Source == "operator" && d.ActionType == domain.ActionFinalReview && d.Approved && maps.Equal(d.Files, digest(a.files)) {
-			reviewed = true
-		}
 	}
-	if !onChain || (needReview && !reviewed) {
+	if !onChain || needReview {
 		return "", false
 	}
 	return head, true

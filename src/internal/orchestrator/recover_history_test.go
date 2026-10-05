@@ -185,8 +185,11 @@ func TestRecover_journal_corruption_and_torn_tails(t *testing.T) {
 	})
 }
 
-// TestAuditedHistory_refuses_what_no_run_can_have_written: the hashes of these
-// histories are right (they are written through the store); their order is not.
+// TestAuditedHistory_refuses_what_no_run_can_have_written is a unit test of the pure
+// history check: its events are bare (no hashes, nothing in a store), so it shows what
+// the check refuses and nothing about hash-valid chains. Real-store, hash-valid histories
+// are refused (and legitimate ones recovered) in recover_semantics_test.go and
+// TestRecover_* above, which run Recover on a run that was really made.
 func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 	ev := func(typ string, payload map[string]any) domain.RunEventLog {
 		b, _ := json.Marshal(payload)
@@ -196,7 +199,8 @@ func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 	decided := func(seq int, approved bool) domain.RunEventLog {
 		return ev("yield_decided", map[string]any{"seq": seq, "approved": approved, "action_type": domain.ActionFileEdit, "request_sha256": "h"})
 	}
-	good := []domain.RunEventLog{bound, ev("yield_request", nil), decided(1, true), ev("yield_request", nil), decided(2, false), decided(3, true)}
+	request := ev("yield_request", map[string]any{"action_type": domain.ActionFileEdit})
+	good := []domain.RunEventLog{bound, request, request, decided(1, true), decided(2, false), request, decided(3, true)} // requests may be audited ahead of their decisions
 	approved, last, err := orchestrator.ExportedAuditedHistory(good)
 	require.NoError(t, err, "an interrupted run's history is recoverable")
 	assert.Equal(t, []int{1, 3}, approved)
@@ -210,7 +214,10 @@ func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 		"a decision after the certificate":   {bound, decided(1, true), ev("certificate_issued", nil), decided(2, true)},
 		"a decision after a recovery":        {bound, decided(1, true), ev("run_recovered", nil), decided(2, true)},
 		"an unreadable decision":             {bound, {EventType: "yield_decided", Payload: "not json"}},
-		"a history that is not bound at all": {ev("yield_request", nil), bound},
+		"a history that is not bound at all": {request, bound},
+		"a decision with no request":         {bound, decided(1, true)},
+		"more decisions than requests":       {bound, request, decided(1, true), decided(2, true)},
+		"a request of another kind":          {bound, ev("yield_request", map[string]any{"action_type": domain.ActionShellExec}), decided(1, true)},
 	} {
 		_, _, err := orchestrator.ExportedAuditedHistory(events)
 		assert.Error(t, err, name)

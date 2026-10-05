@@ -31,11 +31,20 @@ type auditedApproval struct {
 	Files  map[string]string // the digest of exactly the approved state
 }
 
+// auditedFinalReview is a final review as the audit chain records it.
+type auditedFinalReview struct {
+	Approved bool
+	Files    map[string]string
+}
+
 // history is what recovery reads from a run's audit events.
 type history struct {
 	Bound       runBinding
 	Approvals   []auditedApproval // in the order the chain recorded them
 	LastDecided int               // the highest proposal number the chain decided, approved or not
+	// The final reviews a person decided (a decision of its own, with no request before it):
+	// each is the digest of the whole approved state that was put to them.
+	FinalReviews []auditedFinalReview
 	// What the run loaded and was started with, as it recorded it: the policy it
 	// ran under (not whatever policy.json holds now) and the signed request of the
 	// person who started it.
@@ -46,10 +55,20 @@ type history struct {
 // auditedHistory reads a run's audit events, oldest first, and refuses a history
 // that no run could have written even though its hashes are right (a decision
 // before the run began, proposal numbers that do not increase, a decision after
-// the run's evidence was issued). It is pure: it reads events and nothing else.
+// the run's evidence was issued, a decision no request led to). It is pure: it reads
+// events and nothing else.
+//
+// The legal shape, from what a run writes (v0.6.0, the first version with a journal,
+// and later): run_bound first and once; a yield_request audited before every
+// decision it leads to (each decision uses up one request of its kind; the requests
+// of different proposals may be audited in another order than they are decided, and
+// a request may stay undecided when the run dies); proposal numbers that increase;
+// a final review is a yield_decided of its own and uses up no request; nothing is
+// decided after the certificate or a recovery.
 func auditedHistory(events []domain.RunEventLog) (history, error) {
 	var h history
 	bounds, lastSeq, sealed := 0, 0, ""
+	pending := map[string]int{} // requests not yet decided, by action type
 	for i, e := range events {
 		var p struct {
 			BaseSHA       string            `json:"base_sha"`
@@ -88,6 +107,14 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 			if json.Unmarshal([]byte(e.Payload), &p) == nil && p.Signature != "" {
 				h.Initiator = &certificate.Initiator{Principal: p.Principal, Signature: p.Signature}
 			}
+		case "yield_request":
+			var q struct {
+				ActionType string `json:"action_type"`
+			}
+			if json.Unmarshal([]byte(e.Payload), &q) != nil {
+				return h, fmt.Errorf("the request at entry %d is unreadable", i+1)
+			}
+			pending[q.ActionType]++
 		case "certificate_issued", "run_recovered":
 			sealed = e.EventType
 		case "yield_decided":
@@ -101,6 +128,14 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 				return h, fmt.Errorf("proposal numbers do not increase: %d follows %d", p.Seq, lastSeq)
 			}
 			lastSeq = p.Seq
+			if p.ActionType == domain.ActionFinalReview {
+				h.FinalReviews = append(h.FinalReviews, auditedFinalReview{p.Approved, p.Files})
+				continue
+			}
+			if pending[p.ActionType] == 0 {
+				return h, fmt.Errorf("the decision of proposal %d (%s) has no request before it", p.Seq, p.ActionType)
+			}
+			pending[p.ActionType]--
 			if p.Approved && p.ActionType == domain.ActionFileEdit {
 				h.Approvals = append(h.Approvals, auditedApproval{p.Seq, p.Source, p.RequestSHA256, p.Files})
 			}
@@ -206,8 +241,27 @@ func readJournalFile(wsDir string, runID int64) (journalRead, error) {
 }
 
 // matchesDigest reports whether the state a proposal derives to is the digest the
-// audit chain recorded for it. A record with no digest (a history from a version
-// that did not write one) is not compared.
+// audit chain recorded for it. Every version that keeps a journal (v0.6.0 on)
+// records the digest of exactly the approved state with an approval, so a record
+// without one, or with another, is not accepted: there is no older schema to be
+// lenient to.
 func matchesDigest(recorded map[string]string, derived map[string]*approvedFile) bool {
-	return len(recorded) == 0 || maps.Equal(recorded, digest(derived))
+	return maps.Equal(recorded, digest(derived))
+}
+
+// finalReviewed reports whether a person's final review of exactly this approved
+// state is on the chain, and an error when the chain holds an approved final review
+// of other bytes: what was reviewed is not what the approvals derive.
+func (h history) finalReviewed(files map[string]*approvedFile) (bool, error) {
+	reviewed := false
+	for _, f := range h.FinalReviews {
+		if !f.Approved {
+			continue
+		}
+		if !maps.Equal(f.Files, digest(files)) {
+			return false, errors.New("the audit chain records a final review that approved other bytes than the approvals derive")
+		}
+		reviewed = true
+	}
+	return reviewed, nil
 }
