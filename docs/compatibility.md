@@ -42,8 +42,8 @@ tests drive, not against the real program.
 | Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (logged out) | 0.46.0 (no login) | not installed |
 | Its hooks run, every tool call is governed | yes (real run) | not run: needs a login | stand-in only | stand-in only |
 | Session refused when its hooks never ran | stand-in only | not implemented: a run whose hooks never ran is caught by the end-of-run check, which commits nothing unapproved | stand-in only | stand-in only |
-| A hook answer that is empty, cut off or not a decision, a hook call that is unreadable or for an unregistered event, a hook program that is missing, crashes or is killed | stand-in host only: the hook turns each into a block (exit 2); a host that carries on after any other exit status is modelled on its documented behaviour | stand-in host only (same) | stand-in host only (same) | not applicable: the plugin asks the run itself |
-| The host gives up on a slow hook | stand-in only: the tool runs, the end-of-run check commits nothing unapproved | not run | not run | not run |
+| A hook answer that is empty, cut off or not a decision, a hook call that is unreadable or for an unregistered event, a hook program that is missing, crashes or is killed | shared bridge tests only (`staircase hook`, each agent's reply shape): the hook turns each into a block (exit 2); no Codex host was simulated | shared bridge tests, and a synthetic Claude Code host (`hook_host_test.go`, a fake that follows the documented behaviour: only exit 2 or a deny stops a tool): not a real run | shared bridge tests only | not applicable: the plugin asks the run itself |
+| The host gives up on a slow hook | not run | synthetic Claude Code host only (`hook_host_test.go`): the tool runs, the end-of-run check commits nothing unapproved; not a real run | not run | not run |
 | An approval held longer than a hook's default timeout | yes: held 70 s, then answered | not run | not run | not run |
 | A rejection, then the agent's retry | yes: rejected once, the retry approved | not run | not run | not run |
 | Stop refused until a failing check passes | yes: the first attempt to stop blocked by the check, the second allowed | stand-in only | not applicable | not applicable |
@@ -51,7 +51,12 @@ tests drive, not against the real program.
 | Commands: no network, no credentials | Codex's own sandbox plus stAirCase's checks; not probed with a real model | not run | not run | not run |
 | Only staircase's settings are read (a repository's own hooks are ignored) | not applicable | yes, logged out | not run | not run |
 
-Two rows above are easy to misread. "Stand-in host only" means a fake program that follows what the
+The evidence behind a cell is one of four kinds, from weakest to strongest: a **shared bridge test** (the
+`staircase hook` program and its reply checks, the same code for every agent), a **stand-in agent** (a fake
+program that speaks the agent's hook protocol, driven by stAirCase's own tests), a **synthetic host** (a fake that
+follows what the host documents, so it tests our reaction to the documented behaviour), and a **real run** of the
+real program. No fixture here was captured from a real host, and an agent with no real run stays experimental.
+Two rows above are easy to misread. "Synthetic host" means a fake program that follows what the
 host documents (Claude Code: only exit status 2, or a "deny" answer, stops a tool; any other failure of a
 hook is a non-blocking error and the tool runs), not a real run. And a host that gives up on a slow hook
 runs the tool whatever stAirCase does: what holds then is that **nothing unapproved is committed**, not that

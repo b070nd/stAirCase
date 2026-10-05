@@ -24,6 +24,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Recovery says what it did to the certificate.** `staircase recover` told every recovery that "the certificate
+  says the run did not finish". When the run had made its own commit and issued its own certificate before it died,
+  recovery keeps that certificate and now says so; the help, the safety page, the hook compatibility table (which
+  host each drill really used) and the compliance checklist (historical tables labelled, closed gaps removed) were
+  corrected to match.
 - **An approval is consumed when it is on the audit chain, and the run limit is checked right before that.** The
   limit used to be checked before the journal line was written; a run that ended between the journal and the chain
   still put the approval on the chain and released it. The check is now repeated after the journal sync, and the

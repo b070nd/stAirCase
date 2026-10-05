@@ -86,6 +86,9 @@ type RecoverResult struct {
 	// either way; running recover again repairs the evidence on the same commit.
 	EvidenceErrors []string
 	Repaired       bool // the commit was already there: this run of recover finished what was missing
+	// Adopted: the commit is the one the run itself made (and named on its chain) before it died.
+	// CertificateKept: the run had already issued its certificate, which recovery left as it was.
+	Adopted, CertificateKept bool
 }
 
 // ErrRecoveryRejected: the person refused the final review of a recovery.
@@ -342,7 +345,9 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 			evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 		}
 	}
+	res.Adopted = adopted
 	ownCertificate := adopted && gitOut(repo.path, "notes", "--ref="+NotesRef, "show", hash) != "" && hasEvent(r.store, runID, "certificate_issued", hash)
+	res.CertificateKept = ownCertificate
 	if !ownCertificate {
 		if err := r.certify(runID, hash, bound.Base, op.ChainHead, pl, repo, ev); err != nil {
 			evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())

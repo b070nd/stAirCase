@@ -63,6 +63,8 @@ func TestRecover_adopts_the_commit_the_run_itself_made(t *testing.T) {
 			res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
 			require.NoError(t, err)
 			assert.Equal(t, commit, res.Commit, "the run's own commit is kept")
+			assert.True(t, res.Adopted, "reported as the run's own commit")
+			assert.Equal(t, !f.dropEvidence, res.CertificateKept, "the run's certificate is kept when it had issued one")
 			assert.Equal(t, commit, strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1")), "the branch did not move")
 			run, err := r.Store.GetRun(r.Run.ID)
 			require.NoError(t, err)

@@ -25,7 +25,10 @@ recover makes the commit from exactly those approvals: it takes only what the ru
 audit chain also records, derives the files again from the base commit, and moves
 the run's branch only if it is still where the run started. The change certificate
 says the run did not finish (CAL 2 at most), and its ledger is kept, so the commit
-can be rebuilt and verified like any other.
+can be rebuilt and verified like any other. If the run had already made its own commit
+(it names it on its audit chain before the branch moves) and died before the run's record
+was complete, recover keeps that commit and the certificate the run had issued, and only
+writes what is missing.
 
 When some of the change was approved as part of the agreed task, by evidence or by
 reviewer models, you are shown the whole change and approve it once, as a finished
@@ -37,7 +40,7 @@ Recovery writes a record of what it is about to do before it touches git and nam
 itself in the commit it makes, so a recover that was interrupted, or whose ledger,
 certificate, notes or records could not all be written, can be run again: it
 finishes the missing evidence on the same commit and says what is still missing.
-A commit on the run's branch that it did not make is never adopted. With
+A commit on the run's branch that neither it nor the run named is never adopted. With
 --require-evidence the command exits with an error while the evidence is incomplete.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -74,7 +77,10 @@ A commit on the run's branch that it did not make is never adopted. With
 // evidence (ledger, certificate, notes, audit record, summary) is complete.
 func reportRecovery(w io.Writer, runID int64, res orchestrator.RecoverResult) {
 	verb := "recovered"
-	if res.Repaired {
+	switch {
+	case res.Adopted:
+		verb = "made its own commit before it was interrupted; recovery completed what was missing"
+	case res.Repaired:
 		verb = "was already committed; its evidence was finished"
 	}
 	_, _ = fmt.Fprintf(w, "✅ Run #%d %s: %d approved proposal(s) are commit %.12s on its run branch\n", runID, verb, res.Proposals, res.Commit)
@@ -84,6 +90,10 @@ func reportRecovery(w io.Writer, runID int64, res orchestrator.RecoverResult) {
 			_, _ = fmt.Fprintf(w, "      - %s\n", e)
 		}
 		_, _ = fmt.Fprintf(w, "   Fix the cause and run: staircase recover %d   (it repairs the same commit)\n", runID)
+		return
+	}
+	if res.CertificateKept {
+		_, _ = fmt.Fprintf(w, "   📜 Recovery keeps the certificate the run had already issued; verify it like any other: staircase verify staircase/run-%d\n", runID)
 		return
 	}
 	_, _ = fmt.Fprintf(w, "   📜 The certificate says the run did not finish; verify it like any other: staircase verify staircase/run-%d\n", runID)

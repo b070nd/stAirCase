@@ -131,4 +131,17 @@ func TestReportRecovery_is_honest_about_the_evidence(t *testing.T) {
 	var repaired strings.Builder
 	reportRecovery(&repaired, 7, orchestrator.RecoverResult{Commit: strings.Repeat("a", 40), Proposals: 2, Repaired: true})
 	assert.Contains(t, repaired.String(), "already committed")
+
+	// the run made its own commit before it died, and had issued its own certificate: that one stays
+	var own strings.Builder
+	reportRecovery(&own, 7, orchestrator.RecoverResult{Commit: strings.Repeat("a", 40), Proposals: 2, Repaired: true, Adopted: true, CertificateKept: true})
+	assert.Contains(t, own.String(), "made its own commit before it was interrupted")
+	assert.Contains(t, own.String(), "keeps the certificate the run had already issued")
+	assert.NotContains(t, own.String(), "The certificate says the run did not finish", "the run's own certificate is not an interrupted-run one")
+
+	// its own commit, but the certificate was still missing: recovery issued one, which says the run did not finish
+	var adopted strings.Builder
+	reportRecovery(&adopted, 7, orchestrator.RecoverResult{Commit: strings.Repeat("a", 40), Proposals: 2, Repaired: true, Adopted: true})
+	assert.Contains(t, adopted.String(), "made its own commit before it was interrupted")
+	assert.Contains(t, adopted.String(), "The certificate says the run did not finish")
 }
