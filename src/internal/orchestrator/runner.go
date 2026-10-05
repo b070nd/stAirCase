@@ -439,7 +439,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		if opts.Plan != nil {
 			digest = opts.Plan.Digest
 		}
-		sig, err := sshsig.Sign(opts.SignKey, certificate.InitiatorNamespace,
+		sig, err := sshsig.SignContext(ctx, opts.SignKey, certificate.InitiatorNamespace,
 			certificate.InitiatorText(certificate.Predicate{Run: run.ID, BaseCommit: baseSHA, PlanDigest: digest}, opts.SignAs))
 		if err != nil {
 			return fmt.Errorf("sign as the run's initiator: %w", err)
@@ -677,7 +677,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			opts.Signal.brief = opts.Plan.Brief()
 		}
 	}
-	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 
@@ -740,7 +740,13 @@ runLoop:
 				trace.WithAttributes(
 					attribute.String("staircase.agent", req.AgentName),
 					attribute.String("staircase.action_type", req.ActionType)))
-			rl := dec.decide(ctx, &req)
+			rl := dec.decide(waitCtx, &req) // checks, models, signals and signing end with the run's limit too
+			if rl.resp.Approved && waitCtx.Err() != nil {
+				// The authorization is consumed here (journal, then the audit chain, then the
+				// answer): once the run is over nothing is, however it was decided.
+				rl.resp, rl.next, rl.evidence = domain.Decide(false, "the run ended before this was decided"), nil, nil
+				rl.source, rl.signed = "orchestrator", nil
+			}
 			if rl.resp.Approved && rl.next != nil {
 				// The approval is kept before anything else: a run that dies after
 				// this point can still be recovered with exactly what it approved.

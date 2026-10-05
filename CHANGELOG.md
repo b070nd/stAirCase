@@ -16,6 +16,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A run's time limit also ends the automatic work of a decision, and cancellation reaches signing and recovery.**
+  `max_run_secs` ended a person's wait, but a check that decides a change (evidence), a reviewer model, a signal and the
+  signing of a decision ran under the run's cancellation only, so the run sat in a long check past its limit; they are now
+  bound by the limit too, and an approval is not consumed (journaled, put on the audit chain, answered) once the run is
+  over. `ssh-keygen` (signing a decision, a run's initiator request) is stopped when its context ends instead of waiting
+  forever for a passphrase or a touch. `staircase recover` now honours Ctrl-C and cancellation: it delivers nothing and
+  begins no operation when cancelled before delivery, and an answer to its final review that arrives after cancellation
+  counts for nothing. The final review at the end of a run is still bound by cancellation only, not by the agent's limit.
 - **A hook answer that is not a decision blocks, and so do hook calls it cannot read.** `staircase hook` printed
   whatever the run answered. An empty, cut-off or unrecognised answer to "may this tool run?" is read by agents as no
   objection, so it is now a block; so is a hook call that is not JSON, names no event, or names an event the agent's
@@ -43,30 +51,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   repeated line, a corrupt line with others after it, or cannot be read, or when the audit history
   is one no run could have written. A last journal line cut short by the crash, or written but never
   audited, is still tolerated, so a legitimately interrupted run remains recoverable.
-
-### Fixed
-
-- **A recovery has an identity, and can be repaired.** `staircase recover` writes a record of the
-  operation before it touches git and names it in its commit (`Staircase-Recovery:`), so it knows a
-  commit is its own by that name, the base as the only parent and the tree: a commit someone else made
-  with the same tree and a copied trailer, or an extra parent, is a conflict and no longer skips the
-  final review. The final review is recorded on the audit chain before any commit (if it cannot be, nothing
-  is committed). If the ledger, the certificate, a note, the audit record, the summary or the run's record
-  cannot be written, the commit stays and the command lists what is missing (`--require-evidence` makes
-  that a failure); running it again repairs the same commit, where before the run's record naming the commit
-  made any repair impossible. Two recoveries of one run cannot run at once. The certificate of a recovered run
-  names the policy the run loaded and the signed request of whoever started it (new `policy_snapshot` and
-  `initiator_signed` audit records), not the policy file of the day.
-- **`staircase recover` refuses a history it cannot fully trust.** It now verifies the run's audit
-  chain before believing a row of it, applies the approvals in the order the chain recorded (a
-  journal whose lines were reordered gave a different tree), and refuses, committing nothing, when
-  an approval the chain holds is missing from the journal or differs from it, when the journal has a
-  repeated line, a corrupt line with others after it, or cannot be read, or when the audit history
-  is one no run could have written. A last journal line cut short by the crash, or written but never
-  audited, is still tolerated, so a legitimately interrupted run remains recoverable.
-
-### Fixed
-
 - **The price table was out of date, and in places below what the providers charge.** A budget cap
   counts tokens at these prices, and `claude-haiku-4-5` was priced at $0.80 / $4 per million
   tokens against the published $1 / $5, so a run on it could spend a quarter more than its cap. The

@@ -98,8 +98,11 @@ var ErrRecoveryRejected = errors.New("the recovered change was rejected in its f
 // commit, and so can finish its own work after a crash and tell it from a commit
 // anyone else made. The certificate says the run did not finish. The run's worktree
 // is left as it is.
-func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (RecoverResult, error) {
+func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) (RecoverResult, error) {
 	var res RecoverResult
+	if err := ctx.Err(); err != nil {
+		return res, err
+	}
 	run, err := r.store.GetRun(runID)
 	if err != nil || run == nil {
 		return res, fmt.Errorf("run #%d not found", runID)
@@ -191,6 +194,9 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	branch := strings.TrimPrefix(bound.Branch, "refs/heads/")
 	fingerprint := approvalsOf(hist.Approvals)
 
+	if err := ctx.Err(); err != nil { // cancelled while the history was read: nothing was begun
+		return res, err
+	}
 	// One recovery of a run at a time.
 	unlock, err := lockRecovery(r.wsDir, runID)
 	if err != nil {
@@ -222,7 +228,17 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 		}
 		req := finalReviewRequest(a.files)
 		req.ReasoningTrace = "Final review of a recovered run: the run was interrupted. Approve to commit exactly these files."
-		resp := opts.Confirm(req)
+		answered := make(chan domain.YieldResponse, 1)
+		go func() { answered <- opts.Confirm(req) }()
+		var resp domain.YieldResponse
+		select {
+		case resp = <-answered:
+		case <-ctx.Done(): // an answer nobody is waiting for any more is not one
+			return ctx.Err()
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		reqJSON, _ := json.Marshal(req)
 		if err := r.audit(runID, "recovery_final_review", map[string]any{"approved": resp.Approved, "feedback": resp.Feedback, "request_sha256": sha256Hex(reqJSON)}); err != nil {
 			return fmt.Errorf("record the final review: %w", err)
@@ -263,7 +279,10 @@ func (r *Runner) Recover(_ context.Context, runID int64, opts RecoverOptions) (R
 	}
 
 	// Delivery: the branch moves from the base to this operation's commit, or it is
-	// already there.
+	// already there. A recovery cancelled before this point delivers nothing.
+	if err := ctx.Err(); err != nil {
+		return res, err
+	}
 	var hash string
 	switch tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); {
 	case tip == "":
