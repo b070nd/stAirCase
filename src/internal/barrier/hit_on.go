@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,8 +17,21 @@ var (
 	seen = map[string]int{}
 )
 
+var hook atomic.Pointer[func(string)]
+
+// SetHook makes every point call f first, in the process's own goroutine, for a test that
+// has to do something at an exact point (cancel a run, say) instead of killing a process
+// there. It returns what restores the previous state.
+func SetHook(f func(string)) (restore func()) {
+	old := hook.Swap(&f)
+	return func() { hook.Store(old) }
+}
+
 // Hit holds the process when STAIRCASE_BARRIER names this point (at its n-th visit for name@n).
 func Hit(name string) {
+	if f := hook.Load(); f != nil {
+		(*f)(name)
+	}
 	want, dir := os.Getenv("STAIRCASE_BARRIER"), os.Getenv("STAIRCASE_BARRIER_DIR")
 	if want == "" || dir == "" {
 		return

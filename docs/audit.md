@@ -29,6 +29,7 @@ Events you will see:
 | `agent_unresponsive` | an agent did not stop when asked |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
+| `commit_prepared` | the run's commit exists and is named here (commit, base, tree, branch) before the run branch moves to it; if this cannot be recorded nothing is delivered, and a recovery after a crash keeps only a commit named here as the run's own |
 | `certificate_issued` | the change certificate was signed for the run's commit |
 | `run_path` | the phases the run went through, in order (see below) |
 
@@ -320,8 +321,12 @@ release named by the `version` input, after verifying how it was built: the buil
 must come from this repository's release workflow (`release.yml`) for that exact tag
 (`gh attestation verify --signer-workflow … --source-ref refs/tags/<tag>`), and a binary that
 was not verified is never run. The `version` input must be a release tag such as `v0.7.1`;
-anything else is an error and never "the latest". Used at a floating ref (`@main`) it installs
-the latest release and warns that the verifier is not pinned. It fetches the certificates (`refs/notes/staircase`) and checks **every commit** of the
+anything else is an error and never "the latest". Which verifier runs is decided in this order:
+the `version` input if it is set; else the release tag the action is used at; else, when the action is
+used at a ref that is not a release tag (`@main`, or a commit SHA with no `version` input), the **latest
+release is installed and the step warns that the verifier is not pinned**. For a reproducible check
+pin the verifier: use the action at a release tag, or at a commit SHA together with `version: v0.8.0`.
+(That the unpinned case warns rather than refuses is current behaviour, not a promise of determinism.) It fetches the certificates (`refs/notes/staircase`) and checks **every commit** of the
 pull request. Push the certificates together with the branch:
 
 ```bash

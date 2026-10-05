@@ -352,24 +352,54 @@ func (a *approvals) verify() ([]violation, error) {
 // commit, and the branch moves only if it still points at the base commit.
 // Returns "" when the approved state equals the base.
 func (a *approvals) commit(branch, msg string) (string, error) {
+	p, err := a.prepare(msg)
+	if err != nil || p == nil {
+		return "", err
+	}
+	if err := p.deliver(branch); err != nil {
+		return "", err
+	}
+	return p.commit, nil
+}
+
+// preparedCommit is a commit object that exists and that no branch names yet: the run
+// records it on its audit chain before the branch moves, so what the branch comes to
+// hold is a commit the chain already names.
+type preparedCommit struct {
+	a                  *approvals
+	commit, base, tree string
+}
+
+// prepare makes the commit for the approved state without moving any ref. It returns
+// nil when the approved state equals the base: there is nothing to commit.
+func (a *approvals) prepare(msg string) (*preparedCommit, error) {
 	git, cleanup, err := a.privateGit()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer cleanup()
 	base := a.base.Hash.String()
 	tree, err := applyFiles(git, base, a.files)
 	if err != nil || tree == a.base.TreeHash.String() {
-		return "", err
+		return nil, err
 	}
 	c, err := git([]byte(msg), "commit-tree", "--no-gpg-sign", tree, "-p", base)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if _, err := git(nil, "update-ref", "-m", "staircase: approved changes", "refs/heads/"+branch, c, base); err != nil {
-		return "", err
+	return &preparedCommit{a: a, commit: c, base: base, tree: tree}, nil
+}
+
+// deliver moves branch from the base to the prepared commit, and only if it still
+// points at the base.
+func (p *preparedCommit) deliver(branch string) error {
+	git, cleanup, err := p.a.privateGit()
+	if err != nil {
+		return err
 	}
-	return c, nil
+	defer cleanup()
+	_, err = git(nil, "update-ref", "-m", "staircase: approved changes", "refs/heads/"+branch, p.commit, p.base)
+	return err
 }
 
 // tree is the git tree the approved state makes on the base commit: what commit

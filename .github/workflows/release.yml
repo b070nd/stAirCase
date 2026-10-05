@@ -30,6 +30,16 @@ jobs:
         run: ./packaging/release-gate.sh
         env:
           GH_TOKEN: ${{ github.token }}
+          GATE_RESULT: ${{ runner.temp }}/release-gate.json
+
+      # Which CI run this release rests on: its id, URL and attempt, with the commit, event,
+      # branch and repository it was selected on.
+      - name: Keep the selected CI run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: release-gate
+          path: ${{ runner.temp }}/release-gate.json
+          if-no-files-found: error
 
   goreleaser:
     name: GoReleaser

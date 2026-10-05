@@ -185,8 +185,11 @@ func TestRecover_journal_corruption_and_torn_tails(t *testing.T) {
 	})
 }
 
-// TestAuditedHistory_refuses_what_no_run_can_have_written: the hashes of these
-// histories are right (they are written through the store); their order is not.
+// TestAuditedHistory_refuses_what_no_run_can_have_written is a unit test of the pure
+// history check: its events are bare (no hashes, nothing in a store), so it shows what
+// the check refuses and nothing about hash-valid chains. Real-store, hash-valid histories
+// are refused (and legitimate ones recovered) in recover_semantics_test.go and
+// TestRecover_* above, which run Recover on a run that was really made.
 func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 	ev := func(typ string, payload map[string]any) domain.RunEventLog {
 		b, _ := json.Marshal(payload)
@@ -196,7 +199,8 @@ func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 	decided := func(seq int, approved bool) domain.RunEventLog {
 		return ev("yield_decided", map[string]any{"seq": seq, "approved": approved, "action_type": domain.ActionFileEdit, "request_sha256": "h"})
 	}
-	good := []domain.RunEventLog{bound, ev("yield_request", nil), decided(1, true), ev("yield_request", nil), decided(2, false), decided(3, true)}
+	request := ev("yield_request", map[string]any{"action_type": domain.ActionFileEdit})
+	good := []domain.RunEventLog{bound, request, request, decided(1, true), decided(2, false), request, decided(3, true)} // requests may be audited ahead of their decisions
 	approved, last, err := orchestrator.ExportedAuditedHistory(good)
 	require.NoError(t, err, "an interrupted run's history is recoverable")
 	assert.Equal(t, []int{1, 3}, approved)
@@ -210,7 +214,10 @@ func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
 		"a decision after the certificate":   {bound, decided(1, true), ev("certificate_issued", nil), decided(2, true)},
 		"a decision after a recovery":        {bound, decided(1, true), ev("run_recovered", nil), decided(2, true)},
 		"an unreadable decision":             {bound, {EventType: "yield_decided", Payload: "not json"}},
-		"a history that is not bound at all": {ev("yield_request", nil), bound},
+		"a history that is not bound at all": {request, bound},
+		"a decision with no request":         {bound, decided(1, true)},
+		"more decisions than requests":       {bound, request, decided(1, true), decided(2, true)},
+		"a request of another kind":          {bound, ev("yield_request", map[string]any{"action_type": domain.ActionShellExec}), decided(1, true)},
 	} {
 		_, _, err := orchestrator.ExportedAuditedHistory(events)
 		assert.Error(t, err, name)
@@ -239,4 +246,60 @@ func TestAuditedHistory_names_the_policy_and_the_initiator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, policy)
 	assert.Empty(t, who, "without a signature there is nothing to carry into a certificate")
+}
+
+// TestRecover_only_a_cut_append_is_a_torn_tail: appendJournal writes a line and its
+// newline in one write, so a crash leaves a line that stops short of its newline
+// and is not complete JSON. A last record that is complete (terminated, or valid
+// JSON) but not an entry is corruption, whatever it looks like: it is refused,
+// no ref moves, and nothing is committed.
+func TestRecover_only_a_cut_append_is_a_torn_tail(t *testing.T) {
+	cases := []struct {
+		name   string
+		tail   string // appended after the two journaled lines
+		recovs bool
+	}{
+		{"cut in the middle of the line, no newline", `{"seq":3,"source":"operator","requ`, true},
+		{"cut right after the opening brace", `{`, true},
+		{"a complete {} with no newline", `{}`, false},
+		{"a complete null with no newline", `null`, false},
+		{"a complete {} with its newline", "{}\n", false},
+		{"null with its newline", "null\n", false},
+		{"a non-positive sequence number", `{"seq":0,"source":"operator","request":{}}` + "\n", false},
+		{"a negative sequence number", `{"seq":-4,"source":"operator","request":{}}` + "\n", false},
+		{"garbage that ends in a newline", "not json at all\n", false},
+		{"a cut line that ends in a newline", `{"seq":3,"source":"operator","requ` + "\n", false},
+		{"a complete entry with no request", `{"seq":3,"source":"operator"}`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := interruptedWith(t, [][2]string{{"src/a.txt", "one\n"}, {"src/b.txt", "two\n"}})
+			path, lines := journalLines(t, r)
+			require.NoError(t, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"+c.tail), 0o600))
+			res, err := recoverRun(t, r)
+			if !c.recovs {
+				require.Error(t, err, "a complete record that is not an entry was taken for a torn tail: %+v", res)
+				assert.Contains(t, err.Error(), "corrupt")
+				branchUntouched(t, r)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, 2, res.Proposals, "every approval the chain holds is recovered")
+			assert.Equal(t, "one", strings.TrimSpace(git(t, r.Repo, "show", "staircase/run-1:src/a.txt")))
+			assert.Equal(t, "two", strings.TrimSpace(git(t, r.Repo, "show", "staircase/run-1:src/b.txt")))
+			assert.Equal(t, "src/a.txt\nsrc/b.txt", strings.TrimSpace(git(t, r.Repo, "diff", "--name-only", "HEAD", "staircase/run-1")), "exactly the approved files")
+		})
+	}
+}
+
+// TestRecover_a_cut_line_cannot_hide_an_acknowledged_approval: a line that really is
+// cut short is tolerated only while it was never audited. When the chain says the
+// approval was acknowledged, the cut line is a loss and recovery refuses, committing nothing.
+func TestRecover_a_cut_line_cannot_hide_an_acknowledged_approval(t *testing.T) {
+	r := interruptedWith(t, [][2]string{{"src/a.txt", "one\n"}, {"src/b.txt", "two\n"}})
+	path, lines := journalLines(t, r)
+	require.NoError(t, os.WriteFile(path, []byte(lines[0]+"\n"+lines[1][:len(lines[1])/2]), 0o600))
+	_, err := recoverRun(t, r)
+	assert.ErrorContains(t, err, "the journal does not have it")
+	branchUntouched(t, r)
 }

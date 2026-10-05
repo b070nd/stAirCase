@@ -113,10 +113,20 @@ what was left in a fresh process. The points, in order, and what must hold after
 | `journal-synced`: the approval is in the journal, not on the audit chain | `recover` commits nothing: what only the journal knows was never decided on the chain |
 | `audit-committed`: the decision is on the chain, the agent not yet answered | `recover` commits that change and no other |
 | `consumed`: the approval is recorded and released | `recover` commits every approved change |
+| `commit-prepared`: the commit exists and is named on the chain, no branch holds it | `recover` makes its own commit; the named one is never on the branch |
 | `git-cas`: the branch moved to the run's commit, no evidence | `recover` keeps that commit (no second one) and writes the ledger and certificate |
 | `evidence-published`: certificate and ledger written, the run's record not | `recover` completes the record and leaves the run's own certificate as it was |
 | `db-completed`: the run's record is complete | nothing to recover; the commit verifies and rebuilds |
 | `recover-op-recorded`, `recover-committed`: `recover` itself killed | a second `recover` delivers one commit and repairs its evidence |
+
+The same points serve in-process tests (`-tags barriers`, `consume_barrier_test.go`, part of
+`make check`): a hook cancels the run at the exact point, so the expiry cases need no timing. An approval
+is consumed when its decision is on the audit chain (journal first, then the chain, then the answer
+to the agent), with the last expiry check immediately before that append; they check that a run
+that ends before the journal, between the journal and the chain, or after the commit was named and before
+the branch moves, delivers and recovers exactly what was consumed before it ended (a journal line whose
+authorization expired is marked `unconsumed` on the chain and is neither an approval nor corruption), and
+that the final review is still bound by cancellation only, not by the agent's run limit.
 
 Each case ends with `staircase verify` and `staircase rebuild` of the run branch. SIGKILL
 ends a process without any cleanup; it is not a power loss, which also loses what the
@@ -138,7 +148,26 @@ commit and whether the tree was clean, the tool versions, the platform, a SHA-25
 conformance fixture, and each step's status, counts and log digest. It says `passed` only when
 nothing failed and nothing was skipped; a limited run (`EVIDENCE_STEPS`) says `partial`. Runs
 of real agents need credentials only their owner has, so they are recorded as `not_run` and
-are never counted as passed. The record holds no path of the machine that made it.
+are never counted as passed. A sandbox engine's subtest that skipped because this machine has no such engine
+(bubblewrap on a runner without it) and that `STAIRCASE_REQUIRE_SANDBOX` does not require is an *optional skip*: listed
+by name in the record and counted separately, never silently dropped; any other skip, or a required engine that
+skipped, makes the result `not passed`. The record holds no path of the machine that made it. Linux CI runs
+`make evidence` instead of `make check` and keeps `evidence.json` and the conformance results as a build artifact
+(not the raw step logs); the release gate keeps which CI run it rested on (`release-gate.json`).
+
+**Verifying a published release.** `packaging/verify-release.sh <tag>` checks the archive of your platform
+without signing in to GitHub: its SHA-256 against `checksums.txt`, the Sigstore signature of `checksums.txt`
+(`cosign verify-blob`, identity `release.yml@refs/tags/<tag>`), and the archive's build attestation, fetched from
+GitHub's public attestations endpoint and checked with `gh attestation verify --bundle` and the same
+`--signer-workflow` and `--source-ref` flags the verify Action uses. It also runs two controls that must fail
+(the same attestation against another tag, and against another repository's workflow). It writes
+`release-verification.json`: the tag, the archive digest, the tool versions and each check's exit status.
+Recorded for v0.8.0 on 2026-10-05, run for real (not a stand-in) on macOS/arm64 with gh 2.99.0 and cosign v3.1.3:
+archive `staircase_0.8.0_darwin_arm64.tar.gz`, SHA-256 `30d02dd39d6b37cc0d6861042a2d9ec47e51a0313205ede5ded056b5eb85bcbf`;
+every check passed (exit 0) and both controls failed as required (exit 1), overall "verified". The tests of the script
+itself use stand-ins for curl, cosign and gh (`tests/verify_release.bats`) and check the comparison, the controls
+and the record. The Action's own acquisition path is tested with a stand-in `gh` too; it has not yet been run
+as a real Action in a real workflow.
 
 **Which CI run releases.** The release workflow's gate (`packaging/release-gate.sh`) accepts
 only a successful run of the CI workflow that was a `push` to the default branch of this

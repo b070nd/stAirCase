@@ -9,7 +9,8 @@ check: lint
 	GOOS=windows go build ./...
 	go test ./... -count=1 -timeout=600s
 	$(MAKE) race
-	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats tests/kill_drill.bats tests/pty_ctrl_c.bats tests/test_report.bats tests/verify_action_acquire.bats tests/verify_action_release.bats tests/barrier_drill.bats tests/spec_vectors.bats tests/evidence.bats
+	go test -tags barriers ./src/internal/barrier ./src/internal/orchestrator -run 'TestHit|TestConsumption' -count=1 -timeout=180s
+	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats tests/kill_drill.bats tests/pty_ctrl_c.bats tests/test_report.bats tests/verify_action_acquire.bats tests/verify_action_release.bats tests/barrier_drill.bats tests/spec_vectors.bats tests/evidence.bats tests/verify_release.bats
 	$(MAKE) demo
 
 # ─── Release evidence ─────────────────────────────────────────────────────────

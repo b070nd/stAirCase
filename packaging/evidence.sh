@@ -58,15 +58,28 @@ want make-check && step "make check" make check
 want go-tests && {
 golog="$out/go_tests.jsonl"
 go test ./... -count=1 -timeout=600s -json >"$golog" 2>"$out/go_tests.stderr"; gorc=$?
-# TestDrillRotateHelper is the child process of a drill, which skips unless the drill starts it: not a check that was skipped
+# TestDrillRotateHelper is the child process of a drill, which skips unless the drill starts it: not a check that was skipped.
+# A sandbox engine's subtest (.../bwrap, .../landlock, .../sandbox-exec) that skipped because this machine has no such
+# engine is an optional skip unless STAIRCASE_REQUIRE_SANDBOX names that engine (then the test fails instead of
+# skipping): it is listed, and it never makes the result look complete.
 helpers='["TestDrillRotateHelper"]'
-counts="$(jq -sc --argjson helpers "$helpers" '[.[] | select(.Test != null and (.Test as $t | $helpers | index($t) | not) and (.Action == "pass" or .Action == "fail" or .Action == "skip"))]
-  | {tests: length, passed: map(select(.Action == "pass")) | length, failed: map(select(.Action == "fail")) | length, skipped: map(select(.Action == "skip")) | length}' "$golog")"
+req="${STAIRCASE_REQUIRE_SANDBOX:-}"
+# A skip whose message begins "documented limit:" is a limit the project documents (a kernel that cannot do
+# what the test needs), not a missing dependency: also optional, and listed.
+known="$(jq -sc '[.[] | select(.Action == "output" and .Test != null and ((.Output // "") | test("documented limit:"))) | .Test] | unique' "$golog")"
+lib='def opt($t; $req): ((($t | test("/(bwrap|landlock|sandbox-exec)$")) and (($t | sub(".*/"; "")) as $e | ($req | split(" ") | index($e)) == null)) or ($known | index($t) != null));
+     def real($h): select(.Test != null and (.Test as $t | $h | index($t) | not) and (.Action == "pass" or .Action == "fail" or .Action == "skip"));'
+counts="$(jq -sc --argjson h "$helpers" --argjson known "$known" --arg req "$req" "$lib"'
+  [.[] | real($h)] as $r
+  | {tests: ($r | length), passed: ($r | map(select(.Action == "pass")) | length), failed: ($r | map(select(.Action == "fail")) | length),
+     skipped: ($r | map(select(.Action == "skip" and (opt(.Test; $req) | not))) | length),
+     optional_skipped: ($r | map(select(.Action == "skip" and opt(.Test; $req))) | length)}' "$golog")"
+optional="$(jq -sr --argjson h "$helpers" --argjson known "$known" --arg req "$req" "$lib"'[.[] | real($h) | select(.Action == "skip" and opt(.Test; $req)) | .Test] | unique | join(", ")' "$golog" | cut -c1-400)"
 if [ "$(jq .tests <<<"$counts")" -eq 0 ]; then record "go tests" failed "no tests ran" "$counts" "$golog"
 elif [ "$gorc" -ne 0 ]; then record "go tests" failed "$(jq .failed <<<"$counts") failed" "$counts" "$golog"
 elif [ "$(jq .skipped <<<"$counts")" -ne 0 ]; then
-  record "go tests" skipped "$(jq .skipped <<<"$counts") test(s) skipped on this platform: $(jq -sr --argjson helpers "$helpers" '[.[] | select(.Action == "skip" and .Test != null and (.Test as $t | $helpers | index($t) | not)) | .Test] | unique | join(", ")' "$golog" | cut -c1-300)" "$counts" "$golog"
-else record "go tests" passed "" "$counts" "$golog"; fi
+  record "go tests" skipped "$(jq .skipped <<<"$counts") test(s) skipped: $(jq -sr --argjson h "$helpers" --argjson known "$known" --arg req "$req" "$lib"'[.[] | real($h) | select(.Action == "skip" and (opt(.Test; $req) | not)) | .Test] | unique | join(", ")' "$golog" | cut -c1-300)" "$counts" "$golog"
+else record "go tests" passed "${optional:+optional skips (a sandbox engine this machine lacks and nobody requires, or a documented limit): $optional}" "$counts" "$golog"; fi
 }
 
 want drills && bats_step "kill drills (random moments, named boundaries)" tests/kill_drill.bats tests/barrier_drill.bats

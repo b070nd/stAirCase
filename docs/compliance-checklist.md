@@ -286,7 +286,13 @@ Coverage is a floor on what is exercised, not on what is asserted: the numbers d
 a line was checked for the right result. The product's promises are pinned by named
 behaviour tests and by the conformance vectors in `docs/spec`.
 
----|---|---|---|
+### Historical: coverage at the audit of 2026-05-21 (Python-era runtime)
+
+Kept for provenance, not a current claim: it lists packages that no longer exist (`template`,
+`ipc`, `runtime`) and numbers measured on the earlier runtime. The current table is above.
+
+| Package | Coverage | Type | Notes |
+|---|---|---|---|
 | `internal/crypto` | 83.1% | Unit | Encrypt/decrypt, key gen, permissions, v1 prefix, legacy compat |
 | `internal/engine` | 96.1% | Unit | DAG (all cycle/sort cases), RepoMap, `**` glob, XML pack, token budget |
 | `internal/persistence` | 85.2% | Integration | All store methods; unique constraints; migrations; CreateRun validation |
@@ -309,7 +315,7 @@ behaviour tests and by the conformance vectors in `docs/spec`.
 
 ## §8 - Known Gaps & Future Work
 
-As of 2026-10-05 (v0.7.1). Gaps that were closed since the first audit (the stdlib CVEs, crash-atomic
+As of 2026-10-05 (v0.8.0). Gaps that were closed since the first audit (the stdlib CVEs, crash-atomic
 secret rotation, the OpenTelemetry exporter) are no longer listed; CI runs `govulncheck` on every change.
 
 | ID | Priority | Description |
@@ -322,10 +328,18 @@ secret rotation, the OpenTelemetry exporter) are no longer listed; CI runs `govu
 | G-6 | Low | **Rekor anchoring** sends the whole record to the log and does not check a Merkle inclusion proof or a signed tree head. |
 | G-7 | Low | **Cost estimates** are the providers' standard rates at the dearer tier: no batch or cache discounts, so a budget cap is a ceiling. The table is read by hand and goes stale ([models](models.md#limit-what-a-run-may-spend)). |
 | G-8 | Low | **The repository map** is of the last commit when a case is compiled; a run starts from the last commit when it runs. |
-| G-9 | Low | **The attestation check in the GitHub Action** (`gh attestation verify`) accepts an attestation made by any workflow of this repository: it is not pinned to the release workflow's identity with `--signer-workflow`. |
+| G-9 | Low | **The Action's verifier is selected by tag.** An explicit `version` or the Action's own release tag pins it, and the build attestation is checked against this repository's release workflow and that tag. At a floating ref, or a commit SHA with no `version` input, the latest release is installed, with a warning. The same attestation flags pass against the real v0.8.0 release when run by hand; no real Action run, and no organization-ruleset repository, has been exercised end to end. |
 | G-10 | Info | `spf13/viper` is used only to read `STAIRCASE_DIR`; it could be `os.Getenv`. |
 
----|---|---|
+### Historical: gaps of the audit of 2026-05-21
+
+Kept for provenance, not the current list (that is the table above). Most were closed or no longer
+apply: F-1 (stdlib CVEs, fixed by upgrading Go; CI runs `govulncheck`), F-5 (secret rotation is crash-atomic,
+with a kill drill), F-7 (every decision is a `yield_decided` event), F-9 (an OpenTelemetry exporter exists),
+and F-2, F-3, F-4, F-6, F-8, F-10 and F-12 concern the Python-era runtime or were re-scoped.
+
+| ID | Priority | Description |
+|---|---|---|
 | F-1 | **HIGH** | Go 1.26.1 has 6 active stdlib CVEs (govulncheck F-001–F-003). Upgrade to 1.26.3. |
 | F-2 | Medium | IPC server does not validate raw JSON against `proto/ipc.v1.schema.json` before unmarshal (CHECK 3.5.5). `additionalProperties:false` not enforced at wire level. |
 | F-3 | Medium | `exec.Command("git", ...)` shell-outs in orchestrator (3 sites). Replace with `go-git` library (CHECK 5.3.1). |

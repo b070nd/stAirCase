@@ -1330,6 +1330,20 @@ func (s *Store) VerifyChain(runID int64) error {
 	return nil
 }
 
+// ListVerifiedEventLogs is the run's audit chain read once and verified as read: the
+// slice returned is the slice that was verified, so a caller that goes on to
+// believe it cannot be handed rows that changed between a check and a read.
+func (s *Store) ListVerifiedEventLogs(runID int64) ([]domain.RunEventLog, error) {
+	logs, err := s.ListEventLogs(runID)
+	if err != nil {
+		return nil, fmt.Errorf("verify chain: list events: %w", err)
+	}
+	if err := VerifyEntries(logs); err != nil {
+		return nil, fmt.Errorf("verify chain: %w", err)
+	}
+	return logs, nil
+}
+
 // KillStaleRuns marks any RUNNING run for caseID that started more than maxAge
 // ago as KILLED. This prevents a crashed previous invocation from leaving a
 // perpetual RUNNING record that blocks the noConcurrentRun quality gate.

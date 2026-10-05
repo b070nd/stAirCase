@@ -6,6 +6,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Changed (read before upgrading)
+
+- **A run names its commit on the audit chain before the branch moves** (`commit_prepared`), and `staircase recover`
+  keeps a run's own commit only if the chain names it. v0.8.0 recognized the run's own commit by its parent, tree and
+  message; a copy of those made by anyone else is now a conflict. A run killed by v0.8.0 right after its commit has
+  no such record, so its commit is no longer adopted (the older refusal applies).
+
+### Added
+
+- **`packaging/verify-release.sh <tag>` verifies a published release without a GitHub login**, with two controls
+  that must fail, and writes a record; the release gate names the CI run it rests on (id, URL, attempt, event, branch,
+  repository, commit) and the release workflow keeps it as an artifact; Linux CI runs `make evidence` and keeps the
+  sanitized record. The Action's rule for an unpinned ref is stated and tested (a commit SHA with no `version` installs
+  the latest release, with a warning).
+- **Policy scenarios can assert delivery, a person's answer and checkpoint/evidence workflows.** A proposal may
+  state `then` (what the agent was finally told), a scenario `expect_delivered` (the files the run branch differs
+  from the base in, read from Git), `expect_certificate`, `final_review_answer` and `checks`. One behaviour
+  change: the person in a scenario now approves the final review of the whole change unless `final_review_answer`
+  says `reject` (it used to follow `human_answer`, so a scenario could not tell a rejected checkpoint from a
+  rejected delivery); see [approvals](docs/approvals.md).
+
+### Fixed
+
+- **Recovery says what it did to the certificate.** `staircase recover` told every recovery that "the certificate
+  says the run did not finish". When the run had made its own commit and issued its own certificate before it died,
+  recovery keeps that certificate and now says so; the help, the safety page, the hook compatibility table (which
+  host each drill really used) and the compliance checklist (historical tables labelled, closed gaps removed) were
+  corrected to match.
+- **An approval is consumed when it is on the audit chain, and the run limit is checked right before that.** The
+  limit used to be checked before the journal line was written; a run that ended between the journal and the chain
+  still put the approval on the chain and released it. The check is now repeated after the journal sync, and the
+  decision is recorded as rejected, marked `unconsumed` (recovery treats its journal line as neither an approval nor
+  corruption). A run cancelled after its commit is named and before the branch moves delivers nothing.
+- **Recovery replays the audit chain it verified, and only a cut append is a torn journal tail.** It read the chain
+  twice (verify, then replay); it now reads once and replays what it verified. A last journal line that is complete
+  but not an entry (`{}`, `null`, a sequence that is not positive, no request, or any line ending in a newline) is
+  corruption, not a torn tail; recovery refuses it.
+- **Recovery refuses histories no run writes even when their hashes are right.** A decision with no request before it,
+  and an approval whose digest of the approved state is missing, empty or of other bytes, are refused (every
+  version with a journal records the digest). A final review of the whole change that is already on the chain is
+  the review recovery would ask for, so it is not asked again; one of other bytes is refused.
+
 ## [0.8.0] - 2026-10-05
 
 Hardening of recovery, hooks, cancellation and the verify Action, an assertable policy test and countable

@@ -91,7 +91,11 @@ func runScenarios(cmd *cobra.Command, policyFile, scenarioFile string) error {
 			continue
 		}
 		failed++
-		fmt.Printf("FAIL %s, proposal %d: %s\n  decided: %s (%s)\n", r.Scenario, r.Index, r.Detail, r.Got, r.Reason)
+		what := fmt.Sprintf("proposal %d", r.Index)
+		if r.Index == 0 {
+			what = "delivery"
+		}
+		fmt.Printf("FAIL %s, %s: %s\n  decided: %s (%s)\n", r.Scenario, what, r.Detail, r.Got, r.Reason)
 	}
 	fmt.Printf("%d scenario(s), %d proposal(s) asserted against %s: %d passed, %d failed\n", len(f.Scenarios), len(res), policyFile, len(res)-failed, failed)
 	if failed > 0 {

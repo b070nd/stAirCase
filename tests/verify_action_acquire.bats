@@ -145,6 +145,20 @@ asked() { grep -c -- "$1" "$GH_LOG" || true; }
   [[ "$output" == *"::warning::"*"main is not a release tag"* ]]
 }
 
+@test "a commit SHA with no version input selects the latest release, with a warning" {
+  ACTION_REF=0123456789abcdef0123456789abcdef01234567 FAKE_LATEST=v3.4.5 action
+  [ "$status" -eq 0 ]
+  grep -q -- "-p staircase_3.4.5_linux_amd64.tar.gz" "$GH_LOG"
+  [[ "$output" == *"::warning::"*"is not a release tag"* ]]
+}
+
+@test "a commit SHA with a version input pins the verifier to that version, without a warning" {
+  ACTION_REF=0123456789abcdef0123456789abcdef01234567 VERSION=v1.2.3 FAKE_LATEST=v9.9.9 action
+  [ "$status" -eq 0 ]
+  grep -q -- "-p staircase_1.2.3_linux_amd64.tar.gz" "$GH_LOG"
+  [[ "$output" != *"::warning::"*"not a release tag"* ]]
+}
+
 @test "a latest release that is not a release tag is refused" {
   ACTION_REF=main FAKE_LATEST=nightly action
   [ "$status" -ne 0 ]

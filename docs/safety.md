@@ -121,12 +121,16 @@ leaves: a last journal line that was cut short, or written but never audited and
 released. (A run written before audit chain version 2 can have an event relabelled without the
 chain noticing; see [the hash chain](audit.md#the-hash-chain).) If part of the change was approved as part of the agreed task, by evidence or by
 reviewer models, you approve the whole change once first, as a finished run would have
-asked. The certificate says the run did not finish (CAL 2 at most), the run's record
+asked. For an interrupted run that never made its commit, the certificate says the run did not finish (CAL 2 at most), the run's record
 keeps its KILLED status with the commit named, and the commit can be verified and rebuilt
 like any other. `recover` can itself be interrupted: run it again and it finishes (it
 recognizes its own commit, by the name it gave the operation in the commit, the base as the
 only parent and the tree, and writes what was still missing; a commit it did not make is
-never adopted, and never lets the final review be skipped). The commit is made after a
+never adopted, and never lets the final review be skipped). A run that was killed after it made its own commit
+is a different case: the run names its commit on the audit chain (`commit_prepared`) before the branch moves, and
+recovery keeps exactly that commit (the base as its only parent, the approved tree), keeps the ledger and certificate
+the run had already issued (so their assurance level is the run's own, not capped), writes only what is missing and
+completes the run's record; a commit with the same tree and message that the chain does not name is a conflict. The commit is made after a
 record of the operation is on disk, so a failure to write the ledger, the certificate, the
 notes, the audit record or the run's record leaves a delivered commit and an honest list of what is
 missing (`--require-evidence` makes that a failure), and running `recover` again repairs it.

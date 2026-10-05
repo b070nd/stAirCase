@@ -63,6 +63,8 @@ func TestRecover_adopts_the_commit_the_run_itself_made(t *testing.T) {
 			res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
 			require.NoError(t, err)
 			assert.Equal(t, commit, res.Commit, "the run's own commit is kept")
+			assert.True(t, res.Adopted, "reported as the run's own commit")
+			assert.Equal(t, !f.dropEvidence, res.CertificateKept, "the run's certificate is kept when it had issued one")
 			assert.Equal(t, commit, strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1")), "the branch did not move")
 			run, err := r.Store.GetRun(r.Run.ID)
 			require.NoError(t, err)
@@ -97,4 +99,50 @@ func TestRecover_keeps_the_certificate_the_run_issued(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, issued, "and it is on the chain once")
+}
+
+// TestRecover_does_not_adopt_a_copy_of_the_runs_commit: a commit someone else made with the
+// run's base as its only parent, the approved tree and the run's own message (its case,
+// its chain head), when no final review was needed, is the same bytes under another
+// name. The run named its commit on the audit chain before the branch moved
+// (commit_prepared), and that name is the identity: a copy is a conflict and the branch
+// is left alone.
+func TestRecover_does_not_adopt_a_copy_of_the_runs_commit(t *testing.T) {
+	r, commit := diedAfterTheCommit(t, orchestrator.RunOptions{}, true)
+	base := strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^"))
+	tree := strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^{tree}"))
+	msg := git(t, r.Repo, "log", "-1", "--format=%B", commit)
+	copied := strings.TrimSpace(git(t, r.Repo, "-c", "user.email=other@example.com", "-c", "user.name=Other", "commit-tree", tree, "-p", base, "-m", strings.TrimSpace(msg)))
+	require.NotEqual(t, commit, copied, "another author gives another commit")
+	git(t, r.Repo, "update-ref", "refs/heads/staircase/run-1", copied)
+
+	res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
+	require.Error(t, err, "adopted a commit the run did not name: %+v", res)
+	assert.Contains(t, err.Error(), "not this recovery's")
+	assert.Equal(t, copied, strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1")), "the branch is left as it was")
+	run, _ := r.Store.GetRun(r.Run.ID)
+	assert.Empty(t, run.GitCommitHash)
+}
+
+// TestRun_names_its_commit_on_the_chain_before_the_branch_moves: the commit_prepared event
+// holds the commit's name, its base and its tree, and comes after the decisions and before
+// the certificate that is about the commit.
+func TestRun_names_its_commit_on_the_chain_before_the_branch_moves(t *testing.T) {
+	r, commit := diedAfterTheCommit(t, orchestrator.RunOptions{}, false)
+	events, err := r.Store.ListEventLogs(r.Run.ID)
+	require.NoError(t, err)
+	prepared, certified := -1, -1
+	for i, e := range events {
+		switch e.EventType {
+		case "commit_prepared":
+			prepared = i
+			assert.Contains(t, e.Payload, `"commit":"`+commit+`"`)
+			assert.Contains(t, e.Payload, `"tree":"`+strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^{tree}"))+`"`)
+			assert.Contains(t, e.Payload, `"base":"`+strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^"))+`"`)
+		case "certificate_issued":
+			certified = i
+		}
+	}
+	require.GreaterOrEqual(t, prepared, 0, "no commit_prepared on the chain: %v", r.Types())
+	assert.Less(t, prepared, certified)
 }

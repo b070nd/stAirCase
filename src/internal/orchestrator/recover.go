@@ -86,6 +86,9 @@ type RecoverResult struct {
 	// either way; running recover again repairs the evidence on the same commit.
 	EvidenceErrors []string
 	Repaired       bool // the commit was already there: this run of recover finished what was missing
+	// Adopted: the commit is the one the run itself made (and named on its chain) before it died.
+	// CertificateKept: the run had already issued its certificate, which recovery left as it was.
+	Adopted, CertificateKept bool
 }
 
 // ErrRecoveryRejected: the person refused the final review of a recovery.
@@ -120,13 +123,11 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	case run.Status == persistence.RunStatusRunning && !opts.Force:
 		return res, fmt.Errorf("run #%d may still be running: if its process is gone, recover it with --force", runID)
 	}
-	// The audit chain must verify before any row of it is believed.
-	if err := r.store.VerifyChain(runID); err != nil {
-		return res, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
-	}
-	events, err := r.store.ListEventLogs(runID)
+	// The audit chain must verify before any row of it is believed: it is read once,
+	// and what is replayed is the very slice that was verified.
+	events, err := r.store.ListVerifiedEventLogs(runID)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
 	}
 	hist, err := auditedHistory(events)
 	if err != nil {
@@ -187,6 +188,13 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		}
 		a.record(next)
 	}
+	// A final review the person already gave, of exactly this state, is the review recovery
+	// would ask for; one of other bytes means the chain and the approvals disagree.
+	reviewed, err := hist.finalReviewed(a.files)
+	if err != nil {
+		return res, err
+	}
+	needReview = needReview && !reviewed
 	a.repo = repo // the commit is made in the run's repository
 	want, err := a.tree()
 	if err != nil {
@@ -337,7 +345,9 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 			evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 		}
 	}
+	res.Adopted = adopted
 	ownCertificate := adopted && gitOut(repo.path, "notes", "--ref="+NotesRef, "show", hash) != "" && hasEvent(r.store, runID, "certificate_issued", hash)
+	res.CertificateKept = ownCertificate
 	if !ownCertificate {
 		if err := r.certify(runID, hash, bound.Base, op.ChainHead, pl, repo, ev); err != nil {
 			evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())

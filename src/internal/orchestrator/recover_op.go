@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -121,7 +120,9 @@ func (o *recoveryOp) owns(repoPath, tip string) bool {
 // process died, and the chain head that commit names. It is that commit when it has
 // the base as its only parent and the approved tree, says it is this run's, names a
 // chain head that is on this run's audit chain, and, where a person's final review was
-// needed, the chain holds that review approving exactly these files. Such a commit
+// needed, the chain holds that review approving exactly these files. Above all the run
+// named this very commit (commit_prepared) on its audit chain before the branch moved:
+// a commit with the same parent, tree and message made by anyone else is another commit. Such a commit
 // holds exactly the approved bytes under the run's own audit record: a recovery that
 // kept it finishes the run's evidence instead of leaving a branch nothing can complete.
 func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *approvals, events []domain.RunEventLog, needReview bool) (string, bool) {
@@ -138,21 +139,17 @@ func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *ap
 	}
 	head := gitOut(repoPath, "log", "-1", "--format=%(trailers:key=Staircase-Chain,valueonly)", tip)
 	head = strings.TrimPrefix(head, "sha256:")
-	onChain, reviewed := false, false
+	onChain, named := false, false
 	for _, e := range events {
 		onChain = onChain || (head != "" && e.EventHash == head)
-		var d struct {
-			Source     string            `json:"source"`
-			ActionType string            `json:"action_type"`
-			Approved   bool              `json:"approved"`
-			Files      map[string]string `json:"files"`
+		var c struct {
+			Commit string `json:"commit"`
 		}
-		if e.EventType == "yield_decided" && json.Unmarshal([]byte(e.Payload), &d) == nil &&
-			d.Source == "operator" && d.ActionType == domain.ActionFinalReview && d.Approved && maps.Equal(d.Files, digest(a.files)) {
-			reviewed = true
+		if e.EventType == "commit_prepared" && json.Unmarshal([]byte(e.Payload), &c) == nil && c.Commit == tip {
+			named = true // the run named this very commit on its chain before the branch moved
 		}
 	}
-	if !onChain || (needReview && !reviewed) {
+	if !onChain || !named || needReview {
 		return "", false
 	}
 	return head, true

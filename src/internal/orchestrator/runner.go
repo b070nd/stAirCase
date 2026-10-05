@@ -743,12 +743,18 @@ runLoop:
 					attribute.String("staircase.agent", req.AgentName),
 					attribute.String("staircase.action_type", req.ActionType)))
 			rl := dec.decide(waitCtx, &req) // checks, models, signals and signing end with the run's limit too
-			if rl.resp.Approved && waitCtx.Err() != nil {
-				// The authorization is consumed here (journal, then the audit chain, then the
-				// answer): once the run is over nothing is, however it was decided.
+			barrier.Hit(barrier.DecisionMade)
+			// An approval is consumed when it is on the audit chain (journal first, then the chain,
+			// then the answer to the agent): the last expiry check is immediately before that append,
+			// and once the run is over nothing is consumed, however it was decided.
+			expire := func() {
 				rl.resp, rl.next, rl.evidence = domain.Decide(false, "the run ended before this was decided"), nil, nil
 				rl.source, rl.signed = "orchestrator", nil
 			}
+			if rl.resp.Approved && waitCtx.Err() != nil {
+				expire()
+			}
+			journaled := false
 			if rl.resp.Approved && rl.next != nil {
 				// The approval is kept before anything else: a run that dies after
 				// this point can still be recovered with exactly what it approved.
@@ -761,7 +767,11 @@ runLoop:
 					runErr = fmt.Errorf("journal approval: %w", err)
 					break runLoop
 				}
+				journaled = true
 				barrier.Hit(barrier.JournalSynced)
+				if waitCtx.Err() != nil { // it ended between the journal and the chain: not consumed
+					expire()
+				}
 			}
 			yieldSpan.SetAttributes(
 				attribute.Bool("staircase.approved", rl.resp.Approved),
@@ -771,6 +781,9 @@ runLoop:
 			// runtime can act on it: an approval that is not on the audit chain
 			// is never released (CHECK 7.3.1).
 			decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
+			if journaled && !rl.resp.Approved {
+				decided["unconsumed"] = true // its journal line is an authorization that was never consumed
+			}
 			maps.Copy(decided, rl.signed)
 			if rl.evidence != nil {
 				decided["evidence"] = rl.evidence
@@ -873,9 +886,26 @@ runLoop:
 		if err != nil {
 			return err
 		}
-		hash, err := appr.commit(runBranch, commitMessage(run.ID, caseID, opts.Plan, chainHead))
+		prep, err := appr.prepare(commitMessage(run.ID, caseID, opts.Plan, chainHead))
 		if err != nil {
 			return err
+		}
+		hash := ""
+		if prep != nil {
+			// The commit is named on the chain before any branch holds it: if that cannot be
+			// recorded, nothing is delivered, and a recovery after a crash knows this commit as
+			// the run's own by that name.
+			if err := r.audit(run.ID, "commit_prepared", map[string]any{"commit": prep.commit, "base": prep.base, "tree": prep.tree, "branch": runBranch}); err != nil {
+				return fmt.Errorf("audit commit_prepared: %w", err)
+			}
+			barrier.Hit(barrier.CommitPrepared)
+			stillGoing() // cancelled after the commit was named: it is not delivered
+			if finalStatus == persistence.RunStatusSuccess {
+				if err := prep.deliver(runBranch); err != nil {
+					return err
+				}
+				hash = prep.commit
+			}
 		}
 		if hash != "" {
 			barrier.Hit(barrier.GitCAS)

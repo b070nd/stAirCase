@@ -804,7 +804,10 @@ recover makes the commit from exactly those approvals: it takes only what the ru
 audit chain also records, derives the files again from the base commit, and moves
 the run's branch only if it is still where the run started. The change certificate
 says the run did not finish (CAL 2 at most), and its ledger is kept, so the commit
-can be rebuilt and verified like any other.
+can be rebuilt and verified like any other. If the run had already made its own commit
+(it names it on its audit chain before the branch moves) and died before the run's record
+was complete, recover keeps that commit and the certificate the run had issued, and only
+writes what is missing.
 
 When some of the change was approved as part of the agreed task, by evidence or by
 reviewer models, you are shown the whole change and approve it once, as a finished
@@ -816,7 +819,7 @@ Recovery writes a record of what it is about to do before it touches git and nam
 itself in the commit it makes, so a recover that was interrupted, or whose ledger,
 certificate, notes or records could not all be written, can be run again: it
 finishes the missing evidence on the same commit and says what is still missing.
-A commit on the run's branch that it did not make is never adopted. With
+A commit on the run's branch that neither it nor the run named is never adopted. With
 --require-evidence the command exits with an error while the evidence is incomplete.
 
 Flags:
