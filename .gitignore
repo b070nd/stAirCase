@@ -39,3 +39,5 @@ src/staircase
 /dist/
 /completions/
 evidence/
+
+.env*

@@ -42,6 +42,7 @@ var (
 	runChecks          []string
 	runAgent           string
 	runModel           string
+	runPassEnv         []string
 	runAgreedBy        string // who agreed to the task before a session started
 	runAckDrift        bool
 	runValidator       []string
@@ -185,7 +186,7 @@ func runCase(caseID int64) error {
 	switch who {
 	case "built-in":
 	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel}
+		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
 	case "codex":
 		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
 	case "gemini":

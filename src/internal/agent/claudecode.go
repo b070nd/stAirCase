@@ -8,12 +8,14 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +38,28 @@ type ClaudeCode struct {
 	Model   string // optional --model
 	Bin     string // default "claude"
 	HookBin string // the staircase program the hooks call; default: this program
+	// PassEnv names environment variables Claude Code may inherit, on top of the few every
+	// command gets (sandbox.Env): the way to give it its own credential without a login
+	// (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY). Opt-in, by name; a variable that is not set is not passed.
+	PassEnv []string
+}
+
+var envName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+
+// passEnv returns NAME=value for each of names that is set, and an error for a name that is not
+// the name of an environment variable (so a flag typo, or a whole "NAME=secret" pasted in, is
+// refused instead of being treated as a name, and a secret is never echoed in the error).
+func passEnv(names []string) ([]string, error) {
+	var out []string
+	for _, n := range names {
+		if !envName.MatchString(n) {
+			return nil, fmt.Errorf("pass-env takes names of environment variables (like CLAUDE_CODE_OAUTH_TOKEN), not values")
+		}
+		if v, ok := os.LookupEnv(n); ok {
+			out = append(out, n+"="+v)
+		}
+	}
+	return out, nil
 }
 
 // hookTimeout outlives any human approval: Claude Code lets the tool call
@@ -89,9 +113,14 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		args = append(args, "--model", c.Model)
 	}
 	cmd := exec.CommandContext(ctx, orDefault(c.Bin, "claude"), args...)
-	// ponytail: sandbox.Env carries no LLM key, so Claude Code must be logged in
-	// (keychain under HOME); pass ANTHROPIC_API_KEY via a secret if needed.
-	cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile)
+	// sandbox.Env carries no LLM key: Claude Code is logged in (keychain under HOME), or is
+	// given its own credential by name (PassEnv, the --pass-env flag), which it and the
+	// commands it runs can then read.
+	passed, err := passEnv(c.PassEnv)
+	if err != nil {
+		return err
+	}
+	cmd.Dir, cmd.Env = root, append(append(sandbox.Env(), HookFileEnv+"="+hookFile), passed...)
 	cmd.WaitDelay = 5 * time.Second
 	sandbox.KillGroup(cmd)
 	var stdout bytes.Buffer
@@ -116,6 +145,10 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		return fmt.Errorf("claude code: %w: %s%s", runErr, preview(res.Result), stderr)
 	case res.IsError:
 		return fmt.Errorf("claude code reported an error: %s", preview(res.Result))
+	case !h.started.Load():
+		// Probed on Claude Code 2.1.236 (headless -p, --settings, --setting-sources ""): SessionStart
+		// fires, so a session in which it never arrived did not run staircase's hooks.
+		return errors.New("claude code never ran staircase's hooks, so the session was not governed; nothing it did is kept")
 	}
 	return nil
 }
@@ -193,9 +226,10 @@ func hookSettings(cmd string, sandboxCfg map[string]any) []byte {
 			"hooks": []map[string]any{{"type": "command", "command": cmd, "timeout": hookTimeout}}}}
 	}
 	s := map[string]any{"hooks": map[string]any{
-		"PreToolUse":  hook("*"),
-		"PostToolUse": hook("Edit|Write|Bash"),
-		"Stop":        hook(""),
+		"SessionStart": hook(""), // the handshake: a session whose hooks never ran is not governed (checked at the end)
+		"PreToolUse":   hook("*"),
+		"PostToolUse":  hook("Edit|Write|Bash"),
+		"Stop":         hook(""),
 	}}
 	if sandboxCfg != nil {
 		s["sandbox"] = sandboxCfg

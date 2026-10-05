@@ -169,6 +169,14 @@ itself use stand-ins for curl, cosign and gh (`tests/verify_release.bats`) and c
 and the record. The Action's own acquisition path is tested with a stand-in `gh` too; it has not yet been run
 as a real Action in a real workflow.
 
+**Running the verify Action under a ruleset.** `demo/ruleset-fixture.sh <dir>` builds a test repository for the real
+Action in GitHub: the offline demo's certified commit and its notes, the trusted key, a workflow, and branches for four
+pull requests (a certified range rebuilt from its ledger passes; the same commit at `min-cal: 4`, a commit with no
+certificate and a base that trusts another key are each refused, asserted by the workflow so a green check means "refused
+as it should"). Its README lists what to push to your own test repository and what to record. `tests/ruleset_fixture.bats`
+checks, with the real binary and the Action's own script against a local origin, that each case is decided as the README
+says; the GitHub half (the Action under a ruleset, with the run URLs) is yours to run, and has not been run.
+
 **Which CI run releases.** The release workflow's gate (`packaging/release-gate.sh`) accepts
 only a successful run of the CI workflow that was a `push` to the default branch of this
 repository for the tagged commit. A pull request run, a run of another branch or a run from a

@@ -22,6 +22,13 @@ GitHub login (`packaging/verify-release.sh`).
 
 ### Added
 
+- **`staircase claude --pass-env NAME`** gives Claude Code its own credential by name (for example
+  `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) on a machine with no login; nothing is passed unless you name it,
+  a name that is not set is skipped, and something that is not a name (a pasted `NAME=secret`) is refused without being
+  echoed. `make smoke-claude` takes `SMOKE_CLAUDE_PASS` and `SMOKE_CLAUDE_MODEL`.
+- **A Claude Code session whose hooks never ran is refused.** staircase registers the `SessionStart` hook and fails the
+  run, keeping nothing, when it never arrives (as it already did for Codex, Gemini and OpenCode). Probed on Claude Code
+  2.1.236: `SessionStart` fires in headless `-p` with `--settings`.
 - **`packaging/verify-release.sh <tag>` verifies a published release without a GitHub login**, with two controls
   that must fail, and writes a record; the release gate names the CI run it rests on (id, URL, attempt, event, branch,
   repository, commit) and the release workflow keeps it as an artifact; Linux CI runs `make evidence` and keeps the

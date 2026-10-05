@@ -72,7 +72,8 @@ func TestClaudeCode_host_hook_failures(t *testing.T) {
 
 	t.Run("the host gives up on a slow hook: the tool runs, nothing unapproved is committed", func(t *testing.T) {
 		real := os.Args[0]
-		slow := scriptBin(t, "sleep 2\nexec '"+real+"' \"$@\"")
+		// only the tool hook is slow (the session handshake answers), so the host gives up on that one call
+		slow := scriptBin(t, "in=$(cat)\ncase \"$in\" in *PreToolUse*) sleep 2;; esac\nprintf '%s' \"$in\" | exec '"+real+"' \"$@\"")
 		r, log := hostRun(t, slow, "FAKE_CLAUDE_HOOK_TIMEOUT_MS=300")
 		assert.Contains(t, log, "Write proceeded-after-hook-failure", "the host ran the tool without an answer (this is the host's choice, not stAirCase's)")
 		require.Error(t, r.Err, "what the host wrote was never approved")
@@ -81,4 +82,21 @@ func TestClaudeCode_host_hook_failures(t *testing.T) {
 		_, err := r.OnBranch("new.txt")
 		assert.Error(t, err)
 	})
+}
+
+// TestClaudeCode_a_session_whose_hooks_never_ran_is_not_governed: Claude Code calls the
+// SessionStart hook when a session begins (probed on 2.1.236 in headless mode). When it never
+// arrives, the hooks did not run, so nothing the session did was governed: the run fails and
+// nothing is kept. The control is the same session with the hooks running.
+func TestClaudeCode_a_session_whose_hooks_never_ran_is_not_governed(t *testing.T) {
+	r, log := hostRun(t, "", "")
+	require.NoError(t, r.Err, "control: the hooks ran")
+	assert.Contains(t, log, "Write allow")
+
+	r, _ = hostRun(t, "", "FAKE_CLAUDE_NO_SESSION_START=1")
+	require.Error(t, r.Err)
+	assert.Contains(t, r.Err.Error(), "never ran staircase's hooks")
+	assert.Empty(t, r.Run.GitCommitHash, "nothing it did is kept")
+	_, err := r.OnBranch("new.txt")
+	assert.Error(t, err)
 }

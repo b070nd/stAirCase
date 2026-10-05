@@ -108,6 +108,8 @@ func init() {
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
 	claudeCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
+	claudeCmd.Flags().StringArrayVar(&runPassEnv, "pass-env", nil,
+		"Name of an environment variable Claude Code may inherit, to give it its own credential (for example CLAUDE_CODE_OAUTH_TOKEN); it, and any command it runs, can read the value. Repeat for more")
 	checkFlag(claudeCmd)
 	checkFlag(codexCmd)
 	signFlags(claudeCmd)
