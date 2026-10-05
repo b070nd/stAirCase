@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
+	"github.com/b070nd/stAirCase/src/internal/testdeps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,9 +53,7 @@ console.log("done");
 `
 
 func openCodeBin(t *testing.T, mode string, calls []fakeCall) (bin, logFile, argsFile string) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is needed to run the generated plugin")
-	}
+	testdeps.Need(t, "node")
 	script, err := json.Marshal(calls)
 	require.NoError(t, err)
 	dir := t.TempDir()

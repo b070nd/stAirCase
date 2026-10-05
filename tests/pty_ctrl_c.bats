@@ -15,7 +15,11 @@ setup_file() {
 }
 
 setup() {
-  command -v python3 >/dev/null || skip "python3 is needed to drive a pty"
+  if ! command -v python3 >/dev/null; then
+    # a gate that skips what it cannot run is not a gate: CI and the release checks require it
+    [ -z "${STAIRCASE_REQUIRE_DEPS:-}" ] || { echo "python3 is required (STAIRCASE_REQUIRE_DEPS) and was not found"; false; }
+    skip "python3 is needed to drive a pty"
+  fi
   WORK="$(mktemp -d)"
   export STAIRCASE_DIR="$WORK/workspace" NO_COLOR=1 HOME="$WORK/home"
   mkdir -p "$WORK/bin" "$WORK/app" "$HOME"

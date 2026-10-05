@@ -101,6 +101,51 @@ a crash leaves behind:
 Both fail when the protections they exist for are removed (the first drill iteration of the
 rotation drill strands a secret without the "interrupted" refusal).
 
+**Named boundaries** (`tests/barrier_drill.bats`): the random kills above say nothing about
+*where* a process died. This drill builds `staircase` with `-tags barriers`, which holds the
+process at a named point and writes a marker file when it gets there (a normal build has
+no such code: `src/internal/barrier`). The test waits for the marker, so a point that is
+never reached fails instead of passing quietly, kills the process with SIGKILL, and reopens
+what was left in a fresh process. The points, in order, and what must hold afterwards:
+
+| Killed at | A fresh process finds |
+|---|---|
+| `journal-synced`: the approval is in the journal, not on the audit chain | `recover` commits nothing: what only the journal knows was never decided on the chain |
+| `audit-committed`: the decision is on the chain, the agent not yet answered | `recover` commits that change and no other |
+| `consumed`: the approval is recorded and released | `recover` commits every approved change |
+| `git-cas`: the branch moved to the run's commit, no evidence | `recover` keeps that commit (no second one) and writes the ledger and certificate |
+| `evidence-published`: certificate and ledger written, the run's record not | `recover` completes the record and leaves the run's own certificate as it was |
+| `db-completed`: the run's record is complete | nothing to recover; the commit verifies and rebuilds |
+| `recover-op-recorded`, `recover-committed`: `recover` itself killed | a second `recover` delivers one commit and repairs its evidence |
+
+Each case ends with `staircase verify` and `staircase rebuild` of the run branch. SIGKILL
+ends a process without any cleanup; it is not a power loss, which also loses what the
+operating system had not yet written to disk, and is not tested here.
+
+**Nothing passes by saying nothing.** The independent conformance scripts
+(`docs/spec/*_vectors.py`) fail when their vector directory is missing or empty, or holds
+fewer vectors than the floor written in the script, and write `--json` results
+(`tests/spec_vectors.bats`). Tests that need a program the machine may not have
+(`ssh-keygen`, `node`, `python3`) skip with a message on a developer's machine and fail when
+`STAIRCASE_REQUIRE_DEPS` is set, as it is in CI; the OS sandbox engines work the same way
+through `STAIRCASE_REQUIRE_SANDBOX`.
+
+**Release evidence.** `make evidence` (`packaging/evidence.sh`) runs the canonical release
+checks, which are `make check`, a count of every Go test (run, passed, failed, skipped), the
+kill drills, the three conformance scripts, the packaged verifier on a fresh mirror of the
+repository (verify and rebuild), and the vulnerability scan. It writes `evidence/evidence.json`: the
+commit and whether the tree was clean, the tool versions, the platform, a SHA-256 for every
+conformance fixture, and each step's status, counts and log digest. It says `passed` only when
+nothing failed and nothing was skipped; a limited run (`EVIDENCE_STEPS`) says `partial`. Runs
+of real agents need credentials only their owner has, so they are recorded as `not_run` and
+are never counted as passed. The record holds no path of the machine that made it.
+
+**Which CI run releases.** The release workflow's gate (`packaging/release-gate.sh`) accepts
+only a successful run of the CI workflow that was a `push` to the default branch of this
+repository for the tagged commit. A pull request run, a run of another branch or a run from a
+fork can carry the same commit but is not what merging tested; each is ignored
+(`tests/release_gate.bats`).
+
 **The terminal dialog on a real pseudo-terminal** (`tests/pty_ctrl_c.bats`): a Python
 harness runs `staircase claude` under a pty with a stand-in agent and no rules, so every
 change goes to the person, and types the keys a person types: `y` for the first change,

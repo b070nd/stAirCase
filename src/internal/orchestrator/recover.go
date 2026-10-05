@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/barrier"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
@@ -249,6 +250,14 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		res.FinalReview = true
 		return nil
 	}
+	// The commit may be the run's own, made before its process died: its final review, if one
+	// was needed, is then already on the audit chain.
+	ownTip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
+	ownHead, adopted := "", false
+	if ownTip != "" && ownTip != bound.Base {
+		ownHead, adopted = runMadeCommit(repo.path, runID, run.CaseID, bound.Base, ownTip, a, events, needReview)
+		needReview = needReview && !adopted
+	}
 	if op == nil {
 		if needReview {
 			if err := review(); err != nil {
@@ -268,6 +277,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		if err := op.save(r.wsDir); err != nil {
 			return res, fmt.Errorf("keep the recovery record: %w", err)
 		}
+		barrier.Hit(barrier.RecoverOpRecorded)
 	} else if op.NeedsReview && !op.Reviewed {
 		if err := review(); err != nil {
 			return res, err
@@ -296,9 +306,12 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		}
 	case op.owns(repo.path, tip):
 		hash, res.Repaired = tip, true
+	case adopted && tip == ownTip:
+		hash, res.Repaired, op.ChainHead = tip, true, ownHead
 	default:
 		return res, fmt.Errorf("the branch %s has moved since the run started and its commit is not this recovery's", branch)
 	}
+	barrier.Hit(barrier.RecoverCommitted)
 	res.Commit, res.Proposals = hash, len(kept)
 	var evidenceErrs []string
 	if op.Commit != hash {
@@ -312,13 +325,23 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	// failure repairs what is missing on the same commit.
 	ev := evidence{recovered: true, policy: hist.PolicyDigest, initiator: hist.Initiator}
 	ledger := Ledger{Base: bound.Base, Proposals: kept}
-	if ev.ledger, err = r.writeLedger(runID, ledger); err != nil {
+	// The run's own ledger and certificate, if it got that far, stay: the certificate names the ledger's digest.
+	ownLedger, _ := os.ReadFile(LedgerPath(r.wsDir, runID))
+	if adopted && len(ownLedger) > 0 {
+		ev.ledger = sha256Hex(ownLedger)
+	} else if ev.ledger, err = r.writeLedger(runID, ledger); err != nil {
 		evidenceErrs = append(evidenceErrs, "ledger: "+err.Error())
-	} else if err := attachNote(repo, LedgerNotesRef, LedgerPath(r.wsDir, runID), hash); err != nil {
-		evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
 	}
-	if err := r.certify(runID, hash, bound.Base, op.ChainHead, pl, repo, ev); err != nil {
-		evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
+	if ev.ledger != "" {
+		if err := attachNote(repo, LedgerNotesRef, LedgerPath(r.wsDir, runID), hash); err != nil {
+			evidenceErrs = append(evidenceErrs, "ledger note: "+err.Error())
+		}
+	}
+	ownCertificate := adopted && gitOut(repo.path, "notes", "--ref="+NotesRef, "show", hash) != "" && hasEvent(r.store, runID, "certificate_issued", hash)
+	if !ownCertificate {
+		if err := r.certify(runID, hash, bound.Base, op.ChainHead, pl, repo, ev); err != nil {
+			evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
+		}
 	}
 	now := time.Now()
 	status, crashed := run.Status, run.Status == persistence.RunStatusRunning

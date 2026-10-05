@@ -1,4 +1,4 @@
-.PHONY: check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
+.PHONY: evidence check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
@@ -9,8 +9,18 @@ check: lint
 	GOOS=windows go build ./...
 	go test ./... -count=1 -timeout=600s
 	$(MAKE) race
-	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats tests/kill_drill.bats tests/pty_ctrl_c.bats tests/test_report.bats tests/verify_action_acquire.bats tests/verify_action_release.bats
+	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats tests/kill_drill.bats tests/pty_ctrl_c.bats tests/test_report.bats tests/verify_action_acquire.bats tests/verify_action_release.bats tests/barrier_drill.bats tests/spec_vectors.bats tests/evidence.bats
 	$(MAKE) demo
+
+# ─── Release evidence ─────────────────────────────────────────────────────────
+# The canonical release checks (make check, a count of every Go test, the kill
+# drills, the independent conformance scripts, the packaged verifier on a fresh
+# mirror, the vulnerability scan) with a machine-readable record: evidence/evidence.json
+# names the commit, the tool versions, the platform and the fixture digests, and says
+# "passed" only when nothing failed and nothing was skipped. Run it on the commit you
+# release, on a clean tree.
+evidence:
+	./packaging/evidence.sh evidence
 
 # ─── Core unit tests ──────────────────────────────────────────────────────────
 test:

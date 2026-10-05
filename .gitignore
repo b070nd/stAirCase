@@ -38,3 +38,4 @@ src/staircase
 # goreleaser output
 /dist/
 /completions/
+evidence/
