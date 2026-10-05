@@ -15,6 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`packaging/verify-release.sh <tag>` verifies a published release without a GitHub login**, with two controls
+  that must fail, and writes a record; the release gate names the CI run it rests on (id, URL, attempt, event, branch,
+  repository, commit) and the release workflow keeps it as an artifact; Linux CI runs `make evidence` and keeps the
+  sanitized record. The Action's rule for an unpinned ref is stated and tested (a commit SHA with no `version` installs
+  the latest release, with a warning).
 - **Policy scenarios can assert delivery, a person's answer and checkpoint/evidence workflows.** A proposal may
   state `then` (what the agent was finally told), a scenario `expect_delivered` (the files the run branch differs
   from the base in, read from Git), `expect_certificate`, `final_review_answer` and `checks`. One behaviour
