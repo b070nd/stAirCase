@@ -120,13 +120,11 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	case run.Status == persistence.RunStatusRunning && !opts.Force:
 		return res, fmt.Errorf("run #%d may still be running: if its process is gone, recover it with --force", runID)
 	}
-	// The audit chain must verify before any row of it is believed.
-	if err := r.store.VerifyChain(runID); err != nil {
-		return res, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
-	}
-	events, err := r.store.ListEventLogs(runID)
+	// The audit chain must verify before any row of it is believed: it is read once,
+	// and what is replayed is the very slice that was verified.
+	events, err := r.store.ListVerifiedEventLogs(runID)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
 	}
 	hist, err := auditedHistory(events)
 	if err != nil {

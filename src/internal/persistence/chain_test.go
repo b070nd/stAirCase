@@ -163,3 +163,23 @@ func TestPrunableEventLogs_are_whole_runs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[int64]int{cRun: 3}, rowsOf(rows))
 }
+
+// TestListVerifiedEventLogs: the chain is read once and what is returned is what
+// was verified; a chain that does not verify returns no rows at all, so a caller
+// cannot go on with unverified ones.
+func TestListVerifiedEventLogs(t *testing.T) {
+	s, db, run := chainStore(t)
+	for _, e := range []string{"run_started", "yield_decided", "run_finished"} {
+		_, err := s.AppendEventLogChained(run, e, `{"n":1}`, "")
+		require.NoError(t, err)
+	}
+	logs, err := s.ListVerifiedEventLogs(run)
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	require.NoError(t, persistence.VerifyEntries(logs), "the slice returned is a verified one")
+	mustExec(t, db, `UPDATE run_event_logs SET payload = '{"n":2}' WHERE id = ?`, logs[1].ID)
+	got, err := s.ListVerifiedEventLogs(run)
+	assert.Error(t, err)
+	assert.Nil(t, got, "a tampered chain yields no rows")
+	assert.Equal(t, `{"n":1}`, logs[1].Payload, "rows already returned are not changed by a later change to the database")
+}

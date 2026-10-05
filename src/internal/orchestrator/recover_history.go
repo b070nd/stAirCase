@@ -116,11 +116,16 @@ type journalRead struct {
 	TornTail bool // the last line was cut short, as a crash does
 }
 
-// parseJournal reads JSON Lines. A last line that does not parse is a torn tail
-// (the crash cut the append, so it was never audited either); a line that does
-// not parse and is followed by others is corruption, and so is a repeated number.
+// parseJournal reads JSON Lines. appendJournal writes a line and its newline in one
+// write, so what a crash cuts is the end of the last line: a last line without its
+// newline that is not complete JSON is a torn tail (never audited either, so never
+// released). Anything else that is not an entry is corruption, whatever it looks like:
+// a line that ends in a newline, complete JSON that is not an entry (`{}`, `null`, a
+// number that is not positive, no request), or an invalid line with others after it.
+// A repeated number is corruption too.
 func parseJournal(raw []byte) (journalRead, error) {
 	var j journalRead
+	unterminated := len(raw) > 0 && raw[len(raw)-1] != '\n'
 	lines := bytes.Split(raw, []byte("\n"))
 	for len(lines) > 0 && len(bytes.TrimSpace(lines[len(lines)-1])) == 0 {
 		lines = lines[:len(lines)-1]
@@ -128,10 +133,14 @@ func parseJournal(raw []byte) (journalRead, error) {
 	seen := map[int]bool{}
 	for i, line := range lines {
 		var e journalEntry
-		if err := json.Unmarshal(line, &e); err != nil || e.Seq <= 0 {
-			if i == len(lines)-1 {
+		if err := json.Unmarshal(line, &e); err != nil || e.Seq <= 0 || len(e.Request) == 0 {
+			cut := i == len(lines)-1 && unterminated && !json.Valid(line)
+			if cut {
 				j.TornTail = true
 				continue
+			}
+			if i == len(lines)-1 {
+				return j, fmt.Errorf("the last journal line (%d) is complete but is not an entry: it is corrupt, not a cut append", i+1)
 			}
 			return j, fmt.Errorf("journal line %d is corrupt and entries follow it", i+1)
 		}
