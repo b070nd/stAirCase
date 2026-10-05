@@ -12,6 +12,7 @@ const (
 	JournalSynced     = "journal-synced"      // an approval is in the journal, flushed; not yet on the audit chain
 	AuditCommitted    = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
 	Consumed          = "consumed"            // the approval is recorded in memory and released to the agent
+	CommitPrepared    = "commit-prepared"     // the commit exists and is named on the chain; no branch holds it yet
 	GitCAS            = "git-cas"             // the branch moved to the commit; no evidence yet
 	EvidencePublished = "evidence-published"  // ledger and certificate written; the run record not yet completed
 	DBCompleted       = "db-completed"        // the run record says it finished

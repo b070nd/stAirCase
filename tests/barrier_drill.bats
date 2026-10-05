@@ -116,6 +116,21 @@ sound() {
   sound
 }
 
+@test "killed with the commit named on the chain and the branch not yet moved: recovery makes its own commit" {
+  session commit-prepared
+  cd "$WORK/app"
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]   # no branch holds it yet
+  [ "$(sc inspect log 1 | grep -c commit_prepared)" = 1 ]
+  named="$(sc inspect log 1 --full | sed -n 's/.*"commit":"\([0-9a-f]\{40\}\)".*/\1/p' | head -1)"
+  [ -n "$named" ]
+  run sc recover 1 --force
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ] && [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git rev-parse staircase/run-1)" != "$named" ]   # the branch holds recovery's commit, not a dangling one
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+  sound
+}
+
 @test "killed right after the branch moved to the run's commit: recovery keeps that commit and finishes its evidence" {
   session git-cas
   cd "$WORK/app"

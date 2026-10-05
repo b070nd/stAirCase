@@ -29,6 +29,7 @@ Events you will see:
 | `agent_unresponsive` | an agent did not stop when asked |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
+| `commit_prepared` | the run's commit exists and is named here (commit, base, tree, branch) before the run branch moves to it; if this cannot be recorded nothing is delivered, and a recovery after a crash keeps only a commit named here as the run's own |
 | `certificate_issued` | the change certificate was signed for the run's commit |
 | `run_path` | the phases the run went through, in order (see below) |
 

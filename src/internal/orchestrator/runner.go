@@ -873,9 +873,23 @@ runLoop:
 		if err != nil {
 			return err
 		}
-		hash, err := appr.commit(runBranch, commitMessage(run.ID, caseID, opts.Plan, chainHead))
+		prep, err := appr.prepare(commitMessage(run.ID, caseID, opts.Plan, chainHead))
 		if err != nil {
 			return err
+		}
+		hash := ""
+		if prep != nil {
+			// The commit is named on the chain before any branch holds it: if that cannot be
+			// recorded, nothing is delivered, and a recovery after a crash knows this commit as
+			// the run's own by that name.
+			if err := r.audit(run.ID, "commit_prepared", map[string]any{"commit": prep.commit, "base": prep.base, "tree": prep.tree, "branch": runBranch}); err != nil {
+				return fmt.Errorf("audit commit_prepared: %w", err)
+			}
+			barrier.Hit(barrier.CommitPrepared)
+			if err := prep.deliver(runBranch); err != nil {
+				return err
+			}
+			hash = prep.commit
 		}
 		if hash != "" {
 			barrier.Hit(barrier.GitCAS)

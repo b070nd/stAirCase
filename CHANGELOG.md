@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Changed (read before upgrading)
+
+- **A run names its commit on the audit chain before the branch moves** (`commit_prepared`), and `staircase recover`
+  keeps a run's own commit only if the chain names it. v0.8.0 recognized the run's own commit by its parent, tree and
+  message; a copy of those made by anyone else is now a conflict. A run killed by v0.8.0 right after its commit has
+  no such record, so its commit is no longer adopted (the older refusal applies).
+
+### Fixed
+
+- **Recovery replays the audit chain it verified, and only a cut append is a torn journal tail.** It read the chain
+  twice (verify, then replay); it now reads once and replays what it verified. A last journal line that is complete
+  but not an entry (`{}`, `null`, a sequence that is not positive, no request, or any line ending in a newline) is
+  corruption, not a torn tail; recovery refuses it.
+- **Recovery refuses histories no run writes even when their hashes are right.** A decision with no request before it,
+  and an approval whose digest of the approved state is missing, empty or of other bytes, are refused (every
+  version with a journal records the digest). A final review of the whole change that is already on the chain is
+  the review recovery would ask for, so it is not asked again; one of other bytes is refused.
+
 ## [0.8.0] - 2026-10-05
 
 Hardening of recovery, hooks, cancellation and the verify Action, an assertable policy test and countable
