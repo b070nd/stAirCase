@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-05
+
+Claude Code runs headless and is checked for the first time against the real program. Read "Changed (read before
+upgrading)": a Claude Code session whose hooks never ran is now refused.
+
+### Changed (read before upgrading)
+
+- **A Claude Code session whose hooks never ran is refused.** staircase registers the `SessionStart` hook and fails the
+  run, keeping nothing, when it never arrives (as it already did for Codex, Gemini and OpenCode). Probed on Claude Code
+  2.1.236: `SessionStart` fires in headless `-p` with `--settings`. A Claude Code version that does not fire it would
+  fail every run (closed, never open); report it.
+
+### Added
+
+- **`staircase claude --pass-env NAME`** gives Claude Code its own credential by name (for example
+  `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) on a machine with no login; nothing is passed unless you name it,
+  a name that is not set is skipped, and something that is not a name (a pasted `NAME=secret`) is refused without being
+  echoed. Before this a headless Claude Code could not authenticate through staircase at all. `make smoke-claude`
+  takes `SMOKE_CLAUDE_PASS` and `SMOKE_CLAUDE_MODEL`.
+- **Claude Code has been run for real**: a governed run with an approval held 40 s, a rejection and retry, and a
+  fresh-clone verify and rebuild, on 2.1.236 (see [compatibility](docs/compatibility.md)).
+
 ## [0.9.0] - 2026-10-05
 
 Recovery, approval consumption and release evidence tightened after the v0.8.0 review. Read "Changed (read
@@ -22,13 +44,6 @@ GitHub login (`packaging/verify-release.sh`).
 
 ### Added
 
-- **`staircase claude --pass-env NAME`** gives Claude Code its own credential by name (for example
-  `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) on a machine with no login; nothing is passed unless you name it,
-  a name that is not set is skipped, and something that is not a name (a pasted `NAME=secret`) is refused without being
-  echoed. `make smoke-claude` takes `SMOKE_CLAUDE_PASS` and `SMOKE_CLAUDE_MODEL`.
-- **A Claude Code session whose hooks never ran is refused.** staircase registers the `SessionStart` hook and fails the
-  run, keeping nothing, when it never arrives (as it already did for Codex, Gemini and OpenCode). Probed on Claude Code
-  2.1.236: `SessionStart` fires in headless `-p` with `--settings`.
 - **`packaging/verify-release.sh <tag>` verifies a published release without a GitHub login**, with two controls
   that must fail, and writes a record; the release gate names the CI run it rests on (id, URL, attempt, event, branch,
   repository, commit) and the release workflow keeps it as an artifact; Linux CI runs `make evidence` and keeps the
