@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/policy"
+	"github.com/b070nd/stAirCase/src/internal/policysim"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,9 +24,19 @@ approve. Run it before you put a new rule into policy.json.
 
 Shell commands, proposals refused by the orchestrator and proposals that drift
 or a guard sent to a person are never the policy's to decide, so they stay as
-they were. The replay applies the rules only, not the per-run limits.`,
+they were. The replay applies the rules only, not the per-run limits.
+
+With --scenarios <file> it asserts instead. Each scenario in the file (JSON: a
+base tree, an optional scope, and proposals with the outcome you expect:
+approve, reject, refuse or human) is run through the real admission code with
+this policy, limits and guards included. The command exits non-zero when any
+outcome differs or the file asserts nothing, so CI can keep a policy from
+approving what it must not, or from escalating what it should approve.`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if path, _ := cmd.Flags().GetString("scenarios"); path != "" {
+			return runScenarios(cmd, args[0], path)
+		}
 		e, err := policy.LoadEngineFile(args[0])
 		if err != nil {
 			return err
@@ -54,7 +66,39 @@ they were. The replay applies the rules only, not the per-run limits.`,
 	},
 }
 
-func init() { policyCmd.AddCommand(policyTestCmd) }
+func init() {
+	policyTestCmd.Flags().String("scenarios", "", "assert expected outcomes from this scenarios file instead of replaying past runs")
+	policyCmd.AddCommand(policyTestCmd)
+}
+
+// runScenarios runs a scenario file against a policy and fails on any mismatch.
+func runScenarios(cmd *cobra.Command, policyFile, scenarioFile string) error {
+	f, err := policysim.Load(scenarioFile)
+	if err != nil {
+		return err
+	}
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := policysim.Run(ctx, policyFile, f)
+	if err != nil {
+		return err
+	}
+	failed := 0
+	for _, r := range res {
+		if r.Pass {
+			continue
+		}
+		failed++
+		fmt.Printf("FAIL %s, proposal %d: %s\n  decided: %s (%s)\n", r.Scenario, r.Index, r.Detail, r.Got, r.Reason)
+	}
+	fmt.Printf("%d scenario(s), %d proposal(s) asserted against %s: %d passed, %d failed\n", len(f.Scenarios), len(res), policyFile, len(res)-failed, failed)
+	if failed > 0 {
+		return fmt.Errorf("%d expectation(s) failed", failed)
+	}
+	return nil
+}
 
 // replayReport is what a policy would have decided differently in the past.
 type replayReport struct {
