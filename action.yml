@@ -31,7 +31,7 @@ inputs:
     description: Commit range to check; default for a pull request is origin/<base>..<head>
     default: ""
   version:
-    description: staircase release to use (vX.Y.Z); default is the version of this action, else the latest release
+    description: staircase release to use, as a release tag (vX.Y.Z; anything else is an error); default is the release tag the action is used at, else the latest release (with a warning)
     default: ""
 
 runs:
@@ -48,7 +48,8 @@ runs:
         REBUILD: ${{ inputs.rebuild }}
         REQUIRE_INITIATOR: ${{ inputs.require-initiator }}
         RANGE: ${{ inputs.range }}
-        VERSION: ${{ inputs.version || github.action_ref }}
+        VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
         BASE_REF: ${{ github.base_ref }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GH_TOKEN: ${{ github.token }}

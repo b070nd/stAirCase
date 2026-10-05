@@ -315,8 +315,13 @@ jobs:
           rebuild: true                              # optional: needs a release that keeps ledger notes
 ```
 
-The check installs that release of `staircase` after verifying how it was built,
-fetches the certificates (`refs/notes/staircase`) and checks **every commit** of the
+The check installs the release of `staircase` the action is used at (`@v0.7.1`), or the
+release named by the `version` input, after verifying how it was built: the build attestation
+must come from this repository's release workflow (`release.yml`) for that exact tag
+(`gh attestation verify --signer-workflow … --source-ref refs/tags/<tag>`), and a binary that
+was not verified is never run. The `version` input must be a release tag such as `v0.7.1`;
+anything else is an error and never "the latest". Used at a floating ref (`@main`) it installs
+the latest release and warns that the verifier is not pinned. It fetches the certificates (`refs/notes/staircase`) and checks **every commit** of the
 pull request. Push the certificates together with the branch:
 
 ```bash
@@ -327,7 +332,9 @@ git push origin staircase/run-7 refs/notes/staircase refs/notes/staircase-ledger
 pull request's *base branch* (or `trust-ref`), never from the pull request's own
 files: a pull request that replaced the key would otherwise vouch for itself. A key
 that is only in the pull request is refused. Outside a pull request (a push, a merge
-queue), set `range` and `trust-ref` to a protected branch or tag. Protect the key and
+queue), set `range` and `trust-ref` to a protected branch or tag: without `trust-ref` the check
+refuses to run rather than read the key from the checkout. The pull request's base is fetched
+whatever `range` is, and stays the place the trust comes from. Protect the key and
 signers paths with CODEOWNERS and a ruleset that requires review, and make this
 check a required status check; a check that can be skipped or edited by the change it
 judges is not a gate.
