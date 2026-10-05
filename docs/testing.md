@@ -119,6 +119,15 @@ what was left in a fresh process. The points, in order, and what must hold after
 | `db-completed`: the run's record is complete | nothing to recover; the commit verifies and rebuilds |
 | `recover-op-recorded`, `recover-committed`: `recover` itself killed | a second `recover` delivers one commit and repairs its evidence |
 
+The same points serve in-process tests (`-tags barriers`, `consume_barrier_test.go`, part of
+`make check`): a hook cancels the run at the exact point, so the expiry cases need no timing. An approval
+is consumed when its decision is on the audit chain (journal first, then the chain, then the answer
+to the agent), with the last expiry check immediately before that append; they check that a run
+that ends before the journal, between the journal and the chain, or after the commit was named and before
+the branch moves, delivers and recovers exactly what was consumed before it ended (a journal line whose
+authorization expired is marked `unconsumed` on the chain and is neither an approval nor corruption), and
+that the final review is still bound by cancellation only, not by the agent's run limit.
+
 Each case ends with `staircase verify` and `staircase rebuild` of the run branch. SIGKILL
 ends a process without any cleanup; it is not a power loss, which also loses what the
 operating system had not yet written to disk, and is not tested here.

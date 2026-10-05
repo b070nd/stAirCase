@@ -45,6 +45,10 @@ type history struct {
 	// The final reviews a person decided (a decision of its own, with no request before it):
 	// each is the digest of the whole approved state that was put to them.
 	FinalReviews []auditedFinalReview
+	// Unconsumed is the journal lines of authorizations that expired between the journal
+	// and the chain: proposal number -> the request's SHA-256. The chain says they were
+	// rejected; their line in the journal is not an approval and not corruption.
+	Unconsumed map[int]string
 	// What the run loaded and was started with, as it recorded it: the policy it
 	// ran under (not whatever policy.json holds now) and the signed request of the
 	// person who started it.
@@ -85,6 +89,7 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 			Digest        string            `json:"digest"`
 			Principal     string            `json:"principal"`
 			Signature     string            `json:"signature"`
+			Unconsumed    bool              `json:"unconsumed"`
 		}
 		if i == 0 && e.EventType != "run_bound" {
 			return h, fmt.Errorf("the audit history begins with %q, not run_bound", e.EventType)
@@ -128,6 +133,12 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 				return h, fmt.Errorf("proposal numbers do not increase: %d follows %d", p.Seq, lastSeq)
 			}
 			lastSeq = p.Seq
+			if p.Unconsumed && !p.Approved {
+				if h.Unconsumed == nil {
+					h.Unconsumed = map[int]string{}
+				}
+				h.Unconsumed[p.Seq] = p.RequestSHA256
+			}
 			if p.ActionType == domain.ActionFinalReview {
 				h.FinalReviews = append(h.FinalReviews, auditedFinalReview{p.Approved, p.Files})
 				continue
@@ -219,6 +230,9 @@ func reconcile(h history, j journalRead) ([]LedgerProposal, error) {
 		kept = append(kept, LedgerProposal{Seq: a.Seq, Source: a.Source, Edits: req.ProposedEdits}) // who decided is the chain's word, not the journal's
 	}
 	for _, e := range j.Entries {
+		if sum, ok := h.Unconsumed[e.Seq]; ok && sum == sha256Hex(e.Request) {
+			continue // the chain says this authorization expired before it was consumed
+		}
 		if !audited[e.Seq] && e.Seq <= h.LastDecided {
 			return nil, fmt.Errorf("the journal holds proposal %d, which the audit chain did not approve although it decided later ones", e.Seq)
 		}

@@ -9,6 +9,7 @@ package barrier
 
 // Points, in the order a run reaches them. A drill kills at one and checks what a fresh process finds.
 const (
+	DecisionMade      = "decision-made"       // a proposal has been decided; nothing of it is journaled or audited yet
 	JournalSynced     = "journal-synced"      // an approval is in the journal, flushed; not yet on the audit chain
 	AuditCommitted    = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
 	Consumed          = "consumed"            // the approval is recorded in memory and released to the agent

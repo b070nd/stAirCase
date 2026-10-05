@@ -15,6 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **An approval is consumed when it is on the audit chain, and the run limit is checked right before that.** The
+  limit used to be checked before the journal line was written; a run that ended between the journal and the chain
+  still put the approval on the chain and released it. The check is now repeated after the journal sync, and the
+  decision is recorded as rejected, marked `unconsumed` (recovery treats its journal line as neither an approval nor
+  corruption). A run cancelled after its commit is named and before the branch moves delivers nothing.
 - **Recovery replays the audit chain it verified, and only a cut append is a torn journal tail.** It read the chain
   twice (verify, then replay); it now reads once and replays what it verified. A last journal line that is complete
   but not an entry (`{}`, `null`, a sequence that is not positive, no request, or any line ending in a newline) is
