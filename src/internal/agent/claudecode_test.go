@@ -80,7 +80,9 @@ func fakeClaude() int {
 			"tool_input": c.Input, "tool_use_id": fmt.Sprint("t", id), "cwd": "."})
 		run := func() (int, string) {
 			ctx := context.Background()
-			if ms, _ := strconv.Atoi(os.Getenv("FAKE_CLAUDE_HOOK_TIMEOUT_MS")); ms > 0 { // the host gives up on a slow hook
+			// the host gives up on a slow hook: on the tool hook only (the drill's subject), not on the session
+			// handshake, which under a loaded CI machine can take longer than the drill's short limit
+			if ms, _ := strconv.Atoi(os.Getenv("FAKE_CLAUDE_HOOK_TIMEOUT_MS")); ms > 0 && event == "PreToolUse" {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
 				defer cancel()
