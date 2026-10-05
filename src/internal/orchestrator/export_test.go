@@ -94,3 +94,29 @@ func ExportedGuardNewFile(path, content string) string {
 
 // ExportedIndent is how a check's output is shown on the terminal.
 func ExportedIndent(s string) string { return indent(s) }
+
+// ExportedAuditedHistory exposes the lifecycle checks of recovery: the approvals
+// the history holds (their proposal numbers) and the last proposal it decided.
+func ExportedAuditedHistory(events []domain.RunEventLog) (approved []int, lastDecided int, err error) {
+	h, err := auditedHistory(events)
+	for _, a := range h.Approvals {
+		approved = append(approved, a.Seq)
+	}
+	return approved, h.LastDecided, err
+}
+
+// ExportedOwnsCommit reports whether a recovery operation of that name, from that
+// base and expecting that tree, owns the commit tip.
+func ExportedOwnsCommit(repo, op, base, tree, tip string) bool {
+	return (&recoveryOp{Op: op, Base: base, Tree: tree}).owns(repo, tip)
+}
+
+// ExportedRunContext is the policy digest and the initiator's principal and
+// signature a run's history records.
+func ExportedRunContext(events []domain.RunEventLog) (policy, principal, signature string, err error) {
+	h, err := auditedHistory(events)
+	if h.Initiator != nil {
+		principal, signature = h.Initiator.Principal, h.Initiator.Signature
+	}
+	return h.PolicyDigest, principal, signature, err
+}

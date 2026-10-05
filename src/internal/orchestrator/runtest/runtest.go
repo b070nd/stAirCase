@@ -4,6 +4,7 @@ package runtest
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,6 +40,7 @@ type Options struct {
 
 // Result is what a run left behind.
 type Result struct {
+	DB     *sql.DB // the store's database, for a test that damages what a run left
 	Store  *persistence.Store
 	Run    persistence.Run
 	Events []domain.RunEventLog
@@ -125,7 +127,7 @@ func Run(t testing.TB, o Options) Result {
 	events, err := s.ListEventLogs(runs[0].ID)
 	must(t, err)
 	must(t, s.VerifyChain(runs[0].ID))
-	return Result{Store: s, Run: runs[0], Events: events, Repo: repo, WsDir: wsDir, Err: runErr}
+	return Result{DB: db, Store: s, Run: runs[0], Events: events, Repo: repo, WsDir: wsDir, Err: runErr}
 }
 
 func git(t testing.TB, dir string, args ...string) {
