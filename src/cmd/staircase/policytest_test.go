@@ -76,4 +76,10 @@ func TestPolicyScenarios_command(t *testing.T) {
 	assert.NoError(t, run(write("ok.json", sc("approve"))))
 	assert.ErrorContains(t, run(write("bad.json", sc("human"))), "1 expectation(s) failed")
 	assert.Error(t, run(write("empty.json", `{"scenarios":[]}`)))
+	// delivery is asserted from the run branch, not from the decision
+	deliver := func(file string) string {
+		return `{"scenarios":[{"name":"docs","expect_delivered":["` + file + `"],"proposals":[{"edits":[{"file":"docs/a.md","content":"x\n"}],"expect":"approve"}]}]}`
+	}
+	assert.NoError(t, run(write("delivers.json", deliver("docs/a.md"))))
+	assert.ErrorContains(t, run(write("delivers-wrong.json", deliver("docs/other.md"))), "1 expectation(s) failed")
 }

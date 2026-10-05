@@ -13,6 +13,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   message; a copy of those made by anyone else is now a conflict. A run killed by v0.8.0 right after its commit has
   no such record, so its commit is no longer adopted (the older refusal applies).
 
+### Added
+
+- **Policy scenarios can assert delivery, a person's answer and checkpoint/evidence workflows.** A proposal may
+  state `then` (what the agent was finally told), a scenario `expect_delivered` (the files the run branch differs
+  from the base in, read from Git), `expect_certificate`, `final_review_answer` and `checks`. One behaviour
+  change: the person in a scenario now approves the final review of the whole change unless `final_review_answer`
+  says `reject` (it used to follow `human_answer`, so a scenario could not tell a rejected checkpoint from a
+  rejected delivery); see [approvals](docs/approvals.md).
+
 ### Fixed
 
 - **An approval is consumed when it is on the audit chain, and the run limit is checked right before that.** The

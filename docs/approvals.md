@@ -282,8 +282,19 @@ Each scenario runs through the real admission code with this policy, so limits
 `expect` is `approve` (a rule, no person), `reject`, `refuse` (the orchestrator refuses the
 edit) or `human` (a person is asked). A scenario may set `base` (files that already exist),
 `scope` (the story's paths), `approve_in_scope` and `approve_on_evidence` (the run options of the
-same names) and `human_answer` (`approve` or `reject`, default `reject`).
+same names), `checks` (the commands that are the evidence) and `human_answer` (what a person asked about a
+proposal answers, `approve` or `reject`, default `reject`) and `final_review_answer` (their answer at the final
+review of the whole change, default `approve`).
 The command exits non-zero on any outcome that differs, and on a file that asserts nothing.
+
+What a scenario asserts: by default the decision of each proposal, who made it. A proposal may also say what
+the agent was finally told (`"then": "approved"` or `"rejected"`, which for a proposal that went to a person is
+their answer). To assert that a workflow was delivered, and not only decided, say so: `expect_delivered` lists
+the files the run branch must differ from the base in (an empty list: nothing delivered), read from Git, and
+`expect_certificate` requires that a change certificate was issued. For example a checkpoint
+(`"limits": {"checkpoint_every": 3}` in the policy) sends every third proposal to a person, a check that fails
+sends an in-scope change under `approve_on_evidence` to a person, and a final review that is rejected delivers
+nothing: each is a scenario with its expected decisions and its expected delivery.
 
 Protect the file against silent edits by signing it:
 

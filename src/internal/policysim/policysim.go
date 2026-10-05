@@ -52,7 +52,16 @@ type Scenario struct {
 	ApproveInScope    bool     `json:"approve_in_scope,omitempty"`
 	ApproveOnEvidence bool     `json:"approve_on_evidence,omitempty"`
 	Checks            []string `json:"checks,omitempty"`
-	HumanAnswer       string   `json:"human_answer,omitempty"` // what a person asked answers: "reject" (default) or "approve"
+	HumanAnswer       string   `json:"human_answer,omitempty"` // what a person asked about a proposal answers: "reject" (default) or "approve"
+	// What the person answers at the final review of the whole change, which a run asks for
+	// when part of it was approved without them (the task, evidence): "approve" (default) or "reject".
+	FinalReviewAnswer string `json:"final_review_answer,omitempty"`
+	// Delivery: with expect_delivered set, the files the run branch must differ from the base in
+	// after the run (an empty list: nothing delivered); with expect_certificate, a change
+	// certificate must have been issued for the delivered commit. A scenario that sets neither
+	// asserts proposal decisions only.
+	ExpectDelivered   *[]string `json:"expect_delivered,omitempty"`
+	ExpectCertificate bool      `json:"expect_certificate,omitempty"`
 	Proposals         []Proposal
 }
 
@@ -63,6 +72,9 @@ type Proposal struct {
 	Edits          []Edit  `json:"edits"`
 	Expect         string  `json:"expect"`
 	ReasonContains string  `json:"reason_contains,omitempty"` // text the reason (a guard, drift, a rule) must contain
+	// Then is what the agent was finally told, "approved" or "rejected": for a proposal that
+	// went to a person it is their answer.
+	Then string `json:"then,omitempty"`
 }
 
 // Edit is one file change: Content for a whole new file, Delete, or Search and Replace.
@@ -119,10 +131,16 @@ func (f File) validate() error {
 		if s.HumanAnswer != "" && !slices.Contains([]string{"approve", "reject"}, s.HumanAnswer) {
 			errs = append(errs, fmt.Errorf("%s: human_answer is approve or reject", where))
 		}
+		if s.FinalReviewAnswer != "" && !slices.Contains([]string{"approve", "reject"}, s.FinalReviewAnswer) {
+			errs = append(errs, fmt.Errorf("%s: final_review_answer is approve or reject", where))
+		}
 		for j, p := range s.Proposals {
 			pw := fmt.Sprintf("%s, proposal %d", where, j+1)
 			if !slices.Contains([]string{Approve, Reject, Refuse, Human}, p.Expect) {
 				errs = append(errs, fmt.Errorf("%s: expect is one of approve, reject, refuse, human, not %q", pw, p.Expect))
+			}
+			if p.Then != "" && !slices.Contains([]string{"approved", "rejected"}, p.Then) {
+				errs = append(errs, fmt.Errorf("%s: then is approved or rejected, not %q", pw, p.Then))
 			}
 			if len(p.Edits) == 0 {
 				errs = append(errs, fmt.Errorf("%s has no edits", pw))
@@ -180,6 +198,9 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 	}
 	defer func() { _ = os.RemoveAll(ws) }()
 	if err := crypto.GenerateKey(ws); err != nil {
+		return nil, err
+	}
+	if err := crypto.GenerateSigningKey(ws); err != nil { // a delivered change is certified
 		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(ws, "policy.json"), pol, 0o600); err != nil {
@@ -255,6 +276,7 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 	var mu sync.Mutex
 	var asked []domain.YieldRequest
 	approve := s.HumanAnswer == "approve"
+	finalApprove := s.FinalReviewAnswer != "reject"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req domain.YieldRequest
 		b, _ := io.ReadAll(r.Body)
@@ -262,7 +284,11 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 		mu.Lock()
 		asked = append(asked, req)
 		mu.Unlock()
-		_ = json.NewEncoder(w).Encode(domain.YieldResponse{Type: "yield_response", Approved: approve, Feedback: "answered by the scenario"})
+		answer := approve
+		if req.ActionType == domain.ActionFinalReview {
+			answer = finalApprove
+		}
+		_ = json.NewEncoder(w).Encode(domain.YieldResponse{Type: "yield_response", Approved: answer, Feedback: "answered by the scenario"})
 	}))
 	defer srv.Close()
 	if err := store.UpdateProjectWebhook(proj.ID, srv.URL); err != nil {
@@ -367,10 +393,51 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 			r.Detail = fmt.Sprintf("expected %s, got %s (decided by %s)", p.Expect, r.Got, d.Source)
 		} else if p.ReasonContains != "" && !strings.Contains(r.Reason, p.ReasonContains) {
 			r.Pass, r.Detail = false, fmt.Sprintf("the reason %q does not contain %q", r.Reason, p.ReasonContains)
+		} else if p.Then != "" && (p.Then == "approved") != d.Approved {
+			r.Pass, r.Detail = false, fmt.Sprintf("the agent was finally told %s, expected %s", map[bool]string{true: "approved", false: "rejected"}[d.Approved], p.Then)
 		}
 		out = append(out, r)
 	}
+	if s.ExpectDelivered != nil || s.ExpectCertificate {
+		out = append(out, deliveryResult(s, repo, runs[0].ID, events))
+	}
 	return out, nil
+}
+
+// deliveryResult checks what reached the run branch and its evidence, from the repository
+// and the audit chain, not from the decisions: the file list the branch differs from the
+// base in, and (with expect_certificate) a certificate issued for a commit.
+func deliveryResult(s Scenario, repo string, runID int64, events []domain.RunEventLog) Result {
+	r := Result{Scenario: s.Name, Index: 0, Want: "delivery"}
+	out, err := exec.Command("git", "-C", repo, "diff", "--name-only", "main", fmt.Sprintf("staircase/run-%d", runID)).Output()
+	if err != nil {
+		out = nil // no run branch: nothing delivered
+	}
+	got := strings.Fields(string(out))
+	slices.Sort(got)
+	r.Got = "delivered " + strings.Join(got, ", ")
+	if len(got) == 0 {
+		r.Got = "delivered nothing"
+	}
+	r.Pass = true
+	if s.ExpectDelivered != nil {
+		want := slices.Clone(*s.ExpectDelivered)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			r.Pass, r.Detail = false, fmt.Sprintf("expected the run branch to differ from the base in [%s], it differs in [%s]", strings.Join(want, ", "), strings.Join(got, ", "))
+		}
+	}
+	if s.ExpectCertificate {
+		issued := false
+		for _, e := range events {
+			issued = issued || e.EventType == "certificate_issued"
+		}
+		if !issued {
+			r.Pass = false
+			r.Detail = strings.TrimSpace(r.Detail + " no change certificate was issued")
+		}
+	}
+	return r
 }
 
 func nonEmpty(s ...string) []string {

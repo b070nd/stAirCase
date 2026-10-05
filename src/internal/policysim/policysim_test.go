@@ -2,6 +2,7 @@ package policysim_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -127,4 +128,84 @@ func TestRun_approve_in_scope_is_a_run_option(t *testing.T) {
 	for _, r := range res {
 		assert.True(t, r.Pass, "%s: %s (%s)", r.Scenario, r.Detail, r.Reason)
 	}
+}
+
+func delivered(files ...string) *[]string { return &files }
+
+// TestRun_a_checkpoint_goes_to_a_person_who_can_approve_or_reject: with the task approving what is
+// in scope, checkpoint_every sends every third proposal to a person. Their answer is what the
+// agent is told, and what reaches the branch is exactly what was approved (delivery and the
+// certificate are asserted from Git and the chain, not from the decisions).
+func TestRun_a_checkpoint_goes_to_a_person_who_can_approve_or_reject(t *testing.T) {
+	pol := writePolicy(t, `{"rules":[],"limits":{"checkpoint_every":3}}`)
+	proposals := func(third string) []policysim.Proposal {
+		return []policysim.Proposal{
+			one("src/a.go", "package a\n", policysim.Approve),
+			one("src/b.go", "package b\n", policysim.Approve),
+			{Edits: []policysim.Edit{{File: "src/c.go", Content: "package c\n"}}, Expect: policysim.Human, ReasonContains: "checkpoint", Then: third},
+			one("src/d.go", "package d\n", policysim.Approve),
+		}
+	}
+	res, err := policysim.Run(context.Background(), pol, policysim.File{Scenarios: []policysim.Scenario{
+		{Name: "the person approves the checkpoint", Scope: []string{"src/**"}, ApproveInScope: true, HumanAnswer: "approve", Proposals: proposals("approved"),
+			ExpectDelivered: delivered("src/a.go", "src/b.go", "src/c.go", "src/d.go"), ExpectCertificate: true},
+		{Name: "the person rejects the checkpoint", Scope: []string{"src/**"}, ApproveInScope: true, HumanAnswer: "reject", Proposals: proposals("rejected"),
+			ExpectDelivered: delivered("src/a.go", "src/b.go", "src/d.go"), ExpectCertificate: true},
+		{Name: "a final review that is rejected delivers nothing", Scope: []string{"src/**"}, ApproveInScope: true, HumanAnswer: "approve", FinalReviewAnswer: "reject", Proposals: proposals("approved"),
+			ExpectDelivered: delivered()},
+	}})
+	require.NoError(t, err)
+	for _, r := range res {
+		assert.True(t, r.Pass, "%s #%d: %s (%s)", r.Scenario, r.Index, r.Detail, r.Reason)
+	}
+	assert.Len(t, res, 15, "12 proposals and 3 deliveries")
+}
+
+// TestRun_evidence_decides_what_is_in_scope: with approve_on_evidence the explicit checks
+// decide an in-scope change: passing evidence approves it with no person; failing evidence
+// does not, it goes to a person, who is told which check failed, and their answer is final.
+func TestRun_evidence_decides_what_is_in_scope(t *testing.T) {
+	pol := writePolicy(t, `{"rules":[]}`)
+	check := []string{`grep -q good src/a.txt`}
+	scenario := func(name, answer, then string, deliver []string) policysim.Scenario {
+		return policysim.Scenario{Name: name, Scope: []string{"src/**"}, ApproveOnEvidence: true, Checks: check, HumanAnswer: answer,
+			Proposals: []policysim.Proposal{
+				{Edits: []policysim.Edit{{File: "src/a.txt", Content: "good\n"}}, Expect: policysim.Approve, ReasonContains: "evidence"},
+				{Edits: []policysim.Edit{{File: "src/a.txt", Search: "good\n", Replace: "broken\n"}}, Expect: policysim.Human, Then: then},
+			},
+			ExpectDelivered: &deliver, ExpectCertificate: len(deliver) > 0}
+	}
+	res, err := policysim.Run(context.Background(), pol, policysim.File{Scenarios: []policysim.Scenario{
+		scenario("failing evidence goes to a person who rejects it", "reject", "rejected", []string{"src/a.txt"}),
+		scenario("failing evidence goes to a person who approves it", "approve", "approved", []string{"src/a.txt"}),
+	}})
+	require.NoError(t, err)
+	for _, r := range res {
+		assert.True(t, r.Pass, "%s #%d: %s (%s)", r.Scenario, r.Index, r.Detail, r.Reason)
+	}
+	// the person who was asked is told the evidence failed
+	assert.Contains(t, res[1].Reason, "grep", "the reason names the failing check")
+}
+
+// TestRun_wrong_delivery_and_answer_expectations_fail: expecting what did not happen fails, both ways.
+func TestRun_wrong_delivery_and_answer_expectations_fail(t *testing.T) {
+	pol := writePolicy(t, `{"rules":[{"action_types":["file_edit"],"allowed_extensions":[".md"],"effect":"approve"}]}`)
+	res, err := policysim.Run(context.Background(), pol, policysim.File{Scenarios: []policysim.Scenario{
+		{Name: "expects another delivery", Proposals: []policysim.Proposal{one("docs/a.md", "x\n", policysim.Approve)}, ExpectDelivered: delivered("docs/b.md")},
+		{Name: "expects nothing delivered but a change was", Proposals: []policysim.Proposal{one("docs/a.md", "x\n", policysim.Approve)}, ExpectDelivered: delivered()},
+		{Name: "expects a rejection the agent did not get", Proposals: []policysim.Proposal{
+			{Edits: []policysim.Edit{{File: "docs/a.md", Content: "x\n"}}, Expect: policysim.Approve, Then: "rejected"}}},
+	}})
+	require.NoError(t, err)
+	failed := map[string]bool{}
+	for _, r := range res {
+		if !r.Pass {
+			failed[r.Scenario+fmt.Sprintf("/%d", r.Index)] = true
+			assert.NotEmpty(t, r.Detail)
+		}
+	}
+	assert.True(t, failed["expects another delivery/0"], "%+v", res)
+	assert.True(t, failed["expects nothing delivered but a change was/0"], "%+v", res)
+	assert.True(t, failed["expects a rejection the agent did not get/1"], "%+v", res)
+	assert.Len(t, failed, 3, "and nothing else fails: the decisions themselves were as expected")
 }
