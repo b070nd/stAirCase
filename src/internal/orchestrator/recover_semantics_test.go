@@ -1,15 +1,21 @@
 package orchestrator_test
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"os/exec"
 	"strings"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -167,4 +173,69 @@ func TestRecover_the_final_review_on_the_chain_is_the_review(t *testing.T) {
 		assert.ErrorContains(t, err, "final review")
 		branchUntouched(t, r)
 	})
+}
+
+// TestRecover_keeps_binary_content_deletions_and_modes: what recovery commits is the state
+// the approvals derive, whatever kind of change it was. Bytes that are not text keep
+// every byte, a deleted file is gone, an executable stays executable and a new file's
+// mode is the one that was approved (modes are bound by the request hash on the chain,
+// the digest of the state binds the bytes). Read back from the real Git objects.
+func TestRecover_keeps_binary_content_deletions_and_modes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	binary := []byte("\x89PNG\xff\x00\x80\x01")
+	script := []byte("#!/bin/sh\necho hi\n")
+	r := runtest.Run(t, runtest.Options{Ctx: ctx,
+		Setup: func(s *persistence.Store, ws string, p int64) {
+			require.NoError(t, crypto.GenerateSigningKey(ws))
+			inSrc(&operator{approve: true})(s, ws, p) // a person approves each change: binary and executable files go to one
+		},
+		Base: map[string]runtest.File{
+			"src/bin/run.sh": {Content: "echo a\n", Mode: 0o755},
+			"src/old.txt":    {Content: "bye\n", Mode: 0o644},
+			"src/keep.txt":   {Content: "keep\n", Mode: 0o644},
+		},
+		Agent: orchestrator.AgentFunc(func(c context.Context, env *orchestrator.AgentEnv) error {
+			for _, e := range []domain.ProposedEdit{
+				{File: "src/assets/logo.png", SearchBlock: orchestrator.MarkerNewFile, ContentB64: base64.StdEncoding.EncodeToString(binary)},
+				{File: "src/tools/new.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: string(script), Mode: "100755"},
+				{File: "src/bin/run.sh", SearchBlock: "echo a", ReplaceBlock: "echo b"},
+				{File: "src/old.txt", SearchBlock: orchestrator.MarkerDeleteFile},
+			} {
+				if ap := env.ProposeEdit(c, "coder", "r", e); ap.Approved {
+					_ = ap.Apply(env.Worktree)
+				}
+			}
+			cancel()
+			<-c.Done()
+			return c.Err()
+		})})
+	require.Equal(t, persistence.RunStatusKilled, r.Run.Status)
+	res, err := recoverRun(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, 4, res.Proposals)
+
+	show := func(path string) []byte {
+		out, err := exec.Command("git", "-C", r.Repo, "show", "staircase/run-1:"+path).Output()
+		require.NoError(t, err, path)
+		return out
+	}
+	assert.Equal(t, binary, show("src/assets/logo.png"), "every byte of a binary file")
+	assert.Equal(t, script, show("src/tools/new.sh"))
+	assert.Equal(t, "echo b\n", string(show("src/bin/run.sh")))
+	assert.Equal(t, "keep\n", string(show("src/keep.txt")), "what was not touched is as it was")
+	assert.Empty(t, strings.TrimSpace(git(t, r.Repo, "ls-tree", "-r", "--name-only", "staircase/run-1", "--", "src/old.txt")), "a deleted file is gone")
+	modes := git(t, r.Repo, "ls-tree", "-r", "staircase/run-1")
+	assert.Contains(t, modes, "100644 blob "+gitHash(t, r.Repo, binary)+"\tsrc/assets/logo.png", "a new file is not executable unless it was approved so")
+	assert.Contains(t, modes, "\tsrc/tools/new.sh")
+	assert.Regexp(t, `(?m)^100755 blob [0-9a-f]+\tsrc/tools/new\.sh$`, modes)
+	assert.Regexp(t, `(?m)^100755 blob [0-9a-f]+\tsrc/bin/run\.sh$`, modes, "an executable stays executable when its content changes")
+}
+
+func gitHash(t *testing.T, repo string, b []byte) string {
+	cmd := exec.Command("git", "-C", repo, "hash-object", "--stdin")
+	cmd.Stdin = bytes.NewReader(b)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	return strings.TrimSpace(string(out))
 }
