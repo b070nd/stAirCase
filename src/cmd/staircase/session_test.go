@@ -61,6 +61,7 @@ func fakeClaude() int {
 		out, _ := cmd.Output()
 		return string(out)
 	}
+	call("SessionStart") // Claude Code's handshake: staircase refuses a session whose hooks never ran
 	if !strings.Contains(call("PreToolUse"), `"allow"`) {
 		fmt.Println(`{"is_error":true,"result":"the write was not allowed"}`)
 		return 1

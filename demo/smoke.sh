@@ -10,7 +10,9 @@
 #                            overrides the gateway).
 #   ./demo/smoke.sh claude   the same task as a `staircase claude` session; the
 #                            first approval is held 40 s (longer than Claude
-#                            Code's default hook timeout). Needs a logged-in `claude`.
+#                            Code's default hook timeout). Needs a logged-in `claude`,
+#                            or SMOKE_CLAUDE_PASS=<name of the variable holding its
+#                            credential> (and SMOKE_CLAUDE_MODEL=haiku to keep it small).
 #   ./demo/smoke.sh codex    the same task as a `staircase codex` session with
 #                            SMOKE_CODEX_MODEL (default gpt-6-luna). Needs a
 #                            logged-in codex (on PATH or in the ChatGPT app).
@@ -154,7 +156,12 @@ case "$MODE" in
     echo "  ✓ the replay committed the same bytes, offline" ;;
   claude)
     say "Claude Code, every tool call governed by hooks"
-    run 1 40 claude --yes --allow GREETING.md "$TASK" ;;
+    # A headless machine has no login: SMOKE_CLAUDE_PASS names the variable that holds Claude Code's own
+    # credential (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY); only its name is on the command line.
+    # SMOKE_CLAUDE_MODEL (for example haiku) keeps a paid run small.
+    PASS_ARGS=(); for v in ${SMOKE_CLAUDE_PASS:-}; do PASS_ARGS+=(--pass-env "$v"); done
+    [ -z "${SMOKE_CLAUDE_MODEL:-}" ] || PASS_ARGS+=(--model "$SMOKE_CLAUDE_MODEL")
+    run 1 40 claude --yes --allow GREETING.md ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$TASK" ;;
   codex-stop)
     STOP_CHECK='test -f NOTES.txt && grep -q STAIRCASE-CHECK NOTES.txt || { echo "NOTES.txt must mention the word STAIRCASE-CHECK"; exit 1; }'
     say "Codex: a held and rejected approval, then a Stop refused until the check passes"

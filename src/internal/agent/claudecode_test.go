@@ -116,6 +116,9 @@ func fakeClaude() int {
 	_ = json.Unmarshal([]byte(strings.ReplaceAll(string(script), "$WT", wd)), &calls)
 	log, _ := os.Create(os.Getenv("FAKE_CLAUDE_LOG"))
 	defer log.Close()
+	if len(s.Hooks["SessionStart"]) > 0 && os.Getenv("FAKE_CLAUDE_NO_SESSION_START") == "" {
+		hook("SessionStart", 0, fakeCall{}) // what Claude Code does when a session begins
+	}
 	for i, c := range calls {
 		if c.Tool == "Stop" { // the agent wants to end the session
 			_, out := hook("Stop", i, c)

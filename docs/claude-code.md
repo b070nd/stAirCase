@@ -33,8 +33,12 @@ staircase run 1
 ## What you need
 
 - the `claude` command on your `PATH`;
-- Claude Code **already logged in** on this machine. stAirCase starts it with a
-  clean environment that holds no API keys, so it uses its own login;
+- Claude Code **already logged in** on this machine, or a credential you hand it by name.
+  stAirCase starts it with a clean environment that holds no API keys, so it uses its own
+  login. On a machine with no login (CI, a container) name the variable that holds its credential:
+  `staircase claude --pass-env CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) passes that one
+  variable, from your environment, to Claude Code. Claude Code, and any command it runs with your
+  approval, can read the value: use a token meant for this, and not one that can do more;
 - macOS or Linux (Windows is untested).
 
 ## How it works
