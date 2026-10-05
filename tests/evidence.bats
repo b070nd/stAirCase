@@ -133,3 +133,21 @@ sandbox_skips() {
   [ "$(field '.steps[] | select(.name == "go tests") | .status')" = skipped ]
   [[ "$(field '.steps[] | select(.name == "go tests") | .reason')" == *"TestNeedsSomething"* ]]
 }
+
+@test "a skip that says it is a documented limit is optional, listed, and an unmarked skip of the same test is not" {
+  stub make 'exit 0'
+  stub go 'case "$1" in version) echo "go version stub";; test)
+    echo "{\"Action\":\"pass\",\"Test\":\"TestA\"}"
+    printf "%s\n" "{\"Action\":\"output\",\"Test\":\"TestKernel\",\"Output\":\"x_test.go:9: documented limit: needs a newer kernel\"}"
+    echo "{\"Action\":\"skip\",\"Test\":\"TestKernel\"}"
+    ;; *) exit 0;; esac'
+  evidence go-tests
+  [ "$(field '.steps[] | select(.name == "go tests") | .status')" = passed ]
+  [[ "$(field '.steps[] | select(.name == "go tests") | .reason')" == *"TestKernel"* ]]
+  stub go 'case "$1" in version) echo "go version stub";; test)
+    printf "%s\n" "{\"Action\":\"output\",\"Test\":\"TestKernel\",\"Output\":\"x_test.go:9: needs a newer kernel\"}"
+    echo "{\"Action\":\"skip\",\"Test\":\"TestKernel\"}"
+    ;; *) exit 0;; esac'
+  evidence go-tests
+  [ "$(field '.steps[] | select(.name == "go tests") | .status')" != passed ]
+}

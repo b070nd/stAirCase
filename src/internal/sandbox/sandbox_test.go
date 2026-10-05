@@ -196,7 +196,7 @@ func TestStatus_names_this_machines_engines(t *testing.T) {
 func TestSandbox_cannot_signal_other_processes(t *testing.T) {
 	eachEngine(t, func(t *testing.T) {
 		if only == "landlock" {
-			t.Skip("Landlock restricts signals only from ABI 6 (Linux 6.12); this engine does not yet")
+			t.Skip("documented limit: Landlock restricts signals only from ABI 6 (Linux 6.12); this engine does not yet")
 		}
 		victim := exec.Command("sleep", "60")
 		require.NoError(t, victim.Start())
