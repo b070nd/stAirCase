@@ -124,14 +124,17 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 // call to the run and blocks (exit 2) on every failure. mode is --governed
 // for the hooks a session brings and --require for a company's managed hook.
 // It is the same on every run and holds no secret; the shell that runs hooks
-// gets the program path quoted.
+// gets the program path quoted, and any failure of the program ends as 2 (a block).
 func HookCommand(bin, agentName, mode string, extra ...string) string {
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	cmd := quote(bin) + " hook " + agentName + " " + mode
 	for _, e := range extra {
 		cmd += " " + quote(e)
 	}
-	return cmd
+	// An agent treats any exit status but 2 as "the hook broke, carry on": a program
+	// that is missing (127), cannot run (126), crashes or is killed (137) must
+	// block like one that says no.
+	return cmd + " || exit 2"
 }
 
 // sandboxSettings turn on Claude Code's own sandbox for its commands, as
@@ -371,6 +374,14 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 	if err := json.Unmarshal(in.Input, &a); err != nil {
 		return "staircase: unreadable tool input"
 	}
+	if in.Tool == ambiguousTool { // see aliasArgs: the host's names for one argument disagree
+		var c struct{ Conflict string }
+		_ = json.Unmarshal(in.Input, &c)
+		return "staircase: the tool call gives " + c.Conflict + " different values, so it is not clear what it would do"
+	}
+	if a.FilePath != "" && a.Path != "" && a.FilePath != a.Path {
+		return "staircase: the tool call gives file_path and path different values, so it is not clear what it would do"
+	}
 	switch in.Tool {
 	case "TodoWrite":
 		return ""
@@ -400,6 +411,9 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		}
 		return ""
 	case "Write", "Edit":
+		if a.FilePath == "" {
+			return "staircase: the tool call names no file"
+		}
 		rel, err := h.rel(a.FilePath)
 		if err != nil {
 			return "staircase: only files inside the project can be changed"

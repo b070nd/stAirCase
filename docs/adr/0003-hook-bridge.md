@@ -22,6 +22,13 @@ In v0.2.0 each Claude Code run writes this hook command into a settings file:
 
 ## Decision
 
+The command every agent calls ends in `|| exit 2` (`'<staircase>' hook <agent> --governed || exit 2`):
+agents treat any exit status other than 2 as a hook that broke and carry on, so a program that is
+missing (127), cannot run (126), crashes or is killed must end as a block, like one that says no.
+`staircase hook` itself checks what it forwards and what it prints: a call it cannot read or that names an
+event the hook is not registered for is blocked without asking the run, and an answer that is empty, cut off or
+holds no allow/deny decision for a call that needs one (before a tool runs) is blocked, not passed on.
+
 **One stable command connects every agent's hooks to the run:**
 
 ```

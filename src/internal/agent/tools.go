@@ -3,6 +3,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -268,4 +270,47 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// ambiguousTool stands in for a tool call whose arguments name the same thing twice
+// with different values; `pre` refuses it.
+const ambiguousTool = "staircase_ambiguous_arguments"
+
+// aliasArgs renames each host argument to the name the governed tools read
+// (Claude Code's), so a tool call has one name per argument. A name and its alias
+// that are both present must hold the same value (compared as JSON): if they
+// differ, the call is ambiguous (which path would the host write?) and conflict
+// names them. An alias is removed once it is copied, so what is approved and what
+// the host runs are read from the same key.
+func aliasArgs(args map[string]any, aliases map[string]string) (conflict string) {
+	keys := make([]string, 0, len(aliases))
+	for from := range aliases {
+		keys = append(keys, from)
+	}
+	slices.Sort(keys)
+	for _, from := range keys {
+		v, ok := args[from]
+		if !ok {
+			continue
+		}
+		to := aliases[from]
+		if w, both := args[to]; both {
+			a, _ := json.Marshal(v)
+			b, _ := json.Marshal(w)
+			if !bytes.Equal(a, b) {
+				return from + " and " + to
+			}
+		}
+		args[to] = v
+		delete(args, from)
+	}
+	return ""
+}
+
+// refuseAmbiguous gives the input of a call with conflicting arguments to the tool
+// that refuses it.
+func refuseAmbiguous(in hookInput, conflict string) hookInput {
+	in.Tool = ambiguousTool
+	in.Input, _ = json.Marshal(map[string]string{"conflict": conflict})
+	return in
 }
