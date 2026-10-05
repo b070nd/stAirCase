@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-05
+
+Recovery, approval consumption and release evidence tightened after the v0.8.0 review. Read "Changed (read
+before upgrading)": every run now records `commit_prepared` on its audit chain, which changes what recovery
+adopts after a crash. Scenarios gain delivery assertions, and a published release can be verified without a
+GitHub login (`packaging/verify-release.sh`).
+
 ### Changed (read before upgrading)
 
 - **A run names its commit on the audit chain before the branch moves** (`commit_prepared`), and `staircase recover`
