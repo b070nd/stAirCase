@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
+Hardening of recovery, hooks, cancellation and the verify Action, an assertable policy test and countable
+release evidence. Read "Changed (read before upgrading)": the hook command text changes, so Codex asks to trust
+it once and managed settings should be generated again; the verify Action now pins its verifier and needs
+`trust-ref` outside pull requests.
+
 ### Changed (read before upgrading)
 
 - **The hook command ends in `|| exit 2`.** Agents (Claude Code documents it) carry on when a hook fails with any
