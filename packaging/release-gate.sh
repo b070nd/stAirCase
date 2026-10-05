@@ -11,8 +11,12 @@
 # commit but is not what merging to the default branch tested. The query names the
 # event and the branch, and the answer is filtered again here rather than trusted.
 #
+# The run that was selected is part of the result: its id, URL and attempt, with the
+# commit, event, branch and repository it was filtered on, are printed and, when GATE_RESULT
+# names a file, written there as JSON, so a release can say exactly which CI run it rests on.
+#
 # Environment: GITHUB_REPOSITORY, GITHUB_SHA, GH_TOKEN (from the workflow);
-#   DEFAULT_BRANCH (master), WAIT_SECONDS (1800), POLL_SECONDS (30)
+#   DEFAULT_BRANCH (master), WAIT_SECONDS (1800), POLL_SECONDS (30), GATE_RESULT (a file to write)
 set -euo pipefail
 
 : "${GITHUB_REPOSITORY:?}" "${GITHUB_SHA:?}"
@@ -28,9 +32,11 @@ fi
 deadline=$((SECONDS + ${WAIT_SECONDS:-1800}))
 while :; do
   runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&branch=$branch&per_page=20" \
-    --jq ".workflow_runs | map(select(.event == \"push\" and .head_branch == \"$branch\" and .head_repository.full_name == \"$GITHUB_REPOSITORY\" and .head_sha == \"$GITHUB_SHA\")) | map({status, conclusion})")"
+    --jq ".workflow_runs | map(select(.event == \"push\" and .head_branch == \"$branch\" and .head_repository.full_name == \"$GITHUB_REPOSITORY\" and .head_sha == \"$GITHUB_SHA\")) | map({status, conclusion, id, url: .html_url, attempt: .run_attempt, event, branch: .head_branch, repository: .head_repository.full_name, sha: .head_sha})")"
   if [ "$(jq '[.[] | select(.conclusion == "success")] | length' <<<"$runs")" -gt 0 ]; then
-    echo "CI passed for $GITHUB_SHA"
+    picked="$(jq -c '[.[] | select(.conclusion == "success")][0]' <<<"$runs")"
+    echo "CI passed for $GITHUB_SHA: $(jq -r '"run \(.id) attempt \(.attempt), \(.url) (\(.event) on \(.branch) of \(.repository))"' <<<"$picked")"
+    [ -z "${GATE_RESULT:-}" ] || jq -n --argjson run "$picked" '{gate: "ci", passed: true, run: $run}' >"$GATE_RESULT"
     exit 0
   fi
   if [ "$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")" -eq 0 ] &&

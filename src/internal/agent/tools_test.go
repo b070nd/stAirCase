@@ -166,6 +166,9 @@ func TestTools_run_shell_cannot_read_the_workspace(t *testing.T) {
 	d := t.TempDir()
 	_, _, cleanup, err := sandbox.Command(context.Background(), d, d, "true", sandbox.Required)
 	if err != nil {
+		if os.Getenv("STAIRCASE_REQUIRE_SANDBOX") != "" {
+			t.Fatal(err) // CI: a sandbox engine must work here, not be skipped
+		}
 		t.Skip(err)
 	}
 	cleanup()

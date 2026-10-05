@@ -34,26 +34,35 @@ jobs:
       # The single gate: lint, gofmt, tidy, the Windows build, full + race tests,
       # bats CLI smoke tests, and the offline demo.
       - name: make check
+        if: runner.os != 'Linux'
         run: ./packaging/test-report.sh make check
         env:
-          # the OS sandbox engines that must be tested here, not skipped
-          STAIRCASE_REQUIRE_SANDBOX: ${{ runner.os == 'Linux' && 'landlock' || 'sandbox-exec' }}
+          STAIRCASE_REQUIRE_SANDBOX: sandbox-exec
           # the programs the tests drive (ssh-keygen, node, python3): missing is a failure, not a skip
           STAIRCASE_REQUIRE_DEPS: "1"
 
-      # An implementation written from docs/spec alone must decide the
-      # certificate's conformance vectors as stAirCase does.
-      - name: Certificate vectors (independent verifier)
+      # On Linux the gate is the release evidence: make check, a count of every Go test, the
+      # kill drills, the independent conformance scripts (a specification-only implementation
+      # must decide the vectors as stAirCase does), the packaged verifier on a fresh mirror and
+      # the vulnerability scan, with a machine-readable record tied to this commit.
+      - name: Install the vulnerability scanner
         if: runner.os == 'Linux'
-        run: |
-          python3 -m venv /tmp/spec
-          /tmp/spec/bin/pip install -q cryptography==50.0.1
-          /tmp/spec/bin/python docs/spec/verify_vectors.py
-          python3 docs/spec/rebuild_vectors.py
-          python3 docs/spec/audit_chain_vectors.py
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
-      - name: Vulnerability scan
+      - name: Release evidence (make check and the rest)
         if: runner.os == 'Linux'
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+        run: ./packaging/test-report.sh make evidence
+        env:
+          STAIRCASE_REQUIRE_SANDBOX: landlock
+
+      # evidence.json and the conformance results hold no path, environment value or log text.
+      # The step logs are not uploaded: they are raw output.
+      - name: Keep the evidence record
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: evidence-linux-${{ github.sha }}
+          path: |
+            evidence/evidence.json
+            evidence/*_vectors.json
+          if-no-files-found: error

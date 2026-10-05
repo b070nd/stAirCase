@@ -23,7 +23,7 @@ filter=""
 echo "$@" >>"$GH_QUERY_LOG"
 while [ $# -gt 0 ]; do [ "$1" = "--jq" ] && filter="$2"; shift; done
 printf '%s' "$FAKE_RUNS" |
-  jq -c --arg sha "$GITHUB_SHA" '[.[] | {event: "push", head_branch: "master", head_repository: {full_name: "o/r"}, head_sha: $sha} + .]' |
+  jq -c --arg sha "$GITHUB_SHA" '[.[] | {id: 4242, html_url: "https://github.com/o/r/actions/runs/4242", run_attempt: 1, event: "push", head_branch: "master", head_repository: {full_name: "o/r"}, head_sha: $sha} + .]' |
   jq -c '{workflow_runs: .}' | jq -c "$filter"
 FAKE
   chmod +x "$WORK/bin/gh"
@@ -108,4 +108,21 @@ gate() { run bash "$ROOT_DIR/packaging/release-gate.sh"; }
   DEFAULT_BRANCH='x" or true or "' FAKE_RUNS='[{"status":"completed","conclusion":"success"}]' gate
   [ "$status" -ne 0 ]
   [[ "$output" == *"not a branch name"* ]]
+}
+
+@test "the run the release rests on is named: id, URL, attempt, event, branch, repository, commit" {
+  GATE_RESULT="$WORK/gate.json" FAKE_RUNS='[{"id":1,"run_attempt":2,"status":"completed","conclusion":"failure"},{"id":99,"html_url":"https://github.com/o/r/actions/runs/99","run_attempt":3,"status":"completed","conclusion":"success"}]' gate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"run 99 attempt 3"* ]]
+  [[ "$output" == *"https://github.com/o/r/actions/runs/99"* ]]
+  [ "$(jq -r '.run.id' "$WORK/gate.json")" = 99 ]
+  [ "$(jq -r '.run.attempt' "$WORK/gate.json")" = 3 ]
+  [ "$(jq -r '.run | [.event, .branch, .repository, .sha] | join(" ")' "$WORK/gate.json")" = "push master o/r $SHA" ]
+  [ "$(jq -r '.passed' "$WORK/gate.json")" = true ]
+}
+
+@test "a refused commit writes no passing result" {
+  GATE_RESULT="$WORK/gate.json" FAKE_RUNS='[{"event":"pull_request","status":"completed","conclusion":"success"}]' gate
+  [ "$status" -ne 0 ]
+  [ ! -e "$WORK/gate.json" ]
 }
