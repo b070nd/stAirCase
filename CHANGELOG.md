@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-06
+
+Gemini CLI has been run for real, and can be given its key by name. Read "Changed (read before upgrading)": Gemini is
+now started with `--skip-trust`.
+
 ### Added
 
 - **`staircase gemini --pass-env NAME`** gives Gemini CLI its own key by name (for example `GEMINI_API_KEY`) on a machine
