@@ -86,7 +86,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	if c.Model != "" {
 		args = append(args, "-m", c.Model)
 	}
-	args = append(args, c.Prompt+"\n\n"+codexRules)
+	args = append(args, withContinuation(c.Prompt, env)+"\n\n"+codexRules)
 
 	cmd := exec.CommandContext(ctx, c.bin(), args...)
 	cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile)

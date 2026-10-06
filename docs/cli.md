@@ -874,6 +874,47 @@ Flags:
       --since string   Only commits after this (anything git log --since takes); empty for all (default "90.days")
 ```
 
+## staircase resume
+
+Continue a run that was interrupted before it committed
+
+```
+staircase resume <run-id> [flags]
+```
+
+Continues a run that was killed, crashed or stopped before it committed: the same
+run, branch and worktree, under the policy, plan and options it started with (it saved
+them when it started), from the state its audit chain says it stood in. What it had
+approved stays approved; proposal numbers, limits and the time it had used carry on
+where they were; a new agent session takes over, told by the audit chain what is already
+approved. The agent's own memory of the earlier part is not carried and never trusted.
+
+Every check is made first, and any failure refuses with nothing changed: the run's
+audit chain must verify, nobody may be running it, it must not have a commit or a
+recovery begun, its branch must still be at its base, and its worktree must hold exactly
+the approved state. A worktree that holds anything else (what the agent did after its
+last approval) refuses and names the files; --discard-unapproved puts it back first. Nothing
+is ever staged or adopted. A run halted for drift needs --ack-drift. A run whose time limit
+is used up cannot be continued, only recovered ("staircase recover"), and neither can a
+run that began before runs saved their terms.
+
+A run that was started with an agent harness (claude-code, codex, gemini, opencode)
+cannot have its own conversation continued yet: pass --fresh-context to continue it with a
+new session grounded by the audit chain instead.
+
+Flags:
+
+```
+      --ack-drift               Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)
+      --approval-port int       Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
+      --approval-token string   Token for the approval API (default: a new one, printed)
+      --debug                   Write every audited message of this segment, scrubbed, to the run's debug log
+      --discard-unapproved      Put the worktree back to the approved state when it holds changes nobody approved
+      --fresh-context           Continue an agent-harness run with a new session grounded by the audit chain (its own conversation cannot be continued yet)
+      --model string            Model for an agent harness (default: its own)
+      --pass-env stringArray    Name of an environment variable an agent harness may inherit, to give it its own credential; it, and any command it runs, can read the value
+```
+
 ## staircase review
 
 Review changes made elsewhere (a cloud agent's pull request) and certify what you approve

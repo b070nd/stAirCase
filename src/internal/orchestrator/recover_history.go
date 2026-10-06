@@ -21,7 +21,10 @@ import (
 // the run's own.
 
 // runBinding is what a run recorded about where it started.
-type runBinding struct{ Base, Branch, Harness, PlanDigest, Blueprint string }
+type runBinding struct {
+	Base, Branch, Harness, PlanDigest, Blueprint, Worktree string
+	TopologyVersion                                        int
+}
 
 // auditedApproval is one approved file change as the audit chain records it.
 type auditedApproval struct {
@@ -52,8 +55,10 @@ type history struct {
 	// What the run loaded and was started with, as it recorded it: the policy it
 	// ran under (not whatever policy.json holds now) and the signed request of the
 	// person who started it.
-	PolicyDigest string
-	Initiator    *certificate.Initiator
+	PolicyDigest      string
+	PolicySigned      bool // as the run recorded it when it loaded the policy
+	PolicySnapshotted bool // a policy_snapshot is on the chain (its digest may be empty: there was no policy.json)
+	Initiator         *certificate.Initiator
 }
 
 // auditedHistory reads a run's audit events, oldest first, and refuses a history
@@ -75,21 +80,24 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 	pending := map[string]int{} // requests not yet decided, by action type
 	for i, e := range events {
 		var p struct {
-			BaseSHA       string            `json:"base_sha"`
-			Branch        string            `json:"branch"`
-			Harness       string            `json:"harness"`
-			PlanDigest    string            `json:"plan_digest"`
-			BlueprintHash string            `json:"blueprint_hash"`
-			Seq           int               `json:"seq"`
-			Source        string            `json:"source"`
-			Approved      bool              `json:"approved"`
-			ActionType    string            `json:"action_type"`
-			RequestSHA256 string            `json:"request_sha256"`
-			Files         map[string]string `json:"files"`
-			Digest        string            `json:"digest"`
-			Principal     string            `json:"principal"`
-			Signature     string            `json:"signature"`
-			Unconsumed    bool              `json:"unconsumed"`
+			BaseSHA         string            `json:"base_sha"`
+			Branch          string            `json:"branch"`
+			Harness         string            `json:"harness"`
+			PlanDigest      string            `json:"plan_digest"`
+			BlueprintHash   string            `json:"blueprint_hash"`
+			Worktree        string            `json:"worktree"`
+			TopologyVersion int               `json:"topology_version"`
+			Seq             int               `json:"seq"`
+			Source          string            `json:"source"`
+			Approved        bool              `json:"approved"`
+			ActionType      string            `json:"action_type"`
+			RequestSHA256   string            `json:"request_sha256"`
+			Files           map[string]string `json:"files"`
+			Digest          string            `json:"digest"`
+			Signed          bool              `json:"signed"`
+			Principal       string            `json:"principal"`
+			Signature       string            `json:"signature"`
+			Unconsumed      bool              `json:"unconsumed"`
 		}
 		if i == 0 && e.EventType != "run_bound" {
 			return h, fmt.Errorf("the audit history begins with %q, not run_bound", e.EventType)
@@ -103,10 +111,10 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 			if json.Unmarshal([]byte(e.Payload), &p) != nil {
 				return h, errors.New("the run_bound record is unreadable")
 			}
-			h.Bound = runBinding{p.BaseSHA, p.Branch, p.Harness, p.PlanDigest, p.BlueprintHash}
+			h.Bound = runBinding{p.BaseSHA, p.Branch, p.Harness, p.PlanDigest, p.BlueprintHash, p.Worktree, p.TopologyVersion}
 		case "policy_snapshot":
 			if json.Unmarshal([]byte(e.Payload), &p) == nil {
-				h.PolicyDigest = p.Digest
+				h.PolicyDigest, h.PolicySigned, h.PolicySnapshotted = p.Digest, p.Signed, true
 			}
 		case "initiator_signed":
 			if json.Unmarshal([]byte(e.Payload), &p) == nil && p.Signature != "" {
@@ -120,6 +128,10 @@ func auditedHistory(events []domain.RunEventLog) (history, error) {
 				return h, fmt.Errorf("the request at entry %d is unreadable", i+1)
 			}
 			pending[q.ActionType]++
+		case "run_resumed":
+			if sealed != "" {
+				return h, fmt.Errorf("the run was resumed after %s", sealed)
+			}
 		case "certificate_issued", "run_recovered":
 			sealed = e.EventType
 		case "yield_decided":

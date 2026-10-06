@@ -107,7 +107,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	// Only staircase's settings load: user, project and local settings could
 	// bring hooks and MCP servers that act outside governance (F82). Checked
 	// against Claude Code 2.1.236: "" loads none of them, --settings still loads.
-	args := []string{"-p", c.Prompt, "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+	args := []string{"-p", withContinuation(c.Prompt, env), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 		"--output-format", "json"}
 	if c.Model != "" {
 		args = append(args, "--model", c.Model)

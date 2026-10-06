@@ -182,21 +182,9 @@ func runCase(caseID int64) error {
 		}
 		who = pl.Harness
 	}
-	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}
-	switch who {
-	case "built-in":
-	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
-	case "codex":
-		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
-	case "gemini":
-		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
-	case "opencode":
-		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: runModel}
-	case "review":
-		ag = &agent.Review{Commit: pl.Review.Commit, By: pl.Review.By}
-	default:
-		return fmt.Errorf("unknown --agent %q: use built-in, claude-code, codex, gemini or opencode", who)
+	ag, err := agentFor(who, pl)
+	if err != nil {
+		return err
 	}
 
 	var validator *orchestrator.Validator
@@ -282,4 +270,25 @@ func orDefaultStr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// agentFor is the agent that carries out a plan: the compiled topology, or a harness governed through its hooks.
+func agentFor(who string, pl plan.Plan) (orchestrator.Agent, error) {
+	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}
+	switch who {
+	case "built-in":
+	case "claude-code":
+		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
+	case "codex":
+		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
+	case "gemini":
+		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
+	case "opencode":
+		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: runModel}
+	case "review":
+		ag = &agent.Review{Commit: pl.Review.Commit, By: pl.Review.By}
+	default:
+		return nil, fmt.Errorf("unknown --agent %q: use built-in, claude-code, codex, gemini or opencode", who)
+	}
+	return ag, nil
 }

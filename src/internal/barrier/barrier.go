@@ -18,6 +18,8 @@ const (
 	GitCAS            = "git-cas"             // the branch moved to the commit; no evidence yet
 	EvidencePublished = "evidence-published"  // ledger and certificate written; the run record not yet completed
 	DBCompleted       = "db-completed"        // the run record says it finished
+	ResumeChecked     = "resume-checked"      // a continuation passed every check and has changed nothing yet
+	ResumeStarted     = "resume-started"      // the run is reopened and run_resumed is on the chain; the agent has not started
 	RecoverCommitted  = "recover-committed"   // recovery made its commit; its evidence is not yet written
 	RecoverOpRecorded = "recover-op-recorded" // recovery wrote its operation record, before the commit
 )

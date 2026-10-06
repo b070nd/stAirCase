@@ -1363,6 +1363,20 @@ func (s *Store) ListVerifiedEventLogs(runID int64) ([]domain.RunEventLog, error)
 	return logs, nil
 }
 
+// ReopenRun puts a run that was interrupted (RUNNING, or KILLED by a cancellation) and has no commit back to RUNNING,
+// for a continuation: its end time is cleared. It refuses any other run, so a finished run cannot be reopened.
+func (s *Store) ReopenRun(runID int64) error {
+	res, err := s.db.Exec(`UPDATE runs SET status = 'RUNNING', end_time = NULL
+		WHERE id = ? AND status IN ('RUNNING', 'KILLED') AND COALESCE(git_commit_hash, '') = ''`, runID)
+	if err != nil {
+		return fmt.Errorf("reopen run: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("run #%d cannot be reopened: it is not an interrupted run without a commit", runID)
+	}
+	return nil
+}
+
 // KillStaleRuns marks any RUNNING run for caseID that started more than maxAge
 // ago as KILLED. This prevents a crashed previous invocation from leaving a
 // perpetual RUNNING record that blocks the noConcurrentRun quality gate.

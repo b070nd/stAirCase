@@ -203,6 +203,22 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files [
 	return "", domain.Decide(true, "review: "+strings.Join(yes, "; ")), true
 }
 
+// state is what the validator carries between proposals, recorded on the chain with each decision so a
+// continuation starts from it.
+func (v *Validator) state() *validatorState {
+	if v == nil {
+		return nil
+	}
+	return &validatorState{Approvals: v.approvals, RejectRun: v.rejectRun, Unreviewed: v.unreviewed}
+}
+
+// restore sets the validator to a state the chain recorded.
+func (v *Validator) restore(s *validatorState) {
+	if v != nil && s != nil {
+		v.approvals, v.rejectRun, v.unreviewed = s.Approvals, s.RejectRun, s.Unreviewed
+	}
+}
+
 // Name is the validator as a decision source: its models joined by "+".
 func (v *Validator) Name() string { return strings.Join(v.Models, "+") }
 

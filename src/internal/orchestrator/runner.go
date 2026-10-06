@@ -78,6 +78,7 @@ type RunPhase string
 
 const (
 	PhasePreFlight     RunPhase = "PRE_FLIGHT"
+	PhaseResume        RunPhase = "RESUME" // a later segment of a run: the start of a continuation instead of PRE_FLIGHT
 	PhaseBranchCreate  RunPhase = "BRANCH_CREATE"
 	PhaseAgentStart    RunPhase = "AGENT_START"
 	PhaseAgentLoop     RunPhase = "AGENT_LOOP"
@@ -92,6 +93,7 @@ const (
 // fails rather than continue in an unknown state.
 var runMoves = map[RunPhase][]RunPhase{
 	PhasePreFlight:     {PhaseBranchCreate},
+	PhaseResume:        {PhaseAgentStart, PhaseBranchRestore}, // checks passed, or the continuation was refused
 	PhaseBranchCreate:  {PhaseAgentStart, PhaseBranchRestore},
 	PhaseAgentStart:    {PhaseAgentLoop, PhaseBranchRestore},
 	PhaseAgentLoop:     {PhaseFinalize},
@@ -195,7 +197,13 @@ func (r *Runner) Phase() RunPhase { return r.phase }
 //
 // Phases executed in order: PRE_FLIGHT → BRANCH_CREATE → AGENT_START →
 // AGENT_LOOP → FINALIZE → BRANCH_RESTORE.
-func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr error) {
+func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) error {
+	return r.run(ctx, caseID, opts, nil)
+}
+
+// run is Run, and with a continuation the continuation of an interrupted run: the same run, branch and worktree,
+// under the terms it started with, from the state its chain says it stood in (ADR 0005, resume.go).
+func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *continuation) (runErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	obs.ActiveRuns.Inc()
@@ -209,6 +217,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		obs.RunDuration.Observe(time.Since(t0Run).Seconds())
 	}()
 	r.phase, r.path = PhasePreFlight, []RunPhase{PhasePreFlight}
+	if cont != nil {
+		r.phase, r.path = PhaseResume, []RunPhase{PhaseResume}
+	}
 
 	// ── Load case + project ───────────────────────────────────────────────────
 	caseRec, err := r.store.GetCase(caseID)
@@ -237,7 +248,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 
 	// ── Optional reconcile ────────────────────────────────────────────────────
-	if opts.Reconcile && project.SourcePath != "" {
+	if opts.Reconcile && project.SourcePath != "" && cont == nil {
 		result, err := r.Reconcile(ctx, caseID, project.SourcePath, true)
 		if err != nil {
 			obs.Log.Warn("reconcile", "err", err)
@@ -252,7 +263,9 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	// developer's checkout (branch, index, files, stash) is never modified, so
 	// uncommitted changes there are not visible to the agent.
 	baseSHA := ""
-	if gr != nil {
+	if cont != nil { // the run's own base, never today's HEAD
+		baseSHA = cont.history.Bound.Base
+	} else if gr != nil {
 		if baseSHA, err = gr.HeadSHA(); err != nil {
 			return fmt.Errorf("resolve base commit: %w", err)
 		}
@@ -291,7 +304,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	}
 
 	// ── Quality gate pre-flight ───────────────────────────────────────────────
-	if !opts.SkipGates {
+	if !opts.SkipGates && cont == nil { // a continuation is checked by loadContinuation and the worktree checks, not by the case's gates
 		if err := r.runGates(caseID); err != nil {
 			return err
 		}
@@ -307,40 +320,61 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if err != nil {
 		return err
 	}
+	if cont != nil { // the halt that matters is this run's own (below), not a previous run's
+		haltedRun = 0
+	}
 	if haltedRun != 0 && !opts.AckDrift {
 		return fmt.Errorf("run #%d of case #%d was halted for drift - review it ('staircase inspect log %d'), then run again with --ack-drift", haltedRun, caseID, haltedRun)
 	}
 
 	// ── Create run record ─────────────────────────────────────────────────────
-	if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
-		obs.Log.Warn("kill stale runs", "err", err)
-	} else if n > 0 {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
+	var run *domain.Run
+	if cont != nil {
+		run = cont.run
+		fmt.Fprintf(os.Stdout, "↻ Run #%d  case=%d  continued (segment %d)\n", run.ID, caseID, cont.segment)
+	} else {
+		if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
+			obs.Log.Warn("kill stale runs", "err", err)
+		} else if n > 0 {
+			fmt.Fprintf(os.Stdout, "   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
+		}
+		if run, err = r.store.CreateRun(caseID, topoVersion, gitBranch); err != nil {
+			return fmt.Errorf("create run: %w", err)
+		}
+		fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
 	}
-	run, err := r.store.CreateRun(caseID, topoVersion, gitBranch)
-	if err != nil {
-		return fmt.Errorf("create run: %w", err)
-	}
-	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
 	// The run is owned by this process for its whole life (see runowner.go). It cannot already be owned: the
 	// number is new. A failure to take the lock is a failure to run, not something to go on without.
-	releaseOwner, err := claimRun(r.wsDir, run.ID)
-	if err != nil {
-		_ = r.store.FinishRun(run.ID, persistence.RunStatusFailed, time.Now(), "")
-		return fmt.Errorf("claim run #%d: %w", run.ID, err)
+	var releaseOwner func()
+	if cont != nil { // Resume took the claim before it checked anything, and hands it over
+		releaseOwner = cont.release
+	} else {
+		var err error
+		if releaseOwner, err = claimRun(r.wsDir, run.ID); err != nil {
+			_ = r.store.FinishRun(run.ID, persistence.RunStatusFailed, time.Now(), "")
+			return fmt.Errorf("claim run #%d: %w", run.ID, err)
+		}
 	}
 	defer releaseOwner() // after the cleanup below: the run is owned until it has finished
 
 	// ── BRANCH_CREATE ─────────────────────────────────────────────────────────
-	if err := r.enter(PhaseBranchCreate); err != nil {
+	runBranch := fmt.Sprintf("staircase/run-%d", run.ID)
+	if cont != nil {
+		runBranch = cont.history.Bound.Branch
+	} else if err := r.enter(PhaseBranchCreate); err != nil {
 		return err
 	}
-	runBranch := fmt.Sprintf("staircase/run-%d", run.ID)
 	worktree := "" // the run's checkout: the agent's project root, never the developer's
 	var wgr *GitRepo
 	var appr *approvals // trusted record of what the approvals mean, byte for byte
 	ledger := Ledger{Base: baseSHA}
+	if cont != nil {
+		ledger.Proposals = slices.Clone(cont.kept)
+	}
 	finalStatus := persistence.RunStatusFailed
+	if cont != nil { // a continuation that fails to get going leaves the run interrupted, not failed: it can be continued or recovered
+		finalStatus = persistence.RunStatusKilled
+	}
 	commitHash := ""
 	var evidenceErrs []string            // what could not be written for the commit, if anything
 	var initiator *certificate.Initiator // the signed request of whoever started the run, if they signed
@@ -409,7 +443,10 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 	}()
 
-	if gr != nil {
+	if cont != nil { // the run's own worktree, already checked to hold exactly the approved state
+		worktree, appr = cont.worktree, cont.appr
+		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s (continued)\n", runBranch, worktree)
+	} else if gr != nil {
 		// A workspace-local run ID does not prove ownership of an existing ref.
 		if gr.BranchExists(runBranch) {
 			return fmt.Errorf("run branch %q already exists; inspect and preserve it before retrying", runBranch)
@@ -427,46 +464,76 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", runBranch, worktree)
 	}
-	// Provenance: what this run started from, before the agent runs.
-	bound := map[string]any{
-		"type": "run_bound", "base_sha": baseSHA, "branch": runBranch,
-		"worktree": worktree, "topology_version": topoVersion,
-	}
-	if opts.Plan != nil {
-		bound["plan_digest"], bound["blueprint_hash"] = opts.Plan.Digest, opts.Plan.BlueprintHash
-	}
-	if harness != "" {
-		bound["harness"] = harness
-	}
-	if haltedRun != 0 {
-		bound["ack_drift"] = haltedRun
-	}
-	if err := r.audit(run.ID, "run_bound", bound); err != nil {
-		return fmt.Errorf("audit run_bound: %w", err)
-	}
-	if opts.SignKey != "" { // the person who starts the run proves who they are, before any work is done
-		var digest string
+	if cont != nil {
+		// The run is reopened and the continuation put on its chain before anything else happens: from here on it is
+		// a run that is going again, and the chain says from which state (the chain head) and under which terms.
+		if err := r.store.ReopenRun(run.ID); err != nil {
+			return err
+		}
+		initiator = cont.history.Initiator // the signed request of whoever started the run is kept, never signed again
+		if err := r.audit(run.ID, "run_resumed", map[string]any{
+			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals),
+			"next_seq": cont.lastSeq + 1, "policy": cont.history.PolicyDigest, "plan_digest": cont.history.Bound.PlanDigest,
+			"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
+		}); err != nil {
+			return fmt.Errorf("audit run_resumed: %w", err)
+		}
+		barrier.Hit(barrier.ResumeStarted)
+	} else {
+		// The terms this run starts under, saved for a continuation (ADR 0005): its options and its plan now, its policy
+		// when it is read (below). A run that cannot save them still runs; it simply cannot be continued, only recovered.
+		if b, err := json.Marshal(optionsToSave(opts)); err == nil {
+			if err := saveRunFile(savedOptionsPath(r.wsDir, run.ID), b); err != nil {
+				obs.Log.Warn("save run options: the run cannot be continued", "err", err)
+			}
+		}
+		if opts.Plan != nil && len(opts.Plan.Raw) > 0 {
+			if err := saveRunFile(savedPlanPath(r.wsDir, run.ID), opts.Plan.Raw); err != nil {
+				obs.Log.Warn("save run plan: the run cannot be continued", "err", err)
+			}
+		}
+		// Provenance: what this run started from, before the agent runs.
+		bound := map[string]any{
+			"type": "run_bound", "base_sha": baseSHA, "branch": runBranch,
+			"worktree": worktree, "topology_version": topoVersion,
+		}
 		if opts.Plan != nil {
-			digest = opts.Plan.Digest
+			bound["plan_digest"], bound["blueprint_hash"] = opts.Plan.Digest, opts.Plan.BlueprintHash
 		}
-		sig, err := sshsig.SignContext(ctx, opts.SignKey, certificate.InitiatorNamespace,
-			certificate.InitiatorText(certificate.Predicate{Run: run.ID, BaseCommit: baseSHA, PlanDigest: digest}, opts.SignAs))
-		if err != nil {
-			return fmt.Errorf("sign as the run's initiator: %w", err)
+		if harness != "" {
+			bound["harness"] = harness
 		}
-		initiator = &certificate.Initiator{Principal: opts.SignAs, Signature: base64.StdEncoding.EncodeToString(sig)}
-		if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs, "signature": initiator.Signature}); err != nil {
-			return fmt.Errorf("audit initiator_signed: %w", err)
+		if haltedRun != 0 {
+			bound["ack_drift"] = haltedRun
 		}
-	}
-	if opts.Agreed != "" {
-		agreed := map[string]any{"by": opts.Agreed}
-		if opts.Plan != nil {
-			agreed["plan_digest"] = opts.Plan.Digest
+		if err := r.audit(run.ID, "run_bound", bound); err != nil {
+			return fmt.Errorf("audit run_bound: %w", err)
 		}
-		if err := r.audit(run.ID, "task_agreed", agreed); err != nil {
-			return fmt.Errorf("audit task_agreed: %w", err)
+		if opts.SignKey != "" { // the person who starts the run proves who they are, before any work is done
+			var digest string
+			if opts.Plan != nil {
+				digest = opts.Plan.Digest
+			}
+			sig, err := sshsig.SignContext(ctx, opts.SignKey, certificate.InitiatorNamespace,
+				certificate.InitiatorText(certificate.Predicate{Run: run.ID, BaseCommit: baseSHA, PlanDigest: digest}, opts.SignAs))
+			if err != nil {
+				return fmt.Errorf("sign as the run's initiator: %w", err)
+			}
+			initiator = &certificate.Initiator{Principal: opts.SignAs, Signature: base64.StdEncoding.EncodeToString(sig)}
+			if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs, "signature": initiator.Signature}); err != nil {
+				return fmt.Errorf("audit initiator_signed: %w", err)
+			}
 		}
+		if opts.Agreed != "" {
+			agreed := map[string]any{"by": opts.Agreed}
+			if opts.Plan != nil {
+				agreed["plan_digest"] = opts.Plan.Digest
+			}
+			if err := r.audit(run.ID, "task_agreed", agreed); err != nil {
+				return fmt.Errorf("audit task_agreed: %w", err)
+			}
+		}
+
 	}
 
 	// ── RUN SETUP ─────────────────────────────────────────────────────────────
@@ -506,16 +573,25 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	// One read of policy.json: the rules, the signature check and the digest the
 	// certificate names all come from the same bytes. Fail closed: a broken or
 	// tampered policy never runs as "no policy".
-	snap, err := policy.LoadSnapshot(r.wsDir)
-	if err != nil {
-		return fmt.Errorf("load policy: %w", err)
+	var snap *policy.Snapshot
+	if cont != nil { // the policy the run started under, never today's file
+		snap = cont.policy
+	} else {
+		if snap, err = policy.LoadSnapshot(r.wsDir); err != nil {
+			return fmt.Errorf("load policy: %w", err)
+		}
+		if len(snap.Raw) > 0 { // the exact bytes it decides under, for a continuation
+			if err := saveRunFile(savedPolicyPath(r.wsDir, run.ID), snap.Raw); err != nil {
+				obs.Log.Warn("save run policy: the run cannot be continued", "err", err)
+			}
+		}
+		// The policy this run decides under, on the chain, so evidence made later (a
+		// recovery) names it and not whatever policy.json holds by then.
+		if err := r.audit(run.ID, "policy_snapshot", map[string]any{"digest": snap.Digest, "signed": snap.Signed}); err != nil {
+			return fmt.Errorf("audit policy_snapshot: %w", err)
+		}
 	}
 	policyEngine := snap.Engine
-	// The policy this run decides under, on the chain, so evidence made later (a
-	// recovery) names it and not whatever policy.json holds by then.
-	if err := r.audit(run.ID, "policy_snapshot", map[string]any{"digest": snap.Digest, "signed": snap.Signed}); err != nil {
-		return fmt.Errorf("audit policy_snapshot: %w", err)
-	}
 	limits := policyEngine.Limits.Limits // the drift-supervision limits of the policy …
 	if opts.Plan != nil {
 		limits = limits.Tighter(opts.Plan.Limits) // … and of the plan (its blueprint's)
@@ -529,12 +605,21 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		limits = limits.Tighter(plan.Limits{CheckpointEvery: taskCheckpointEvery}) // spot checks inside the task
 	}
 	sup = policy.NewSupervisor(scope, limits)
+	if cont != nil { // the supervisor stands where it stood: every proposal of the earlier segments replayed
+		for _, d := range cont.decisions {
+			sup.Replay(d.Paths, d.Approved, d.Source == "operator")
+		}
+	}
 	var runDeadline <-chan time.Time
 	waitCtx := ctx // a person's answer is only good while this run is: its limit ends the wait
 	if limits.MaxRunSecs > 0 {
-		runDeadline = time.After(time.Duration(limits.MaxRunSecs) * time.Second)
+		remaining := time.Duration(limits.MaxRunSecs) * time.Second
+		if cont != nil { // the limit is for the whole run: what earlier segments used is spent (prepareContinuation refused a run with none left)
+			remaining -= cont.elapsed
+		}
+		runDeadline = time.After(remaining)
 		var cancelWait context.CancelFunc
-		waitCtx, cancelWait = context.WithTimeout(ctx, time.Duration(limits.MaxRunSecs)*time.Second)
+		waitCtx, cancelWait = context.WithTimeout(ctx, remaining)
 		defer cancelWait()
 	}
 	if snap.Digest != "" && !snap.Signed {
@@ -561,6 +646,11 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		}
 	}
 	tracker := monitor.NewTracker(run.ID, caseID, project.Name, gitBranch)
+	if cont != nil { // tokens and cost used by the earlier segments count against the budget cap
+		for _, u := range cont.usage {
+			tracker.Record(u.Agent, u.Model, u.In, u.Out)
+		}
+	}
 	_, budgetCap, _ := r.store.GetProjectConfig(caseRec.ProjectID)
 	display = monitor.NewDisplay(tracker, budgetCap)
 	display.Render()
@@ -585,7 +675,7 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 	defer cancelAgent()
 	stopped := make(chan struct{})
-	env := &AgentEnv{Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: proposals, usage: usage, host: host}
+	env := &AgentEnv{Continuation: contBrief(cont), Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: proposals, usage: usage, host: host}
 	val := opts.Validator
 	if val != nil {
 		if val.Chat == nil {
@@ -687,9 +777,15 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 			opts.Signal.brief = opts.Plan.Brief()
 		}
 	}
+	if cont != nil { // the validator and the deciders continue from the counts the chain recorded
+		val.restore(cont.validator)
+	}
 	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
+	if cont != nil {
+		dec.total, dec.autoApproved, dec.taskApproved = cont.lastSeq, cont.autoApproved, cont.taskApproved
+	}
 
 	processExited := func(procErr error) {
 		agentFinished = true
@@ -793,6 +889,12 @@ runLoop:
 			// insert that has begun is written, which is the last moment the run's end can matter.
 			decidedFor := func() map[string]any {
 				decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
+				if st := val.state(); st != nil {
+					decided["validator_state"] = st
+				}
+				if len(rl.files) > 0 {
+					decided["paths"] = rl.files // what a proposal touched: a continuation replays the drift supervisor from it
+				}
 				if journaled && !rl.resp.Approved {
 					decided["unconsumed"] = true // its journal line is an authorization that was never consumed
 				}

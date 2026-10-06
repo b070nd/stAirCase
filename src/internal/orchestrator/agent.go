@@ -38,6 +38,10 @@ func (f AgentFunc) Run(ctx context.Context, env *AgentEnv) error { return f(ctx,
 
 // AgentEnv is the run as its agent sees it.
 type AgentEnv struct {
+	// Continuation is what a fresh agent session is told when the run is a continuation of an interrupted one: the
+	// task as it stood, built by Go from the audit chain ("" for a first segment). Add it to the agent's first message.
+	Continuation string
+
 	Worktree     string        // the run's git worktree: the agent's project root
 	AllowShell   bool          // shell_exec may be proposed (--allow-shell-exec)
 	Sandbox      string        // approved commands: "auto", "required" or "off" (--sandbox)

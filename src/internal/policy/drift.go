@@ -78,6 +78,15 @@ func (s *Supervisor) Check(files []string) (reason string, halt bool) {
 	return strings.Join(why, "; "), false
 }
 
+// Replay applies a proposal that was already decided in an earlier segment of the run: the check it went through
+// (it counts as a yield, and as a scope violation if it reached outside the scope) and how it was decided. The
+// supervisor then stands where it stood when the segment ended. A proposal the orchestrator refused never reached
+// the supervisor and is not replayed.
+func (s *Supervisor) Replay(paths []string, approved, byHuman bool) {
+	s.Check(paths)
+	s.Decided(paths, approved, byHuman, "")
+}
+
 // Decided records how a checked proposal was decided; drift is its Check reason.
 func (s *Supervisor) Decided(files []string, approved, byHuman bool, drift string) {
 	if byHuman {

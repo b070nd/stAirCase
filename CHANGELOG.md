@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`staircase resume <run>` continues a run that was killed before it committed** (the same run, branch and worktree, under
+  the policy, plan and options it saved when it started, from the state its audit chain says it stood in). What was
+  approved stays approved, proposal numbers, the policy's limits, the supervisor's counts and the time and tokens used carry
+  on, and a new agent session takes over, told by the chain what is already approved. Every check is made first and a failure
+  refuses with nothing changed; work the agent did after its last approval is never adopted (`--discard-unapproved` puts
+  it back); a run of an agent harness needs `--fresh-context`; a run that began before this version cannot be continued, only
+  recovered. A run now saves `journal/run-N.{policy,plan,options}.json` when it starts, and each decision on the chain records the
+  files it touched (`paths`) and the validator's counts; `run_resumed` is a new audit event. See [safety](docs/safety.md).
 - **A run, a session and the coordinator are owned, and ownership survives a kill.** A run holds a lock on
   `journal/run-N.owner.lock` for its whole life; the system drops it when the process ends, a kill -9 included. So a
   run that is alive can no longer be recovered, `--force` or not, and a run started by this version whose process is gone

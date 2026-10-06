@@ -61,7 +61,7 @@ func (g *Graph) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	for _, a := range g.Plan.Agents {
 		agents[a.Name] = a
 	}
-	history := []llm.Message{{Role: "user", Content: strings.TrimSpace(g.Plan.Brief() + "\n\n" + g.Plan.RepoContext)}}
+	history := []llm.Message{{Role: "user", Content: strings.TrimSpace(withContinuation(g.Plan.Brief(), env) + "\n\n" + g.Plan.RepoContext)}}
 	calls := 0
 	for step, current := 1, g.Plan.Supervisor; ; step++ {
 		if step > maxAgentSteps {

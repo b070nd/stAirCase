@@ -84,7 +84,7 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	// --skip-trust: a headless Gemini refuses to start in a folder it has not been told to trust, and the
 	// run's worktree is a new folder every time. Trusting it lets Gemini read the repository's own
 	// .gemini settings (see the documentation: do not run this on a repository you do not trust).
-	args := []string{"-p", g.Prompt + "\n\n" + geminiRules, "--approval-mode=yolo", "--output-format", "json", "--skip-trust"}
+	args := []string{"-p", withContinuation(g.Prompt, env) + "\n\n" + geminiRules, "--approval-mode=yolo", "--output-format", "json", "--skip-trust"}
 	if g.Model != "" {
 		args = append(args, "-m", g.Model)
 	}

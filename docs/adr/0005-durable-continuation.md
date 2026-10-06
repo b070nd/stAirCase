@@ -1,6 +1,6 @@
 # ADR 0005: Continuing an interrupted run (design)
 
-- Status: accepted, with the owner's decisions below (design only: nothing in this ADR is built; the acceptance controls at the end are what building it must pass)
+- Status: accepted, with the owner's decisions below. Built for the Go-owned state and the built-in agent (US-008: `staircase resume`, `Runner.Resume`), and for agent harnesses with a fresh grounded context (`--fresh-context`); native session resume (US-009) is not built.
 - Date: 2026-10-06
 
 ## Context
@@ -127,9 +127,9 @@ if the person asked for the fallback (`--fresh-context`); it is never silent.
 ### 6. Stale work and old challenges
 
 - **Challenges.** Anything the dead segment had pending (a webhook request, an entry in the approval API, a review
-  page, a signed-approval challenge) is dead with it. The approval API's token is new for each segment, request ids
-  carry the segment number, and a decision that arrives for a request of an earlier segment is refused (`409`), as a
-  late answer after the run's end is today. A signature a person made over a proposal is good for that proposal in
+  page, a signed-approval challenge) is dead with it. The approval API's key is new for each segment, a session registers under a new instance id, and a proposal's id is unguessable and
+  belongs to the segment that made it (not a number that restarts): a decision that arrives for a request of an earlier segment is refused (`404`),
+  as a late answer after the run's end is today. A signature a person made over a proposal is good for that proposal in
   that segment only (it already names the proposal's request hash).
 - **Requests with no decision** are legal and counted in `run_resumed`; they are never turned into decisions.
 - **Stale agent results.** A hook call or a result that names a tool call of an earlier segment is ignored, because the
@@ -213,3 +213,16 @@ process is killed:
    rebuild, the independent implementation and the Action. A versioned certificate change can follow real use.
 4. **Codex native resume is offered only if a real probe proves it.** Until it is shown that Codex exposes a
    machine-readable session identifier that can be learned and later resumed, Codex gets fresh grounded continuation only.
+
+## What was built (US-008)
+
+`Runner.Resume` and `staircase resume <run>`. A run saves, when it starts, its policy bytes, its plan bytes and its options
+(`journal/run-N.policy.json`, `.plan.json`, `.options.json`); a run without them, or whose saved bytes are not the ones its chain names,
+is recovered, not continued. The replay (`resume_state.go`) derives the next sequence number, the policy-approved count, the task flag,
+the supervisor's decisions (each decision on the chain now records the `paths` it touched), the validator's counts (`validator_state`),
+token and cost, and the time earlier segments used. The worktree is checked against the approved state; an approval whose change the
+agent had not written yet (it died between the approval and the write, the file still as at the base) is applied as approved,
+anything else that differs refuses, naming the files, unless `--discard-unapproved`. A run whose time limit the earlier segments used up
+is refused. One phase (`RESUME`) was added to the state machine. Tests: `resume_test.go` (continuation, equality with recovery,
+cumulative limits, supervisor, time, worktree, repeated proposals, refusals) and `tests/resume_drill.bats` (real kills at the
+named boundaries of the first segment and of the continuation).
