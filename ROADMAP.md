@@ -113,9 +113,10 @@ Six contracts stay stable and versioned while everything around them may change:
 
 ### Phase 2 - v0.4: any agent, anywhere
 
-- **Gemini CLI** and **OpenCode** support. *Gemini CLI and OpenCode: built from their
-  documentation, not yet run against a real login (`staircase gemini`,
-  `staircase opencode`).*
+- **Gemini CLI** and **OpenCode** support. *Gemini CLI has been run for real (0.46.0: a governed run, a held
+  approval, a rejection and its retry, a verify and a rebuild in a fresh clone); OpenCode is built from its
+  documentation and has not been run against the real program (`staircase gemini`, `staircase opencode`;
+  [compatibility](docs/compatibility.md)).*
 - **Review-after** capture, used for **Cursor** (CAL 2). *Done: `staircase seal`
   works with any agent that edits your checkout.*
 - `staircase review <pull request>` for cloud agents.
@@ -179,7 +180,8 @@ Six contracts stay stable and versioned while everything around them may change:
   (line diffs, notes, approve or reject) and `staircase serve` shows all running
   sessions on one page; decisions are signed with `--sign-approvals`. An interrupted
   run no longer loses what it had approved: `staircase recover` commits exactly that.
-  Continuing the agent itself after a restart is still open.*
+  Continuing the agent itself after a restart is still open; the design is written and accepted
+  ([ADR 0005](docs/adr/0005-durable-continuation.md)), nothing of it is built.*
 - **Attach mode:** govern the agent in your own checkout, sealed when you commit.
   *Done: `staircase attach` and `staircase seal` (CAL 2), which also covers Cursor.*
 - **Git as the control plane:**

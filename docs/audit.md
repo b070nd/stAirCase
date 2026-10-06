@@ -29,6 +29,15 @@ Events you will see:
 | `agent_unresponsive` | an agent did not stop when asked |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
+| `policy_snapshot` | the digest of the `policy.json` the run decided under, and whether its signature was valid (written before the first proposal) |
+| `initiator_signed` | the person who started the run signed a request naming the run, base commit and plan: who, and the SSH signature (only when the run was started with a key) |
+| `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed and the digest of its output |
+| `shell_ran` | an approved shell command ran: the agent, the command and whether it ran in the sandbox |
+| `signal_rated` | a decision model was asked about a change that was not decided by a person: the model, the probabilities it gave that the change is risky and that it serves a story, the kind of change and the cost, or the error when it could not answer. It can only send the change to a person |
+| `recovery_final_review` | the final review of a recovered run, asked of a person before any commit was made: approved or not, and the digest of what was shown |
+| `run_recovered` | `staircase recover` committed what the run had approved: the commit, how many proposals, whether a final review was given |
+| `recovery_repaired` | a later `recover` finished the evidence (ledger, certificate, notes) of a commit that was already made, and which parts were still missing |
+| `certificate_failed`, `evidence_failed` | the commit was made but its certificate, or other evidence, could not be written, and why (`--require-evidence` makes this a failure) |
 | `commit_prepared` | the run's commit exists and is named here (commit, base, tree, branch) before the run branch moves to it; if this cannot be recorded nothing is delivered, and a recovery after a crash keeps only a commit named here as the run's own |
 | `certificate_issued` | the change certificate was signed for the run's commit |
 | `run_path` | the phases the run went through, in order (see below) |
