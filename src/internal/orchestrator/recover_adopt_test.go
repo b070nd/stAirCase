@@ -122,6 +122,14 @@ func TestRecover_does_not_adopt_a_copy_of_the_runs_commit(t *testing.T) {
 	assert.Equal(t, copied, strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1")), "the branch is left as it was")
 	run, _ := r.Store.GetRun(r.Run.ID)
 	assert.Empty(t, run.GitCommitHash)
+
+	// The procedure for a run whose commit nothing names (killed by v0.8.0 after its commit, say): put the
+	// branch back on the run's base, and recovery makes its own commit from the approvals, exactly.
+	git(t, r.Repo, "update-ref", "refs/heads/staircase/run-1", base)
+	res, err = orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
+	require.NoError(t, err)
+	assert.Equal(t, 2, res.Proposals)
+	assert.Equal(t, tree, strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1^{tree}")), "the same bytes the run had approved")
 }
 
 // TestRun_names_its_commit_on_the_chain_before_the_branch_moves: the commit_prepared event

@@ -135,7 +135,15 @@ record of the operation is on disk, so a failure to write the ledger, the certif
 notes, the audit record or the run's record leaves a delivered commit and an honest list of what is
 missing (`--require-evidence` makes that a failure), and running `recover` again repairs it.
 The certificate of a recovered run names the policy and the signed request of the person who started
-it as the run recorded them, not whatever policy.json holds by then. What recovery cannot do: continue the agent's conversation, or commit
+it as the run recorded them, not whatever policy.json holds by then. **A run killed by v0.8.0 after its commit** has no `commit_prepared` record, so recovery will not adopt that
+commit (it cannot tell the run's own commit from a copy; the old rule that did is gone for that reason). The
+commit is not harmed, and a certificate it already has is still valid. To finish such a run: check what is on the
+branch against what the run approved (`staircase inspect log <run>` and `git diff <base> staircase/run-<run>`);
+then, if you want recovery's evidence for it, move the branch back to the run's base
+(`git update-ref refs/heads/staircase/run-<run> <base>`) and run `staircase recover <run> --force`: it makes its own
+commit from the approvals, with the same bytes. This is tested (`TestRecover_does_not_adopt_a_copy_of_the_runs_commit`).
+
+What recovery cannot do: continue the agent's conversation, or commit
 something the run was about to propose.
 
 `staircase run <case-id> --reconcile` lists `staircase/run-*` branches that no run

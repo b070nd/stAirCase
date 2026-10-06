@@ -34,6 +34,9 @@ type Options struct {
 	// NoTopology leaves the project without a topology, as for a case run by
 	// an agent harness.
 	NoTopology bool
+	// DB, if set, is called with the store's database before the run starts, for a test that damages or
+	// watches it while the run is going (a trigger that makes one kind of write fail, say).
+	DB func(*sql.DB)
 	// Ctx is the parent of the run's context (default: background). Cancel it to cancel the run.
 	Ctx context.Context
 }
@@ -95,6 +98,9 @@ func Run(t testing.TB, o Options) Result {
 	must(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	s := persistence.NewStore(db)
+	if o.DB != nil {
+		o.DB(db)
+	}
 	v, err := s.CreateVendor("V")
 	must(t, err)
 	p, err := s.CreateProject(v.ID, "P", repo)

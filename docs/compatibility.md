@@ -40,7 +40,7 @@ tests drive, not against the real program.
 | Scenario | Codex CLI | Claude Code | Gemini CLI | OpenCode |
 |---|---|---|---|---|
 | Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (2026-10-05, headless, model haiku, its credential passed with `--pass-env`) | 0.46.0 (2026-10-06, headless, model gemini-3.5-flash-lite, its key passed with `--pass-env`) | not installed |
-| Its hooks run, every tool call is governed | yes (real run) | yes (real run: `make smoke-claude`) | yes (real run: `./demo/smoke.sh gemini`) | stand-in only |
+| Its hooks run, and a file write is governed (the one tool a real run exercised) | yes (real run) | yes (real run: `make smoke-claude`) | yes (real run: `./demo/smoke.sh gemini`) | stand-in only |
 | Session refused when its hooks never ran | stand-in only | refused when SessionStart never arrives (the session is not governed, nothing is kept); SessionStart firing in headless `-p` with `--settings` was probed on 2.1.236 (real), the refusal itself is tested with a synthetic host | stand-in only | stand-in only |
 | A hook answer that is empty, cut off or not a decision, a hook call that is unreadable or for an unregistered event, a hook program that is missing, crashes or is killed | shared bridge tests only (`staircase hook`, each agent's reply shape): the hook turns each into a block (exit 2); no Codex host was simulated | shared bridge tests, and a synthetic Claude Code host (`hook_host_test.go`, a fake that follows the documented behaviour: only exit 2 or a deny stops a tool): not a real run | shared bridge tests only | not applicable: the plugin asks the run itself |
 | The host gives up on a slow hook | not run | synthetic Claude Code host only (`hook_host_test.go`): the tool runs, the end-of-run check commits nothing unapproved; not a real run | not run | not run |
@@ -71,10 +71,14 @@ values (for example `absolute_path` and `file_path`), the call is refused as amb
 
 What a cell means is the same everywhere: "yes" cites a run whose result is in the
 audit chain of that run and that anyone can repeat; everything else is unverified.
-Two more limits. The real Gemini CLI, run without a login, refuses before any hook
-fires, so its hooks and our settings file are untested beyond being accepted. And the
-Codex run used a cheap model on a one-line task: it shows the mechanics work, not how
-well a model does real work.
+Two more limits. Historical: an early probe of the real Gemini CLI without a login refused
+before any hook fired; since then it has been run for real (the table), so that probe says
+nothing about the current adapter. And the real runs used cheap models on one-line tasks: they
+show the mechanics work (an approval, a held approval, a rejection and its retry, a verify and a
+rebuild in a fresh clone), not how well a model does real work, and not that every tool call of
+a host is governed. Each real run exercised one tool, a file write. The other tools are covered by
+stand-in agents and synthetic hosts, and no run of a real host has yet tried to change a file
+around the hooks (an ungated change), which is what the end-of-run check is for.
 
 **Repeat them.** Each needs the agent installed and logged in, costs a few cents with a
 small model, and cleans up after itself:

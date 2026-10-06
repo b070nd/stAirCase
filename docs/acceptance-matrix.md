@@ -5,8 +5,8 @@ named tests that exercise it, and what is not yet shown. It is a map, not a scor
 completion percentage, and a green test run is not claimed to prove more than the tests assert.
 Test names were checked to exist; they are the evidence, the status words are the judgement.
 
-**As of** master `fc36ae3` (v0.11.0), with the core-closeout branch's later commits noted where they
-change a row. Update the SHA when you update a row.
+**As of** master `fc36ae3` (v0.11.0), with the core-closeout branch (`feature/SC-73-core-closeout`)
+commits applied to the review-findings table. Update the SHA when you update a row.
 
 Status words: **done** (built and tested as described), **partial** (built, with a stated gap),
 **open** (not built, or built and not shown), **external** (needs an account, a login, a person or a
@@ -80,11 +80,11 @@ standards body, and cannot be closed by tests alone).
 
 | Finding | Status | What shows it |
 |---|---|---|
-| C1: journal tail classification (broad EOF tolerance) | open | `parseJournal` calls any invalid unterminated last line cut; controls for `not json at all` and `{"seq":3,]` without a newline are missing |
-| C2: request-audit failure or oversize correspondence | open | `AgentEnv.Propose` audits the request without checking the error; recovery needs the request by action type |
-| C2: upgrade limit for runs killed by v0.8.0 after their commit | documented | CHANGELOG 0.9.0, [safety](safety.md); needs the owner's acknowledgement |
-| C3: deadline during the audit append | open | The expiry check is made immediately before an append that takes no context |
-| C5: compatibility wording | open | `compatibility.md` still carries the logged-out Gemini probe and an every-tool-call row |
+| C1: journal tail classification | done | `isCutJournalLine` accepts only a prefix of what `appendJournal` writes; every prefix of a real line recovers, garbage and a stray bracket without a newline are corrupt (`TestIsCutJournalLine`, `TestRecover_only_a_cut_append_is_a_torn_tail`) |
+| C2: request-audit failure or oversize | done | An oversize request kept no `action_type` and made an approved large change unrecoverable (reproduced); the stub keeps it. A request that cannot be recorded is refused, not decided (`TestRecover_an_approved_proposal_too_large_to_audit_in_full`, `TestPropose_a_request_that_cannot_be_audited_is_refused`) |
+| C2: upgrade limit for runs killed by v0.8.0 after their commit | documented | The procedure is in [safety](safety.md) and tested (`TestRecover_does_not_adopt_a_copy_of_the_runs_commit`); needs the owner's acknowledgement |
+| C3: deadline during the audit append | done, revised contract | Consumption is the decision on the chain; expiry is checked under the append lock right before the insert, and an insert that has begun is finished ([approvals](approvals.md)); needs owner/PM disposition of the wording (`TestConsumption_*`) |
+| C5: compatibility wording | done | The Gemini probe is marked historical; the governed-tool row says what a real run exercised |
 
 ## External or account-dependent checks (not closable by tests)
 

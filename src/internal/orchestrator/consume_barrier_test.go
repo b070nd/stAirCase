@@ -58,15 +58,6 @@ func twoWrites(t *testing.T, ctx context.Context, answers *[]bool) runtest.Resul
 		})})
 }
 
-func journalCount(t *testing.T, r runtest.Result) int {
-	b, err := os.ReadFile(filepath.Join(r.WsDir, "journal", "run-1.approved.jsonl"))
-	if os.IsNotExist(err) {
-		return 0
-	}
-	require.NoError(t, err)
-	return strings.Count(string(b), "\n")
-}
-
 func decisions(t *testing.T, r runtest.Result) (approved, rejected int) {
 	events, err := r.Store.ListEventLogs(r.Run.ID)
 	require.NoError(t, err)

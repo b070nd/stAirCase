@@ -146,7 +146,9 @@ func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approva
 		return reject("shell_exec disabled - restart with --allow-shell-exec to enable")
 	}
 	if !req.ReviewAfter { // the decision loop records it once it knows the changes
-		e.host.audit("yield_request", req)
+		if err := e.host.auditRequest(req); err != nil {
+			return reject("the orchestrator could not record this request, so it was not decided: " + err.Error())
+		}
 	}
 	p := proposal{req: req, reply: make(chan decision, 1)}
 	select {
@@ -232,26 +234,43 @@ type agentHost struct {
 	delivered []string // secret values (and JSON-escaped forms) handed to the agent
 }
 
-// audit appends v to the run's chain with every delivered secret scrubbed.
-func (h *agentHost) audit(event string, v any) {
+// audit appends v to the run's chain with every delivered secret scrubbed. A failure is logged: for events
+// that are only a record (usage, a command that ran) the run goes on. A request that a decision will
+// follow uses auditRequest, which reports it.
+func (h *agentHost) audit(event string, v any) { _ = h.auditErr(event, v) }
+
+// auditRequest records a proposal's request before anything is decided about it. Recovery reads the decision
+// together with its request, so when the request cannot be recorded the proposal must not be decided at
+// all: the caller refuses it.
+func (h *agentHost) auditRequest(req domain.YieldRequest) error {
+	return h.auditErr("yield_request", req)
+}
+
+func (h *agentHost) auditErr(event string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		obs.Log.Warn("audit marshal", "event", event, "err", err)
-		return
+		return err
 	}
 	payload := string(crypto.ScrubBytes(b, h.deliveredSecrets()))
 	if len(payload) > maxAuditPayload { // a cut payload would be neither JSON nor, perhaps, UTF-8: say what was dropped instead
 		sum := sha256.Sum256([]byte(payload))
-		payload = fmt.Sprintf(`{"truncated":true,"bytes":%d,"sha256":%q}`, len(payload), hex.EncodeToString(sum[:]))
+		// the kind of request is kept: the decision that follows is matched to its request by it
+		var kind struct {
+			ActionType string `json:"action_type"`
+		}
+		_ = json.Unmarshal(b, &kind)
+		payload = fmt.Sprintf(`{"truncated":true,"action_type":%q,"bytes":%d,"sha256":%q}`, kind.ActionType, len(payload), hex.EncodeToString(sum[:]))
 	}
 	if h.debug != nil {
 		_, _ = fmt.Fprintf(h.debug, "%s %s %s\n", time.Now().UTC().Format(time.RFC3339Nano), event, payload)
 	}
 	if _, err := h.store.AppendEventLogChained(h.runID, event, payload, ""); err != nil {
 		obs.Log.Warn("append audit event", "event", event, "err", err)
-		return
+		return err
 	}
 	obs.AuditChainLength.Inc()
+	return nil
 }
 
 func (h *agentHost) deliveredSecrets() []string {

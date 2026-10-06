@@ -1329,6 +1329,17 @@ func reviewAfter(p *proposal, appr *approvals, host *agentHost) bool {
 		return false
 	}
 	p.req.ProposedEdits = edits
-	host.audit("yield_request", p.req)
+	if err := host.auditRequest(p.req); err != nil {
+		why := "the orchestrator could not record this request, so it was not decided: " + err.Error()
+		paths := make([]string, len(edits))
+		for i, e := range edits {
+			paths[i] = e.File
+		}
+		if rerr := appr.restore(paths); rerr != nil { // what the command changed is put back, as for a rejection
+			why += "; reverting the changes failed: " + rerr.Error()
+		}
+		p.reply <- decision{resp: domain.Decide(false, why)}
+		return false
+	}
 	return true
 }
