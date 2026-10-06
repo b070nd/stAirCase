@@ -169,13 +169,22 @@ itself use stand-ins for curl, cosign and gh (`tests/verify_release.bats`) and c
 and the record. The Action's own acquisition path is tested with a stand-in `gh` too; it has not yet been run
 as a real Action in a real workflow.
 
-**Running the verify Action under a ruleset.** `demo/ruleset-fixture.sh <dir>` builds a test repository for the real
-Action in GitHub: the offline demo's certified commit and its notes, the trusted key, a workflow, and branches for four
-pull requests (a certified range rebuilt from its ledger passes; the same commit at `min-cal: 4`, a commit with no
-certificate and a base that trusts another key are each refused, asserted by the workflow so a green check means "refused
-as it should"). Its README lists what to push to your own test repository and what to record. `tests/ruleset_fixture.bats`
-checks, with the real binary and the Action's own script against a local origin, that each case is decided as the README
-says; the GitHub half (the Action under a ruleset, with the run URLs) is yours to run, and has not been run.
+**Running the verify Action under a ruleset.** `demo/ruleset-fixture.sh <dir> [version]` builds a test repository for the real
+Action in GitHub: the offline demo's certified commit and its notes, the trusted key, and two kinds of workflow.
+The **required check** is `staircase-admission` (`staircase-admission.yml`, one job that runs the Action alone, so a refusal fails
+the check and a ruleset that requires it blocks the merge), with a copy per base branch: `main` (CAL 2), `other-key` (another
+trusted key) and `strict` (CAL 4), and `ruleset.json` to import (the check required on those three bases, no bypass actors). Its
+pull requests: the certified range rebuilt from its ledger into `main` (eligible), a commit with no certificate into `main`, the
+certified commit into `other-key` (wrong signer) and into `strict` (insufficient CAL), each of which must fail the check and be
+blocked; and `pr-edits-the-check`, a control that rewrites the check's own workflow, whose outcome is to be observed (a
+`pull_request` workflow runs the pull request's version). The older **conformance harness** (`staircase-verify.yml`) runs each
+case with `continue-on-error` and asserts the refusal, so its checks are green when the Action behaved: it tests the Action and
+blocks nothing. `tests/ruleset_fixture.bats` checks, with the real binary and the Action's own script against a local origin, that
+each case is decided as the README says by the configuration each base holds, and that the admission job has no
+`continue-on-error`. After your run, `demo/ruleset-evidence.sh <owner>/<repo>` (your own `gh` login; reads only) writes the
+retained record: each pull request's check conclusion, run URL and attempt, merge state, the verifier version the run
+installed, the release asset's digest, and the ruleset as GitHub holds it. Tested here against a stand-in `gh`. **The GitHub
+half has not been run**: no result is claimed, and none is retained yet.
 
 **Which CI run releases.** The release workflow's gate (`packaging/release-gate.sh`) accepts
 only a successful run of the CI workflow that was a `push` to the default branch of this
