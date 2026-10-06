@@ -162,6 +162,10 @@ func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
 		"Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
 	cmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	cmd.Flags().StringVar(&runModel, "model", "", "Model for "+agentName+" (default: its own)")
+	if agentName == "Gemini CLI" {
+		cmd.Flags().StringArrayVar(&runPassEnv, "pass-env", nil,
+			"Name of an environment variable Gemini may inherit, to give it its own credential (for example GEMINI_API_KEY); it, and any command it runs, can read the value. Repeat for more")
+	}
 	cmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	checkFlag(cmd)
 	signFlags(cmd)

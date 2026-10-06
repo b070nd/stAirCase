@@ -9,8 +9,7 @@ your repository, with every change decided by you, your rules or your reviewers,
 [Claude Code](claude-code.md).
 
 **Status.** This adapter was built from Gemini CLI's published documentation and tested
-against a stand-in that behaves as the documentation says. It has **not yet been run
-against a real Gemini CLI login**. Treat it as experimental until it has been.
+against a stand-in that behaves as the documentation says. It has been run once for real (see [compatibility](compatibility.md)): a governed run, a held approval, a rejection and its retry, and a fresh-clone verify and rebuild. Treat it as experimental still: one version, one model, a small task.
 
 ## What happens
 
@@ -44,8 +43,12 @@ All the options of `staircase claude` work (`--allow`, `--check`, `--validator`,
   `~/.gemini/settings.json` or in the repository's `.gemini/settings.json`; they run beside
   stAirCase's. A hook of theirs that rewrites a tool's arguments could change what
   stAirCase saw. Do not run this on a repository whose `.gemini` settings you do not trust.
-- **Login.** Gemini must already be logged in (run `gemini` once). stAirCase does not pass
-  API keys to it, so a command it runs cannot read one.
+- **Login.** Gemini must already be logged in (run `gemini` once), or you hand it its own key by name:
+  `staircase gemini --pass-env GEMINI_API_KEY "task"` passes that one variable from your environment and
+  nothing else. Gemini, and any command it runs with your approval, can read the value: use a key meant for this.
+- **Trusted folder.** A headless Gemini refuses to start in a folder it was not told to trust, and the run's
+  worktree is a new folder every time, so stAirCase starts it with `--skip-trust`. That adds nothing to the
+  warning above: the repository's `.gemini` settings already ran beside stAirCase's.
 
 ## Company-wide
 

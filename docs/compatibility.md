@@ -39,15 +39,15 @@ tests drive, not against the real program.
 
 | Scenario | Codex CLI | Claude Code | Gemini CLI | OpenCode |
 |---|---|---|---|---|
-| Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (2026-10-05, headless, model haiku, its credential passed with `--pass-env`) | 0.46.0 (no login) | not installed |
-| Its hooks run, every tool call is governed | yes (real run) | yes (real run: `make smoke-claude`) | stand-in only | stand-in only |
+| Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (2026-10-05, headless, model haiku, its credential passed with `--pass-env`) | 0.46.0 (2026-10-06, headless, model gemini-3.5-flash-lite, its key passed with `--pass-env`) | not installed |
+| Its hooks run, every tool call is governed | yes (real run) | yes (real run: `make smoke-claude`) | yes (real run: `./demo/smoke.sh gemini`) | stand-in only |
 | Session refused when its hooks never ran | stand-in only | refused when SessionStart never arrives (the session is not governed, nothing is kept); SessionStart firing in headless `-p` with `--settings` was probed on 2.1.236 (real), the refusal itself is tested with a synthetic host | stand-in only | stand-in only |
 | A hook answer that is empty, cut off or not a decision, a hook call that is unreadable or for an unregistered event, a hook program that is missing, crashes or is killed | shared bridge tests only (`staircase hook`, each agent's reply shape): the hook turns each into a block (exit 2); no Codex host was simulated | shared bridge tests, and a synthetic Claude Code host (`hook_host_test.go`, a fake that follows the documented behaviour: only exit 2 or a deny stops a tool): not a real run | shared bridge tests only | not applicable: the plugin asks the run itself |
 | The host gives up on a slow hook | not run | synthetic Claude Code host only (`hook_host_test.go`): the tool runs, the end-of-run check commits nothing unapproved; not a real run | not run | not run |
-| An approval held longer than a hook's default timeout | yes: held 70 s, then answered | yes (real run): held 40 s, then answered | not run | not run |
-| A rejection, then the agent's retry | yes: rejected once, the retry approved | yes (real run): rejected once, the retry approved; the committed bytes are the retry's | not run | not run |
+| An approval held longer than a hook's default timeout | yes: held 70 s, then answered | yes (real run): held 40 s, then answered | yes (real run): held 40 s, then answered | not run |
+| A rejection, then the agent's retry | yes: rejected once, the retry approved | yes (real run): rejected once, the retry approved; the committed bytes are the retry's | yes (real run): rejected once, the retry approved; the committed bytes are the retry's | not run |
 | Stop refused until a failing check passes | yes: the first attempt to stop blocked by the check, the second allowed | stand-in only | not applicable | not applicable |
-| Commit verified and rebuilt by a fresh clone with only the public key | yes | yes (real run, both runs above: CAL 3, tree identical on rebuild) | not run | not run |
+| Commit verified and rebuilt by a fresh clone with only the public key | yes | yes (real run, both runs above: CAL 3, tree identical on rebuild) | yes (real run, both runs: CAL 3, tree identical on rebuild) | not run |
 | Commands: no network, no credentials | Codex's own sandbox plus stAirCase's checks; not probed with a real model | not run | not run | not run |
 | Only staircase's settings are read (a repository's own hooks are ignored) | not applicable | yes, logged out | not run | not run |
 
