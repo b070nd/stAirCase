@@ -107,8 +107,16 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	// Only staircase's settings load: user, project and local settings could
 	// bring hooks and MCP servers that act outside governance (F82). Checked
 	// against Claude Code 2.1.236: "" loads none of them, --settings still loads.
+	// The session's id is chosen here and recorded on the audit chain, so a continuation can resume the agent's own
+	// conversation (`claude --resume <id>`); the governed settings apply to a resumed session as to a new one.
+	sid, resumed := sessionFor(env, "claude-code")
 	args := []string{"-p", withContinuation(c.Prompt, env), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 		"--output-format", "json"}
+	if resumed {
+		args = append(args, "--resume", sid)
+	} else {
+		args = append(args, "--session-id", sid)
+	}
 	if c.Model != "" {
 		args = append(args, "--model", c.Model)
 	}
@@ -152,6 +160,9 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	}
 	return nil
 }
+
+// NativeResume says a continued run can resume Claude Code's own session (`--resume <id>`).
+func (c *ClaudeCode) NativeResume() bool { return true }
 
 // HookCommand is the command a hook runs: `staircase hook`, which passes the
 // call to the run and blocks (exit 2) on every failure. mode is --governed

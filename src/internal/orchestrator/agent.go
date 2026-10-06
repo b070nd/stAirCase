@@ -37,7 +37,21 @@ type AgentFunc func(ctx context.Context, env *AgentEnv) error
 func (f AgentFunc) Run(ctx context.Context, env *AgentEnv) error { return f(ctx, env) }
 
 // AgentEnv is the run as its agent sees it.
+// AgentSession is a vendor session an agent program can continue: its id, and whether this run asks the agent to resume it
+// (a continued run whose agent can carry its own conversation) or to start it under that id.
+type AgentSession struct {
+	ID     string
+	Resume bool
+}
+
+// SessionResumer is implemented by agents that can resume their own program's session, so a continued run need not start the
+// agent's conversation again. An agent that does not implement it, or answers false, is continued with a fresh session grounded
+// by the audit chain, and only when a person asked for that.
+type SessionResumer interface{ NativeResume() bool }
+
 type AgentEnv struct {
+	// Session is set when a continued run resumes the agent's own session (see AgentSession); nil otherwise.
+	Session *AgentSession
 	// Continuation is what a fresh agent session is told when the run is a continuation of an interrupted one: the
 	// task as it stood, built by Go from the audit chain ("" for a first segment). Add it to the agent's first message.
 	Continuation string
@@ -138,6 +152,13 @@ func writeAtomic(full string, content []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), full)
+}
+
+// RecordSession puts the agent's vendor session on the audit chain (`agent_session`): its id, and whether it was started or
+// resumed in this segment. A later continuation resumes the session only if the chain names it. An agent calls this as soon as
+// it knows the id.
+func (e *AgentEnv) RecordSession(agent, id, mode string) {
+	e.host.audit("agent_session", map[string]any{"agent": agent, "id": id, "mode": mode})
 }
 
 // Propose submits a yield and blocks until the orchestrator decides. When the

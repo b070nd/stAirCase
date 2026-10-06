@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -81,30 +81,97 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	}
 	hook := fmt.Sprintf(`[{matcher="*",hooks=[{type="command",command=%s,timeout=%d}]}]`,
 		tomlString(HookCommand(bin, "codex", "--governed")), hookTimeout)
-	args := []string{"exec", "-s", "workspace-write", "-c", `approval_policy="never"`, "--dangerously-bypass-hook-trust",
-		"-c", "hooks.SessionStart=" + hook, "-c", "hooks.PreToolUse=" + hook, "-c", "hooks.PostToolUse=" + hook, "-c", "hooks.Stop=" + hook}
+	hooks := []string{"-c", "hooks.SessionStart=" + hook, "-c", "hooks.PreToolUse=" + hook, "-c", "hooks.PostToolUse=" + hook, "-c", "hooks.Stop=" + hook}
+	prompt := withContinuation(c.Prompt, env) + "\n\n" + codexRules
+
+	// A continued run resumes Codex's own thread (`codex exec resume <id>`); a first segment learns the thread's id from the
+	// first event of its --json stream and puts it on the audit chain at once, so a kill cannot lose it.
+	resumeID := ""
+	if env.Session != nil && env.Session.Resume && env.Session.ID != "" {
+		resumeID = env.Session.ID
+		env.RecordSession("codex", resumeID, "resumed")
+	}
+	var args []string
+	if resumeID == "" {
+		args = append([]string{"exec", "--json", "-s", "workspace-write", "-c", `approval_policy="never"`, "--dangerously-bypass-hook-trust"}, hooks...)
+	} else {
+		// `exec resume` takes no -s: the sandbox is set through its configuration
+		args = append([]string{"exec", "resume", "--json", "-c", `sandbox_mode="workspace-write"`, "-c", `approval_policy="never"`, "--dangerously-bypass-hook-trust"}, hooks...)
+	}
 	if c.Model != "" {
 		args = append(args, "-m", c.Model)
 	}
-	args = append(args, withContinuation(c.Prompt, env)+"\n\n"+codexRules)
+	if resumeID != "" {
+		args = append(args, resumeID)
+	}
+	args = append(args, prompt)
 
-	cmd := exec.CommandContext(ctx, c.bin(), args...)
-	cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile)
-	cmd.WaitDelay = 5 * time.Second
-	sandbox.KillGroup(cmd)
-	var stdout bytes.Buffer
+	var preview_ strings.Builder
+	var runErr error
 	stderr := &tail{max: 4096}
-	cmd.Stdout, cmd.Stderr = &stdout, stderr // stdin stays empty: codex exec waits on an open one
-	runErr := cmd.Run()
-	env.Emit(ctx, orchestrator.Usage{Agent: "codex", Model: orDefault(c.Model, "codex"), Content: preview(stdout.String())})
+	for started := time.Now(); ; {
+		cmd := exec.CommandContext(ctx, c.bin(), args...)
+		cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile)
+		cmd.WaitDelay = 5 * time.Second
+		sandbox.KillGroup(cmd) // stdin stays empty: codex exec waits on an open one
+		out, perr := cmd.StdoutPipe()
+		if perr != nil {
+			return perr
+		}
+		cmd.Stderr = stderr
+		if runErr = cmd.Start(); runErr != nil {
+			break
+		}
+		sc := bufio.NewScanner(out)
+		sc.Buffer(make([]byte, 1<<20), 8<<20)
+		for sc.Scan() {
+			var ev struct {
+				Type     string `json:"type"`
+				ThreadID string `json:"thread_id"`
+				Item     struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"item"`
+			}
+			if json.Unmarshal(sc.Bytes(), &ev) != nil {
+				continue
+			}
+			switch {
+			case ev.Type == "thread.started" && ev.ThreadID != "" && resumeID == "":
+				env.RecordSession("codex", ev.ThreadID, "started")
+			case ev.Type == "item.completed" && ev.Item.Type == "agent_message":
+				preview_.WriteString(ev.Item.Text + "\n")
+			}
+		}
+		runErr = cmd.Wait()
+		// A thread whose writer was killed is held by Codex's own server for a while; resuming straight away is refused
+		// with this message. Waiting for it to be released is bounded.
+		if runErr != nil && resumeID != "" && strings.Contains(stderr.String(), "already has an active writer") &&
+			time.Since(started) < codexResumeWait && ctx.Err() == nil {
+			select {
+			case <-time.After(5 * time.Second):
+				continue
+			case <-ctx.Done():
+			}
+		}
+		break
+	}
+	env.Emit(ctx, orchestrator.Usage{Agent: "codex", Model: orDefault(c.Model, "codex"), Content: preview(preview_.String())})
 	switch {
 	case runErr != nil:
-		return fmt.Errorf("codex: %w: %s%s", runErr, preview(stdout.String()), stderr)
+		return fmt.Errorf("codex: %w: %s%s", runErr, preview(preview_.String()), stderr)
 	case !h.started.Load():
 		return errors.New("codex never ran staircase's hooks, so the session was not governed; nothing it did is kept")
 	}
 	return nil
 }
+
+// codexResumeWait bounds how long a resume waits for Codex to release a thread whose process was killed.
+const codexResumeWait = 3 * time.Minute
+
+// NativeResume says a continued run can resume Codex's own thread (`codex exec resume <id>`), whose id the first
+// segment learns from the `thread.started` event of its --json stream.
+func (c *Codex) NativeResume() bool { return true }
 
 // codexRules tell the model how the governed session works.
 const codexRules = `Make file changes with apply_patch: each one is reviewed before it is applied. ` +

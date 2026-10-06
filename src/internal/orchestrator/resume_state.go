@@ -109,8 +109,9 @@ type continuation struct {
 	decisions    []replayedDecision
 	usage        []usageRecord
 	validator    *validatorState
-	halted       bool          // the run was halted for drift
-	elapsed      time.Duration // active time used by the earlier segments
+	session      struct{ Agent, ID string } // the agent's vendor session as the chain last named it
+	halted       bool                       // the run was halted for drift
+	elapsed      time.Duration              // active time used by the earlier segments
 
 	policy *policy.Snapshot
 	plan   plan.Plan
@@ -122,6 +123,7 @@ type continuation struct {
 	wgr         *GitRepo
 	appr        *approvals // the approved state, rebuilt from the chain and checked against the worktree
 	ackDrift    bool
+	sessionID   string // the vendor session to resume, when contextKind is native_resume
 	contextKind string // how the agent's context is carried: "fresh_grounded" (the only kind so far)
 }
 
@@ -144,8 +146,14 @@ func replayChain(events []domain.RunEventLog, c *continuation) error {
 				Out   int    `json:"output_tokens"`
 			} `json:"state"`
 			ActiveAgent string `json:"active_agent"`
+			Agent       string `json:"agent"`
+			ID          string `json:"id"`
 		}
 		switch e.EventType {
+		case "agent_session":
+			if json.Unmarshal([]byte(e.Payload), &p) == nil && p.ID != "" {
+				c.session.Agent, c.session.ID = p.Agent, p.ID
+			}
 		case "run_bound":
 			segStart = e.Timestamp
 		case "run_resumed":
@@ -354,6 +362,14 @@ func saveRunFile(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(f.Name(), path)
+}
+
+// agentSession is what the agent is told about its vendor session in a continuation: nil unless it is to resume one.
+func agentSession(c *continuation) *AgentSession {
+	if c == nil || c.contextKind != "native_resume" {
+		return nil
+	}
+	return &AgentSession{ID: c.sessionID, Resume: true}
 }
 
 // contBrief is the continuation's note to the agent, or "" for a run's first segment.

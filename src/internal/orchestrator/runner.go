@@ -675,7 +675,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 	defer cancelAgent()
 	stopped := make(chan struct{})
-	env := &AgentEnv{Continuation: contBrief(cont), Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: proposals, usage: usage, host: host}
+	env := &AgentEnv{Session: agentSession(cont), Continuation: contBrief(cont), Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: proposals, usage: usage, host: host}
 	val := opts.Validator
 	if val != nil {
 		if val.Chat == nil {

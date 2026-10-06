@@ -30,6 +30,9 @@ func fakeCodex() int {
 		b, _ := json.Marshal(args)
 		_ = os.WriteFile(f, b, 0o600)
 	}
+	if !slices.Contains(args, "resume") { // a new thread: Codex says its id first, in the --json stream
+		fmt.Println(`{"type":"thread.started","thread_id":"019aaaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee"}`)
+	}
 	if os.Getenv("FAKE_CODEX") == "nohooks" {
 		_ = os.WriteFile("hello.txt", []byte("ungoverned\n"), 0o644)
 		return 0

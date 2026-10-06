@@ -15,7 +15,7 @@ setup_file() {
 
 setup() {
   WORK="$(mktemp -d)"
-  export STAIRCASE_DIR="$WORK/workspace" NO_COLOR=1 HOME="$WORK/home"
+  export ARGS_LOG="$WORK/claude.args" STAIRCASE_DIR="$WORK/workspace" NO_COLOR=1 HOME="$WORK/home"
   mkdir -p "$WORK/bin" "$WORK/app" "$WORK/mark" "$HOME"
   git -C "$WORK/app" init -q -b main
   git -C "$WORK/app" config user.email drill@example.com
@@ -27,6 +27,7 @@ setup() {
   cat >"$WORK/bin/claude" <<'FAKE'
 #!/bin/bash
 settings=""; prompt=""
+printf '%s\n' "$*" >>ARGS_LOG_PATH
 while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; [ "$1" = "-p" ] && prompt="$2"; shift; done
 cmd="$(sed -n 's/.*"command": *"\([^"]*\)".*/\1/p' "$settings" | head -1)"
 hook() { printf '%s' "$1" | sh -c "$cmd" >/dev/null; }
@@ -39,6 +40,7 @@ for f in $files; do
   mkdir -p src && printf '%s content\n' $f >src/$f.txt
 done
 FAKE
+  sed -i.bak "s#ARGS_LOG_PATH#$ARGS_LOG#" "$WORK/bin/claude" && rm "$WORK/bin/claude.bak"   # the agent's environment is scrubbed: the path is baked in
   chmod +x "$WORK/bin/claude"
   export PATH="$WORK/bin:$PATH"
 }
@@ -180,11 +182,27 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
   sound
 }
 
-@test "an agent harness run is not continued silently as a new conversation" {
+@test "an agent harness run is continued in its own session, and says so" {
   first consumed@1
   cd "$WORK/app"
+  id="$(sed -n 's/.*--session-id \([0-9a-f-]*\).*/\1/p' "$ARGS_LOG" | head -1)"
+  [ -n "$id" ]                                              # the first segment was started under an id staircase chose
   run sc resume 1
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"--fresh-context"* ]]
-  [ "$(resumed_events)" = 0 ]
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(grep -c -- "--resume $id" "$ARGS_LOG")" = 1 ]       # and the continuation resumed that session
+  [ "$(grep -c -- "--session-id" "$ARGS_LOG")" = 1 ]
+  sc inspect log 1 --full | grep -q "native_resume"
+  [ "$(on_branch src/c.txt)" = "c content" ]
+  one_commit
+  sound
+}
+
+@test "--fresh-context starts a new session instead, and the chain says so" {
+  first consumed@1
+  cd "$WORK/app"
+  run resume
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(grep -c -- "--session-id" "$ARGS_LOG")" = 2 ]
+  [ "$(grep -c -- "--resume" "$ARGS_LOG")" = 0 ]
+  sc inspect log 1 --full | grep -q "fresh_grounded"
 }
