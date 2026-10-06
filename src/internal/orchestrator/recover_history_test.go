@@ -270,6 +270,31 @@ func TestRecover_only_a_cut_append_is_a_torn_tail(t *testing.T) {
 		{"garbage that ends in a newline", "not json at all\n", false},
 		{"a cut line that ends in a newline", `{"seq":3,"source":"operator","requ` + "\n", false},
 		{"a complete entry with no request", `{"seq":3,"source":"operator"}`, false},
+		// text that is not the start of any journal line, with no newline: corruption, not a crash's cut
+		{"garbage with no newline", `not json at all`, false},
+		{"a stray bracket with no newline", `{"seq":3,]`, false},
+		{"another key first", `{"source":"operator"`, false},
+		{"a request that cannot be valid", `{"seq":3,"source":"operator","request":{"a":}`, false},
+		{"extra content after the request", `{"seq":3,"source":"operator","request":{}}}`, false},
+	}
+	// genuinely cut lines: prefixes of a real line (the third proposal's, built from the first's request)
+	var first struct{ Request json.RawMessage }
+	{
+		r0 := interruptedWith(t, [][2]string{{"src/a.txt", "one\n"}})
+		_, l0 := journalLines(t, r0)
+		require.NoError(t, json.Unmarshal([]byte(l0[0]), &first))
+	}
+	real, _ := json.Marshal(struct { // the field order appendJournal writes
+		Seq     int             `json:"seq"`
+		Source  string          `json:"source"`
+		Request json.RawMessage `json:"request"`
+	}{3, "operator", first.Request})
+	for _, n := range []int{1, 7, 8, 12, 20, 30, len(real) / 2, len(real) - 2, len(real) - 1} {
+		cases = append(cases, struct {
+			name   string
+			tail   string
+			recovs bool
+		}{fmt.Sprintf("a real line cut after %d of %d bytes", n, len(real)), string(real[:n]), true})
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

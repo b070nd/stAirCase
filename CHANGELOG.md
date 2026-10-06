@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A large approved change no longer makes a run unrecoverable.** The audit entry of a request over 64 KiB is a
+  capped stub, and it lost its `action_type`; recovery, which pairs each decision with its request, then refused the
+  run. The stub keeps the `action_type`. A request that cannot be written to the audit chain is now refused (the agent is
+  told no, and what a command changed is put back) instead of being decided without its record.
+- **Recovery tells a cut journal write from corruption exactly.** Only a last line that is a prefix of what the journal
+  writes is a cut write; text like `not json at all` or `{"seq":3,]` without a newline is corruption and is refused.
+- **An approval is consumed at one defined point, and the run's end is checked under the audit chain's write lock.**
+  The limit and cancellation were checked before the decision waited for the chain's lock, so a run that ended while
+  another write held it could still have its approval recorded and released. The check now runs under the lock,
+  right before the write; a write that has begun is finished (consumed), so there is no state in which the chain and
+  the run disagree. See [approvals](docs/approvals.md).
+
 ## [0.11.0] - 2026-10-06
 
 Gemini CLI has been run for real, and can be given its key by name. Read "Changed (read before upgrading)": Gemini is

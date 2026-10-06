@@ -163,7 +163,14 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 A proposal waits for you only as long as its run lives. If the run is cancelled, or
 its `max_run_secs` limit passes, while a proposal is waiting (through the terminal, the page, the API
 or a webhook), the wait ends, the proposal is withdrawn and a late answer is refused
-(`409`); it is never recorded as an approval. The run's final review, asked after the
+(`409`); it is never recorded as an approval. When the end comes is defined by one point: an
+approval is **consumed** when its decision is on the audit chain (it is kept in the journal first,
+and the agent is told after). The run's limit and cancellation are checked once more under the
+chain's write lock, right before that write; an approval whose run has ended by then is recorded as
+a rejection, marked `unconsumed`, and never committed. A write that has begun is finished: it is
+not interrupted (an interrupted write could leave you unsure whether it happened), so an approval
+is consumed even if the run ends during the write, and `staircase recover` then commits it, once,
+with exactly its bytes. The run's final review, asked after the
 agent has finished, ends only when the run is cancelled. In the terminal dialog, **Ctrl-C**
 rejects the change and stops the run like a Ctrl-C anywhere else (on Windows it rejects the
 change and the run goes on to its next step; stop it from the console).
