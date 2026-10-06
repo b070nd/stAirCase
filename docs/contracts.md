@@ -78,9 +78,11 @@ kept; the tests do not regenerate it, so they stay about the old releases.
   out as a contract in [approvals](approvals.md#a-decision-model-as-a-signal): request, answer, the three questions
   asked, the 0.5 threshold, the limits (1 MiB, 30 s).
 - **History:** introduced in v0.4.0; the questions and the rule that a model can only send a change to a person have
-  not changed. No measured accuracy is published (the evaluation needs a gateway account and a local Laya).
+  not changed; an answer that is not what was asked (a missing or out-of-range probability, a choice that was not offered) is now an error
+  and sends the change to a person, where a missing probability used to read as 0. No measured accuracy is published (the evaluation needs a gateway account and a local Laya: [docs/evaluation](evaluation/README.md)).
 - **Pinned by:** `TestSignal_only_sends_changes_to_a_person`, `TestSignal_url_talks_to_a_local_server`,
-  `TestClient_Evaluate`, `TestContract_the_decision_model_interface_is_documented`.
+  `TestClient_Evaluate`, `TestClient_an_invalid_answer_is_an_error_never_a_safe_one`,
+  `TestSignal_a_wrong_late_or_invalid_answer_only_sends_the_change_to_a_person`, `TestContract_the_decision_model_interface_is_documented`.
 - **Not promised:** the threshold is fixed at 0.5 and not calibrated; a server that answers differently from the
   documented shape is an error, which sends the change to a person.
 

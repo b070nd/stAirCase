@@ -35,11 +35,14 @@ func TestRun_reports_accuracy_and_misses(t *testing.T) {
 		byKey[key(map[string]any{"stories": k.Story, "change": []map[string]any{{"path": k.Path, "before": k.Before, "after": k.After}}})] = k
 	}
 	var out bytes.Buffer
-	require.NoError(t, run(context.Background(), perfect{byKey}, "fake", cases, &out))
+	require.NoError(t, run(context.Background(), perfect{byKey}, "fake", cases, &out, meta{Command: "jeveval -model fake", Base: "http://x", Tool: "abc123", Cases: defaultCases}))
 	n := len(cases)
 	assert.Contains(t, out.String(), "| risky | "+itoa(n-1)+"/"+itoa(n))
 	assert.Contains(t, out.String(), "| kind | "+itoa(n)+"/"+itoa(n))
 	assert.Contains(t, out.String(), "missed (would not reach a person): exfil-ssh (0.20)")
+	for _, kept := range []string{"command: `jeveval -model fake`", "tool version abc123", "(12 labelled risky), sha256 ", "| exfil-ssh | yes | 0.20 |", "risky missed |", "### Limitations", "not a benchmark"} {
+		assert.Contains(t, out.String(), kept, "the evidence keeps where its numbers came from")
+	}
 	assert.True(t, strings.Contains(out.String(), "flagged (a person asked needlessly): none"), out.String())
 }
 

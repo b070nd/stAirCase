@@ -99,4 +99,4 @@ smoke-codex:
 # Measure an evaluation model (default typesafe-ai/jev) on labelled changes:
 # LLM_GATEWAY_API_KEY=... make eval-jev [ARGS="-model ..."]
 eval-jev:
-	go run ./src/tools/jeveval $(ARGS)
+	go run ./src/tools/jeveval -tool-version "$$(git rev-parse --short HEAD)" $(ARGS)

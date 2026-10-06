@@ -44,6 +44,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A decision model's invalid answer can no longer read as a reassuring one.** A boolean answer with no probability (or `null`),
+  one outside 0 to 1, one of the wrong type, or a choice that was not offered is now an error, so the change goes to a person; a
+  missing `risky` probability used to read as 0, "not risky". `jeveval -out` keeps a report with the command, server, tool version,
+  a digest of the cases, every case and the limitations. No accuracy is published: the gateway key and a local Laya are not
+  available (see [docs/evaluation](docs/evaluation/README.md)).
 - **A large approved change no longer makes a run unrecoverable.** The audit entry of a request over 64 KiB is a
   capped stub, and it lost its `action_type`; recovery, which pairs each decision with its request, then refused the
   run. The stub keeps the `action_type`. A request that cannot be written to the audit chain is now refused (the agent is

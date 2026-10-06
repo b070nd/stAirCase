@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,4 +94,92 @@ func TestClient_systemone(t *testing.T) {
 	c.API = "bogus"
 	_, err = c.Evaluate(context.Background(), "s", ReviewQuestions)
 	assert.ErrorContains(t, err, "unknown")
+}
+
+// TestClient_an_invalid_answer_is_an_error_never_a_safe_one: a model's answer that is not what was asked (a probability
+// missing, outside 0..1 or of the wrong type, a choice that is none of the offered ones, an answer cut off, a server
+// that never answers or answers without end) is an error, so the change goes to a person. Above all it is never read
+// as "not risky": a missing probability must not become 0.
+func TestClient_an_invalid_answer_is_an_error_never_a_safe_one(t *testing.T) {
+	kind := `"kind":{"choice":"feature","probabilities":{"feature":1}}`
+	for name, tc := range map[string]struct{ api, answers, want string }{
+		"gateway: probability missing":     {Gateway, `"risky":{"type":"boolean"},"serves_story":{"type":"boolean","probability":0.9},` + kind, "risky"},
+		"gateway: probability above 1":     {Gateway, `"risky":{"type":"boolean","probability":1.7},"serves_story":{"type":"boolean","probability":0.9},` + kind, "risky"},
+		"gateway: probability below 0":     {Gateway, `"risky":{"type":"boolean","probability":0.1},"serves_story":{"type":"boolean","probability":-0.2},` + kind, "serves_story"},
+		"gateway: probability is a string": {Gateway, `"risky":{"type":"boolean","probability":"0.1"},"serves_story":{"type":"boolean","probability":0.9},` + kind, "unreadable"},
+		"gateway: answer of another type":  {Gateway, `"risky":{"type":"choice","choice":"feature"},"serves_story":{"type":"boolean","probability":0.9},` + kind, "risky"},
+		"gateway: choice not offered":      {Gateway, `"risky":{"type":"boolean","probability":0.1},"serves_story":{"type":"boolean","probability":0.9},"kind":{"choice":"banana"}`, "kind"},
+		"gateway: choice empty":            {Gateway, `"risky":{"type":"boolean","probability":0.1},"serves_story":{"type":"boolean","probability":0.9},"kind":{"type":"choice"}`, "kind"},
+		"systemone: noul missing":          {SystemOne, `"risky":{},"serves_story":{"noul":0.9},` + kind, "risky"},
+		"systemone: noul above 1":          {SystemOne, `"risky":{"noul":2},"serves_story":{"noul":0.9},` + kind, "risky"},
+		"systemone: noul null":             {SystemOne, `"risky":{"noul":null},"serves_story":{"noul":0.9},` + kind, "risky"},
+		"systemone: choice not offered":    {SystemOne, `"risky":{"noul":0.1},"serves_story":{"noul":0.9},"kind":{"choice":"Feature"}`, "kind"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"answers":{` + tc.answers + `}}`))
+			}))
+			defer srv.Close()
+			_, err := (&Client{Model: "m", BaseURL: srv.URL, API: tc.api}).Evaluate(context.Background(), "s", ReviewQuestions)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tc.want)
+		})
+	}
+
+	t.Run("a valid answer at the edges of the range is accepted", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"answers":{"risky":{"type":"boolean","probability":0},"serves_story":{"type":"boolean","probability":1},` + kind + `}}`))
+		}))
+		defer srv.Close()
+		res, err := (&Client{Model: "m", BaseURL: srv.URL}).Evaluate(context.Background(), "s", ReviewQuestions)
+		require.NoError(t, err)
+		assert.Zero(t, res.Answers["risky"].Probability, "an explicit 0 is an answer")
+	})
+
+	t.Run("an answer cut off, or without end", func(t *testing.T) {
+		cut := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"answers":{"risky":{"type":"boolean","probab`))
+		}))
+		defer cut.Close()
+		_, err := (&Client{Model: "m", BaseURL: cut.URL}).Evaluate(context.Background(), "s", ReviewQuestions)
+		assert.ErrorContains(t, err, "unreadable")
+
+		endless := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"answers":{"risky":{"type":"boolean","probability":0.1}},"pad":"`))
+			junk := make([]byte, 1<<16)
+			for i := range junk {
+				junk[i] = 'x'
+			}
+			for range 64 { // 4 MiB, over what the client reads
+				if _, err := w.Write(junk); err != nil {
+					return
+				}
+			}
+		}))
+		defer endless.Close()
+		_, err = (&Client{Model: "m", BaseURL: endless.URL}).Evaluate(context.Background(), "s", ReviewQuestions)
+		assert.Error(t, err, "an oversized reply is not read as an answer")
+	})
+
+	t.Run("a server that is too slow", func(t *testing.T) {
+		release := make(chan struct{})
+		slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		}))
+		defer slow.Close()
+		defer close(release)
+		c := &Client{Model: "m", BaseURL: slow.URL, HTTP: &http.Client{Timeout: 100 * time.Millisecond}}
+		start := time.Now()
+		_, err := c.Evaluate(context.Background(), "s", ReviewQuestions)
+		require.Error(t, err)
+		assert.Less(t, time.Since(start), 5*time.Second)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		_, err = (&Client{Model: "m", BaseURL: slow.URL}).Evaluate(ctx, "s", ReviewQuestions)
+		assert.Error(t, err, "the run's own deadline reaches the call")
+	})
 }
