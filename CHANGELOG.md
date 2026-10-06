@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **An approval is consumed at one defined point, and the run's end is checked under the audit chain's write lock.**
+  The limit and cancellation were checked before the decision waited for the chain's lock, so a run that ended while
+  another write held it could still have its approval recorded and released. The check now runs under the lock,
+  right before the write; a write that has begun is finished (consumed), so there is no state in which the chain and
+  the run disagree. See [approvals](docs/approvals.md).
+
 ## [0.11.0] - 2026-10-06
 
 Gemini CLI has been run for real, and can be given its key by name. Read "Changed (read before upgrading)": Gemini is

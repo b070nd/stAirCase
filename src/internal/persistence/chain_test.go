@@ -3,8 +3,10 @@ package persistence_test
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -182,4 +184,49 @@ func TestListVerifiedEventLogs(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, got, "a tampered chain yields no rows")
 	assert.Equal(t, `{"n":1}`, logs[1].Payload, "rows already returned are not changed by a later change to the database")
+}
+
+// TestAppendEventLogChainedIf: the condition is checked under the append lock, right before the insert.
+// A condition that no longer holds writes nothing (and releases the lock); one that holds writes the entry;
+// a writer that held the lock first is waited for, and the condition is evaluated after that wait.
+func TestAppendEventLogChainedIf(t *testing.T) {
+	s, _, run := chainStore(t)
+	_, err := s.AppendEventLogChained(run, "run_started", `{"n":1}`, "")
+	require.NoError(t, err)
+
+	stop := errors.New("the run ended")
+	got, err := s.AppendEventLogChainedIf(run, "yield_decided", `{"n":2}`, "", func() error { return stop })
+	assert.ErrorIs(t, err, stop)
+	assert.Nil(t, got)
+	logs, _ := s.ListEventLogs(run)
+	assert.Len(t, logs, 1, "nothing was written")
+
+	_, err = s.AppendEventLogChainedIf(run, "yield_decided", `{"n":2}`, "", func() error { return nil })
+	require.NoError(t, err)
+	require.NoError(t, s.VerifyChain(run))
+
+	// the condition runs after the wait for the lock, not before it
+	var order []string
+	var mu sync.Mutex
+	hold := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		_, _ = s.AppendEventLogChainedIf(run, "a", `{}`, "", func() error { <-hold; mu.Lock(); order = append(order, "first"); mu.Unlock(); return nil })
+		close(done)
+	}()
+	time.Sleep(50 * time.Millisecond) // the first holds the lock
+	second := make(chan error, 1)
+	go func() {
+		_, err := s.AppendEventLogChainedIf(run, "b", `{}`, "", func() error { mu.Lock(); order = append(order, "second"); mu.Unlock(); return nil })
+		second <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	assert.Empty(t, order, "the second has not evaluated its condition while another writer holds the lock")
+	mu.Unlock()
+	close(hold)
+	<-done
+	require.NoError(t, <-second)
+	assert.Equal(t, []string{"first", "second"}, order)
+	require.NoError(t, s.VerifyChain(run))
 }

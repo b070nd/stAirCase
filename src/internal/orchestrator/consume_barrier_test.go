@@ -223,3 +223,66 @@ func TestConsumption_the_final_review_is_not_bound_by_the_run_limit(t *testing.T
 	assert.NotEmpty(t, r.Run.GitCommitHash, "a final review answered after the run limit still delivers")
 	assert.Equal(t, "first", trim(git(t, r.Repo, "show", "staircase/run-1:src/a.txt")))
 }
+
+// TestConsumption_expiry_while_waiting_for_the_chain: the approval has been journaled and every earlier
+// check passed; the run ends while the decision's append holds the chain lock, before it has checked.
+// That check, under the lock and right before the insert, is the last one: the authorization is not
+// consumed, the chain records a rejection marked unconsumed, the agent is told no, and recovery
+// commits the earlier approval only.
+func TestConsumption_expiry_while_waiting_for_the_chain(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	cancelAt(t, barrier.AuditAppend, 2, cancel)
+	var answers []bool
+	r := twoWrites(t, ctx, &answers)
+	assert.Equal(t, []bool{true, false}, answers)
+	assert.Equal(t, 2, journalCount(t, r), "the second line was journaled before the run ended")
+	a, rej := decisions(t, r)
+	assert.Equal(t, 1, a, "the chain holds one approval")
+	assert.Equal(t, 1, rej)
+	unconsumed := 0
+	for _, e := range r.Events {
+		if strings.Contains(e.Payload, `"unconsumed":true`) {
+			unconsumed++
+		}
+	}
+	assert.Equal(t, 1, unconsumed)
+	branchUntouched(t, r)
+	res, err := recoverRun(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.Proposals)
+	assert.Equal(t, "src/a.txt", trim(git(t, r.Repo, "diff", "--name-only", "HEAD", "staircase/run-1")), "exactly the earlier approval")
+}
+
+// TestConsumption_an_append_that_has_begun_is_consumed: the run ends right after the decision was
+// written. It was consumed: it is on the chain, and recovery commits it, once, with exactly its bytes. The
+// agent is told yes only for what is on the chain (its own end may make it hear "the run ended" instead).
+func TestConsumption_an_append_that_has_begun_is_consumed(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	cancelAt(t, barrier.AuditCommitted, 2, cancel)
+	var answers []bool
+	r := twoWrites(t, ctx, &answers)
+	a, rej := decisions(t, r)
+	// The agent may be told "the run ended" for a decision that was consumed (its own context ended too),
+	// which is safe: it then does not act. What can never happen is a yes for what is not on the chain.
+	yes := 0
+	for _, ok := range answers {
+		if ok {
+			yes++
+		}
+	}
+	assert.LessOrEqual(t, yes, a, "the agent was told yes only for what is on the chain")
+	assert.Equal(t, 2, a)
+	assert.Equal(t, 0, rej)
+	assert.Equal(t, 2, journalCount(t, r))
+	assert.Equal(t, persistence.RunStatusKilled, r.Run.Status)
+	branchUntouched(t, r)
+	res, err := recoverRun(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, 2, res.Proposals)
+	assert.Equal(t, "first", trim(git(t, r.Repo, "show", "staircase/run-1:src/a.txt")))
+	assert.Equal(t, "second", trim(git(t, r.Repo, "show", "staircase/run-1:src/b.txt")))
+	_, err = recoverRun(t, r)
+	assert.Error(t, err, "recovered once: a second recovery has nothing to do")
+}

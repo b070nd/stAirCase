@@ -11,6 +11,7 @@ package barrier
 const (
 	DecisionMade      = "decision-made"       // a proposal has been decided; nothing of it is journaled or audited yet
 	JournalSynced     = "journal-synced"      // an approval is in the journal, flushed; not yet on the audit chain
+	AuditAppend       = "audit-append"        // the decision's append holds the chain lock and has not yet checked the run is still going
 	AuditCommitted    = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
 	Consumed          = "consumed"            // the approval is recorded in memory and released to the agent
 	CommitPrepared    = "commit-prepared"     // the commit exists and is named on the chain; no branch holds it yet

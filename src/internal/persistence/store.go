@@ -1294,6 +1294,25 @@ func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommit
 	return s.AppendEventLog(runID, eventType, payload, prevHash, gitCommitHash)
 }
 
+// AppendEventLogChainedIf is AppendEventLogChained for an entry that must not be written if a condition has
+// stopped holding: proceed is called while the append lock is held, immediately before the insert, and
+// when it returns an error nothing is written and (nil, that error) is returned. The check cannot be made
+// atomic with the insert itself, which is not interruptible (an interrupted insert could leave the caller
+// unsure whether the row exists): an insert that has begun is written. What the caller gets is "checked
+// under the lock, right before the write", with no wait for another writer in between.
+func (s *Store) AppendEventLogChainedIf(runID int64, eventType, payload, gitCommitHash string, proceed func() error) (*domain.RunEventLog, error) {
+	s.appendMu.Lock()
+	defer s.appendMu.Unlock()
+	if err := proceed(); err != nil {
+		return nil, err
+	}
+	prevHash, err := s.GetLastEventHash(runID)
+	if err != nil {
+		return nil, fmt.Errorf("read last event hash: %w", err)
+	}
+	return s.AppendEventLog(runID, eventType, payload, prevHash, gitCommitHash)
+}
+
 func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 	rows, err := s.db.Query(
 		`SELECT id, run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version

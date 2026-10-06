@@ -779,24 +779,48 @@ runLoop:
 			yieldSpan.End()
 			// Record the decision, with the exact approved content, before the
 			// runtime can act on it: an approval that is not on the audit chain
-			// is never released (CHECK 7.3.1).
-			decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
-			if journaled && !rl.resp.Approved {
-				decided["unconsumed"] = true // its journal line is an authorization that was never consumed
+			// is never released (CHECK 7.3.1). An approval is CONSUMED when this entry is on the
+			// chain: the run's limit and cancellation are checked under the chain's append lock,
+			// immediately before the insert (there is no wait for another writer in between), and an
+			// insert that has begun is written, which is the last moment the run's end can matter.
+			decidedFor := func() map[string]any {
+				decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
+				if journaled && !rl.resp.Approved {
+					decided["unconsumed"] = true // its journal line is an authorization that was never consumed
+				}
+				maps.Copy(decided, rl.signed)
+				if rl.evidence != nil {
+					decided["evidence"] = rl.evidence
+				}
+				if rl.source == "operator" {
+					decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
+				}
+				return decided
 			}
-			maps.Copy(decided, rl.signed)
-			if rl.evidence != nil {
-				decided["evidence"] = rl.evidence
+			var auditErr error
+			if rl.resp.Approved {
+				expired := false
+				auditErr = r.auditIf(run.ID, "yield_decided", decidedFor(), func() error {
+					barrier.Hit(barrier.AuditAppend)
+					if err := waitCtx.Err(); err != nil {
+						expired = true
+						return err
+					}
+					return nil
+				})
+				if expired { // the run ended while this waited for the chain: not consumed, recorded as a rejection
+					expire()
+					auditErr = r.audit(run.ID, "yield_decided", decidedFor())
+				}
+			} else {
+				auditErr = r.audit(run.ID, "yield_decided", decidedFor())
 			}
-			if rl.source == "operator" {
-				decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
-			}
-			if err := r.audit(run.ID, "yield_decided", decided); err != nil {
+			if auditErr != nil {
 				p.reply <- decision{resp: domain.Decide(false, "the orchestrator could not record this decision; the run is stopping")}
 				stopAgent()
 				agentFinished = true
 				finalStatus = persistence.RunStatusFailed
-				runErr = fmt.Errorf("audit yield_decided: %w", err)
+				runErr = fmt.Errorf("audit yield_decided: %w", auditErr)
 				break runLoop
 			}
 			barrier.Hit(barrier.AuditCommitted)
@@ -1195,13 +1219,19 @@ func (r *Runner) driftScope(caseID int64, pl *plan.Plan) (scope []string, maxFil
 // audit appends event to the run's chain; its payload is fields with the
 // event's type.
 func (r *Runner) audit(runID int64, event string, fields map[string]any) error {
+	return r.auditIf(runID, event, fields, func() error { return nil })
+}
+
+// auditIf appends an event unless proceed (called under the chain's append lock, right before the
+// insert) says not to: then nothing is written and proceed's error is returned.
+func (r *Runner) auditIf(runID int64, event string, fields map[string]any, proceed func() error) error {
 	payload := map[string]any{"type": event}
 	maps.Copy(payload, fields)
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	_, err = r.store.AppendEventLogChained(runID, event, string(b), "")
+	_, err = r.store.AppendEventLogChainedIf(runID, event, string(b), "", proceed)
 	return err
 }
 
