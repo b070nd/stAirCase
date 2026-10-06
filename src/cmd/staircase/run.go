@@ -190,7 +190,7 @@ func runCase(caseID int64) error {
 	case "codex":
 		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
 	case "gemini":
-		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel}
+		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
 	case "opencode":
 		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: runModel}
 	case "review":

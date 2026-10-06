@@ -320,7 +320,7 @@ secret rotation, the OpenTelemetry exporter) are no longer listed; CI runs `govu
 
 | ID | Priority | Description |
 |---|---|---|
-| G-1 | Medium | **Real agents.** Codex CLI and Claude Code (2.1.236, 2026-10-05: a governed run, a held approval, a rejection and retry, a fresh-clone verify and rebuild) have been run end to end against the real program. Gemini CLI (no login) and OpenCode (not installed) are proven against stand-ins only; the table is in [compatibility](compatibility.md#which-agents-have-actually-been-run). |
+| G-1 | Medium | **Real agents.** Codex CLI, Claude Code (2.1.236, 2026-10-05: a governed run, a held approval, a rejection and retry, a fresh-clone verify and rebuild) and Gemini CLI (0.46.0, 2026-10-06: the same checks) have been run end to end against the real program. OpenCode (not installed) is proven against stand-ins only; the table is in [compatibility](compatibility.md#which-agents-have-actually-been-run). |
 | G-2 | Medium | **Audit chain version 1** does not cover the event type, so an event of a run written before version 2 can be relabelled without breaking its chain. Version 2 does ([ADR 0004](adr/0004-audit-chain-version-2.md)); old runs cannot be strengthened afterwards. |
 | G-3 | Medium | **Landlock** does not restrict signals before ABI 6 (Linux 6.12): a command sandboxed by Landlock can signal and inspect your other processes. macOS and bubblewrap do restrict it. |
 | G-4 | Medium | **Windows** is experimental: no Windows CI runner, and shell commands and `--agent claude-code` need a POSIX shell. |

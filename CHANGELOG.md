@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **`staircase gemini --pass-env NAME`** gives Gemini CLI its own key by name (for example `GEMINI_API_KEY`) on a machine
+  with no login, with the same rules as for Claude Code (nothing unless named; a pasted `NAME=secret` is refused
+  unechoed). Gemini CLI has been run for real (0.46.0): a governed run with an approval held 40 s, a rejection and
+  retry, and a fresh-clone verify and rebuild. `./demo/smoke.sh gemini` repeats it.
+
+### Changed (read before upgrading)
+
+- **Gemini CLI is started with `--skip-trust`.** A headless Gemini refuses to start in a folder it has not been told to
+  trust, and a run's worktree is always new. The repository's own `.gemini` settings already ran beside stAirCase's, so
+  this adds no new exposure, but it was not stated before: see [gemini](docs/gemini.md).
+
 ## [0.10.0] - 2026-10-05
 
 Claude Code runs headless and is checked for the first time against the real program. Read "Changed (read before

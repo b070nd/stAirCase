@@ -51,3 +51,34 @@ func TestClaudeCode_gets_a_credential_only_by_name(t *testing.T) {
 	assert.NotContains(t, err.Error(), "the-credential", "a pasted secret is not echoed")
 	assert.Contains(t, err.Error(), "names of environment variables")
 }
+
+// TestGemini_gets_a_credential_only_by_name: the same rule for Gemini CLI, and its arguments
+// carry --skip-trust (a headless Gemini refuses a folder it was not told to trust).
+func TestGemini_gets_a_credential_only_by_name(t *testing.T) {
+	probeGemini := func(pass []string) (string, string, error) {
+		dir := t.TempDir()
+		seen, args := filepath.Join(dir, "seen"), filepath.Join(dir, "args")
+		bin := filepath.Join(dir, "gemini")
+		require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\necho \"pass=${PROBE_CREDENTIAL-unset} other=${PROBE_OTHER-unset}\" >%s\necho \"$@\" >%s\nprintf '{\"response\":\"ok\"}'\n", seen, args), 0o755))
+		t.Setenv("PROBE_CREDENTIAL", "the-credential")
+		t.Setenv("PROBE_OTHER", "not-asked-for")
+		r := runtest.Run(t, runtest.Options{Agent: &agent.Gemini{Prompt: "p", Bin: bin, PassEnv: pass}})
+		b, _ := os.ReadFile(seen)
+		a, _ := os.ReadFile(args)
+		err := r.Err
+		if err != nil && strings.Contains(err.Error(), "never ran staircase's hooks") {
+			err = nil // this probe is not a Gemini and calls no hook: only what it saw matters here
+		}
+		return strings.TrimSpace(string(b)), string(a), err
+	}
+	seen, args, err := probeGemini(nil)
+	require.NoError(t, err)
+	assert.Equal(t, "pass=unset other=unset", seen)
+	assert.Contains(t, args, "--skip-trust")
+	seen, _, err = probeGemini([]string{"PROBE_CREDENTIAL"})
+	require.NoError(t, err)
+	assert.Equal(t, "pass=the-credential other=unset", seen)
+	_, _, err = probeGemini([]string{"PROBE_CREDENTIAL=the-credential"})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "the-credential")
+}

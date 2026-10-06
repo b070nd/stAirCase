@@ -13,6 +13,10 @@
 #                            Code's default hook timeout). Needs a logged-in `claude`,
 #                            or SMOKE_CLAUDE_PASS=<name of the variable holding its
 #                            credential> (and SMOKE_CLAUDE_MODEL=haiku to keep it small).
+#   ./demo/smoke.sh gemini   the same task as a `staircase gemini` session, first approval
+#                            held 40 s. Needs a logged-in `gemini`, or SMOKE_GEMINI_PASS=<name of the
+#                            variable holding its key> (GEMINI_API_KEY) and SMOKE_GEMINI_MODEL
+#                            (for example gemini-3.5-flash-lite) to keep it small.
 #   ./demo/smoke.sh codex    the same task as a `staircase codex` session with
 #                            SMOKE_CODEX_MODEL (default gpt-6-luna). Needs a
 #                            logged-in codex (on PATH or in the ChatGPT app).
@@ -30,7 +34,7 @@
 # through the approval API; the key is passed on stdin and never printed.
 set -euo pipefail
 
-MODE="${1:?usage: smoke.sh model|claude|codex|codex-stop}"
+MODE="${1:?usage: smoke.sh model|claude|gemini|codex|codex-stop}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SMOKE_MODEL="${SMOKE_MODEL:-openai/gpt-6-astra}"
 
@@ -39,11 +43,13 @@ case "$MODE" in
   claude) AUTH="$(claude auth status 2>/dev/null || true)"   # captured: grep -q in a pipe would SIGPIPE it
           [[ "$AUTH" =~ \"loggedIn\":\ *true ]] \
             || { echo "⏭  smoke claude skipped: the claude CLI is not installed or not logged in"; exit 0; } ;;
+  gemini) command -v gemini >/dev/null && { [ -n "${SMOKE_GEMINI_PASS:-}" ] || [ -f "$HOME/.gemini/oauth_creds.json" ]; } \
+            || { echo "⏭  smoke gemini skipped: gemini is not installed, or has no login and SMOKE_GEMINI_PASS is not set"; exit 0; } ;;
   codex|codex-stop)
           CODEX="$(command -v codex || echo /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex)"
           "$CODEX" login status >/dev/null 2>&1 \
             || { echo "⏭  smoke codex skipped: codex is not installed or not logged in"; exit 0; } ;;
-  *) echo "usage: smoke.sh model|claude|codex|codex-stop"; exit 2 ;;
+  *) echo "usage: smoke.sh model|claude|gemini|codex|codex-stop"; exit 2 ;;
 esac
 
 # shellcheck source=demo/lib.sh
@@ -162,6 +168,11 @@ case "$MODE" in
     PASS_ARGS=(); for v in ${SMOKE_CLAUDE_PASS:-}; do PASS_ARGS+=(--pass-env "$v"); done
     [ -z "${SMOKE_CLAUDE_MODEL:-}" ] || PASS_ARGS+=(--model "$SMOKE_CLAUDE_MODEL")
     run 1 40 claude --yes --allow GREETING.md ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$TASK" ;;
+  gemini)
+    say "Gemini CLI, every tool call governed by hooks"
+    PASS_ARGS=(); for v in ${SMOKE_GEMINI_PASS:-}; do PASS_ARGS+=(--pass-env "$v"); done
+    [ -z "${SMOKE_GEMINI_MODEL:-}" ] || PASS_ARGS+=(--model "$SMOKE_GEMINI_MODEL")
+    run 1 40 gemini --yes --allow GREETING.md ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$TASK" ;;
   codex-stop)
     STOP_CHECK='test -f NOTES.txt && grep -q STAIRCASE-CHECK NOTES.txt || { echo "NOTES.txt must mention the word STAIRCASE-CHECK"; exit 1; }'
     say "Codex: a held and rejected approval, then a Stop refused until the check passes"

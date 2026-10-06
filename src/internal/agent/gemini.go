@@ -33,6 +33,9 @@ type Gemini struct {
 	Model   string // optional -m
 	Bin     string // default "gemini"
 	HookBin string // the staircase program the hooks call; default: this program
+	// PassEnv names environment variables Gemini may inherit (see ClaudeCode.PassEnv): the way to
+	// give it its own credential without a login (GEMINI_API_KEY, GOOGLE_API_KEY).
+	PassEnv []string
 }
 
 // geminiRules tell the model how the governed session works.
@@ -78,14 +81,21 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 		return err
 	}
 
-	args := []string{"-p", g.Prompt + "\n\n" + geminiRules, "--approval-mode=yolo", "--output-format", "json"}
+	// --skip-trust: a headless Gemini refuses to start in a folder it has not been told to trust, and the
+	// run's worktree is a new folder every time. Trusting it lets Gemini read the repository's own
+	// .gemini settings (see the documentation: do not run this on a repository you do not trust).
+	args := []string{"-p", g.Prompt + "\n\n" + geminiRules, "--approval-mode=yolo", "--output-format", "json", "--skip-trust"}
 	if g.Model != "" {
 		args = append(args, "-m", g.Model)
 	}
 	cmd := exec.CommandContext(ctx, orDefault(g.Bin, "gemini"), args...)
-	// Gemini logs in itself (its cached login): sandbox.Env carries no key it
-	// could hand to a command it runs.
-	cmd.Dir, cmd.Env = root, append(sandbox.Env(), HookFileEnv+"="+hookFile, "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settings)
+	// Gemini logs in itself (its cached login), or is given its own credential by name (PassEnv, the
+	// --pass-env flag): sandbox.Env carries no key it could hand to a command it runs.
+	passed, err := passEnv(g.PassEnv)
+	if err != nil {
+		return err
+	}
+	cmd.Dir, cmd.Env = root, append(append(sandbox.Env(), HookFileEnv+"="+hookFile, "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settings), passed...)
 	cmd.WaitDelay = 5 * time.Second
 	sandbox.KillGroup(cmd)
 	var stdout bytes.Buffer
