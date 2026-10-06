@@ -26,8 +26,9 @@ type ResumeOptions struct {
 	// DiscardUnapproved puts the worktree back to the approved state when it holds anything else (what the agent did
 	// after its last approval). Without it such a worktree refuses the continuation, naming the files.
 	DiscardUnapproved bool
-	// Context says how the agent's context is carried: "" for the agent's own way (a fresh session grounded by Go for
-	// the built-in agent), "fresh_grounded" when a person chose it over a native resume.
+	// Context says how the agent's context is carried: "" for the agent's own way (the built-in agent: a fresh session
+	// grounded by Go; an agent harness: resuming its own session, refused when that is not possible), "native_resume" to
+	// require a resume, "fresh_grounded" when a person chose a new session grounded by the audit chain over a resume.
 	Context string
 }
 
@@ -64,6 +65,37 @@ func (r *Runner) PlanOf(runID int64) (*plan.Plan, error) {
 	return &c.plan, nil
 }
 
+// chooseContext decides how the agent's context is carried (ADR 0005, section 5) and refuses what cannot be done:
+//   - the built-in agent has no vendor session: a fresh session grounded by the audit chain is its only way;
+//   - an agent harness is continued by resuming its own session when it can (it implements SessionResumer) and the chain names
+//     the session; when it cannot, the continuation REFUSES, saying why, unless a person asked for a fresh grounded context
+//     (--fresh-context), because a silent fallback would let them believe the agent's conversation continued.
+func chooseContext(c *continuation, opts ResumeOptions) (kind, sessionID string, err error) {
+	const fresh, native = "fresh_grounded", "native_resume"
+	harness := c.history.Bound.Harness
+	switch opts.Context {
+	case "", fresh, native:
+	default:
+		return "", "", notContinuable("unknown context %q: use native_resume or fresh_grounded", opts.Context)
+	}
+	if opts.Context == fresh || harness == "" {
+		if opts.Context == native {
+			return "", "", notContinuable("the built-in agent has no session of its own to resume")
+		}
+		return fresh, "", nil
+	}
+	r, canResume := opts.Agent.(SessionResumer)
+	switch {
+	case !canResume || !r.NativeResume():
+		err = notContinuable("run #%d was made with %s, whose own session cannot be resumed by staircase", c.run.ID, harness)
+	case c.session.ID == "" || c.session.Agent != harness:
+		err = notContinuable("the audit chain of run #%d names no %s session (the run ended before the agent recorded one), so there is none to resume", c.run.ID, harness)
+	default:
+		return native, c.session.ID, nil
+	}
+	return "", "", fmt.Errorf("%w. Continue it with a new %s session grounded by the audit chain instead with --fresh-context, or recover what it approved with `staircase recover %d`", err, harness, c.run.ID)
+}
+
 // prepareContinuation checks everything and builds what the continuation starts from, changing nothing. On success
 // the run's owner lock is held, and handed to the continuation; on any failure it is released.
 func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *continuation, err error) {
@@ -80,9 +112,9 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 		return nil, err
 	}
 	c.release = release
-	c.contextKind, c.ackDrift = "fresh_grounded", opts.AckDrift
-	if opts.Context != "" && opts.Context != c.contextKind {
-		return nil, notContinuable("the agent's context cannot be carried as %q here; only a fresh session grounded by the audit chain is available", opts.Context)
+	c.ackDrift = opts.AckDrift
+	if c.contextKind, c.sessionID, err = chooseContext(c, opts); err != nil {
+		return nil, err
 	}
 
 	// The time limit is for the whole run: a run that has used it up is not given a fresh one.

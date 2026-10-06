@@ -8,12 +8,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A resumed Claude Code, Gemini CLI or Codex run continues the vendor's own session.** The session id is audited as
+  `agent_session` (Claude Code and Gemini get an id staircase chooses and passes as `--session-id`; Codex's is read from the
+  `thread.started` event of `codex exec --json`), and `staircase resume` resumes it (`--resume <id>`, `codex exec resume <id>`),
+  so the agent remembers its conversation; `run_resumed` records `native_resume`. When the session cannot be resumed (the chain names
+  none, or OpenCode) it refuses and `--fresh-context` continues it in a new session grounded by the chain, recorded as
+  `fresh_grounded`; it is never silent. Codex refuses a resume while the killed run still holds the thread (about a minute), so
+  stAirCase waits up to three minutes. Real runs resumed Gemini and Codex; a real Claude Code resume that remembers its
+  conversation is not verified yet (see [compatibility](docs/compatibility.md)).
 - **`staircase resume <run>` continues a run that was killed before it committed** (the same run, branch and worktree, under
   the policy, plan and options it saved when it started, from the state its audit chain says it stood in). What was
   approved stays approved, proposal numbers, the policy's limits, the supervisor's counts and the time and tokens used carry
   on, and a new agent session takes over, told by the chain what is already approved. Every check is made first and a failure
   refuses with nothing changed; work the agent did after its last approval is never adopted (`--discard-unapproved` puts
-  it back); a run of an agent harness needs `--fresh-context`; a run that began before this version cannot be continued, only
+  it back); a run that began before this version cannot be continued, only
   recovered. A run now saves `journal/run-N.{policy,plan,options}.json` when it starts, and each decision on the chain records the
   files it touched (`paths`) and the validator's counts; `run_resumed` is a new audit event. See [safety](docs/safety.md).
 - **A run, a session and the coordinator are owned, and ownership survives a kill.** A run holds a lock on

@@ -138,12 +138,14 @@ The certificate of a recovered run names the policy and the signed request of th
 it as the run recorded them, not whatever policy.json holds by then. **Continuing a run.** A run that was killed before it committed can be continued instead of recovered: `staircase resume <run>`
 (ADR [0005](adr/0005-durable-continuation.md)). It is the same run, branch and worktree, under the policy, plan and options the run
 saved when it started, from the state its audit chain says it stood in: what was approved stays approved, proposal numbers carry on,
-a limit already reached is still reached, and the time earlier segments used is spent. A new agent session takes over, told by the chain
-what is already approved; the agent's own memory is not carried and not trusted. Every check is made first and any failure refuses with
+a limit already reached is still reached, and the time earlier segments used is spent. The agent is told by the chain what is already
+approved, whether its own session is resumed or a new one takes over; what it remembers is not trusted. Every check is made first and any failure refuses with
 nothing changed: the chain must verify, nobody may be running the run, no commit or recovery may have begun, the branch must still be at
 the base, and the worktree must hold exactly the approved state. Work the agent did after its last approval is **never adopted or
-staged**: it refuses and names the files, and `--discard-unapproved` puts the worktree back first. A run started with an agent harness is
-continued only with `--fresh-context` (its own conversation cannot be continued yet). The continuation is audited as `run_resumed`; a
+staged**: it refuses and names the files, and `--discard-unapproved` puts the worktree back first. A run started with Claude Code, Gemini CLI or
+Codex continues the vendor's own session (its id is on the chain as `agent_session`, and the agent remembers its conversation); when that
+cannot be done (no session on the chain, or OpenCode, which cannot resume one) it refuses, and `--fresh-context` continues it with a new
+session grounded by the chain instead, recorded as such on `run_resumed`. Reattaching never stages anything the agent did unapproved. The continuation is audited as `run_resumed`; a
 continued run delivers one commit, named on the chain before the branch moves, like any other, and can be recovered if it is killed again.
 
 **A run killed by v0.8.0 after its commit** has no `commit_prepared` record, so recovery will not adopt that

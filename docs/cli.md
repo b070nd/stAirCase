@@ -898,9 +898,12 @@ is ever staged or adopted. A run halted for drift needs --ack-drift. A run whose
 is used up cannot be continued, only recovered ("staircase recover"), and neither can a
 run that began before runs saved their terms.
 
-A run that was started with an agent harness (claude-code, codex, gemini, opencode)
-cannot have its own conversation continued yet: pass --fresh-context to continue it with a
-new session grounded by the audit chain instead.
+A run that was started with an agent harness continues the harness's own session when it
+can: Claude Code, Gemini CLI and Codex have their session id on the audit chain and are
+resumed with it, so the agent remembers its conversation. When that cannot be done (the
+chain names no session, or the harness cannot resume one: OpenCode) the run is refused,
+never continued silently as a new conversation. --fresh-context continues it with a new
+session grounded by the audit chain instead, and the chain says so.
 
 Flags:
 
@@ -910,7 +913,7 @@ Flags:
       --approval-token string   Token for the approval API (default: a new one, printed)
       --debug                   Write every audited message of this segment, scrubbed, to the run's debug log
       --discard-unapproved      Put the worktree back to the approved state when it holds changes nobody approved
-      --fresh-context           Continue an agent-harness run with a new session grounded by the audit chain (its own conversation cannot be continued yet)
+      --fresh-context           Continue an agent-harness run in a new session grounded by the audit chain, instead of resuming its own session (the only way to continue one whose session cannot be resumed)
       --model string            Model for an agent harness (default: its own)
       --pass-env stringArray    Name of an environment variable an agent harness may inherit, to give it its own credential; it, and any command it runs, can read the value
 ```

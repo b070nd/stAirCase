@@ -84,7 +84,13 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	// --skip-trust: a headless Gemini refuses to start in a folder it has not been told to trust, and the
 	// run's worktree is a new folder every time. Trusting it lets Gemini read the repository's own
 	// .gemini settings (see the documentation: do not run this on a repository you do not trust).
+	sid, resumed := sessionFor(env, "gemini")
 	args := []string{"-p", withContinuation(g.Prompt, env) + "\n\n" + geminiRules, "--approval-mode=yolo", "--output-format", "json", "--skip-trust"}
+	if resumed {
+		args = append(args, "--resume", sid)
+	} else {
+		args = append(args, "--session-id", sid)
+	}
 	if g.Model != "" {
 		args = append(args, "-m", g.Model)
 	}
@@ -121,6 +127,9 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	}
 	return nil
 }
+
+// NativeResume says a continued run can resume Gemini CLI's own session (`--resume <id>`).
+func (g *Gemini) NativeResume() bool { return true }
 
 // GeminiSettings is the settings file that routes Gemini CLI's tool calls
 // through cmd: SessionStart (the handshake), BeforeTool (every tool) and

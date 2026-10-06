@@ -411,3 +411,13 @@ func TestClaudeCode_commands_run_in_its_sandbox(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(payload), `"cal":3`, "a command in Claude Code's strict sandbox keeps CAL 3")
 }
+
+// claudeBinWithArgs is a fake claude that makes no tool calls and records the arguments it was started with.
+func claudeBinWithArgs(t *testing.T) (bin, logFile, argsFile string) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.json"), []byte("[]"), 0o600))
+	logFile, argsFile, bin = filepath.Join(dir, "decisions.log"), filepath.Join(dir, "args.json"), filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s FAKE_CLAUDE_ARGS=%s exec %s \"$@\"\n",
+		filepath.Join(dir, "script.json"), logFile, argsFile, os.Args[0]), 0o755))
+	return bin, logFile, argsFile
+}

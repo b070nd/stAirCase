@@ -1,6 +1,6 @@
 # ADR 0005: Continuing an interrupted run (design)
 
-- Status: accepted, with the owner's decisions below. Built for the Go-owned state and the built-in agent (US-008: `staircase resume`, `Runner.Resume`), and for agent harnesses with a fresh grounded context (`--fresh-context`); native session resume (US-009) is not built.
+- Status: accepted, with the owner's decisions below. Built for the Go-owned state and the built-in agent (US-008: `staircase resume`, `Runner.Resume`), for agent harnesses with a fresh grounded context (`--fresh-context`), and for native session resume of Claude Code, Gemini CLI and Codex (US-009: `agent_session` on the chain, `chooseContext`).
 - Date: 2026-10-06
 
 ## Context
