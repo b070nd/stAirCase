@@ -41,7 +41,7 @@ standards body, and cannot be closed by tests alone).
 | Templates for managed hook settings | done | `internal/agent/managed.go`, `cmd/staircase/hooktemplate.go` | `TestHookTemplate` | Not deployed to a real managed host |
 | Signed approvals with an SSH key | done | `internal/orchestrator/signed.go`, `internal/sshsig` | `TestSignedApprovals`, `_a_signature_is_good_for_one_proposal`, `TestSignCheckVerify`, `TestSignContext_does_not_outlive_its_context` | |
 | Agree on the task before it starts | done | `cmd/staircase/session.go` | `TestAgreement_says_what_will_happen`, `TestSession_approve_in_scope_needs_a_scope` | |
-| Evaluation of fast decision models (Jev, Laya) | open | `--signal`, `internal/signal`, `tools/jeveval` (24 labelled changes) | `TestSignal_only_sends_changes_to_a_person`, `TestSignal_url_talks_to_a_local_server`, `TestClient_Evaluate` | **The numbers have not been produced or published**: needs the gateway account and a local Laya (external) |
+| Evaluation of fast decision models (Jev, Laya) | open | `--signal`, `internal/signal`, `tools/jeveval` (24 labelled changes) | `TestSignal_only_sends_changes_to_a_person`, `TestSignal_url_talks_to_a_local_server`, `TestClient_Evaluate` | **The numbers have not been produced or published**: needs the gateway account and a local Laya (external). What a model's wrong, late or invalid answer can do is tested (`TestClient_an_invalid_answer_*`, `TestSignal_a_wrong_late_*`) and `jeveval -out` keeps a run with its provenance; see [docs/evaluation](evaluation/README.md) |
 
 ## Phase 3: scale human attention
 

@@ -422,14 +422,15 @@ the criteria `yes` and `no`. The answer, within 1 MiB and a 30 s limit, is:
 stAirCase asks three questions: `risky` and `serves_story` (both `boolean`) and `kind` (`choice` of `feature`, `test`,
 `docs`, `config`, `dependency`). A probability at or past **0.5** counts: `risky` at or above it, or `serves_story`
 below it, sends the change to you. An answer that is missing, malformed, late (the 30 s limit) or an HTTP error also
-sends it to you, and is recorded (`signal_rated` with the error). Nothing an evaluation server answers can approve,
+sends it to you, and so does one that is not what was asked (a probability that is missing or outside 0 to 1, a choice that was not offered), and is recorded (`signal_rated` with the error). Nothing an evaluation server answers can approve,
 reject or change a proposal.
 
 The model sees the stories and the change, the same as a validator. Measure it on
 your own kind of changes before you rely on it: `make eval-jev` (for a local Laya:
 `go run ./src/tools/jeveval -model laya -base http://127.0.0.1:8000 -api systemone`) runs 24 labelled
 changes (secrets, exfiltration, weakened tests, prompt injection, Trojan Source,
-drift) and reports what it missed and what it flagged needlessly.
+drift) and reports what it missed and what it flagged needlessly. `-out` keeps the report with where it came from;
+[docs/evaluation](evaluation/README.md) says which runs exist (none yet).
 
 ## Letting a model review changes: the validator
 

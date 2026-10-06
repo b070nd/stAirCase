@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
@@ -113,4 +114,55 @@ func TestSignal_url_talks_to_a_local_server(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []string{"/v1/systemone ", "/v1/systemone "}, auth, "its own path, and no key")
+}
+
+// TestSignal_a_wrong_late_or_invalid_answer_only_sends_the_change_to_a_person: a model that answers with a missing or
+// out-of-range probability, something that is not an answer, nothing in time or an error, never lets a change through
+// that a person would not have seen; only an answer that is valid and calm leaves the automatic approval in place. The
+// model can send a change to a person, never approve or reject it.
+func TestSignal_a_wrong_late_or_invalid_answer_only_sends_the_change_to_a_person(t *testing.T) {
+	calm := `{"answers":{"risky":{"noul":0.02},"serves_story":{"noul":0.97},"kind":{"choice":"feature"}}}`
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case strings.Contains(string(body), "missing.txt"):
+			_, _ = w.Write([]byte(`{"answers":{"risky":{},"serves_story":{"noul":0.97},"kind":{"choice":"feature"}}}`))
+		case strings.Contains(string(body), "range.txt"):
+			_, _ = w.Write([]byte(`{"answers":{"risky":{"noul":-3},"serves_story":{"noul":0.97},"kind":{"choice":"feature"}}}`))
+		case strings.Contains(string(body), "garbage.txt"):
+			_, _ = w.Write([]byte(`<html>try again later</html>`))
+		case strings.Contains(string(body), "late.txt"):
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		case strings.Contains(string(body), "denied.txt"):
+			w.WriteHeader(http.StatusTooManyRequests)
+		default:
+			_, _ = w.Write([]byte(calm))
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+	op := &operator{approve: true}
+	files := []string{"ok.txt", "missing.txt", "range.txt", "garbage.txt", "late.txt", "denied.txt"}
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
+		Run: orchestrator.RunOptions{Signal: &orchestrator.Signal{Model: "laya", Eval: &signal.Client{Model: "laya", BaseURL: srv.URL,
+			API: signal.SystemOne, HTTP: &http.Client{Timeout: 300 * time.Millisecond}}}},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			for _, f := range files {
+				create(ctx, env, f)
+			}
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	assert.Equal(t, []string{"file_edit:policy", "file_edit:operator", "file_edit:operator", "file_edit:operator", "file_edit:operator", "file_edit:operator"}, sources(t, r))
+	require.Len(t, op.seen, 5, "everything but the valid, calm answer reached a person")
+	for _, s := range op.seen {
+		assert.Contains(t, s.Review, "laya unavailable", "it says the model could not be used, not that the change is fine: %s", s.Review)
+	}
+	assert.Contains(t, op.seen[0].Review, "no probability")
+	assert.Contains(t, op.seen[1].Review, "not within 0 and 1")
 }
