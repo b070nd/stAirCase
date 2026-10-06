@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A run, a session and the coordinator are owned, and ownership survives a kill.** A run holds a lock on
+  `journal/run-N.owner.lock` for its whole life; the system drops it when the process ends, a kill -9 included. So a
+  run that is alive can no longer be recovered, `--force` or not, and a run started by this version whose process is gone
+  is recovered **without** `--force` (an older run still needs it). Sessions register with an instance id and hold a lock
+  on their registration; `staircase serve` is the one coordinator of a workspace (a second is refused, naming the first),
+  removes the registrations of killed sessions when it starts, lists the runs they left interrupted, and touches nothing
+  but the workspace. A pending proposal's identity belongs to the session that made it: neither an open browser card nor
+  the id sent straight to a replacement session at the same address and key can decide anything.
 - **The six contracts are audited against the releases** ([contracts](docs/contracts.md)). Today's `staircase`
   verifies, rebuilds and reads the evidence of a real governed run made by each of v0.3.0, v0.4.0, v0.5.0, v0.6.0,
   v0.7.1, v0.8.0 and v0.10.0 (`docs/spec/historical`, `tests/historical.bats`, regenerated with

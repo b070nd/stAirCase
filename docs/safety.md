@@ -140,8 +140,18 @@ commit (it cannot tell the run's own commit from a copy; the old rule that did i
 commit is not harmed, and a certificate it already has is still valid. To finish such a run: check what is on the
 branch against what the run approved (`staircase inspect log <run>` and `git diff <base> staircase/run-<run>`);
 then, if you want recovery's evidence for it, move the branch back to the run's base
-(`git update-ref refs/heads/staircase/run-<run> <base>`) and run `staircase recover <run> --force`: it makes its own
+(`git update-ref refs/heads/staircase/run-<run> <base>`) and run `staircase recover <run> --force` (`--force` because such a run has no owner lock to say its process is gone): it makes its own
 commit from the approvals, with the same bytes. This is tested (`TestRecover_does_not_adopt_a_copy_of_the_runs_commit`).
+
+**Who owns a run.** A run holds an exclusive lock on `journal/run-N.owner.lock` for its whole life, and a session
+registered with the coordinator holds one on its registration. The operating system drops a lock when its process
+ends, however it ends, so "is it still running?" does not depend on a record a killed process could not update: a live
+run cannot be recovered (and, when continuation exists, cannot be continued) by anything else, `--force` or not, and
+one whose lock is free was killed. `staircase serve` is the one coordinator of a workspace (a second is refused and names
+the first); when it starts it removes the registrations of killed sessions, lists the runs they leave interrupted and
+changes nothing else: it never touches your checkout. A proposal pending in a killed session cannot be decided by anything,
+not by a card still open in a browser and not by its id sent to a replacement session, even one at the same address with the
+same key. Where locks exclude nothing (Windows, experimental) the answer is "unknown" and `--force` stays the person's call.
 
 What recovery cannot do: continue the agent's conversation, or commit
 something the run was about to propose.
