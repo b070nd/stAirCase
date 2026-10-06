@@ -322,6 +322,14 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 		return fmt.Errorf("create run: %w", err)
 	}
 	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", run.ID, caseID, gitBranch)
+	// The run is owned by this process for its whole life (see runowner.go). It cannot already be owned: the
+	// number is new. A failure to take the lock is a failure to run, not something to go on without.
+	releaseOwner, err := claimRun(r.wsDir, run.ID)
+	if err != nil {
+		_ = r.store.FinishRun(run.ID, persistence.RunStatusFailed, time.Now(), "")
+		return fmt.Errorf("claim run #%d: %w", run.ID, err)
+	}
+	defer releaseOwner() // after the cleanup below: the run is owned until it has finished
 
 	// ── BRANCH_CREATE ─────────────────────────────────────────────────────────
 	if err := r.enter(PhaseBranchCreate); err != nil {
@@ -548,8 +556,8 @@ func (r *Runner) Run(ctx context.Context, caseID int64, opts RunOptions) (runErr
 	if approvalSrv != nil { // the hub (staircase serve) finds this run through its file
 		sess := approvalhttp.Session{Name: fmt.Sprintf("%s, run #%d", project.Name, run.ID),
 			URL: "http://" + approvalSrv.ListenAddr(), Token: approvalSrv.Token()}
-		if err := approvalhttp.Register(r.wsDir, sess); err == nil {
-			defer approvalhttp.Unregister(r.wsDir, sess)
+		if reg, err := approvalhttp.Register(r.wsDir, sess); err == nil {
+			defer reg.Release()
 		}
 	}
 	tracker := monitor.NewTracker(run.ID, caseID, project.Name, gitBranch)

@@ -12,6 +12,10 @@ package wslock
 
 import "syscall"
 
+// Enforced reports whether these locks really exclude other processes. Code that decides something from
+// "the lock is free, so the process is gone" must check it: where it is false (Windows) a lock proves nothing.
+const Enforced = true
+
 // LockShared acquires a shared (reader) advisory flock on fd with LOCK_NB.
 // Returns EWOULDBLOCK if an exclusive lock is already held.
 func LockShared(fd uintptr) error {

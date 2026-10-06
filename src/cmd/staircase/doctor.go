@@ -153,7 +153,12 @@ func interruptedRuns(wsDir string) {
 			}
 			hint := fmt.Sprintf("staircase recover %d", r.ID)
 			if status == persistence.RunStatusRunning {
-				hint += " --force (only if its process is gone)"
+				switch held, known := orchestrator.RunOwner(wsDir, r.ID); {
+				case known && held:
+					continue // alive: not interrupted
+				case !known:
+					hint += " --force (only if its process is gone)"
+				}
 			}
 			fmt.Printf("  ⚠️  run #%d was interrupted with %d approved change(s): %s\n", r.ID, n, hint)
 		}

@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/b070nd/stAirCase/src/internal/wslock"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,6 +146,8 @@ func TestRecover_refuses_what_it_cannot_do_safely(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now()
+	// a RUNNING record of a run that took no owner lock (an older version's) may belong to a live process
+	require.NoError(t, os.Remove(filepath.Join(r.WsDir, "journal", "run-1.owner.lock")))
 	require.NoError(t, r.Store.UpdateRunStatus(r.Run.ID, persistence.RunStatusRunning, nil, ""))
 	_, err := runner.Recover(ctx, r.Run.ID, orchestrator.RecoverOptions{})
 	assert.ErrorContains(t, err, "still be running", "a RUNNING record may belong to a live process")
@@ -291,4 +294,51 @@ func TestRecover_a_crashed_case_is_not_left_running(t *testing.T) {
 	c, err := r.Store.GetCase(r.Run.CaseID)
 	require.NoError(t, err)
 	assert.Equal(t, persistence.CaseStatusFailed, c.Status)
+}
+
+// TestRecover_a_run_that_is_alive_cannot_be_recovered: a run's process holds its owner lock for its whole life,
+// so while it is alive nothing recovers it, --force or not; once the process is gone (its lock free) a run of
+// this version is recovered without --force; a run with no lock file (started by an older version) is still
+// asked of the person.
+func TestRecover_a_run_that_is_alive_cannot_be_recovered(t *testing.T) {
+	if !wslock.Enforced {
+		t.Skip("locks exclude nothing on this platform: a free lock proves nothing")
+	}
+	r := interrupted(t, nil, orchestrator.RunOptions{})
+	// the record still says RUNNING, as after a kill -9
+	_, err := r.DB.Exec(`UPDATE runs SET status = 'RUNNING' WHERE id = ?`, r.Run.ID)
+	require.NoError(t, err)
+	lock := filepath.Join(r.WsDir, "journal", "run-1.owner.lock")
+	_, statErr := os.Stat(lock)
+	require.NoError(t, statErr, "every run takes its owner lock")
+
+	// a live owner: held by another process (here a second descriptor, which flock treats as another owner)
+	held, err := os.OpenFile(lock, os.O_RDWR, 0)
+	require.NoError(t, err)
+	require.NoError(t, wslock.LockExclusive(held.Fd()))
+	_, err = orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still running")
+	assert.NotContains(t, err.Error(), "--force", "a live run is not offered a way around the lock")
+	branchUntouched(t, r)
+	require.NoError(t, wslock.Unlock(held.Fd()))
+	require.NoError(t, held.Close())
+
+	// the process is gone: no --force needed
+	res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, res.Proposals)
+}
+
+// TestRecover_a_run_of_an_older_version_still_needs_force: no lock file, so it cannot be known whether the
+// process is gone.
+func TestRecover_a_run_of_an_older_version_still_needs_force(t *testing.T) {
+	r := interrupted(t, nil, orchestrator.RunOptions{})
+	_, err := r.DB.Exec(`UPDATE runs SET status = 'RUNNING' WHERE id = ?`, r.Run.ID)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(r.WsDir, "journal", "run-1.owner.lock")))
+	_, err = orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{})
+	assert.ErrorContains(t, err, "--force")
+	_, err = orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Force: true})
+	require.NoError(t, err)
 }

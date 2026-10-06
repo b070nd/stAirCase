@@ -3,7 +3,7 @@ package approvalhttp
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/b070nd/stAirCase/src/internal/wslock"
 )
 
 // Session is a running session's approval server, as it registers itself so
@@ -24,35 +26,124 @@ type Session struct {
 	Name  string `json:"name"`
 	URL   string `json:"url"` // http://127.0.0.1:port
 	Token string `json:"token"`
+	// Instance names this one process's session, new every time one starts. Everything the hub hands out is keyed
+	// by it, so a replacement session that reuses the same port and key is never taken for the one it replaced.
+	Instance string `json:"instance"`
+	PID      int    `json:"pid"`
+	Started  string `json:"started"` // RFC 3339
 }
 
 func sessionsDir(wsDir string) string { return filepath.Join(wsDir, "sessions") }
 
-func sessionFile(wsDir string, s Session) string {
-	sum := sha256.Sum256([]byte(s.URL))
-	return filepath.Join(sessionsDir(wsDir), hex.EncodeToString(sum[:6])+".json")
+func sessionFile(wsDir, instance string) string {
+	return filepath.Join(sessionsDir(wsDir), instance+".json")
 }
 
-// Register writes the session's file in the workspace.
-func Register(wsDir string, s Session) error {
+func sessionLock(wsDir, instance string) string {
+	return filepath.Join(sessionsDir(wsDir), instance+".lock")
+}
+
+// Registration is a session's claim in the workspace: its file, and a lock on its lock file that the process
+// holds for as long as it lives. A file whose lock is free belongs to a process that is gone, however it ended.
+type Registration struct {
+	wsDir string
+	S     Session
+	lock  *os.File
+}
+
+// Register writes the session's file in the workspace and takes its liveness lock. The session gets a new
+// Instance (any it came with is replaced). Call Release when the session ends.
+func Register(wsDir string, s Session) (*Registration, error) {
 	if err := os.MkdirAll(sessionsDir(wsDir), 0o700); err != nil {
-		return err
+		return nil, err
+	}
+	id := make([]byte, 12)
+	if _, err := rand.Read(id); err != nil {
+		return nil, err
+	}
+	s.Instance, s.PID, s.Started = hex.EncodeToString(id), os.Getpid(), time.Now().UTC().Format(time.RFC3339)
+	lock, err := os.OpenFile(sessionLock(wsDir, s.Instance), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := wslock.LockExclusive(lock.Fd()); err != nil {
+		_ = lock.Close()
+		return nil, err
 	}
 	b, _ := json.Marshal(s)
-	return os.WriteFile(sessionFile(wsDir, s), b, 0o600)
+	if err := os.WriteFile(sessionFile(wsDir, s.Instance), b, 0o600); err != nil {
+		_ = wslock.Unlock(lock.Fd())
+		_ = lock.Close()
+		return nil, err
+	}
+	return &Registration{wsDir: wsDir, S: s, lock: lock}, nil
 }
 
-// Unregister removes the session's file.
-func Unregister(wsDir string, s Session) { _ = os.Remove(sessionFile(wsDir, s)) }
+// Abandon drops the lock without removing the files: what a process that is killed leaves behind. For tests.
+func (r *Registration) Abandon() {
+	_ = wslock.Unlock(r.lock.Fd())
+	_ = r.lock.Close()
+}
+
+// Release removes the session's files and its lock.
+func (r *Registration) Release() {
+	if r == nil {
+		return
+	}
+	_ = os.Remove(sessionFile(r.wsDir, r.S.Instance))
+	_ = os.Remove(sessionLock(r.wsDir, r.S.Instance))
+	_ = wslock.Unlock(r.lock.Fd())
+	_ = r.lock.Close()
+}
+
+// alive reports whether the process that registered the session still lives. Where locks exclude nothing it
+// says yes: the hub's own failed call is then what removes a session.
+func alive(wsDir, instance string) bool {
+	if !wslock.Enforced {
+		return true
+	}
+	f, err := os.OpenFile(sessionLock(wsDir, instance), os.O_RDWR, 0)
+	if err != nil {
+		return false // no lock file: not a session of this version, or already released
+	}
+	defer func() { _ = f.Close() }()
+	if err := wslock.LockExclusive(f.Fd()); err != nil {
+		return true
+	}
+	_ = wslock.Unlock(f.Fd())
+	return false
+}
+
+// Reconcile removes the registrations of sessions whose process is gone (a kill -9 leaves them behind) and
+// returns them. It touches nothing but the workspace's sessions directory: no repository, no database.
+func Reconcile(wsDir string) []Session {
+	var gone []Session
+	files, _ := filepath.Glob(filepath.Join(sessionsDir(wsDir), "*.json"))
+	for _, f := range files {
+		instance := strings.TrimSuffix(filepath.Base(f), ".json")
+		if instance == "hub" || alive(wsDir, instance) {
+			continue
+		}
+		var s Session
+		if b, err := os.ReadFile(f); err == nil {
+			_ = json.Unmarshal(b, &s)
+		}
+		_ = os.Remove(f)
+		_ = os.Remove(sessionLock(wsDir, instance))
+		gone = append(gone, s)
+	}
+	return gone
+}
 
 // Hub is one review page for every running session of a workspace: it lists
 // their waiting proposals and forwards each decision to its session. The
 // browser knows only the hub's key; the sessions' keys stay here.
 type Hub struct {
-	wsDir string
-	token string
-	srv   *Server // serves the page and listens; its API is replaced by the hub's
-	http  *http.Client
+	wsDir   string
+	token   string
+	srv     *Server // serves the page and listens; its API is replaced by the hub's
+	http    *http.Client
+	removed []Session
 }
 
 // NewHub creates a hub for the sessions registered in wsDir.
@@ -65,11 +156,55 @@ func NewHub(wsDir, token string) *Hub {
 	return h
 }
 
-// Start listens on addr until ctx ends.
-func (h *Hub) Start(ctx context.Context, addr string) error {
-	h.srv.addr = addr
-	return h.srv.Start(ctx)
+// HubRunningError says another hub already serves this workspace: there is one coordinator at a time.
+type HubRunningError struct{ URL string }
+
+func (e *HubRunningError) Error() string {
+	if e.URL == "" {
+		return "another `staircase serve` is already serving this workspace"
+	}
+	return "another `staircase serve` is already serving this workspace at " + e.URL
 }
+
+// Start listens on addr until ctx ends. Only one hub serves a workspace: it takes the workspace's hub lock first
+// (held by the process for its life, so a hub that was killed leaves it free) and a second Start returns a
+// *HubRunningError. Registrations whose process is gone are removed on the way in.
+func (h *Hub) Start(ctx context.Context, addr string) error {
+	if err := os.MkdirAll(sessionsDir(h.wsDir), 0o700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(sessionsDir(h.wsDir), "hub.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := wslock.LockExclusive(lock.Fd()); err != nil {
+		_ = lock.Close()
+		var url struct{ URL string }
+		if b, rerr := os.ReadFile(filepath.Join(sessionsDir(h.wsDir), "hub.json")); rerr == nil {
+			_ = json.Unmarshal(b, &url)
+		}
+		return &HubRunningError{URL: url.URL}
+	}
+	h.removed = Reconcile(h.wsDir)
+	h.srv.addr = addr
+	if err := h.srv.Start(ctx); err != nil {
+		_ = wslock.Unlock(lock.Fd())
+		_ = lock.Close()
+		return err
+	}
+	b, _ := json.Marshal(map[string]any{"url": "http://" + h.srv.ListenAddr(), "pid": os.Getpid()})
+	_ = os.WriteFile(filepath.Join(sessionsDir(h.wsDir), "hub.json"), b, 0o600)
+	go func() { // the hub's claim ends with the hub
+		<-ctx.Done()
+		_ = os.Remove(filepath.Join(sessionsDir(h.wsDir), "hub.json"))
+		_ = wslock.Unlock(lock.Fd())
+		_ = lock.Close()
+	}()
+	return nil
+}
+
+// Removed is the registrations of dead sessions that Start cleaned up.
+func (h *Hub) Removed() []Session { return h.removed }
 
 // ListenAddr is the bound address.
 func (h *Hub) ListenAddr() string { return h.srv.ListenAddr() }
@@ -95,10 +230,11 @@ func (h *Hub) sessions() map[string]Session {
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		var s Session
-		if err != nil || json.Unmarshal(b, &s) != nil || !loopback(s.URL) {
-			continue
+		if err != nil || json.Unmarshal(b, &s) != nil || !loopback(s.URL) || s.Instance == "" || s.Instance == "hub" ||
+			s.Instance != strings.TrimSuffix(filepath.Base(f), ".json") || !alive(h.wsDir, s.Instance) {
+			continue // unreadable, off this machine, not of this version, or its process is gone: its key is never sent anywhere
 		}
-		out[strings.TrimSuffix(filepath.Base(f), ".json")] = s
+		out[s.Instance] = s
 	}
 	return out
 }
@@ -130,7 +266,7 @@ func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
 		if err != nil {
 			var ne net.Error
 			if !errors.As(err, &ne) || !ne.Timeout() { // gone, not slow
-				_ = os.Remove(filepath.Join(sessionsDir(h.wsDir), key+".json"))
+				_ = os.Remove(sessionFile(h.wsDir, key))
 			}
 			continue
 		}

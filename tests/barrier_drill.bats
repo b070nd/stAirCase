@@ -203,3 +203,28 @@ sound() {
   [ -n "$(note staircase)" ] && [ -n "$(note staircase-ledger)" ]
   sound
 }
+
+# A run owns itself for its whole life: while its process lives nothing may recover it, --force or not; the moment
+# it is killed the operating system frees the owner lock, and recover needs no --force to know the process is gone.
+@test "a live run cannot be recovered, even with --force; once it is killed recover needs no --force" {
+  (cd "$WORK/app" && STAIRCASE_BARRIER=consumed@2 STAIRCASE_BARRIER_DIR="$WORK/mark" exec "$STAIRCASE_BIN" claude --yes "write two files" >"$WORK/held.log" 2>&1 3>&-) &
+  HELD_PID=$!
+  for _ in $(seq 1 300); do [ -f "$WORK/mark/consumed.reached" ] && break; sleep 0.1; done
+  [ -f "$WORK/mark/consumed.reached" ] || { cat "$WORK/held.log"; false; }
+  cd "$WORK/app"
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"still running"* ]]
+  [[ "$output" != *"--force"* ]]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]    # nothing was committed
+  run sc doctor
+  [[ "$output" != *"interrupted"* ]]                                # alive is not interrupted
+  kill -9 "$HELD_PID"; wait "$HELD_PID" 2>/dev/null || true; HELD_PID=""
+  run sc doctor
+  [[ "$output" == *"run #1 was interrupted with 2 approved change(s): staircase recover 1"* ]]
+  [[ "$output" != *"--force"* ]]
+  run sc recover 1                                                    # no --force
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  sound
+}

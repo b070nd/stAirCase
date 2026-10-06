@@ -120,8 +120,18 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		return res, fmt.Errorf("run #%d already has a commit (%.12s): there is nothing to recover", runID, run.GitCommitHash)
 	case run.Status == persistence.RunStatusSuccess:
 		return res, fmt.Errorf("run #%d finished: there is nothing to recover", runID)
-	case run.Status == persistence.RunStatusRunning && !opts.Force:
-		return res, fmt.Errorf("run #%d may still be running: if its process is gone, recover it with --force", runID)
+	}
+	// Is the run's process alive? Where the run took its owner lock (every run of this version) the lock
+	// answers: held means running, and nothing recovers a live run, --force or not; free means the process is
+	// gone and no --force is needed. A run started before the lock existed, or where locks prove nothing, is
+	// asked of the person as before.
+	if run.Status == persistence.RunStatusRunning {
+		switch held, known := RunOwner(r.wsDir, runID); {
+		case known && held:
+			return res, fmt.Errorf("run #%d is still running: its process holds the run's lock, so it cannot be recovered (stop it first)", runID)
+		case !known && !opts.Force:
+			return res, fmt.Errorf("run #%d may still be running: if its process is gone, recover it with --force", runID)
+		}
 	}
 	// The audit chain must verify before any row of it is believed: it is read once,
 	// and what is replayed is the very slice that was verified.
@@ -212,6 +222,12 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		return res, err
 	}
 	defer unlock()
+	// Recovery owns the run while it works, as the run's own process did: nothing drives or continues it meanwhile.
+	releaseOwner, err := claimRun(r.wsDir, runID)
+	if err != nil {
+		return res, fmt.Errorf("run #%d is still running: %w", runID, err)
+	}
+	defer releaseOwner()
 	if op, err = loadOp(r.wsDir, runID); err != nil { // read again: another recovery may have finished meanwhile
 		return res, err
 	}

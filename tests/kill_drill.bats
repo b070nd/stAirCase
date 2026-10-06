@@ -70,11 +70,15 @@ sc() { "$STAIRCASE_BIN" "$@" 2>&1; }
   [ "$(git -C "$WORK/app" rev-parse main)" = "$(git -C "$WORK/app" rev-parse staircase/run-1)" ]
 
   cd "$WORK/app"
+  # a run of an older version has no owner lock to say its process is gone: it is asked of the person
+  mv "$STAIRCASE_DIR/journal/run-1.owner.lock" "$WORK/owner.lock.aside"
   run sc recover 1
   [ "$status" -ne 0 ]
   [[ "$output" == *"may still be running"* ]]
+  mv "$WORK/owner.lock.aside" "$STAIRCASE_DIR/journal/run-1.owner.lock"
 
-  run sc recover 1 --force
+  # this version's run: the dead process's lock is free, so no --force is needed
+  run sc recover 1
   [ "$status" -eq 0 ]
   [[ "$output" == *"2 approved proposal(s)"* ]]
   [ "$(git show staircase/run-1:src/a.txt)" = "a content" ]

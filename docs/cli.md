@@ -814,8 +814,10 @@ writes what is missing.
 When some of the change was approved as part of the agreed task, by evidence or by
 reviewer models, you are shown the whole change and approve it once, as a finished
 run would have asked, so recover needs a terminal then. The run's worktree is left
-as it is. A run whose record still says RUNNING needs --force, when you know its
-process is gone.
+as it is. A run owns itself while its process lives (it holds a lock the system
+drops when the process ends, a kill included): a run that is still alive is refused,
+--force or not; one whose process is gone is recovered without --force. Only a run
+started before runs held that lock needs --force, when you know its process is gone.
 
 Recovery writes a record of what it is about to do before it touches git and names
 itself in the commit it makes, so a recover that was interrupted, or whose ledger,
@@ -1067,6 +1069,12 @@ the exact change of each, and lets you approve or reject them in one place.
 Sessions announce themselves in the workspace; the page needs only its own key,
 which is in the link printed here (the sessions' keys never reach the browser).
 The page is served only to this machine.
+
+There is one coordinator for a workspace: a second "staircase serve" is refused and
+names the first. A session whose process was killed leaves a registration behind;
+this removes it, shows nothing of it, and lists the runs that were interrupted
+before they committed (recover them with "staircase recover"). It touches only the
+workspace, never your checkout.
 
 Flags:
 
