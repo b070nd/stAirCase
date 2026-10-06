@@ -290,6 +290,26 @@ func (a *approvals) restore(paths []string) error {
 	return nil
 }
 
+// notApplied reports whether p is an approved path whose change has not been written to the worktree yet: the file is
+// still as it is at the base commit (or absent, for a file the base does not have).
+func (a *approvals) notApplied(p string) bool {
+	if _, ok := a.files[p]; !ok {
+		return false
+	}
+	base, err := a.fromBase(p)
+	if err != nil {
+		return false
+	}
+	got, err := os.ReadFile(filepath.Join(a.repo.path, filepath.FromSlash(p)))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return base == nil
+	case err != nil || base == nil:
+		return false
+	}
+	return bytes.Equal(got, base.content)
+}
+
 // violation is a reason finalize refuses to commit, recorded as an audit event.
 type violation struct{ event, file, detail string }
 

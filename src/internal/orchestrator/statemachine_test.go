@@ -15,17 +15,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRunMoves: the run's state machine starts in PRE_FLIGHT, reaches every
-// phase from there, never returns to PRE_FLIGHT, and ends in BRANCH_RESTORE.
+// TestRunMoves: the run's state machine starts in PRE_FLIGHT (or, for a later segment of a
+// continued run, in RESUME), reaches every other phase from there, never returns to a start, and
+// ends in BRANCH_RESTORE.
 func TestRunMoves(t *testing.T) {
 	moves := orchestrator.RunMoves()
-	reached := map[orchestrator.RunPhase]bool{orchestrator.PhasePreFlight: true}
-	next := []orchestrator.RunPhase{orchestrator.PhasePreFlight}
+	reached := map[orchestrator.RunPhase]bool{orchestrator.PhasePreFlight: true, orchestrator.PhaseResume: true}
+	next := []orchestrator.RunPhase{orchestrator.PhasePreFlight, orchestrator.PhaseResume}
 	for len(next) > 0 {
 		p := next[0]
 		next = next[1:]
 		for _, q := range moves[p] {
 			assert.NotEqual(t, orchestrator.PhasePreFlight, q, "nothing moves back to PRE_FLIGHT")
+			assert.NotEqual(t, orchestrator.PhaseResume, q, "nothing moves back to RESUME")
 			if !reached[q] {
 				reached[q] = true
 				next = append(next, q)

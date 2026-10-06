@@ -24,6 +24,9 @@ func TestPlan_is_run_only_as_compiled(t *testing.T) {
 	got, err := plan.Load(path)
 	require.NoError(t, err)
 	p.Version, p.Digest = plan.Version, sha256Hex(t, path)
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	p.Raw = raw // the plan file's exact bytes, which a run saves to continue under the same plan
 	assert.Equal(t, p, got, "Digest is the plan file's sha256")
 
 	b, err := os.ReadFile(path)

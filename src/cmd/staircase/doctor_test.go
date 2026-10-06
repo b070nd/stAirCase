@@ -115,7 +115,7 @@ func TestDoctor_finds_interrupted_runs(t *testing.T) {
 	out, err := captureStdout(t, func() error { return doctorHandler(nil, nil) })
 	require.NoError(t, err, "an interrupted run is a warning, not a failed check")
 	assert.Contains(t, out, "run #"+strconv.FormatInt(running, 10)+" was interrupted with 2 approved change(s)")
-	assert.Contains(t, out, "staircase recover "+strconv.FormatInt(running, 10)+" --force")
+	assert.Contains(t, out, "staircase recover "+strconv.FormatInt(running, 10)+" (or continue it: staircase resume "+strconv.FormatInt(running, 10)+") --force")
 	assert.Contains(t, out, "run #"+strconv.FormatInt(killed, 10)+" was interrupted with 1 approved change(s): staircase recover "+strconv.FormatInt(killed, 10))
 	assert.Equal(t, 2, strings.Count(out, "was interrupted"), "only the two that can be recovered")
 }

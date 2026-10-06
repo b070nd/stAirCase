@@ -48,6 +48,8 @@ type Plan struct {
 
 	// Digest is the sha256 of the plan file, set by Load.
 	Digest string `json:"-"`
+	// Raw is the plan file's exact bytes, set by Load: a run saves them to continue under the same plan later.
+	Raw []byte `json:"-"`
 }
 
 // Limits bound a run (drift supervision); zero values mean no limit. A
@@ -219,7 +221,14 @@ func Load(path string) (Plan, error) {
 	if err != nil {
 		return p, fmt.Errorf("plan has no checksum - recompile: %w", err)
 	}
-	if sum := sha256.Sum256(b); hex.EncodeToString(sum[:]) != strings.TrimSpace(string(want)) {
+	return Parse(b, strings.TrimSpace(string(want)))
+}
+
+// Parse reads a plan from its bytes, which must hash to digest (the plan's sha256): the check Load makes, for a
+// plan that was saved elsewhere.
+func Parse(b []byte, digest string) (Plan, error) {
+	var p Plan
+	if sum := sha256.Sum256(b); hex.EncodeToString(sum[:]) != digest {
 		return p, errors.New("plan was modified after compile - recompile")
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
@@ -227,7 +236,7 @@ func Load(path string) (Plan, error) {
 	if err := dec.Decode(&p); err != nil {
 		return p, fmt.Errorf("read plan: %w", err)
 	}
-	p.Digest = strings.TrimSpace(string(want))
+	p.Digest, p.Raw = digest, b
 	if p.Version != Version {
 		return p, fmt.Errorf("plan version %d, this staircase runs version %d - recompile", p.Version, Version)
 	}

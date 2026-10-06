@@ -151,7 +151,7 @@ func interruptedRuns(wsDir string) {
 			if r.GitCommitHash != "" || n == 0 {
 				continue
 			}
-			hint := fmt.Sprintf("staircase recover %d", r.ID)
+			hint := fmt.Sprintf("staircase recover %d (or continue it: staircase resume %d)", r.ID, r.ID)
 			if status == persistence.RunStatusRunning {
 				switch held, known := orchestrator.RunOwner(wsDir, r.ID); {
 				case known && held:

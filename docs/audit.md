@@ -38,6 +38,7 @@ Events you will see:
 | `run_recovered` | `staircase recover` committed what the run had approved: the commit, how many proposals, whether a final review was given |
 | `recovery_repaired` | a later `recover` finished the evidence (ledger, certificate, notes) of a commit that was already made, and which parts were still missing |
 | `certificate_failed`, `evidence_failed` | the commit was made but its certificate, or other evidence, could not be written, and why (`--require-evidence` makes this a failure) |
+| `run_resumed` | the run was continued (`staircase resume`): the segment number, the chain head it resumed from (`generation`), the approvals it stood on, the next proposal number, the policy and plan digests it continues under, how many requests of earlier segments were never decided, the time earlier segments used, whether drift was acknowledged, and how the agent's context was carried (`fresh_grounded`) |
 | `commit_prepared` | the run's commit exists and is named here (commit, base, tree, branch) before the run branch moves to it; if this cannot be recorded nothing is delivered, and a recovery after a crash keeps only a commit named here as the run's own |
 | `certificate_issued` | the change certificate was signed for the run's commit |
 | `run_path` | the phases the run went through, in order (see below) |

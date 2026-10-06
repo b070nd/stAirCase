@@ -135,7 +135,18 @@ record of the operation is on disk, so a failure to write the ledger, the certif
 notes, the audit record or the run's record leaves a delivered commit and an honest list of what is
 missing (`--require-evidence` makes that a failure), and running `recover` again repairs it.
 The certificate of a recovered run names the policy and the signed request of the person who started
-it as the run recorded them, not whatever policy.json holds by then. **A run killed by v0.8.0 after its commit** has no `commit_prepared` record, so recovery will not adopt that
+it as the run recorded them, not whatever policy.json holds by then. **Continuing a run.** A run that was killed before it committed can be continued instead of recovered: `staircase resume <run>`
+(ADR [0005](adr/0005-durable-continuation.md)). It is the same run, branch and worktree, under the policy, plan and options the run
+saved when it started, from the state its audit chain says it stood in: what was approved stays approved, proposal numbers carry on,
+a limit already reached is still reached, and the time earlier segments used is spent. A new agent session takes over, told by the chain
+what is already approved; the agent's own memory is not carried and not trusted. Every check is made first and any failure refuses with
+nothing changed: the chain must verify, nobody may be running the run, no commit or recovery may have begun, the branch must still be at
+the base, and the worktree must hold exactly the approved state. Work the agent did after its last approval is **never adopted or
+staged**: it refuses and names the files, and `--discard-unapproved` puts the worktree back first. A run started with an agent harness is
+continued only with `--fresh-context` (its own conversation cannot be continued yet). The continuation is audited as `run_resumed`; a
+continued run delivers one commit, named on the chain before the branch moves, like any other, and can be recovered if it is killed again.
+
+**A run killed by v0.8.0 after its commit** has no `commit_prepared` record, so recovery will not adopt that
 commit (it cannot tell the run's own commit from a copy; the old rule that did is gone for that reason). The
 commit is not harmed, and a certificate it already has is still valid. To finish such a run: check what is on the
 branch against what the run approved (`staircase inspect log <run>` and `git diff <base> staircase/run-<run>`);

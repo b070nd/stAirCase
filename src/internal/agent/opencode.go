@@ -77,7 +77,7 @@ func (o *OpenCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 		"permission": map[string]string{"*": "allow", "external_directory": "deny", "doom_loop": "deny"},
 		"share":      "disabled", "autoupdate": false})
 
-	args := []string{"run", o.Prompt + "\n\n" + opencodeRules}
+	args := []string{"run", withContinuation(o.Prompt, env) + "\n\n" + opencodeRules}
 	if o.Model != "" {
 		args = append(args, "--model", o.Model)
 	}

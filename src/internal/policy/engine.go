@@ -131,6 +131,19 @@ type Snapshot struct {
 	Engine *Engine
 	Digest string // "" when there is no policy.json
 	Signed bool
+	Raw    []byte // the exact bytes the engine and the digest come from; nil when there is no policy.json
+}
+
+// SnapshotFromBytes is a snapshot of a policy that was read earlier: the bytes a run saved when it started. The
+// bytes are parsed as strictly as the file is. signed is what the run recorded about their signature then (a
+// saved copy has no signature file of its own to check).
+func SnapshotFromBytes(data []byte, signed bool) (*Snapshot, error) {
+	e, err := parseEngine(data, "the saved policy")
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(data)
+	return &Snapshot{Engine: e, Digest: hex.EncodeToString(sum[:]), Signed: signed, Raw: data}, nil
 }
 
 // LoadSnapshot reads $wsDir/policy.json once. A missing file yields an empty
@@ -155,7 +168,7 @@ func LoadSnapshot(wsDir string) (*Snapshot, error) {
 		return nil, fmt.Errorf("policy integrity check failed - re-sign with 'staircase policy sign': %w", err)
 	}
 	sum := sha256.Sum256(data)
-	return &Snapshot{Engine: e, Digest: hex.EncodeToString(sum[:]), Signed: signed}, nil
+	return &Snapshot{Engine: e, Digest: hex.EncodeToString(sum[:]), Signed: signed, Raw: data}, nil
 }
 
 // LoadEngineFile reads a policy file with the same strict rules as the
