@@ -50,7 +50,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | Page | What you find |
 |---|---|
 | [Architecture](architecture.md) | how the program is built inside |
-| [Architecture decisions](adr/) | the decisions that shape it: [the core promise and assurance levels](adr/0001-core-promise-and-assurance-levels.md), [the change certificate](adr/0002-change-certificate.md), [the hook bridge](adr/0003-hook-bridge.md), [the audit chain covers the event type](adr/0004-audit-chain-version-2.md), [continuing an interrupted run (design)](adr/0005-durable-continuation.md) |
+| [Architecture decisions](adr/) | the decisions that shape it: [the core promise and assurance levels](adr/0001-core-promise-and-assurance-levels.md), [the change certificate](adr/0002-change-certificate.md), [the hook bridge](adr/0003-hook-bridge.md), [the audit chain covers the event type](adr/0004-audit-chain-version-2.md), [continuing an interrupted run (design)](adr/0005-durable-continuation.md); [the six contracts, audited](contracts.md) |
 | [Testing](testing.md) | the test layers and `make check` |
 | [Contributing](../CONTRIBUTING.md) | how to propose a change, and how to write docs |
 | [Demo](../demo/README.md) | what the offline demo checks, step by step |

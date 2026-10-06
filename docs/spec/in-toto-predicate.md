@@ -46,9 +46,28 @@ git note and may be anchored in a transparency log.
 
 ## Schema
 
-See [section 3 of the specification](certificate-v1.md#3-predicate). All fields are
-names, numbers and digests; the predicate never contains code, prompts or command
-output.
+The predicate is a JSON object. All fields are names, numbers and digests; the
+predicate never contains code, prompts or command output. The normative text, with
+meanings and the verification procedure, is
+[section 3 of the specification](certificate-v1.md#3-predicate); the fields are:
+
+| Field | Type | Required |
+|---|---|---|
+| `run` | integer | yes |
+| `baseCommit` | string (commit id) | yes |
+| `agents` | array of strings | yes |
+| `decisions` | object, string to integer (how many proposals each source decided) | yes |
+| `chainHead` | string (SHA-256 of the producer's audit chain) | yes |
+| `cal` | integer 1 to 3 (the change assurance level; level 4 is established only by a verifier) | yes |
+| `planDigest`, `blueprint` | string (what the agent was asked to do, and the blueprint it came from) | no |
+| `notes` | array of strings (why the level is not higher) | no |
+| `requestedBy` | string (the git identity the run was made under) | no |
+| `initiator` | object `{principal, signature}` (the person who started the run, authenticated by an SSH signature) | no |
+| `ledger` | string (SHA-256 of the ledger the commit's tree can be rebuilt from) | no |
+| `policy` | string (SHA-256 of the policy the run decided under) | no |
+| `signed` | object `{decisions, signers}` (decisions people signed; informative) | no |
+| `attention` | object `{humanDecisions, medianSeconds, quickApprovals}` (how people decided; informative) | no |
+| `checks` | array of `{command, exitCode, sandboxed, outputSha256}` (commands run on the commit) | no |
 
 ## Parsing rules
 
@@ -65,4 +84,5 @@ decoded payload is the statement.
 
 ## Changelog and migrations
 
-- v1 (2026): initial version.
+- v1 (2026): initial version. Fields added since, all optional: `requestedBy`, `ledger`, `policy`, `initiator`, `signed`,
+  `attention`, `checks`, `notes`, `blueprint`. The type URI did not change: verifiers ignore unknown fields.

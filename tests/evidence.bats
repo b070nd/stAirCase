@@ -20,7 +20,7 @@ field() { jq -r "$1" "$WORK/out/evidence.json"; }
   [ "$(field .commit)" = "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]
   [ "$(field .platform.os)" = "$(uname -s)" ]
   [ "$(field .tools.go | cut -c1-10)" = "go version" ]
-  [ "$(field '.fixtures | length')" = "$(ls "$ROOT_DIR"/docs/spec/vectors/*.json "$ROOT_DIR"/docs/spec/rebuild-vectors/*.json "$ROOT_DIR"/docs/spec/audit-chain-vectors.json | wc -l | tr -d ' ')" ]
+  [ "$(field '.fixtures | length')" = "$(ls "$ROOT_DIR"/docs/spec/vectors/*.json "$ROOT_DIR"/docs/spec/rebuild-vectors/*.json "$ROOT_DIR"/docs/spec/audit-chain-vectors.json "$ROOT_DIR"/docs/spec/historical/*/repo.bundle "$ROOT_DIR"/docs/spec/historical/*/checkpoint.json | wc -l | tr -d ' ')" ]
   [ "$(field '.fixtures | map(select(.sha256 | test("^[0-9a-f]{64}$"))) | length')" = "$(field '.fixtures | length')" ]
 }
 

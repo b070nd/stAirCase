@@ -111,10 +111,10 @@ want vuln && { if command -v govulncheck >/dev/null; then step "vulnerability sc
 
 record "live agent runs (opt-in: make smoke-claude, smoke-codex)" not_run "need the owner's agent credentials and cost money; run them by hand and record the result" null /dev/null
 
-# the record
+# the record (the fixtures: the conformance vectors and the historical releases' runs, each by digest)
 commit="$(git rev-parse HEAD)"
 dirty=false; [ -n "$(git status --porcelain)" ] && dirty=true
-fixtures="$(for f in docs/spec/vectors/*.json docs/spec/rebuild-vectors/*.json docs/spec/audit-chain-vectors.json; do
+fixtures="$(for f in docs/spec/vectors/*.json docs/spec/rebuild-vectors/*.json docs/spec/audit-chain-vectors.json docs/spec/historical/*/repo.bundle docs/spec/historical/*/checkpoint.json; do
   jq -cn --arg path "$f" --arg sha "$(shasum -a 256 "$f" | cut -d' ' -f1)" '{path: $path, sha256: $sha}'; done | jq -sc .)"
 ver() { "$@" 2>&1 | head -1; }
 partial=false; [ -n "${EVIDENCE_STEPS:-}" ] && partial=true

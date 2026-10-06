@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **The six contracts are audited against the releases** ([contracts](docs/contracts.md)). Today's `staircase`
+  verifies, rebuilds and reads the evidence of a real governed run made by each of v0.3.0, v0.4.0, v0.5.0, v0.6.0,
+  v0.7.1, v0.8.0 and v0.10.0 (`docs/spec/historical`, `tests/historical.bats`, regenerated with
+  `docs/spec/historical/generate.sh`), including their audit checkpoints and, for three releases, their workspace
+  databases. New tests keep the documentation true: a certificate field, a policy field or an audit event that the
+  code has and the documentation does not describe fails the build. The audit found nine audit events that
+  [audit](docs/audit.md) did not list (`policy_snapshot`, `initiator_signed`, `check_ran`, `shell_ran`, `signal_rated`,
+  `recovery_final_review`, `run_recovered`, `recovery_repaired`, `certificate_failed`) and the
+  decision-model interface had no written contract; both are now documented in [approvals](docs/approvals.md).
+
 ### Fixed
 
 - **A large approved change no longer makes a run unrecoverable.** The audit entry of a request over 64 KiB is a

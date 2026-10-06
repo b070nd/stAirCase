@@ -399,6 +399,32 @@ accepts anyone unless `LAYA_API_KEY` is set, so set it and keep the port closed 
 your network. The change is sent to the address you give, so give one you trust. A key
 is sent only when you stored `SIGNAL_API_KEY`; the gateway key is never sent there.
 
+**The interface, as a contract.** An evaluation server is anything that answers this. stAirCase sends one
+request per change and never anything else:
+
+```
+POST /v1/evaluate                      (the gateway; /v1/systemone for --signal-url, see below)
+Authorization: Bearer <key>            (only when a key is set)
+{"model": "<--signal value>",
+ "state": {"stories": "<the stories>", "change": <the files before and after>},
+ "questions": {"<id>": {"type": "boolean|choice|score", "instructions": "<text>", "criteria": <see below>}}}
+```
+
+`criteria` is `{"true": "...", "false": "..."}` for a `boolean`, `{"<key>": "<meaning>"}` for a `choice`, and
+a list of ordered labels for a `score`. A `--signal-url` server is sent `noul` for `boolean` (a probability) with
+the criteria `yes` and `no`. The answer, within 1 MiB and a 30 s limit, is:
+
+```
+{"answers": {"<id>": {"type": "...", "probability": 0.0-1.0, "choice": "<key>", "score": 0.0, "probabilities": {"<key>": 0.0}}},
+ "providerMetadata": {"gateway": {"cost": "<US dollars>"}}}
+```
+
+stAirCase asks three questions: `risky` and `serves_story` (both `boolean`) and `kind` (`choice` of `feature`, `test`,
+`docs`, `config`, `dependency`). A probability at or past **0.5** counts: `risky` at or above it, or `serves_story`
+below it, sends the change to you. An answer that is missing, malformed, late (the 30 s limit) or an HTTP error also
+sends it to you, and is recorded (`signal_rated` with the error). Nothing an evaluation server answers can approve,
+reject or change a proposal.
+
 The model sees the stories and the change, the same as a validator. Measure it on
 your own kind of changes before you rely on it: `make eval-jev` (for a local Laya:
 `go run ./src/tools/jeveval -model laya -base http://127.0.0.1:8000 -api systemone`) runs 24 labelled
