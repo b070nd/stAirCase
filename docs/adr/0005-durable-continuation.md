@@ -1,6 +1,6 @@
 # ADR 0005: Continuing an interrupted run (design)
 
-- Status: proposed (design only: nothing in this ADR is built; the acceptance controls at the end are what building it must pass)
+- Status: accepted, with the owner's decisions below (design only: nothing in this ADR is built; the acceptance controls at the end are what building it must pass)
 - Date: 2026-10-06
 
 ## Context
@@ -199,12 +199,17 @@ process is killed:
 9. **Conflicts:** an existing recovery record, an older run without the saved files, a changed policy file, a moved branch
    and a missing base each refuse with the stated message and change nothing.
 
-## Open decisions (for the owner)
+## Decisions of the owner (2026-10-06)
 
-1. Is `--fresh-context` the right way to choose the fallback, or should resume refuse when native resume is requested
-   and unavailable?
-2. May a **stricter** policy apply to a continuation (an option to tighten, never loosen), or never?
-3. Should the certificate of a continued run say how many segments there were in the signed predicate (a format change to
-   the certificate contract), or only in the audit chain?
-4. Native resume for Codex needs a probe of how its session id can be learned; is a failed probe an acceptable reason to
-   offer fresh grounded continuation only for Codex?
+1. **Native resume that cannot be performed refuses.** The command says why and changes nothing. Falling back to a fresh
+   grounded continuation needs an explicit `--fresh-context`: a silent fallback would let the operator believe the
+   agent's conversation continued when it did not.
+2. **A stricter policy never applies to a continuation automatically.** A run was started under one policy digest; changing
+   the terms mid-run, even to stricter ones, breaks the "same terms" guarantee the saved policy exists for. To tighten,
+   recover the approvals and start a new run. An explicit `--allow-stricter-policy` may be added later if a real need
+   appears (explicit, audited, never the default); **it is not part of the first version of resume.**
+3. **The segment count is recorded on the audit chain only** (`run_resumed` carries the segment number and the approved
+   generation). The signed certificate predicate does not change: that would be a contract change for every verifier, the
+   rebuild, the independent implementation and the Action. A versioned certificate change can follow real use.
+4. **Codex native resume is offered only if a real probe proves it.** Until it is shown that Codex exposes a
+   machine-readable session identifier that can be learned and later resumed, Codex gets fresh grounded continuation only.
