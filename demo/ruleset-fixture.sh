@@ -19,10 +19,10 @@
 # Nothing here pushes anything: the README it writes lists the commands for you to run in your
 # own test repository (with whatever ruleset you want to exercise).
 #
-# Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v0.9.0)
+# Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v0.11.0)
 set -euo pipefail
 OUT="${1:?usage: ruleset-fixture.sh <outdir> [version]}"
-VERSION="${2:-v0.9.0}"
+VERSION="${2:-v0.11.0}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ ! -e "$OUT" ] || { echo "$OUT exists: choose a new directory" >&2; exit 1; }
 
@@ -49,6 +49,7 @@ name: stAirCase verify (ruleset fixture)
 on: pull_request
 permissions:
   contents: read
+  attestations: read
 jobs:
   certified-range-passes:
     if: github.head_ref == 'pr-certified' && github.base_ref == 'main'
@@ -98,16 +99,19 @@ YML
 admission() { # <min-cal>
   cat >.github/workflows/staircase-admission.yml <<YML
 name: staircase admission
-on: pull_request
+# pull_request_target runs the workflow of the BASE branch, so a pull request cannot edit the check it must pass. Nothing of the pull
+# request is executed: it is checked out only so that the verifier can read its commits, and the key is read from the base.
+on: pull_request_target
 permissions:
   contents: read
+  attestations: read
 jobs:
   staircase-admission:
     name: staircase-admission
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: { ref: "\${{ github.event.pull_request.head.sha }}", fetch-depth: 0 }
       - uses: b070nd/stAirCase@$VERSION
         with: { key: .github/staircase.pub, rebuild: "true", min-cal: "$1" }
 YML
@@ -188,11 +192,13 @@ targets branches: the notes refs are not covered by it, and the certificates are
 | pr-no-notes | main | **fails** | **blocked** | a commit with no certificate |
 | pr-certified | other-key | **fails** | **blocked** | wrong signer: the base trusts another key, so the certificate is not trusted |
 | pr-certified | strict | **fails** | **blocked** | insufficient CAL: strict requires CAL 4 |
-| pr-edits-the-check | main | **observe** | **observe** | the pull request edits staircase-admission.yml itself (min-cal 1, all false) |
+| pr-edits-the-check | main | **fails** (observe) | **blocked** (observe) | the pull request edits staircase-admission.yml itself (min-cal 1, all false); the base's copy of the workflow should run instead |
 
-The last row is a control, not a promise. A \`pull_request\` workflow runs the version in the pull request, so a pull request that
-rewrites the check can turn it down; it is a known limit of this setup. Record what you see. To close it, protect the workflow:
-a ruleset or CODEOWNERS rule that requires review for \`.github/\`, or an organisation's required workflows.
+The last row is a control. The admission check runs on \`pull_request_target\`, which uses the workflow of the **base** branch, so the
+pull request's own edit of staircase-admission.yml (min-cal 1, all false) should be ignored and the check should fail. With a plain
+\`pull_request\` trigger the pull request's own copy runs and it would pass (checked locally: the verifier then reports "0 commit(s) checked").
+Record what GitHub does. The setup is only safe because nothing of the pull request is executed: keep it that way, and do not add steps that
+run its files. Still protect \`.github/\` (a ruleset or CODEOWNERS rule that requires review) so the base's workflow cannot be changed unreviewed.
 
 The conformance harness also runs on these pull requests (its jobs are named certified-range-passes,
 below-the-required-level-is-refused, no-certificate-is-refused, wrong-trusted-key-is-refused). Its green is conformance of the Action,

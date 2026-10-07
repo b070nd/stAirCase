@@ -53,6 +53,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   (`./demo/smoke.sh opencode`, [record](docs/release-evidence/opencode-1.18.35.md)). It stays experimental: only `write`, one version
   and model, no ungated-change control. Its login is a file in OpenCode's data folder, so a command run with `--allow-shell-exec`
   (no sandbox) can read it; the documentation said the opposite.
+- **The fixture's required check cannot be edited away by the pull request it judges.** A local rehearsal with the v0.11.0 Action showed that
+  under `on: pull_request` a pull request that sets `all: false` in the check's own workflow passes with "0 commit(s) checked". The fixture's
+  `staircase-admission` now runs on `pull_request_target` (the base branch's copy of the workflow, read-only permissions, the head checked out by
+  `ref`), both of its workflows have the `attestations: read` permission the Action's attestation check uses, and the default verifier is
+  v0.11.0. Not yet observed in GitHub.
 - **The ruleset fixture now has a real required check.** `demo/ruleset-fixture.sh` builds `staircase-admission`, a job whose
   refusal fails it (the old harness asserted the refusal and was green when the Action behaved), a copy per base branch
   (`main`, `other-key`, `strict`), an importable `ruleset.json` and a control pull request that edits the check's own

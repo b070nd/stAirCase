@@ -85,7 +85,11 @@ admission() { git -C "$FIX/test-repo" show "$1:.github/workflows/staircase-admis
     [ "$(grep -c 'uses: b070nd/stAirCase@' "$WORK/a.yml")" = 1 ]
     if grep -q 'continue-on-error' "$WORK/a.yml"; then false; fi
     if grep -q 'outcome' "$WORK/a.yml"; then false; fi
-    grep -q '^on: pull_request' "$WORK/a.yml"
+    grep -q '^on: pull_request_target$' "$WORK/a.yml"                     # the base branch's copy of the workflow runs, not the pull request's
+    grep -q 'ref: "\${{ github.event.pull_request.head.sha }}"' "$WORK/a.yml"   # and it checks out the pull request's head to verify it
+    grep -q '^  attestations: read$' "$WORK/a.yml"                          # the Action checks the verifier's build attestation
+    grep -q '^  contents: read$' "$WORK/a.yml"
+    if grep -qE 'contents: write|pull-requests: write|secrets\.' "$WORK/a.yml"; then false; fi   # nothing a pull request could use
   done
 }
 
@@ -130,11 +134,25 @@ decide() {
   [[ "$output" == *"below the required 4"* ]]
 }
 
-@test "the control: a pull request that rewrites the check's own workflow is a branch to observe, and says what it does" {
+@test "the control: a pull request that rewrites the check's own workflow is turned down by the base's copy of it" {
   git -C "$FIX/test-repo" show pr-edits-the-check:.github/workflows/staircase-admission.yml >"$WORK/e.yml"
   grep -q 'all: "false"' "$WORK/e.yml"                  # it weakens the check from inside the pull request
+  # what GitHub runs for pull_request_target is the base's workflow: its settings decide, and the uncertified commit fails
+  decide pr-edits-the-check main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no change certificate"* ]]
+  # whereas the pull request's own copy of the workflow would have let it through (why the trigger matters)
+  KEY=.github/staircase.pub MIN_CAL=1 ALL=false REBUILD=true verify pr-edits-the-check main
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 commit(s) checked"* ]]
   grep -q "pr-edits-the-check" "$FIX/README.md"
-  grep -qi "limit" "$FIX/README.md"
+  grep -q "pull_request_target" "$FIX/README.md"
+}
+
+@test "every workflow of the fixture can read the verifier's build attestation" {
+  for f in staircase-admission.yml staircase-verify.yml; do
+    git -C "$FIX/test-repo" show main:.github/workflows/$f | grep -q '^  attestations: read$'
+  done
 }
 
 @test "the conformance harness is kept and the README says it is conformance, not enforcement" {

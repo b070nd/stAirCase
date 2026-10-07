@@ -378,7 +378,10 @@ ordinary refs: anyone who can push to them can overwrite a note, so restrict who
 push `refs/notes/staircase*`. None of this has been exercised against a real
 organization ruleset; do that once with a test repository before relying on it
 (`demo/ruleset-fixture.sh` builds one, with a required check that fails on a refusal and a ruleset to import; see
-[testing](testing.md)). A pull request that edits the check's own workflow runs its own version of it: protect `.github/`.
+[testing](testing.md)). A pull request that edits the check's own workflow runs its own version of it under `on: pull_request`, and can turn the check down
+(`all: false`, a lower `min-cal`): protect `.github/` with required review, or run the check on `pull_request_target`, which uses the base branch's
+copy, with `contents: read`, the pull request's head checked out by `ref`, and no step that runs the pull request's files (the fixture in
+[testing](testing.md) does this).
 
 The same check runs locally: `staircase verify main..HEAD --all --min-cal 3`.
 
