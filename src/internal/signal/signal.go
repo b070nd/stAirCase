@@ -199,15 +199,13 @@ var ReviewQuestions = map[string]Question{
 }
 
 // nativeQuestions are the questions in TypeSafe's own shape: a boolean is a
-// "noul", whose criteria are yes and no.
+// "noul" whose criteria stay keyed "true" and "false" (Laya 0.4.0 refuses any other key with
+// a 422, and says the keys are the option texts the model reads).
 func nativeQuestions(qs map[string]Question) map[string]Question {
 	out := make(map[string]Question, len(qs))
 	for id, q := range qs {
 		if q.Type == "boolean" {
 			q.Type = "noul"
-			if m, ok := q.Criteria.(map[string]string); ok {
-				q.Criteria = map[string]string{"yes": m["true"], "no": m["false"]}
-			}
 		}
 		out[id] = q
 	}

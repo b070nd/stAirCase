@@ -412,7 +412,7 @@ Authorization: Bearer <key>            (only when a key is set)
 
 `criteria` is `{"true": "...", "false": "..."}` for a `boolean`, `{"<key>": "<meaning>"}` for a `choice`, and
 a list of ordered labels for a `score`. A `--signal-url` server is sent `noul` for `boolean` (a probability) with
-the criteria `yes` and `no`. The answer, within 1 MiB and a 30 s limit, is:
+the criteria keyed `true` and `false` (as Laya 0.4.0 requires). The answer, within 1 MiB and a 30 s limit, is:
 
 ```
 {"answers": {"<id>": {"type": "...", "probability": 0.0-1.0, "choice": "<key>", "score": 0.0, "probabilities": {"<key>": 0.0}}},

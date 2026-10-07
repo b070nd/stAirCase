@@ -6,15 +6,25 @@ This directory keeps the measured evidence for the models stAirCase advertises, 
 
 ## Results
 
-**None yet.** No number is published because none has been measured: the gateway path needs an AI Gateway key
-(`LLM_GATEWAY_API_KEY`) for `typesafe-ai/jev`, and the local path needs `laya-serve` running (`pip install "laya[serve]"`,
-model weights from Hugging Face). Neither was available when this was written. Until a run is kept here, the models'
-accuracy is unknown, and stAirCase makes no claim about it.
+| Path | Run | Risky changes missed (of 12) | Safe changes flagged (of 12) | `risky` accuracy | Report |
+|---|---|---|---|---|---|
+| Laya 0.4.0 local, checkpoint `typed-decisions` | 2026-10-07 | 11 | 0 | 13/24 | [report](2026-10-07-laya-typed-decisions.md) |
+| Laya 0.4.0 local, checkpoint `english` | 2026-10-07 | 9 | 0 | 15/24 | [report](2026-10-07-laya-english.md) |
+| `typesafe-ai/jev` through the AI Gateway | | | | | **not run**: needs `LLM_GATEWAY_API_KEY` with billing |
 
-| Path | Needed | State |
-|---|---|---|
-| `typesafe-ai/jev` through the AI Gateway | `LLM_GATEWAY_API_KEY` with the gateway's billing set up | not run |
-| Laya, local (`laya-serve`) | the package and weights installed, `SIGNAL_API_KEY` if `LAYA_API_KEY` is set | not run |
+Read these plainly. At the fixed 0.5 threshold the signal uses, Laya let almost every risky change through: the risky changes scored
+0.25 to 0.55 and the safe ones 0.16 to 0.50, and none scored high enough. It does lean the right way (in the kept tables a risky change had
+a higher `risky` probability than a safe one in about 73% of risky-and-safe pairs for `typed-decisions` and 68% for `english`; computed from
+the reports, not part of the tool), so the threshold, not the ranking, is what fails. The 24 cases are synthetic, the run is one per
+checkpoint, and Laya answered the questions as phrased by stAirCase, with no tuning. So: **as configured today, Laya is not a safeguard**;
+it can still only add a person's review, never remove one. A calibrated threshold per project (ROADMAP phase 3) would need the project's
+own labelled changes.
+
+Running Laya also found a real fault, now fixed: stAirCase sent a `noul` question's criteria keyed `yes` and `no`, and Laya 0.4.0 refuses any
+key but `true` and `false` (HTTP 422), so every request failed until the client was corrected.
+
+How it was run: Laya 0.4.0 in a virtual environment, `laya-serve` on loopback only with a bearer key, offline (`HF_HUB_OFFLINE=1`), checkpoints
+`english` and `typed-decisions`, on macOS/arm64.
 
 ## What is verified without a model
 
@@ -29,9 +39,9 @@ cannot approve or reject anything; it leaves the policy's decision as it was.
 
 ```bash
 LLM_GATEWAY_API_KEY=... make eval-jev ARGS="-out docs/evaluation/$(date +%F)-jev.md"
-# a local Laya:
-SIGNAL_API_KEY=... go run ./src/tools/jeveval -model laya -base http://127.0.0.1:8000 -api systemone \
-  -tool-version "$(git rev-parse --short HEAD)" -out docs/evaluation/$(date +%F)-laya.md
+# a local Laya (model = the checkpoint: english, multilingual or typed-decisions):
+SIGNAL_API_KEY=... go run ./src/tools/jeveval -model typed-decisions -base http://127.0.0.1:8000 -api systemone \
+  -tool-version "$(git rev-parse --short HEAD)" -out docs/evaluation/$(date +%F)-laya-typed-decisions.md
 ```
 
 The report keeps the command, the server, the tool version, a digest of the labelled cases, every case's label and the
