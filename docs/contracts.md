@@ -108,7 +108,7 @@ kept; the tests do not regenerate it, so they stay about the old releases.
 - **Not promised:** a continued run keeps the policy it started under; a changed policy applies to new runs only
   ([ADR 0005](adr/0005-durable-continuation.md)).
 
-## Before 1.0: what is still open
+## Open at 1.0
 
 | Item | Status |
 |---|---|
@@ -117,4 +117,4 @@ kept; the tests do not regenerate it, so they stay about the old releases.
 | Fixtures for v0.2.0, v0.7.0, v0.9.0, v0.11.0 | open: the neighbouring releases cover them; they can be added with `docs/spec/historical/generate.sh` |
 | Audit chain version 1 weakness | stated limit (G-2), not fixable afterwards |
 | The in-toto predicate proposal | drafted ([in-toto-predicate](spec/in-toto-predicate.md)), not submitted: it needs a person to send it |
-| Versioning at 1.0 | from 1.0 the six follow semantic versioning ([compatibility](compatibility.md)); the 1.x numbers of the Bash line (the CHANGELOG's bottom) are a different product, and the Homebrew formula's `version_scheme` already orders the Go releases after them |
+| Versioning at 1.0 | from v1.0.0 the six follow semantic versioning ([compatibility](compatibility.md)); the 1.x numbers of the Bash line (the CHANGELOG's bottom) are a different product, and the Homebrew formula's `version_scheme` already orders the Go releases after them |

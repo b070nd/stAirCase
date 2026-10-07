@@ -66,8 +66,9 @@ lists every page.
 4. Update the Homebrew tap with `packaging/homebrew-formula.sh` from the
    release's `checksums.txt`.
 
-Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor
-version may contain breaking changes, listed under "Changed (breaking)".
+Versions follow [Semantic Versioning](https://semver.org/). A breaking change to one of the six
+interfaces in [compatibility](docs/compatibility.md) needs a new major version (or a new format version accepted alongside the old
+one); everything else may change in a minor version, listed under "Changed".
 
 ## Reporting security issues
 

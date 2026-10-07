@@ -84,7 +84,7 @@ are only governed from the moment you stage their changes. See the
   `clean --aggressive`, `archive/`; all readable by your user only. Treat the workspace
   like the repository: it holds what the commits hold.
 
-### Known limitations (pre-1.0)
+### Known limitations (at 1.0)
 
 These are documented, not hidden:
 
@@ -143,4 +143,4 @@ These are documented, not hidden:
 
 ## Supported versions
 
-stAirCase is pre-1.0; security fixes are applied to the latest release and `master`.
+stAirCase 1.x: security fixes are applied to the latest release and `master`.

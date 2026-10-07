@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-08
+
+Governed changes with verifiable evidence, and a compatibility promise. From this release the six interfaces in
+[compatibility](docs/compatibility.md) follow semantic versioning. What is new since 0.11.0 is below under Added and Fixed: continuing an
+interrupted run (`staircase resume`, with the agent's own session for Claude Code, Gemini CLI and Codex), owned runs and sessions, stricter
+recovery, a required admission check for your own repository, and real runs of Gemini CLI and OpenCode. Read "Limits" in
+[safety](docs/safety.md) and the notes on what the real runs did and did not show in [compatibility](docs/compatibility.md): Gemini CLI and OpenCode
+are experimental, and a decision model (`--signal`) is not a safeguard as configured.
+
 ### Added
 
 - **A resumed Claude Code, Gemini CLI or Codex run continues the vendor's own session.** The session id is audited as
@@ -980,7 +989,12 @@ since the first Go commits:
   hooks route every tool call through the same approvals - edits and shell
   commands are proposals, reads stay in the worktree, other tools are denied.
 
-## [1.2.0] - 2026-03-12
+## Before the Go rewrite: the Bash line
+
+The three sections below are the releases 1.0.0 to 1.2.0 of the earlier Bash implementation of `staircase`. They are kept as history, and are not
+releases of this program: its first release is 0.2.0 above, and its 1.0.0 is the section at the top.
+
+## [bash 1.2.0] - 2026-03-12
 
 ### Core model shift
 
@@ -1032,7 +1046,7 @@ Workspaces from v1.1 can be migrated with `staircase migrate`. The command is id
 
 ---
 
-## [1.1.0] - 2026-03-11
+## [bash 1.1.0] - 2026-03-11
 
 ### Added
 
@@ -1053,7 +1067,7 @@ Workspaces from v1.1 can be migrated with `staircase migrate`. The command is id
 
 ---
 
-## [1.0.0] - 2026-03-09
+## [bash 1.0.0] - 2026-03-09
 
 Initial release.
 
@@ -1109,6 +1123,6 @@ Initial release.
 - All JSON mutations use atomic `mktemp` + `mv` writes.
 - Context JSON built with `jq -n` - special characters in case IDs are always safe.
 
-[1.2.0]: https://github.com/b070nd/staircase/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/b070nd/staircase/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/b070nd/staircase/releases/tag/v1.0.0
+[bash 1.2.0]: https://github.com/b070nd/staircase/compare/v1.1.0...v1.2.0
+[bash 1.1.0]: https://github.com/b070nd/staircase/compare/v1.0.0...v1.1.0
+[bash 1.0.0]: https://github.com/b070nd/staircase/releases/tag/v1.0.0

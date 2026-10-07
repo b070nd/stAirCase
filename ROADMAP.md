@@ -1,6 +1,6 @@
 # Roadmap
 
-stAirCase is pre-1.0. This page says where it is going and why. The order changes when
+stAirCase is at 1.0. This page says where it is going and why. The order changes when
 users ask for something else, and no dates are promised. Ideas and objections are
 welcome in the [issues](https://github.com/b070nd/stAirCase/issues).
 

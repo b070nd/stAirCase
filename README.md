@@ -12,7 +12,7 @@
   <a href="https://pkg.go.dev/github.com/b070nd/stAirCase"><img src="https://pkg.go.dev/badge/github.com/b070nd/stAirCase.svg" alt="Go Reference"></a>
   <a href="https://goreportcard.com/report/github.com/b070nd/stAirCase"><img src="https://goreportcard.com/badge/github.com/b070nd/stAirCase" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/status-pre--1.0-orange.svg" alt="pre-1.0">
+  <img src="https://img.shields.io/badge/status-1.0-green.svg" alt="1.0">
 </p>
 
 ---
@@ -127,7 +127,8 @@ on your machine:
 | What the agent reads, and what the model provider receives | not confined: a run sends code to your model provider, and a sandboxed command can read files you can; pick a [confidentiality profile](docs/safety.md#confidentiality-pick-a-profile) |
 
 Read the [safety boundary](docs/safety.md) before you use it on a project you care
-about. stAirCase is pre-1.0.
+about. stAirCase is at 1.0: its six interfaces follow semantic versioning ([compatibility](docs/compatibility.md)); the agent
+adapters are not part of that promise and Gemini CLI and OpenCode are still experimental.
 
 ## Documentation
 
