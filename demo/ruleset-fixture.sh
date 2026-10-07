@@ -201,12 +201,14 @@ not admission. pr-low-assurance (the same commit at min-cal 4 into main) is its 
 ## 3. Record
 
 \`\`\`bash
-./demo/ruleset-evidence.sh <owner>/<test-repo> > evidence.md      # from the stAirCase checkout, with your own gh login
+./demo/ruleset-evidence.sh <owner>/<test-repo> > evidence.md      # from the stAirCase checkout: curl and jq, no gh
 \`\`\`
 
-It writes, for each pull request: the URL, the head and base SHAs, the state of the required check and its run URL and attempt, GitHub's
-merge state (BLOCKED or CLEAN), the verifier version the run installed and the release asset's digest; and the ruleset as GitHub holds it
-(refs, required check, bypass actors). Read it before you keep it: it holds no token, only what GitHub reports about those pull requests.
+It reads GitHub's REST API with curl. A public test repository needs no login; for a private one, and for the run logs and the ruleset's
+bypass list, put a read-only token in \`GITHUB_TOKEN\` (it goes to curl on stdin and is never printed). For each pull request it writes the
+URL, the head SHA, the state of the required check and its run URL and attempt, GitHub's mergeability (blocked or clean), the verifier
+version the run installed (from the run log with a token, else from the workflow file on the base) and the release asset's digest; then the
+rules in force on each base and the ruleset as GitHub holds it. Read it before you keep it: it holds no token, only what GitHub reports.
 The certified commit is $certified.
 MD
 echo "fixture written to $OUT (test-repo/ and README.md)"

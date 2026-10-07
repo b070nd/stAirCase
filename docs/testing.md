@@ -181,10 +181,18 @@ blocked; and `pr-edits-the-check`, a control that rewrites the check's own workf
 case with `continue-on-error` and asserts the refusal, so its checks are green when the Action behaved: it tests the Action and
 blocks nothing. `tests/ruleset_fixture.bats` checks, with the real binary and the Action's own script against a local origin, that
 each case is decided as the README says by the configuration each base holds, and that the admission job has no
-`continue-on-error`. After your run, `demo/ruleset-evidence.sh <owner>/<repo>` (your own `gh` login; reads only) writes the
-retained record: each pull request's check conclusion, run URL and attempt, merge state, the verifier version the run
-installed, the release asset's digest, and the ruleset as GitHub holds it. Tested here against a stand-in `gh`. **The GitHub
+`continue-on-error`. After your run, `demo/ruleset-evidence.sh <owner>/<repo>` (curl and jq, no `gh`; a public repository needs no login, a private one
+or the run logs and bypass list need a read-only `GITHUB_TOKEN`, handed to curl on stdin) writes the retained record: each
+pull request's check conclusion, run URL and attempt, mergeability, the verifier version the run installed, the release asset's
+digest, the rules in force on each base and the ruleset as GitHub holds it. Tested here against a stand-in `curl`. **The GitHub
 half has not been run**: no result is claimed, and none is retained yet.
+
+**Reading a release candidate's retained CI evidence.** The CI run of the default branch keeps `evidence-linux-<sha>` and the
+release run keeps `release-gate`. Download both from the run pages in a browser (Artifacts, at the bottom; no `gh`, no token), then
+`./demo/ci-evidence-check.sh <full sha> evidence-linux-<sha>.zip release-gate.zip` reads the two files (zip or JSON, no network)
+and refuses unless the evidence is of that exact commit, made on Linux on a clean tree, not partial, with nothing failed or
+skipped, and the gate's run is a successful push run of the default branch of this repository for that commit; it prints the run
+id, URL and attempt and every step's status, including what was not run. `tests/ci_evidence_check.bats` pins each refusal.
 
 **Which CI run releases.** The release workflow's gate (`packaging/release-gate.sh`) accepts
 only a successful run of the CI workflow that was a `push` to the default branch of this
