@@ -87,6 +87,13 @@ read, removed when the run ends; they never appear on a command line.
   as unsandboxed and the change reaches CAL 2. On Linux, Claude Code's sandbox needs
   bubblewrap (see its [sandboxing guide](https://code.claude.com/docs/en/sandboxing)).
 
+## If the run is interrupted
+
+`staircase resume N` carries on with the same run and resumes Claude Code's own session, so it remembers the conversation
+(`--resume <session id>`; stAirCase chose the id and put it on the audit chain). That the resumed Claude Code actually remembers has not
+been verified in a retained real run (see [compatibility](compatibility.md)). `staircase recover N` commits what was approved instead.
+See [troubleshooting](troubleshooting.md#a-run-was-interrupted).
+
 ## What is recorded
 
 The run is recorded like any other: every proposal and decision on the

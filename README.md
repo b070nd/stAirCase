@@ -105,7 +105,7 @@ minutes.
 | **Reproducible, not just signed** | `staircase rebuild` (or `verify --rebuild`) reproduces a commit's tree from its approved proposals; the [specification](docs/spec/certificate-v1.md) has test vectors and an independent implementation. |
 | **Approve your way** | in the terminal, in a browser page, from a script (local HTTP API), from a service (signed webhook), with rules, or with a reviewer model; sign your decisions with an SSH key. |
 | **Approve the task, on evidence** | agree a task and its scope once, and let your checks and reviewer models decide each change inside it instead of a sample; you approve the whole change at the end. |
-| **Survives a crash** | each approval is kept before the agent hears it; `staircase recover` commits exactly what an interrupted run had approved. |
+| **Survives a crash** | each approval is kept before the agent hears it; `staircase resume` carries on with an interrupted run (Claude Code, Gemini CLI and Codex pick up their own session); `staircase recover` commits exactly what it had approved. |
 | **For teams** | rules, trusted keys and blueprints from one governance repository, pinned in every workspace; a CI check that requires certificates, from the protected branch. |
 | **Runs stay on task** | give each story the paths it may change; anything else comes to you, and a run that keeps wandering is stopped. |
 | **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |

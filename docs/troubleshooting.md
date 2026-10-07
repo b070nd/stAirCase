@@ -113,6 +113,28 @@ A commit does not mark a story as done - you do. Accept each story with
 `staircase case rollback <case-id>` removes the run's branch and worktree and keeps
 its audit record.
 
+## A run was interrupted
+
+A crash, a closed terminal or a `kill -9` ends a run before it commits. Nothing unapproved is ever committed, and everything you approved is kept.
+Two commands, with different jobs:
+
+- **`staircase resume N`** carries on with the same run: the same task, branch and worktree, under the policy and options it saved when it
+  started. What was approved stays approved, and its limits and the time already used still count. Claude Code, Gemini CLI and Codex pick up
+  their own session, so the agent remembers its conversation. It changes nothing unless every check passes.
+- **`staircase recover N`** does not run the agent again: it commits exactly what the run had approved and stops.
+
+`resume` says why when it refuses, and changes nothing:
+
+| It says | What to do |
+|---|---|
+| `the worktree of run #N holds changes nobody approved: …` | The agent changed files after its last approval. Look at them, then `staircase resume N --discard-unapproved` puts the worktree back to the approved state. They are never committed either way. |
+| `the audit chain of run #N names no … session` or `… whose own session cannot be resumed by staircase` | There is no agent session to pick up (OpenCode has none). `--fresh-context` continues with a new session that is told by the audit chain what is already approved; the chain records that it was a new session. Or `staircase recover N`. |
+| `run #N has used up its time limit … only recovered` | `staircase recover N`. |
+| `run #N was halted for drift: …` | Read it (`staircase inspect log N`), then `--ack-drift`. |
+| `the run branch … is not at the run's base` | The branch moved or was deleted after the run began; `recover` reports what it can. |
+| `run #N is still running: its process holds the run's lock, so it cannot be continued` | The run's process is alive. Wait for it, or stop it, then try again. |
+| `run #N saved no options` (or `no plan`, `no policy`) `when it started … recover it instead` | The run began before runs could be continued. Only `staircase recover N` is possible. |
+
 ## Still stuck?
 
 Run the command again with `--debug` (for `staircase run`) to log every agent

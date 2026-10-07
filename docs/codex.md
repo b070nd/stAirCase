@@ -52,6 +52,13 @@ nothing is committed.
   flag lets them run without review during the session.
 - Token usage and cost are not recorded yet for Codex runs.
 
+## If the run is interrupted
+
+`staircase resume N` carries on with the same run and resumes Codex's own thread (`codex exec resume <thread id>`; the id comes from the
+first event of `codex exec --json` and is on the audit chain). Codex keeps the thread locked for about a minute after a kill, so
+stAirCase waits for up to three minutes. `staircase recover N` commits what was approved instead. See
+[troubleshooting](troubleshooting.md#a-run-was-interrupted).
+
 ## What is recorded
 
 Every proposal and decision is on the [audit chain](audit.md), including which changes
