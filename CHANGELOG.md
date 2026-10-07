@@ -48,7 +48,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   refuses any key but `true` and `false` (HTTP 422).** Found by running the evaluation for real, fixed, and the stand-in test now pins the keys.
   Laya was then measured for the first time ([results](docs/evaluation/README.md)): on 24 synthetic changes, at the 0.5 threshold, it missed 11
   (`typed-decisions`) and 9 (`english`) of 12 risky changes and flagged no safe one. A signal can only add a person's review, but as configured
-  it is not a safeguard. Jev through the gateway is not measured.
+  it is not a safeguard. Jev through the gateway is not measured, by the owner's decision.
 - **Stale "not yet run against a real login" statements removed.** The README, the documentation index, the roadmap, `docs/gemini.md` and the
   `staircase gemini` and `staircase opencode` help still said so after real runs of Gemini CLI 0.46.0 and OpenCode 1.18.35; they now say what the
   real runs showed, and that both stay experimental.
