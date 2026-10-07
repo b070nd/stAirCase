@@ -44,6 +44,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **OpenCode was run for real once, and its documentation corrected.** On OpenCode 1.18.35 with `openai/gpt-4.1-mini`
+  (cost $0.0125): a governed write, and a rejection with its retry, certified at CAL 3 and verified and rebuilt in a fresh clone
+  (`./demo/smoke.sh opencode`, [record](docs/release-evidence/opencode-1.18.35.md)). It stays experimental: only `write`, one version
+  and model, no ungated-change control. Its login is a file in OpenCode's data folder, so a command run with `--allow-shell-exec`
+  (no sandbox) can read it; the documentation said the opposite.
 - **The ruleset fixture now has a real required check.** `demo/ruleset-fixture.sh` builds `staircase-admission`, a job whose
   refusal fails it (the old harness asserted the refusal and was green when the Action behaved), a copy per base branch
   (`main`, `other-key`, `strict`), an importable `ruleset.json` and a control pull request that edits the check's own

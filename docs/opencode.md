@@ -1,4 +1,4 @@
-# Governing OpenCode (work in progress)
+# Governing OpenCode (experimental)
 
 ```bash
 staircase opencode "add a /health endpoint"
@@ -9,9 +9,13 @@ repository, with every change decided by you, your rules or your reviewers, like
 [Claude Code](claude-code.md).
 
 **Status.** This adapter was built from OpenCode's published documentation and tested
-against a stand-in that loads and runs the generated plugin under Node, as the
-documentation describes. It has **not yet been run against a real OpenCode login**.
-Treat it as experimental until it has been.
+against a stand-in that loads and runs the generated plugin under Node. It has been run
+for real **once**, on OpenCode 1.18.35 with `openai/gpt-4.1-mini` through its own OpenAI
+login (2026-10-07, [the record](release-evidence/opencode-1.18.35.md)): one governed run, and a
+rejection followed by a retry, both committed with a valid certificate (CAL 3) that a fresh
+clone verified and rebuilt. Only OpenCode's `write` tool was exercised, there is one version
+and one model, and no control for a change nobody governed has been run. It has no native
+session resume. Treat it as experimental.
 
 ## What happens
 
@@ -50,6 +54,9 @@ OpenCode's `provider/model`.
   are not read, but plugins in the repository's `.opencode` folder still are. Do not run
   this on a repository whose `.opencode` folder you do not trust.
 - **Login.** OpenCode must already have a provider (`opencode auth login`). stAirCase does
-  not pass API keys to it, so a command it runs cannot read one.
+  not pass API keys to it, but OpenCode keeps its login in a file in your data folder
+  (`~/.local/share/opencode/auth.json`) and the run reads it from there. A command it runs
+  **without a sandbox** (`--allow-shell-exec`) can read that file, so use a key with a spending
+  limit, and do not allow commands on a task you do not trust.
 - **No company-wide template** yet: OpenCode's documentation describes no way to make a
   hook mandatory.

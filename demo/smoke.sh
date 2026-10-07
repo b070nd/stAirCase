@@ -30,11 +30,16 @@
 #                            credentials as codex; set SMOKE_CODEX_MODEL=nonexistent
 #                            for a free run that stops at the model call.
 #
+#   ./demo/smoke.sh opencode the same task as a `staircase opencode` session. Needs `opencode` on
+#                            PATH with a provider logged in (opencode auth login); SMOKE_OPENCODE_MODEL
+#                            (default openai/gpt-4.1-mini) keeps a paid run small, SMOKE_MAX_SECS (default 240)
+#                            stops a run that goes on, REJECT_FIRST=1 rejects the first proposal once.
+#
 # Each skips (exit 0) when its credentials are missing. Approvals are given
 # through the approval API; the key is passed on stdin and never printed.
 set -euo pipefail
 
-MODE="${1:?usage: smoke.sh model|claude|gemini|codex|codex-stop}"
+MODE="${1:?usage: smoke.sh model|claude|gemini|codex|codex-stop|opencode}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SMOKE_MODEL="${SMOKE_MODEL:-openai/gpt-6-astra}"
 
@@ -49,7 +54,9 @@ case "$MODE" in
           CODEX="$(command -v codex || echo /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex)"
           "$CODEX" login status >/dev/null 2>&1 \
             || { echo "⏭  smoke codex skipped: codex is not installed or not logged in"; exit 0; } ;;
-  *) echo "usage: smoke.sh model|claude|gemini|codex|codex-stop"; exit 2 ;;
+  opencode) command -v opencode >/dev/null && opencode providers list 2>&1 | grep -qE '[1-9][0-9]* credentials' \
+            || { echo "⏭  smoke opencode skipped: opencode is not installed or has no provider login"; exit 0; } ;;
+  *) echo "usage: smoke.sh model|claude|gemini|codex|codex-stop|opencode"; exit 2 ;;
 esac
 
 # shellcheck source=demo/lib.sh
@@ -111,7 +118,11 @@ run() {
   (cd "$REPO" && staircase "$@" --approval-port "$port" --approval-token t) >"$WORK/run$id.log" 2>&1 &
   RUN_PID=$!
   local api="http://127.0.0.1:$port/v1/yields" n=0 y
+  local deadline=$((SECONDS + ${SMOKE_MAX_SECS:-0}))
   while kill -0 "$RUN_PID" 2>/dev/null; do
+    if [ "${SMOKE_MAX_SECS:-0}" -gt 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      kill "$RUN_PID" 2>/dev/null || true; tail -20 "$WORK/run$id.log"; die "run #$id went on past SMOKE_MAX_SECS=$SMOKE_MAX_SECS and was stopped"
+    fi
     y="$(curl -s -H 'Authorization: Bearer t' "$api" 2>/dev/null | "$DEMOTOOL" first-yield || true)"
     if [ -n "$y" ]; then
       curl -s -H 'Authorization: Bearer t' "$api/$y" | "$DEMOTOOL" show-yield
@@ -173,6 +184,10 @@ case "$MODE" in
     PASS_ARGS=(); for v in ${SMOKE_GEMINI_PASS:-}; do PASS_ARGS+=(--pass-env "$v"); done
     [ -z "${SMOKE_GEMINI_MODEL:-}" ] || PASS_ARGS+=(--model "$SMOKE_GEMINI_MODEL")
     run 1 40 gemini --yes --allow GREETING.md ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$TASK" ;;
+  opencode)
+    say "OpenCode, every tool call governed by its plugin"
+    PASS_ARGS=(--model "${SMOKE_OPENCODE_MODEL:-openai/gpt-4.1-mini}")
+    SMOKE_MAX_SECS="${SMOKE_MAX_SECS:-240}" run 1 0 opencode --yes --allow GREETING.md "${PASS_ARGS[@]}" "$TASK" ;;
   codex-stop)
     STOP_CHECK='test -f NOTES.txt && grep -q STAIRCASE-CHECK NOTES.txt || { echo "NOTES.txt must mention the word STAIRCASE-CHECK"; exit 1; }'
     say "Codex: a held and rejected approval, then a Stop refused until the check passes"

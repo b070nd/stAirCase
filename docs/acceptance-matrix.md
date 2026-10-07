@@ -35,7 +35,7 @@ standards body, and cannot be closed by tests alone).
 | Promise | Status | Source | Tests and evidence | Not shown |
 |---|---|---|---|---|
 | Gemini CLI | partial | `internal/agent/gemini.go` | `TestGemini_every_tool_call_is_governed`, `_without_its_hooks_nothing_is_kept`, `TestGemini_gets_a_credential_only_by_name`; real runs on 0.46.0 | One version and model; no ungated-change control |
-| OpenCode | partial | `internal/agent/opencode.go` | `TestOpenCode_every_tool_call_is_governed`, `_without_its_plugin_nothing_is_kept`, `_plugin_fails_closed` | Never run against the real program; not installed here (external) |
+| OpenCode | partial | `internal/agent/opencode.go` | `TestOpenCode_every_tool_call_is_governed`, `_without_its_plugin_nothing_is_kept`, `_plugin_fails_closed` | One real run on OpenCode 1.18.35 (`./demo/smoke.sh opencode`: a governed write, and a rejection with its retry, verified in a fresh clone, [record](release-evidence/opencode-1.18.35.md)); only the `write` tool, one version and model, no ungated-change control, no native session resume |
 | Review-after capture (Cursor, CAL 2) | done | `internal/agent/review.go`, `cmd/staircase/seal.go` (`attach` and `seal`) | `TestSeal_certifies_the_staged_changes_on_your_branch`, `TestAttach_stops_plain_commits` | |
 | `staircase review <pull request>` | done | `cmd/staircase/review.go` | `TestReview_governs_changes_made_elsewhere`, `_keeps_newer_work` | |
 | Templates for managed hook settings | done | `internal/agent/managed.go`, `cmd/staircase/hooktemplate.go` | `TestHookTemplate` | Not deployed to a real managed host |
