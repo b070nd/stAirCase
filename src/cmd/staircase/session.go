@@ -62,7 +62,7 @@ includes it) and logged in.`,
 
 var geminiCmd = &cobra.Command{
 	Use:   "gemini <task>",
-	Short: "Run Gemini CLI on a task in this repository, with every change decided by you (work in progress)",
+	Short: "Run Gemini CLI on a task in this repository, with every change decided by you (experimental)",
 	Long: `Runs Google's Gemini CLI on the task in a separate worktree of the git repository
 you are in. Every file change and command it wants to make comes to you first
 (commands need --allow-shell-exec); every other tool is refused. At the end,
@@ -88,8 +88,9 @@ in. Every file edit, patch and command it wants to make comes to you first
 exactly the approved changes are committed on a new branch, staircase/run-N;
 your checkout is not touched.
 
-Work in progress: built from OpenCode's documentation and tested against a
-stand-in that runs the generated plugin, not yet against a real login. OpenCode
+Experimental: run once against the real OpenCode 1.18.35 (one governed run, and a
+rejection with its retry, verified in a fresh clone); otherwise tested against a stand-in
+that runs the generated plugin, and no control for an ungated change has been run. OpenCode
 must be installed and have a provider logged in (opencode auth login). Its
 commands run without a sandbox, so a run with commands reaches CAL 2. Plugins in
 the repository's .opencode folder still load beside stAirCase's (OpenCode cannot
