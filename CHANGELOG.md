@@ -44,6 +44,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **The control for bytes nobody approved was run against a real Gemini CLI** (0.46.0, `./demo/smoke.sh gemini-ungated`): a stray file
+  written into the worktree during the run failed it with `unapproved_worktree_change`, nothing was committed, `staircase recover` delivered only
+  the approved file, and a fresh clone verified and rebuilt it. The test wrote the file, not the agent; Claude Code, Codex and OpenCode have no such run
+  ([record](docs/release-evidence/gemini-0.46.0-ungated.md)).
 - **OpenCode was run for real once, and its documentation corrected.** On OpenCode 1.18.35 with `openai/gpt-4.1-mini`
   (cost $0.0125): a governed write, and a rejection with its retry, certified at CAL 3 and verified and rebuilt in a fresh clone
   (`./demo/smoke.sh opencode`, [record](docs/release-evidence/opencode-1.18.35.md)). It stays experimental: only `write`, one version

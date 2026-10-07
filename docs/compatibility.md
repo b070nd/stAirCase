@@ -49,6 +49,7 @@ tests drive, not against the real program.
 | Stop refused until a failing check passes | yes: the first attempt to stop blocked by the check, the second allowed | stand-in only | not applicable | not applicable |
 | Commit verified and rebuilt by a fresh clone with only the public key | yes | yes (real run, both runs above: CAL 3, tree identical on rebuild) | yes (real run, both runs: CAL 3, tree identical on rebuild) | yes (real run, both runs: CAL 3, tree identical on rebuild) |
 | Its own session is resumed after a kill (`staircase resume`, native) | session id read from `thread.started` of `codex exec --json`, resumed with `codex exec resume <id>`: real probe on 0.159 (the resume is refused for about a minute after a kill while the dead run holds the thread, so stAirCase retries for up to three minutes); adapter tests against a stand-in | `--session-id` and `--resume` accepted by 2.1.236 and the session file persists after a kill -9 (real probe); that the resumed agent remembers its conversation is **not verified** (no valid credential at the time), adapter tests against a stand-in | yes (real run on 0.46.0): killed mid-run, resumed with `--resume <id>` and the agent remembered its context | no native resume: refused, `--fresh-context` only |
+| A file written around the hooks is not committed (the test writes it into the worktree during the run) | not run | not run | yes (real run, 0.46.0, 2026-10-07): the run failed with `unapproved_worktree_change` and committed nothing; `recover` delivered only the approved file; fresh-clone verify and rebuild passed | not run |
 | Commands: no network, no credentials | Codex's own sandbox plus stAirCase's checks; not probed with a real model | not run | not run | not run |
 | Only staircase's settings are read (a repository's own hooks are ignored) | not applicable | yes, logged out | not run | not run |
 
@@ -78,8 +79,9 @@ nothing about the current adapter. And the real runs used cheap models on one-li
 show the mechanics work (an approval, a held approval, a rejection and its retry, a verify and a
 rebuild in a fresh clone), not how well a model does real work, and not that every tool call of
 a host is governed. Each real run exercised one tool, a file write. The other tools are covered by
-stand-in agents and synthetic hosts, and no run of a real host has yet tried to change a file
-around the hooks (an ungated change), which is what the end-of-run check is for.
+stand-in agents and synthetic hosts. One real run (Gemini CLI 0.46.0) had a file written into its
+worktree around the hooks (an ungated change), which is what the end-of-run check is for; the file was
+written by the test, not by the agent, and none has been done for Claude Code, Codex or OpenCode.
 
 **Repeat them.** Each needs the agent installed and logged in, costs a few cents with a
 small model, and cleans up after itself:
