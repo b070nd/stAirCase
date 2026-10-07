@@ -69,9 +69,10 @@ you are in. Every file change and command it wants to make comes to you first
 exactly the approved changes are committed on a new branch, staircase/run-N;
 your checkout is not touched.
 
-Work in progress: built from Gemini CLI's documentation and tested against a
-stand-in, not yet against a real login. Gemini CLI must be installed and logged
-in. Its commands run without a sandbox, so a run with commands reaches CAL 2.
+Experimental: run for real on Gemini CLI 0.46.0 (a governed run, a held approval, a
+rejection with its retry, a resume of its own session, and the control for a change
+written around the hooks), otherwise tested against a stand-in. Gemini CLI must be
+installed and logged in. Its commands run without a sandbox, so a run with commands reaches CAL 2.
 Hooks in your own or the repository's .gemini settings still run beside
 stAirCase's (Gemini cannot be told to ignore them); a run fails if Gemini never
 calls stAirCase's hooks.`,
@@ -81,7 +82,7 @@ calls stAirCase's hooks.`,
 
 var opencodeCmd = &cobra.Command{
 	Use:   "opencode <task>",
-	Short: "Run OpenCode on a task in this repository, with every change decided by you (work in progress)",
+	Short: "Run OpenCode on a task in this repository, with every change decided by you (experimental)",
 	Long: `Runs OpenCode on the task in a separate worktree of the git repository you are
 in. Every file edit, patch and command it wants to make comes to you first
 (commands need --allow-shell-exec); every other tool is refused. At the end,

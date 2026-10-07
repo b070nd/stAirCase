@@ -114,9 +114,9 @@ Six contracts stay stable and versioned while everything around them may change:
 ### Phase 2 - v0.4: any agent, anywhere
 
 - **Gemini CLI** and **OpenCode** support. *Gemini CLI has been run for real (0.46.0: a governed run, a held
-  approval, a rejection and its retry, a verify and a rebuild in a fresh clone); OpenCode is built from its
-  documentation and has not been run against the real program (`staircase gemini`, `staircase opencode`;
-  [compatibility](docs/compatibility.md)).*
+  approval, a rejection and its retry, a verify and a rebuild in a fresh clone, a resume of its own session, and the control for a change
+  written around the hooks); OpenCode has been run for real once (1.18.35: a governed `write`, and a rejection with its retry, verified and
+  rebuilt in a fresh clone) and stays experimental (`staircase gemini`, `staircase opencode`; [compatibility](docs/compatibility.md)).*
 - **Review-after** capture, used for **Cursor** (CAL 2). *Done: `staircase seal`
   works with any agent that edits your checkout.*
 - `staircase review <pull request>` for cloud agents.

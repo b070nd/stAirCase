@@ -1,4 +1,4 @@
-# Governing Gemini CLI (work in progress)
+# Governing Gemini CLI (experimental)
 
 ```bash
 staircase gemini "add a /health endpoint"
@@ -9,7 +9,7 @@ your repository, with every change decided by you, your rules or your reviewers,
 [Claude Code](claude-code.md).
 
 **Status.** This adapter was built from Gemini CLI's published documentation and tested
-against a stand-in that behaves as the documentation says. It has been run once for real (see [compatibility](compatibility.md)): a governed run, a held approval, a rejection and its retry, and a fresh-clone verify and rebuild. Treat it as experimental still: one version, one model, a small task.
+against a stand-in that behaves as the documentation says. It has been run for real (see [compatibility](compatibility.md)): a governed run, a held approval, a rejection and its retry, a fresh-clone verify and rebuild, a resume of its own session, and the control for a change written around the hooks (by the test, not by the agent). Treat it as experimental still: one version, one model, small tasks.
 
 ## What happens
 
