@@ -55,8 +55,8 @@ scripts). It then runs Claude Code in
 a separate worktree and shows you every change it wants to make: press **`y`** to
 approve, **`n`** to reject with a reason. At the end, exactly the approved changes
 are on a new branch, `staircase/run-N`, and your checkout is untouched. If the run is
-interrupted (a crash, a killed terminal), `staircase recover N` commits exactly what it had
-approved. Continue with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).
+interrupted (a crash, a killed terminal), `staircase resume N` carries on with the same task, and `staircase recover N` commits exactly what it had
+approved ([which to use](docs/troubleshooting.md#a-run-was-interrupted)). Continue with [step 5](#5-review-and-accept). More: [Governing Claude Code](docs/claude-code.md).
 With OpenAI's Codex it is the same: `staircase codex "..."` ([Governing Codex](docs/codex.md)).
 
 The rest of this page sets up stAirCase's own agents, with the model provider of

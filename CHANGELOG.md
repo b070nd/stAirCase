@@ -44,6 +44,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`staircase resume` is in the front-door documentation.** The README, QUICKSTART, the Claude Code, Gemini CLI and Codex pages and
+  [troubleshooting](docs/troubleshooting.md#a-run-was-interrupted) said only `recover`; they now say when to use `resume`, what
+  each of its refusals means and what to do.
 - **The control for bytes nobody approved was run against a real Gemini CLI** (0.46.0, `./demo/smoke.sh gemini-ungated`): a stray file
   written into the worktree during the run failed it with `unapproved_worktree_change`, nothing was committed, `staircase recover` delivered only
   the approved file, and a fresh clone verified and rebuilt it. The test wrote the file, not the agent; Claude Code, Codex and OpenCode have no such run

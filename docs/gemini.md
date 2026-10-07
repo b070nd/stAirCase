@@ -50,6 +50,12 @@ All the options of `staircase claude` work (`--allow`, `--check`, `--validator`,
   worktree is a new folder every time, so stAirCase starts it with `--skip-trust`. That adds nothing to the
   warning above: the repository's `.gemini` settings already ran beside stAirCase's.
 
+## If the run is interrupted
+
+`staircase resume N` carries on with the same run and resumes Gemini CLI's own session (`--resume <session id>`; stAirCase chose the id and
+put it on the audit chain). A real run killed mid-way and resumed remembered its context. `staircase recover N` commits what was approved
+instead. See [troubleshooting](troubleshooting.md#a-run-was-interrupted).
+
 ## Company-wide
 
 `staircase hook-template gemini --bin /opt/homebrew/bin/staircase` prints a `settings.json`
