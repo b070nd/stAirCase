@@ -44,6 +44,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **The ruleset fixture now has a real required check.** `demo/ruleset-fixture.sh` builds `staircase-admission`, a job whose
+  refusal fails it (the old harness asserted the refusal and was green when the Action behaved), a copy per base branch
+  (`main`, `other-key`, `strict`), an importable `ruleset.json` and a control pull request that edits the check's own
+  workflow; the old harness stays, labelled conformance. `demo/ruleset-evidence.sh <owner>/<repo>` (curl and jq, no `gh`) reads back each pull request's check, run,
+  attempt, mergeability, verifier version and release digest, the rules in force and the ruleset; `demo/ci-evidence-check.sh` reads a
+  release candidate's retained Linux evidence and release-gate result from downloaded files and refuses anything short of the exact
+  commit built, passed and gated by a push run of the default branch. Not yet run in GitHub.
 - **A decision model's invalid answer can no longer read as a reassuring one.** A boolean answer with no probability (or `null`),
   one outside 0 to 1, one of the wrong type, or a choice that was not offered is now an error, so the change goes to a person; a
   missing `risky` probability used to read as 0, "not risky". `jeveval -out` keeps a report with the command, server, tool version,

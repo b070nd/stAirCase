@@ -91,7 +91,7 @@ standards body, and cannot be closed by tests alone).
 | Check | Needs |
 |---|---|
 | V1: real ungated-change controls and retained fixtures for Claude and Gemini; OpenCode | The owner's authorization, installs and logins |
-| V2: the Action under a protected-repository ruleset, with a required check that blocks the merge | The owner's test repository |
+| V2: the Action under a protected-repository ruleset, with a required check that blocks the merge | The owner's test repository (the fixture, `ruleset.json` and `ruleset-evidence.sh` are ready, [testing](testing.md); not run in GitHub) |
 | V2: reading the retained Linux `evidence.json` and `release-gate.json` | An authenticated download |
 | Jev and Laya evaluation numbers | Gateway account, a local Laya |
 | in-toto proposal | A person to submit it |

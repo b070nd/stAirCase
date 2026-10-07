@@ -374,7 +374,9 @@ result with `staircase seal`. A pull request from a fork has no notes in your
 repository (the contributor cannot push them there) and fails closed. Notes are
 ordinary refs: anyone who can push to them can overwrite a note, so restrict who may
 push `refs/notes/staircase*`. None of this has been exercised against a real
-organization ruleset; do that once with a test repository before relying on it.
+organization ruleset; do that once with a test repository before relying on it
+(`demo/ruleset-fixture.sh` builds one, with a required check that fails on a refusal and a ruleset to import; see
+[testing](testing.md)). A pull request that edits the check's own workflow runs its own version of it: protect `.github/`.
 
 The same check runs locally: `staircase verify main..HEAD --all --min-cal 3`.
 
