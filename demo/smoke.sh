@@ -34,6 +34,12 @@
 #                            PATH with a provider logged in (opencode auth login); SMOKE_OPENCODE_MODEL
 #                            (default openai/gpt-4.1-mini) keeps a paid run small, SMOKE_MAX_SECS (default 240)
 #                            stops a run that goes on, REJECT_FIRST=1 rejects the first proposal once.
+#   ./demo/smoke.sh gemini-ungated
+#                            the control for bytes nobody approved, against a real Gemini CLI: after the
+#                            first approval a stray file is written into the run's worktree (as a tool the
+#                            hooks do not govern would). The run must FAIL with unapproved_worktree_change
+#                            and commit nothing; `staircase recover` must then deliver exactly the approved
+#                            file, not the stray one, and a fresh clone must verify it. Same credentials as gemini.
 #
 # Each skips (exit 0) when its credentials are missing. Approvals are given
 # through the approval API; the key is passed on stdin and never printed.
@@ -48,7 +54,7 @@ case "$MODE" in
   claude) AUTH="$(claude auth status 2>/dev/null || true)"   # captured: grep -q in a pipe would SIGPIPE it
           [[ "$AUTH" =~ \"loggedIn\":\ *true ]] \
             || { echo "⏭  smoke claude skipped: the claude CLI is not installed or not logged in"; exit 0; } ;;
-  gemini) command -v gemini >/dev/null && { [ -n "${SMOKE_GEMINI_PASS:-}" ] || [ -f "$HOME/.gemini/oauth_creds.json" ]; } \
+  gemini|gemini-ungated) command -v gemini >/dev/null && { [ -n "${SMOKE_GEMINI_PASS:-}" ] || [ -f "$HOME/.gemini/oauth_creds.json" ]; } \
             || { echo "⏭  smoke gemini skipped: gemini is not installed, or has no login and SMOKE_GEMINI_PASS is not set"; exit 0; } ;;
   codex|codex-stop)
           CODEX="$(command -v codex || echo /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex)"
@@ -132,12 +138,18 @@ run() {
         curl -s -X POST -H 'Authorization: Bearer t' -d '{"feedback":"not like this, try again"}' "$api/$y/reject" >/dev/null
       else
         curl -s -X POST -H 'Authorization: Bearer t' -d '{"feedback":"smoke"}' "$api/$y/approve" >/dev/null
+        # STRAY=<name>: write a file nobody approved into the run's worktree, as an ungoverned tool would
+        [ "$n" = 0 ] && [ -n "${STRAY:-}" ] && printf 'bytes nobody approved\n' >"$STAIRCASE_DIR/worktrees/run-$id/$STRAY"
       fi
       n=$((n + 1))
     fi
     sleep 0.2
   done
-  wait "$RUN_PID" || { tail -20 "$WORK/run$id.log"; die "run #$id failed"; }
+  if ! wait "$RUN_PID"; then
+    RUN_PID=""
+    [ -n "${EXPECT_FAILED:-}" ] && { echo "  run #$id failed, as the control expects"; return 0; }
+    tail -20 "$WORK/run$id.log"; die "run #$id failed"
+  fi
   RUN_PID=""
   local want="${WANT_FILE:-GREETING.md}"
   git -C "$REPO" cat-file -e "staircase/run-$id:$want" 2>/dev/null || die "run #$id did not commit $want"
@@ -188,6 +200,22 @@ case "$MODE" in
     say "OpenCode, every tool call governed by its plugin"
     PASS_ARGS=(--model "${SMOKE_OPENCODE_MODEL:-openai/gpt-4.1-mini}")
     SMOKE_MAX_SECS="${SMOKE_MAX_SECS:-240}" run 1 0 opencode --yes --allow GREETING.md "${PASS_ARGS[@]}" "$TASK" ;;
+  gemini-ungated)
+    say "Gemini CLI: a stray write nobody approved is not committed"
+    PASS_ARGS=(); for v in ${SMOKE_GEMINI_PASS:-}; do PASS_ARGS+=(--pass-env "$v"); done
+    [ -z "${SMOKE_GEMINI_MODEL:-}" ] || PASS_ARGS+=(--model "$SMOKE_GEMINI_MODEL")
+    STRAY=STRAY.txt EXPECT_FAILED=1 SMOKE_MAX_SECS="${SMOKE_MAX_SECS:-240}" run 1 0 gemini --yes --allow GREETING.md ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$TASK"
+    staircase inspect log 1 --full | grep -q unapproved_worktree_change || die "the chain does not record the unapproved worktree change"
+    echo "  ✓ the run failed and the chain records unapproved_worktree_change"
+    [ "$(git -C "$REPO" rev-list --count main..staircase/run-1 2>/dev/null || echo 0)" = 0 ] || die "a commit was made although bytes nobody approved were in the worktree"
+    echo "  ✓ nothing was committed"
+    (cd "$REPO" && staircase recover 1 >"$WORK/recover.log" 2>&1) || { cat "$WORK/recover.log"; die "recover refused"; }
+    git -C "$REPO" cat-file -e staircase/run-1:GREETING.md 2>/dev/null || die "recover did not deliver the approved file"
+    if git -C "$REPO" cat-file -e staircase/run-1:STRAY.txt 2>/dev/null; then die "the stray file reached the commit"; fi
+    echo "  ✓ recover delivered the approved GREETING.md and not STRAY.txt:"
+    git -C "$REPO" show staircase/run-1:GREETING.md | sed 's/^/    │ /'
+    staircase audit export 1 >/dev/null && staircase audit verify "$STAIRCASE_DIR/audit/run-1.checkpoint.json"
+    fresh_verify 1 ;;
   codex-stop)
     STOP_CHECK='test -f NOTES.txt && grep -q STAIRCASE-CHECK NOTES.txt || { echo "NOTES.txt must mention the word STAIRCASE-CHECK"; exit 1; }'
     say "Codex: a held and rejected approval, then a Stop refused until the check passes"

@@ -319,12 +319,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v0.6.0   # the trust rules below need 0.6.0; 0.5.0 reads the key from the checkout
+      - uses: b070nd/stAirCase@v0.11.0   # use the release you have verified; the trust rules below need 0.6.0 or later
         with:
+          version: v0.11.0                           # the verifier that runs, pinned (it is also the action's own tag here)
           key: .github/staircase.pub
+          all: true                                  # every commit needs a certificate (the default)
           allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4
           min-cal: 3
-          rebuild: true                              # optional: needs a release that keeps ledger notes
+          rebuild: true                              # also replay each commit from its ledger: needs a release that keeps ledger notes
 ```
 
 The check installs the release of `staircase` the action is used at (`@v0.7.1`), or the
