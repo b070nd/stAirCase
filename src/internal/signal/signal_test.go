@@ -53,7 +53,7 @@ func TestClient_Evaluate(t *testing.T) {
 
 // TestClient_systemone: against a TypeSafe-compatible server (a local Laya, or
 // TypeSafe itself) the client uses its native shape: POST /v1/systemone,
-// booleans as "noul" with yes/no criteria, and flat answers, and it reads
+// booleans as "noul" with true/false criteria, and flat answers, and it reads
 // them into the same answers. No key is sent when there is none.
 func TestClient_systemone(t *testing.T) {
 	var got map[string]any
@@ -81,7 +81,8 @@ func TestClient_systemone(t *testing.T) {
 	qs := got["questions"].(map[string]any)
 	risky := qs["risky"].(map[string]any)
 	assert.Equal(t, "noul", risky["type"])
-	assert.Equal(t, map[string]any{"yes": "the change adds at least one of these", "no": "it adds none of these"}, risky["criteria"])
+	// a noul question's criteria are keyed "true" and "false": a real Laya (0.4.0) answers 422 to any other key
+	assert.Equal(t, map[string]any{"true": "the change adds at least one of these", "false": "it adds none of these"}, risky["criteria"])
 	assert.Equal(t, "choice", qs["kind"].(map[string]any)["type"])
 
 	c.Key = "k"

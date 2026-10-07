@@ -41,7 +41,7 @@ standards body, and cannot be closed by tests alone).
 | Templates for managed hook settings | done | `internal/agent/managed.go`, `cmd/staircase/hooktemplate.go` | `TestHookTemplate` | Not deployed to a real managed host |
 | Signed approvals with an SSH key | done | `internal/orchestrator/signed.go`, `internal/sshsig` | `TestSignedApprovals`, `_a_signature_is_good_for_one_proposal`, `TestSignCheckVerify`, `TestSignContext_does_not_outlive_its_context` | |
 | Agree on the task before it starts | done | `cmd/staircase/session.go` | `TestAgreement_says_what_will_happen`, `TestSession_approve_in_scope_needs_a_scope` | |
-| Evaluation of fast decision models (Jev, Laya) | open | `--signal`, `internal/signal`, `tools/jeveval` (24 labelled changes) | `TestSignal_only_sends_changes_to_a_person`, `TestSignal_url_talks_to_a_local_server`, `TestClient_Evaluate` | **The numbers have not been produced or published**: needs the gateway account and a local Laya (external). What a model's wrong, late or invalid answer can do is tested (`TestClient_an_invalid_answer_*`, `TestSignal_a_wrong_late_*`) and `jeveval -out` keeps a run with its provenance; see [docs/evaluation](evaluation/README.md) |
+| Evaluation of fast decision models (Jev, Laya) | partial | `--signal`, `internal/signal`, `tools/jeveval` (24 labelled changes) | `TestSignal_only_sends_changes_to_a_person`, `TestSignal_url_talks_to_a_local_server`, `TestClient_Evaluate` | **Laya measured** (2026-10-07, two checkpoints, 24 synthetic cases): at the 0.5 threshold it missed 11 and 9 of 12 risky changes and flagged no safe one ([results](evaluation/README.md)); **Jev through the gateway not run** (needs a gateway key) What a model's wrong, late or invalid answer can do is tested (`TestClient_an_invalid_answer_*`, `TestSignal_a_wrong_late_*`) and `jeveval -out` keeps a run with its provenance; see [docs/evaluation](evaluation/README.md) |
 
 ## Phase 3: scale human attention
 
@@ -52,7 +52,7 @@ standards body, and cannot be closed by tests alone).
 | Gates as evidence (`--check`, `--validator`) | done | `checks.go`, `evidence.go`, `validator.go` | `TestRun_says_what_evidence_the_commit_has`, `TestRun_require_evidence`, `TestCheckTimeout`, `TestApproveOnEvidence_checks_see_the_proposed_state` | |
 | A definition of done (Stop refused until checks pass) | partial | `done.go` | `TestDone_gives_up_after_a_few_attempts`; real Codex run | Real Claude/Gemini runs of the Stop hook are not recorded |
 | Guards: dependencies, hidden Unicode, secrets | done | `guard.go` | `TestGuards_send_risky_changes_to_a_person`, `TestGuards_secret_patterns`, `TestSensitive_files`, `TestNoHiddenUnicode` | |
-| Decision models as signals that only make decisions stricter | done | `signal.go` | `TestSignal_only_sends_changes_to_a_person` | Measured accuracy is the Phase 2 open item |
+| Decision models as signals that only make decisions stricter | done | `signal.go` | `TestSignal_only_sends_changes_to_a_person` | Laya was measured and is weak at the fixed threshold; Jev is not measured ([results](evaluation/README.md)) |
 | `staircase policy test` | done | `cmd/staircase/policytest.go`, `internal/policysim` | `TestPolicyReplay`, `TestPolicyScenarios_command`, `TestRun_a_checkpoint_goes_to_a_person_who_can_approve_or_reject`, `TestRun_evidence_decides_what_is_in_scope` | Scenario people answer uniformly per question kind |
 | A deeper sandbox (no network, worktree-only writes, no credential reads, no signals) | done | `internal/sandbox` | `TestShellSandbox`, `_hides_credentials`, `TestSandbox_cannot_signal_other_processes` | Landlock restricts signals only from kernel ABI 6 (documented limit G-3) |
 | Agents' own commands sandboxed (Claude Code's sandbox on) | done | `internal/agent/claudecode.go` (`sandboxSettings`, in the session settings) | `claudecode_internal_test.go` | |
@@ -93,6 +93,6 @@ standards body, and cannot be closed by tests alone).
 | V1: real ungated-change controls and retained fixtures for Claude and Gemini; OpenCode | The owner's authorization, installs and logins |
 | V2: the Action under a protected-repository ruleset, with a required check that blocks the merge | The owner's test repository (the fixture, `ruleset.json` and `ruleset-evidence.sh` are ready, [testing](testing.md); not run in GitHub) |
 | V2: reading the retained Linux `evidence.json` and `release-gate.json` | An authenticated download |
-| Jev and Laya evaluation numbers | Gateway account, a local Laya |
+| Jev evaluation numbers | A gateway key with billing |
 | in-toto proposal | A person to submit it |
 | Marketplace listing | The owner's GitHub account, agreement and two-factor authentication |
