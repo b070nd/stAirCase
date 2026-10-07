@@ -44,6 +44,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Stale "not yet run against a real login" statements removed.** The README, the documentation index, the roadmap, `docs/gemini.md` and the
+  `staircase gemini` and `staircase opencode` help still said so after real runs of Gemini CLI 0.46.0 and OpenCode 1.18.35; they now say what the
+  real runs showed, and that both stay experimental.
 - **`staircase resume` is in the front-door documentation.** The README, QUICKSTART, the Claude Code, Gemini CLI and Codex pages and
   [troubleshooting](docs/troubleshooting.md#a-run-was-interrupted) said only `recover`; they now say when to use `resume`, what
   each of its refusals means and what to do.

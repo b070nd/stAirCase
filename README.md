@@ -111,7 +111,7 @@ minutes.
 | **Setup as code** | keep agents, prompts, cases and limits as a blueprint in its own repository; runs are pinned to its exact content. |
 | **Any major model** | Anthropic, OpenAI, Google, xAI, or any model through an OpenAI-compatible gateway - mixed in one team. Budget caps per project. |
 | **Shell off by default** | agents can only ask to run commands when you allow it, and a person approves each one. |
-| **Claude Code and Codex, governed** | `staircase claude "task"` or `staircase codex "task"`: the agents you already use, with every change going through the same approvals (experimental); Gemini CLI and OpenCode are there too, still work in progress (`staircase gemini`, `staircase opencode`), and any agent that edits your checkout (Cursor) is covered by `staircase seal`. |
+| **Claude Code and Codex, governed** | `staircase claude "task"` or `staircase codex "task"`: the agents you already use, with every change going through the same approvals (experimental); Gemini CLI and OpenCode are there too (`staircase gemini`, `staircase opencode`; both have run against a real login once or twice, OpenCode is still experimental), and any agent that edits your checkout (Cursor) is covered by `staircase seal`. |
 
 ## Know the limits
 
@@ -143,10 +143,10 @@ vulnerability privately: [SECURITY.md](SECURITY.md).
 
 Where stAirCase is going: every change an AI agent makes carries a signed, verifiable
 **change certificate**, and the repository can require it. Built so far: zero-setup
-sessions for Claude Code and Codex (Gemini CLI and OpenCode in progress), the certificate and its
+sessions for Claude Code, Codex and Gemini CLI (OpenCode experimental), the certificate and its
 specification, rebuild from a ledger, signed decisions, approval on evidence, recovery,
 team governance and the CI check. Next is what only users can show: real pilots on
-sensitive repositories, and the agents that have not yet run against a real login. The full
+sensitive repositories, and more real runs of every agent. The full
 plan, what has been verified against real agents and what has not, and its reasoning are in
 **[ROADMAP.md](ROADMAP.md)** and the [compatibility table](docs/compatibility.md#which-agents-have-actually-been-run).
 
