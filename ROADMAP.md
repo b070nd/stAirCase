@@ -1,6 +1,6 @@
 # Roadmap
 
-stAirCase is pre-1.0. This page says where it is going and why. The order changes when
+stAirCase is at 1.0. This page says where it is going and why. The order changes when
 users ask for something else, and no dates are promised. Ideas and objections are
 welcome in the [issues](https://github.com/b070nd/stAirCase/issues).
 
@@ -130,8 +130,9 @@ Six contracts stay stable and versioned while everything around them may change:
   test cases. The model never decides freely: it only picks among the next steps the
   run allows, as a typed answer, and a wrong pick can only send a change to a person.
   The numbers get published. *Built: `--signal typesafe-ai/jev` (or a local Laya with
-  `--signal-url`) and `make eval-jev` with 24 labelled changes; the numbers follow once
-  the gateway account and a local Laya can run it.*
+  `--signal-url`) and `make eval-jev` with 24 labelled changes. Laya was measured on 2026-10-07 and is
+  weak at the fixed threshold; Jev through the gateway is not measured, by the owner's decision
+  ([results](docs/evaluation/README.md)).*
 
 ### Phase 3 - v0.5: scale human attention
 

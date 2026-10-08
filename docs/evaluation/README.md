@@ -10,7 +10,7 @@ This directory keeps the measured evidence for the models stAirCase advertises, 
 |---|---|---|---|---|---|
 | Laya 0.4.0 local, checkpoint `typed-decisions` | 2026-10-07 | 11 | 0 | 13/24 | [report](2026-10-07-laya-typed-decisions.md) |
 | Laya 0.4.0 local, checkpoint `english` | 2026-10-07 | 9 | 0 | 15/24 | [report](2026-10-07-laya-english.md) |
-| `typesafe-ai/jev` through the AI Gateway | | | | | **not run**: needs `LLM_GATEWAY_API_KEY` with billing |
+| `typesafe-ai/jev` through the AI Gateway | | | | | **not measured, by decision** (below) |
 
 Read these plainly. At the fixed 0.5 threshold the signal uses, Laya let almost every risky change through: the risky changes scored
 0.25 to 0.55 and the safe ones 0.16 to 0.50, and none scored high enough. It does lean the right way (in the kept tables a risky change had
@@ -26,6 +26,13 @@ key but `true` and `false` (HTTP 422), so every request failed until the client 
 How it was run: Laya 0.4.0 in a virtual environment, `laya-serve` on loopback only with a bearer key, offline (`HF_HUB_OFFLINE=1`), checkpoints
 `english` and `typed-decisions`, on macOS/arm64.
 
+## Decision: Jev is not measured
+
+On 2026-10-08 the owner decided that the Laya measurement is enough for 1.0 and that `typesafe-ai/jev` through the AI Gateway will not be
+run: it would need a paid gateway account for a model stAirCase does not ship or depend on. The gateway path (`--signal typesafe-ai/jev`)
+stays supported and is tested against stand-ins like everything else here, but **no accuracy is claimed for Jev**. Anyone with a gateway
+key can measure it with the command under "Producing a run".
+
 ## What is verified without a model
 
 The behaviour around a model is tested against fake servers, and holds whatever a real model answers
@@ -38,6 +45,7 @@ cannot approve or reject anything; it leaves the policy's decision as it was.
 ## Producing a run
 
 ```bash
+# optional, for anyone with an AI Gateway key (not run by the project, see the decision above):
 LLM_GATEWAY_API_KEY=... make eval-jev ARGS="-out docs/evaluation/$(date +%F)-jev.md"
 # a local Laya (model = the checkpoint: english, multilingual or typed-decisions):
 SIGNAL_API_KEY=... go run ./src/tools/jeveval -model typed-decisions -base http://127.0.0.1:8000 -api systemone \

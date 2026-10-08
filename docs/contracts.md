@@ -79,7 +79,7 @@ kept; the tests do not regenerate it, so they stay about the old releases.
   asked, the 0.5 threshold, the limits (1 MiB, 30 s).
 - **History:** introduced in v0.4.0; the questions and the rule that a model can only send a change to a person have
   not changed; an answer that is not what was asked (a missing or out-of-range probability, a choice that was not offered) is now an error
-  and sends the change to a person, where a missing probability used to read as 0. Measured on 24 synthetic changes (2026-10-07), Laya missed most risky ones at the 0.5 threshold; Jev is not measured ([docs/evaluation](evaluation/README.md)).
+  and sends the change to a person, where a missing probability used to read as 0. Measured on 24 synthetic changes (2026-10-07), Laya missed most risky ones at the 0.5 threshold; Jev is not measured, by decision ([docs/evaluation](evaluation/README.md)).
 - **Pinned by:** `TestSignal_only_sends_changes_to_a_person`, `TestSignal_url_talks_to_a_local_server`,
   `TestClient_Evaluate`, `TestClient_an_invalid_answer_is_an_error_never_a_safe_one`,
   `TestSignal_a_wrong_late_or_invalid_answer_only_sends_the_change_to_a_person`, `TestContract_the_decision_model_interface_is_documented`.
@@ -108,7 +108,7 @@ kept; the tests do not regenerate it, so they stay about the old releases.
 - **Not promised:** a continued run keeps the policy it started under; a changed policy applies to new runs only
   ([ADR 0005](adr/0005-durable-continuation.md)).
 
-## Before 1.0: what is still open
+## Open at 1.0
 
 | Item | Status |
 |---|---|
@@ -117,4 +117,4 @@ kept; the tests do not regenerate it, so they stay about the old releases.
 | Fixtures for v0.2.0, v0.7.0, v0.9.0, v0.11.0 | open: the neighbouring releases cover them; they can be added with `docs/spec/historical/generate.sh` |
 | Audit chain version 1 weakness | stated limit (G-2), not fixable afterwards |
 | The in-toto predicate proposal | drafted ([in-toto-predicate](spec/in-toto-predicate.md)), not submitted: it needs a person to send it |
-| Versioning at 1.0 | from 1.0 the six follow semantic versioning ([compatibility](compatibility.md)); the 1.x numbers of the Bash line (the CHANGELOG's bottom) are a different product, and the Homebrew formula's `version_scheme` already orders the Go releases after them |
+| Versioning at 1.0 | from v1.0.0 the six follow semantic versioning ([compatibility](compatibility.md)); the 1.x numbers of the Bash line (the CHANGELOG's bottom) are a different product, and the Homebrew formula's `version_scheme` already orders the Go releases after them |

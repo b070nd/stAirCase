@@ -4,16 +4,15 @@ Agents, models and stAirCase's own internals change often. Six interfaces are wh
 other tools, scripts and your CI build on, so they change carefully. This page says
 what each one is and what you can rely on.
 
-## Before and after 1.0
+## The promise, from 1.0.0
 
-stAirCase is before 1.0 (see [CHANGELOG](../CHANGELOG.md)).
+From v1.0.0 all six follow semantic versioning (releases before 1.0 are listed in the [CHANGELOG](../CHANGELOG.md)). A breaking
+change to one of them needs a new major version, or a new version of the format that is accepted alongside the old one for at
+least one major version. The change certificate v1 has been stable since it was introduced: stAirCase keeps producing it, or keeps
+accepting it after a v2 exists. Every change to the six is listed in the CHANGELOG with what to do.
 
-- **Now:** the change certificate v1 is stable. stAirCase will keep producing it,
-  or keep accepting it after a v2 exists. The other five may still change in a
-  minor version. Every change to them is listed in the CHANGELOG with what to do.
-- **From 1.0:** all six follow semantic versioning. A breaking change needs a new
-  major version, or a new version of the format that is accepted alongside the old
-  one for at least one major version.
+The promise is about these six interfaces and nothing else. The agent adapters are not part of it: they follow other programs'
+versions, and Gemini CLI and OpenCode are experimental (see below for what has been run).
 
 ## The six contracts
 

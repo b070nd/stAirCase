@@ -4,7 +4,7 @@
 > in the `staircase` binary: there is no Python process, venv, IPC socket or
 > generated script, and sections about them describe code that no longer exists.
 > The current boundary: [SECURITY.md](../SECURITY.md) and
-> [the safety boundary](safety.md). A full revision is planned before 1.0. Sections 7
+> [the safety boundary](safety.md). It stays a historical record: no full revision is part of 1.0. Sections 7
 > (coverage) and 8 (known gaps) were refreshed on 2026-10-05; the rest is as audited.
 
 **Module:** `github.com/b070nd/stAirCase`

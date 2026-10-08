@@ -3,7 +3,7 @@
 Read this before you point stAirCase at a project you care about. It says plainly
 what stAirCase guarantees, what it does not, and how to use it safely today.
 
-stAirCase is **pre-1.0**.
+stAirCase is at **1.0**: its six interfaces follow semantic versioning ([compatibility](compatibility.md)), and what it guarantees is the list below, no more.
 
 ## What stAirCase guarantees
 
