@@ -5,7 +5,7 @@ named tests that exercise it, and what is not yet shown. It is a map, not a scor
 completion percentage, and a green test run is not claimed to prove more than the tests assert.
 Test names were checked to exist; they are the evidence, the status words are the judgement.
 
-**As of** master `109bc6a` (the v1.0.0 candidate), with the core-closeout
+**As of** v1.0.0 (`109bc6a`; master since then differs only in documentation), with the core-closeout
 commits applied to the review-findings table. Update the SHA when you update a row.
 
 Status words: **done** (built and tested as described), **partial** (built, with a stated gap),

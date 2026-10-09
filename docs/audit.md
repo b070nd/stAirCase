@@ -319,9 +319,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v0.11.0   # use the release you have verified; the trust rules below need 0.6.0 or later
+      - uses: b070nd/stAirCase@v1.0.0   # use the release you have verified; the trust rules below need 0.6.0 or later
         with:
-          version: v0.11.0                           # the verifier that runs, pinned (it is also the action's own tag here)
+          version: v1.0.0                            # the verifier that runs, pinned (it is also the action's own tag here)
           key: .github/staircase.pub
           all: true                                  # every commit needs a certificate (the default)
           allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4

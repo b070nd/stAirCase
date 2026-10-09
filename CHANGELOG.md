@@ -992,7 +992,8 @@ since the first Go commits:
 ## Before the Go rewrite: the Bash line
 
 The three sections below are the releases 1.0.0 to 1.2.0 of the earlier Bash implementation of `staircase`. They are kept as history, and are not
-releases of this program: its first release is 0.2.0 above, and its 1.0.0 is the section at the top.
+releases of this program: its first release is 0.2.0 above, and its 1.0.0 is the section at the top. The Bash line's tags are not in this
+repository (the tag `v1.0.0` here is the Go program's), so these sections have no links.
 
 ## [bash 1.2.0] - 2026-03-12
 
@@ -1122,7 +1123,3 @@ Initial release.
 - Cross-platform: macOS, Linux, WSL, Docker.
 - All JSON mutations use atomic `mktemp` + `mv` writes.
 - Context JSON built with `jq -n` - special characters in case IDs are always safe.
-
-[bash 1.2.0]: https://github.com/b070nd/staircase/compare/v1.1.0...v1.2.0
-[bash 1.1.0]: https://github.com/b070nd/staircase/compare/v1.0.0...v1.1.0
-[bash 1.0.0]: https://github.com/b070nd/staircase/releases/tag/v1.0.0
