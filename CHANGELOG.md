@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Security
+
+- **Built with Go 1.26.9 and `golang.org/x/net` 0.60.0.** The v1.0.0 binary was built with Go 1.26.8 and `x/net` 0.59.0, and `govulncheck`
+  now reports twelve reachable advisories in them, published after v1.0.0's own scan passed: HTTP/2 and HTTP/1 handling in `net/http`
+  (GO-2026-6617, 6613, 6612, 6611, 6610, 6609, 6605, 6603), `net/textproto` (6608), `crypto/tls` (6607) and `html/template` (6600, 6599). They
+  concern the local servers stAirCase starts (the approval page and API, the hook server) and the HTTP clients it uses (the model gateway, Rekor,
+  the decision model). Upgrade to the release that carries this fix. The one other finding, GO-2026-5932 (`x/crypto/openpgp` is unmaintained),
+  has no fix and is not called by stAirCase.
+
 ## [1.0.0] - 2026-10-08
 
 Governed changes with verifiable evidence, and a compatibility promise. From this release the six interfaces in
