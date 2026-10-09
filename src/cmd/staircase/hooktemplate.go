@@ -21,7 +21,7 @@ staircase claude or staircase codex) and governs the calls inside one.
   claude-code  managed-settings.json (it also sets allowManagedHooksOnly, so
                user and repository hooks do not load)
   codex        the [hooks] block of the managed Codex configuration
-  gemini       Gemini CLI's system settings.json (work in progress)
+  gemini       Gemini CLI's system settings.json
 
 --bin is where staircase is installed on those machines (default: this
 program). See docs/managed.md.`,

@@ -1,7 +1,7 @@
 # Marketplace listing: checklist
 
 For the verify Action (`action.yml` at the repository root). Nothing here lists, tags or publishes anything: listing is
-the owner's step, after v1.0.0 is accepted ([readiness](v1.0.0-readiness.md)). Checked on 2026-10-07 against GitHub's
+the maintainer's step, after a release is accepted. Checked on 2026-10-07 against GitHub's
 [publishing rules](https://docs.github.com/en/actions/sharing-automations/creating-actions/publishing-actions-in-github-marketplace).
 
 ## Checked now, from this repository and GitHub's public pages
@@ -17,7 +17,7 @@ the owner's step, after v1.0.0 is accepted ([readiness](v1.0.0-readiness.md)). C
 Not stated by GitHub's page, so **not claimed**: whether a repository with workflow files (`.github/workflows`, as this one has) can be listed, and the
 icon and colour rules. The listing form validates both; if it refuses, that is the answer.
 
-## Only the owner can do
+## Only the maintainer can do
 
 - Accept the GitHub Marketplace Developer Agreement and have two-factor authentication on the account.
 - Choose the categories in the release form (proposed: Security first, Code quality second) and publish from a release.
