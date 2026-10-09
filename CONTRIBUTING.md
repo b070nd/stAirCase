@@ -58,7 +58,9 @@ lists every page.
 ## Releasing (maintainers)
 
 1. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
-   `## [X.Y.Z] - date` heading; it becomes the release notes.
+   `## [X.Y.Z] - date` heading; it becomes the release notes. In the same change set the
+   version in the pinned Action example in `docs/audit.md` and the default of
+   `demo/ruleset-fixture.sh` to `vX.Y.Z` (a test fails until they name it).
 2. Merge to `master` with CI green, then tag from `master`:
    `git tag -a vX.Y.Z -m "stAirCase vX.Y.Z" && git push origin vX.Y.Z`.
 3. The release workflow builds the archives reproducibly, signs the

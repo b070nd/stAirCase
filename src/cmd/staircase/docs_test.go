@@ -186,3 +186,38 @@ func TestNoHiddenUnicode(t *testing.T) {
 		}
 	}
 }
+
+// latestRelease is the newest released version the changelog names: the first "## [X.Y.Z]" heading under [Unreleased].
+func latestRelease(t *testing.T) string {
+	src, err := os.ReadFile(filepath.Join(repoRoot, "CHANGELOG.md"))
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^## \[(\d+\.\d+\.\d+)\] - `).FindSubmatch(src)
+	require.NotNil(t, m, "no released version in the changelog")
+	return string(m[1])
+}
+
+// TestVersionsNameTheLatestRelease: what tells a person which version to use must name the version the changelog says is the latest, so a
+// release cannot leave the documented pinned Action example, or the fixture that exercises it, on an older one. The release steps in
+// CONTRIBUTING.md say to bump both when preparing a release.
+func TestVersionsNameTheLatestRelease(t *testing.T) {
+	v := "v" + latestRelease(t)
+	pinned := func(path string, patterns ...string) {
+		src, err := os.ReadFile(filepath.Join(repoRoot, path))
+		require.NoError(t, err)
+		for _, p := range patterns {
+			assert.Contains(t, string(src), fmt.Sprintf(p, v), "%s does not name the latest release %s (%q)", path, v, p)
+		}
+	}
+	pinned("docs/audit.md", "uses: b070nd/stAirCase@%s ", "version: %s ")
+	pinned("demo/ruleset-fixture.sh", `VERSION="${2:-%s}"`, "(default version: %s)")
+}
+
+// TestChangelogHasNoLinkToAnotherProgramsRelease: the changelog keeps the earlier Bash implementation's 1.0.0 to 1.2.0 as history, but
+// a link to the tag v1.0.0 of this repository now opens this program's 1.0.0, not the Bash line's; so those sections carry no links.
+func TestChangelogHasNoLinkToAnotherProgramsRelease(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoRoot, "CHANGELOG.md"))
+	require.NoError(t, err)
+	for _, l := range strings.Split(string(src), "\n") {
+		assert.False(t, strings.HasPrefix(l, "[bash "), "a reference link for the Bash line points at a tag of this repository: %s", l)
+	}
+}

@@ -19,10 +19,10 @@
 # Nothing here pushes anything: the README it writes lists the commands for you to run in your
 # own test repository (with whatever ruleset you want to exercise).
 #
-# Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v0.11.0)
+# Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v1.0.0)
 set -euo pipefail
 OUT="${1:?usage: ruleset-fixture.sh <outdir> [version]}"
-VERSION="${2:-v0.11.0}"
+VERSION="${2:-v1.0.0}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ ! -e "$OUT" ] || { echo "$OUT exists: choose a new directory" >&2; exit 1; }
 

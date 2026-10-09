@@ -179,7 +179,9 @@ certified commit into `other-key` (wrong signer) and into `strict` (insufficient
 blocked; and `pr-edits-the-check`, a control that rewrites the check's own workflow (min-cal 1, `all: false`). The admission check runs on
 `pull_request_target`, which uses the base branch's copy of the workflow, so the edit should be ignored and the check should fail; with
 a plain `pull_request` trigger the pull request's own copy runs and the same commit passes (checked locally with the v0.11.0 Action
-script: "0 commit(s) checked"). What GitHub does is to be observed. The setup is safe only because nothing of the pull request is executed. The older **conformance harness** (`staircase-verify.yml`) runs each
+script: "0 commit(s) checked"). The fixture pins the current release (v1.0.0 by default), and the released v1.0.0 verifier and Action script
+decide its five cases as the README says (rehearsed locally on 2026-10-09: the certified range passes; no certificate, wrong signer and
+below CAL 4 are refused; the pull request that edits its check is refused by the base's copy of it). What GitHub does is to be observed. The setup is safe only because nothing of the pull request is executed. The older **conformance harness** (`staircase-verify.yml`) runs each
 case with `continue-on-error` and asserts the refusal, so its checks are green when the Action behaved: it tests the Action and
 blocks nothing. `tests/ruleset_fixture.bats` checks, with the real binary and the Action's own script against a local origin, that
 each case is decided as the README says by the configuration each base holds, and that the admission job has no
