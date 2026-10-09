@@ -76,7 +76,7 @@ standards body, and cannot be closed by tests alone).
 | The certificate format proposed to in-toto | **external** | `docs/spec/in-toto-predicate.md` (field table complete, checked by `TestContract_the_in_toto_draft_names_every_certificate_field`), `docs/spec/in-toto-proposal.md` (the text, prepared) | | Not sent: submitting it needs the maintainer; acceptance by in-toto is not promised |
 | Compatibility promise for the six contracts | done, audited | `docs/compatibility.md`, [contracts](contracts.md) | `tests/historical.bats` (a real run of each release from v0.3.0 on, verified, rebuilt and read by today's staircase), `TestContract_*` (a field or an event the docs miss fails the build) | One run per release, made with a stand-in agent; becomes semantic versioning at 1.0 |
 
-## Review findings carried from the closeout (PM-3)
+## Review findings carried from the closeout review
 
 | Finding | Status | What shows it |
 |---|---|---|
