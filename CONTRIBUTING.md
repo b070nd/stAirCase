@@ -61,7 +61,9 @@ lists every page.
    `## [X.Y.Z] - date` heading; it becomes the release notes. In the same change set the
    version in the pinned Action example in `docs/audit.md` and the default of
    `demo/ruleset-fixture.sh` to `vX.Y.Z` (a test fails until they name it).
-2. Merge to `master` with CI green, then tag from `master`:
+2. Merge to `master` with CI green, then tag from `master` (a published tag is never moved: the Go
+   checksum database and module proxy keep a version's first source for good; v1.0.0 is the one exception,
+   see the CHANGELOG):
    `git tag -a vX.Y.Z -m "stAirCase vX.Y.Z" && git push origin vX.Y.Z`.
 3. The release workflow builds the archives reproducibly, signs the
    checksums (cosign), attaches SBOMs and attests build provenance.

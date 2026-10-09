@@ -6,16 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
-### Security
-
-- **Built with Go 1.26.9 and `golang.org/x/net` 0.60.0.** The v1.0.0 binary was built with Go 1.26.8 and `x/net` 0.59.0, and `govulncheck`
-  now reports twelve reachable advisories in them, published after v1.0.0's own scan passed: HTTP/2 and HTTP/1 handling in `net/http`
-  (GO-2026-6617, 6613, 6612, 6611, 6610, 6609, 6605, 6603), `net/textproto` (6608), `crypto/tls` (6607) and `html/template` (6600, 6599). They
-  concern the local servers stAirCase starts (the approval page and API, the hook server) and the HTTP clients it uses (the model gateway, Rekor,
-  the decision model). Upgrade to the release that carries this fix. The one other finding, GO-2026-5932 (`x/crypto/openpgp` is unmaintained),
-  has no fix and is not called by stAirCase.
-
-## [1.0.0] - 2026-10-08
+## [1.0.0] - 2026-10-09
 
 Governed changes with verifiable evidence, and a compatibility promise. From this release the six interfaces in
 [compatibility](docs/compatibility.md) follow semantic versioning. What is new since 0.11.0 is below under Added and Fixed: continuing an
@@ -23,6 +14,24 @@ interrupted run (`staircase resume`, with the agent's own session for Claude Cod
 recovery, a required admission check for your own repository, and real runs of Gemini CLI and OpenCode. Read "Limits" in
 [safety](docs/safety.md) and the notes on what the real runs did and did not show in [compatibility](docs/compatibility.md): Gemini CLI and OpenCode
 are experimental, and a decision model (`--signal`) is not a safeguard as configured.
+
+**This release replaces an earlier build of the same tag.** v1.0.0 was first published on 2026-10-08 from commit `109bc6a`. The Go vulnerability
+database then published advisories against that build's toolchain and one dependency, so that release and its tag were withdrawn and published
+again on 2026-10-09. If you installed or downloaded v1.0.0 before then, replace it: run `brew update` and `brew reinstall b070nd/staircase/staircase` (if Homebrew
+reports a checksum mismatch, it is the cached first build: `brew cleanup -s b070nd/staircase/staircase`, then reinstall), or download the archive again
+and check it with `packaging/verify-release.sh v1.0.0`. The first build reports commit `109bc6a` in `staircase version`; this one reports the commit
+of the rebuilt tag. Details under Security.
+
+### Security
+
+- **Built with Go 1.26.9 and `golang.org/x/net` 0.60.0.** The first build of v1.0.0 used Go 1.26.8 and `x/net` 0.59.0, and `govulncheck`
+  reported twelve reachable advisories in them: HTTP/2 and HTTP/1 handling in `net/http` (GO-2026-6617, 6613, 6612, 6611, 6610, 6609, 6605, 6603),
+  `net/textproto` (6608), `crypto/tls` (6607) and `html/template` (6600, 6599). They concern the local servers stAirCase starts (the approval page
+  and API, the hook server) and the HTTP clients it uses (the model gateway, Rekor, the decision model). This build reports none. The one other
+  finding, GO-2026-5932 (`x/crypto/openpgp` is unmaintained), has no fix and is not called by stAirCase.
+- **A limit of Go's module system.** The Go checksum database and module proxy keep the first build's source of `v1.0.0` for good, and a tag cannot
+  change that. `go install github.com/b070nd/stAirCase/src/cmd/staircase@v1.0.0` therefore keeps resolving to the first build's source, with
+  `x/net` 0.59.0. Use the release archives or Homebrew, or build from a checkout of this tag with Go 1.26.9 or later.
 
 ### Added
 
