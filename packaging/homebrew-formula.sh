@@ -8,35 +8,39 @@ set -euo pipefail
 V="$1"; SUMS="$2"; OUT="$3"
 sum() { awk -v f="staircase_${V}_$1.tar.gz" '$2 == f {print $1}' "$SUMS" | grep -E '^[0-9a-f]{64}$' || { echo "no checksum for $1" >&2; exit 1; }; }
 U="https://github.com/b070nd/stAirCase/releases/download/v${V}"
+# every checksum first: a missing one must stop the script here (an exit inside "$(sum ...)" below would only leave the subshell and write an empty sha256)
+DARWIN_ARM64="$(sum darwin_arm64)" || exit 1
+DARWIN_AMD64="$(sum darwin_amd64)" || exit 1
+LINUX_ARM64="$(sum linux_arm64)" || exit 1
+LINUX_AMD64="$(sum linux_amd64)" || exit 1
 cat > "$OUT" <<RB
 class Staircase < Formula
   desc "Enforcement gate between AI agent plans and your codebase"
   homepage "https://github.com/b070nd/stAirCase"
-  version "${V}"
   license "MIT"
-  version_scheme 1 # the Go rewrite restarts at 0.x after the Bash 1.x line
+  version_scheme 1 # orders the Go releases after the earlier Bash 1.x line
 
   depends_on "git"
 
   on_macos do
     on_arm do
       url "${U}/staircase_${V}_darwin_arm64.tar.gz"
-      sha256 "$(sum darwin_arm64)"
+      sha256 "${DARWIN_ARM64}"
     end
     on_intel do
       url "${U}/staircase_${V}_darwin_amd64.tar.gz"
-      sha256 "$(sum darwin_amd64)"
+      sha256 "${DARWIN_AMD64}"
     end
   end
 
   on_linux do
     on_arm do
       url "${U}/staircase_${V}_linux_arm64.tar.gz"
-      sha256 "$(sum linux_arm64)"
+      sha256 "${LINUX_ARM64}"
     end
     on_intel do
       url "${U}/staircase_${V}_linux_amd64.tar.gz"
-      sha256 "$(sum linux_amd64)"
+      sha256 "${LINUX_AMD64}"
     end
   end
 
