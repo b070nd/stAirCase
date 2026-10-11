@@ -231,3 +231,23 @@ CURL
   run bash "$ROOT_DIR/demo/ruleset-evidence.sh" "o/t; rm -rf x"
   [ "$status" -eq 2 ]
 }
+
+# --- the fixture can be built under one identity (a public test repository must not carry made-up authors) ---
+
+@test "built with FIXTURE_GIT_NAME and FIXTURE_GIT_EMAIL, every commit and the certificate's requester carry that identity and nothing else" {
+  OUT="$WORK/own"
+  FIXTURE_GIT_NAME="Test Owner" FIXTURE_GIT_EMAIL="owner@example.org" \
+    run bash "$ROOT_DIR/demo/ruleset-fixture.sh" "$OUT" v1.0.0
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  ids="$(git -C "$OUT/test-repo" log --all --format='%an <%ae>%n%cn <%ce>' | sort -u)"
+  [ "$ids" = "Test Owner <owner@example.org>" ] || { echo "identities: $ids"; false; }
+  if grep -r -l -E "demo@staircase.local|fixture@example.com" "$OUT/test-repo/.git/refs" "$OUT/test-repo/.github" 2>/dev/null | grep -q .; then false; fi
+  # the certificate says who requested the change: the checkout's git email, which is the same identity
+  cd "$OUT/test-repo" && git fetch -q . 2>/dev/null || true
+  git clone -q "$OUT/test-repo" "$WORK/own-ci" 2>/dev/null
+  cd "$WORK/own-ci" && git fetch -q origin 'refs/notes/*:refs/notes/*' && git checkout -q -B head origin/pr-certified
+  git show origin/main:.github/staircase.pub >"$WORK/own-key.pub"          # the key comes from the base branch, as the Action reads it
+  run "$BATS_FILE_TMPDIR/staircase" verify head --key "$WORK/own-key.pub" --min-cal 2
+  [[ "$output" == *"owner@example.org"* ]] || { echo "$output"; false; }
+  [[ "$output" != *"demo@staircase.local"* ]]
+}

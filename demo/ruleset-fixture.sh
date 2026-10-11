@@ -19,6 +19,7 @@
 # Nothing here pushes anything: the README it writes lists the commands for you to run in your
 # own test repository (with whatever ruleset you want to exercise).
 #
+# Identity: set FIXTURE_GIT_NAME and FIXTURE_GIT_EMAIL to build every commit (and the certificate's requester) under one identity.
 # Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v1.0.0)
 set -euo pipefail
 OUT="${1:?usage: ruleset-fixture.sh <outdir> [version]}"
@@ -26,7 +27,9 @@ VERSION="${2:-v1.0.0}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ ! -e "$OUT" ] || { echo "$OUT exists: choose a new directory" >&2; exit 1; }
 
-demo_out="$(cd "$REPO_ROOT" && DEMO_KEEP=1 ./demo/run-demo.sh --auto 2>&1)"
+# the identity of every commit the fixture holds: a public test repository should carry the owner's, not a made-up one
+FIXTURE_NAME="${FIXTURE_GIT_NAME:-ruleset fixture}"; FIXTURE_EMAIL="${FIXTURE_GIT_EMAIL:-fixture@example.com}"
+demo_out="$(cd "$REPO_ROOT" && DEMO_GIT_NAME="$FIXTURE_NAME" DEMO_GIT_EMAIL="$FIXTURE_EMAIL" DEMO_KEEP=1 ./demo/run-demo.sh --auto 2>&1)"
 KEPT="$(printf '%s\n' "$demo_out" | sed -n 's/^DEMO_KEPT=//p' | tail -1)"
 [ -n "$KEPT" ] && [ -d "$KEPT/app" ] || { echo "the demo kept nothing" >&2; exit 1; }
 trap 'rm -rf "$KEPT"' EXIT
@@ -35,8 +38,8 @@ mkdir -p "$OUT"
 repo="$OUT/test-repo"
 git clone -q "$KEPT/app" "$repo" 2>/dev/null
 cd "$repo"
-git config user.email fixture@example.com
-git config user.name "ruleset fixture"
+git config user.email "$FIXTURE_EMAIL"
+git config user.name "$FIXTURE_NAME"
 git fetch -q origin 'refs/notes/*:refs/notes/*'
 certified="$(git rev-parse origin/staircase/run-1)"
 base="$(git rev-parse "$certified^")"          # the demo's base commit: the certified commit's parent

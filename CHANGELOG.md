@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **The ruleset fixture can be built under one identity.** `FIXTURE_GIT_NAME` and `FIXTURE_GIT_EMAIL` set the author and committer of every commit it
+  holds and the certificate's requester (`demo/run-demo.sh` takes `DEMO_GIT_NAME` and `DEMO_GIT_EMAIL`); the defaults are unchanged. A public test
+  repository should carry its owner's identity, not a made-up one.
 - **Dependabot is no longer used.** Its configuration (`.github/dependabot.yml`) is removed, so no update pull requests are opened or merged by a
   bot, and dependencies are updated by hand ([CONTRIBUTING](CONTRIBUTING.md)). The vulnerability scan in CI is unchanged and remains the gate.
   The three commits Dependabot's pull requests already added to the history (2026-09-27 and 2026-10-05, between released versions) stay, as
