@@ -38,6 +38,9 @@ GOOS=windows go build ./...  # the Windows build must keep compiling
   the *why*.
 - **No new dependencies without discussion.** `go.mod` is the supply-chain
   surface - model clients use the standard library, and it should stay that way.
+- **Dependencies are updated by hand**, in a normal pull request: `go get <module>@<version>`,
+  `go mod tidy`, `make check`. There is no update bot; the vulnerability scan in CI
+  (`govulncheck`) fails the build when a reachable advisory appears, and that is the signal to update.
 
 ## Writing documentation
 

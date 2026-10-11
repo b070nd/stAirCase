@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependabot is no longer used.** Its configuration (`.github/dependabot.yml`) is removed, so no update pull requests are opened or merged by a
+  bot, and dependencies are updated by hand ([CONTRIBUTING](CONTRIBUTING.md)). The vulnerability scan in CI is unchanged and remains the gate.
+  The three commits Dependabot's pull requests already added to the history (2026-09-27 and 2026-10-05, between released versions) stay, as
+  rewriting them would change released tags.
+
 ## [1.0.0] - 2026-10-09
 
 Governed changes with verifiable evidence, and a compatibility promise. From this release the six interfaces in
