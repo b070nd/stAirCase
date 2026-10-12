@@ -6,8 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The verify Action's script was not executable.** `packaging/verify-action.sh` was committed as 100644 and `action.yml` ran it directly, so
+  the Action exited 126 on a real runner (the tests ran it with `bash`). `action.yml` now runs it through `bash` and the file is 100755;
+  `tests/action_exec.bats` runs the `run:` line the way the runner does and requires every `packaging/*.sh` to be executable in git. The first real
+  GitHub run of the Action found this; the install, the attestation check, the verification and the rebuild had passed there.
+
 ### Changed
 
+- **The ruleset fixture follows what `pull_request_target` really runs.** GitHub runs the workflow of the default branch whatever the pull
+  request's base, so the fixture has one `staircase-admission.yml`, on `main`, that chooses `min-cal` from the base branch (the earlier
+  per-branch copies never ran, and the entry under 1.0.0 that calls it "the base branch's copy" was wrong). Each pull request has a head
+  commit of its own (two more certified commits are sealed), the conformance harness names the same cases, and `demo/ruleset-evidence.sh`
+  reads the verifier version from the workflow on the default branch.
 - **The ruleset fixture can be built under one identity.** `FIXTURE_GIT_NAME` and `FIXTURE_GIT_EMAIL` set the author and committer of every commit it
   holds and the certificate's requester (`demo/run-demo.sh` takes `DEMO_GIT_NAME` and `DEMO_GIT_EMAIL`); the defaults are unchanged. A public test
   repository should carry its owner's identity, not a made-up one.
