@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-12
+
+The verify Action starts on a real GitHub runner. In v1.0.0 and every earlier release that has the Action, `uses: b070nd/stAirCase@v1.0.0`
+ended at its first step with "Permission denied" (exit 126); use `@v1.0.1`. The `staircase` program itself is unchanged: its source,
+`go.mod` and `go.sum` are identical to v1.0.0, so the binaries behave the same and only `staircase version` reports a different commit. If
+you only use the command line (or Homebrew), nothing here changes what you run. The other entries are about the ruleset test fixture, the
+tests and the repository's own setup.
+
 ### Fixed
 
 - **The verify Action could not start on a real GitHub runner.** `packaging/verify-action.sh` was stored without its executable bit and `action.yml`
