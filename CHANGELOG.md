@@ -19,7 +19,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   request's base, so the fixture has one `staircase-admission.yml`, on `main`, that chooses `min-cal` from the base branch (the earlier
   per-branch copies never ran, and the entry under 1.0.0 that calls it "the base branch's copy" was wrong). Each pull request has a head
   commit of its own (two more certified commits are sealed), the conformance harness names the same cases, and `demo/ruleset-evidence.sh`
-  reads the verifier version from the workflow on the default branch.
+  reads the verifier version from the workflow on the default branch and shows each pull request's state. The Action ran under the
+  imported ruleset in GitHub on 2026-10-12 and the check passed the certified commit and refused the four others, each for its own reason
+  ([record](docs/release-evidence/ruleset-admission-2026-10-12.md)); the merge of the eligible one is the owner's step.
 - **The ruleset fixture can be built under one identity.** `FIXTURE_GIT_NAME` and `FIXTURE_GIT_EMAIL` set the author and committer of every commit it
   holds and the certificate's requester (`demo/run-demo.sh` takes `DEMO_GIT_NAME` and `DEMO_GIT_EMAIL`); the defaults are unchanged. A public test
   repository should carry its owner's identity, not a made-up one.

@@ -32,8 +32,8 @@ echo "# Admission evidence: $REPO"
 echo
 echo "Read at $(date -u +%Y-%m-%dT%H:%M:%SZ) with \`ruleset-evidence.sh\` ($([ -n "${GITHUB_TOKEN:-}" ] && echo "with a token" || echo "without a token")); the required check is \`$CHECK\`. Nothing here was edited."
 echo
-echo "| PR | head -> base | head SHA | check | run (attempt) | mergeability | verifier |"
-echo "|---|---|---|---|---|---|---|"
+echo "| PR | state | head -> base | head SHA | check | run (attempt) | mergeability | verifier |"
+echo "|---|---|---|---|---|---|---|---|"
 default_branch="$(api "repos/$REPO" 2>/dev/null | jq -r '.default_branch // empty' || true)"; default_branch="${default_branch:-main}"
 details=""; bases=""
 prs="$(api "repos/$REPO/pulls?state=all&per_page=100")"
@@ -66,7 +66,8 @@ while IFS= read -r pr; do
       digest="$(api "repos/$ACTION_REPO/releases/tags/$tag" 2>/dev/null | jq -c '[.assets[] | select(.name | test("linux_amd64.tar.gz$")) | {name, digest}]' || echo null)"
     fi
   fi
-  printf '| [#%s](%s) | %s -> %s | `%s` | %s | %s (attempt %s) | %s / %s | %s |\n' "$num" "$(jq -r .html_url <<<"$pr")" \
+  printf '| [#%s](%s) | %s | %s -> %s | `%s` | %s | %s (attempt %s) | %s / %s | %s |\n' "$num" "$(jq -r .html_url <<<"$pr")" \
+    "$(jq -r 'if .merged_at then "merged" else .state end' <<<"$pr")" \
     "$(jq -r .head.ref <<<"$pr")" "$base" "${sha:0:12}" "$conclusion" \
     "$(jq -r '.html_url // "-"' <<<"$run")" "$(jq -r '.run_attempt // "-"' <<<"$run")" \
     "$(jq -r '.mergeable_state // "unknown"' <<<"$merge")" "$(jq -r 'if .mergeable == true then "mergeable" elif .mergeable == false then "not mergeable" else "not computed" end' <<<"$merge")" "$version"

@@ -27,7 +27,7 @@ standards body, and cannot be closed by tests alone).
 | Zero setup: `staircase claude "task"` | done | `cmd/staircase/session.go` | `TestClaudeSession_needs_no_setup`, `_needs_agreement`, `_outside_a_repository` | |
 | Claude Code supported | done | `internal/agent/claudecode.go` | Stand-in agent tests, synthetic host tests; real runs on 2.1.236 ([compatibility](compatibility.md)) | Real controls for an ungated change; captured fixtures were not kept |
 | Codex CLI supported | done | `internal/agent/codex.go` | `TestCodex_edits_are_decided_first_and_command_changes_after`, `_without_its_hooks_nothing_is_kept`; real runs recorded in [compatibility](compatibility.md) | |
-| Change certificate v1: `Assisted-by:` trailer, `verify`, Action, digest-only anchoring | done | `internal/certificate`, `cmd/staircase/verify.go`, `action.yml`, `internal/audit` | `TestVerify_*`, `TestAnchorCertificate_sends_digests_only`, 13 independent vectors (`verify_vectors.py`), `tests/verify_action*.bats`, `tests/ruleset_fixture.bats` | The Action has not been run in GitHub under a required check (see V2 below) |
+| Change certificate v1: `Assisted-by:` trailer, `verify`, Action, digest-only anchoring | done | `internal/certificate`, `cmd/staircase/verify.go`, `action.yml`, `internal/audit` | `TestVerify_*`, `TestAnchorCertificate_sends_digests_only`, 13 independent vectors (`verify_vectors.py`), `tests/verify_action*.bats`, `tests/ruleset_fixture.bats` | The Action ran in GitHub under a required check on 2026-10-12; the merge itself is the owner's step (see V2 below) |
 | Lessons from rejections | done | `cmd/staircase/lessons.go`, `internal/plan` | `TestPlan_Brief_lessons`, `TestProjectLessons` | |
 
 ## Phase 2: any agent, anywhere
@@ -91,7 +91,7 @@ standards body, and cannot be closed by tests alone).
 | Check | Needs |
 |---|---|
 | V1: real ungated-change controls and retained fixtures for Claude and Gemini; OpenCode | The owner's authorization, installs and logins |
-| V2: the Action under a protected-repository ruleset, with a required check that blocks the merge | The owner's test repository (the fixture, `ruleset.json` and `ruleset-evidence.sh` are ready, [testing](testing.md); not run in GitHub) |
+| V2: the Action under a protected-repository ruleset, with a required check that blocks the merge | Observed in GitHub on 2026-10-12: the check passes the certified commit and fails the four refusals, each for its own reason, with the ruleset active and no bypass ([record](release-evidence/ruleset-admission-2026-10-12.md)). Open: the owner merges the eligible pull request and tries the blocked ones |
 | V2: reading the retained Linux `evidence.json` and `release-gate.json` | An authenticated download |
 | in-toto proposal | A person to submit it |
 | Marketplace listing | The owner's GitHub account, agreement and two-factor authentication |

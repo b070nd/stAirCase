@@ -239,8 +239,8 @@ CURL
   stub_api
   run bash "$ROOT_DIR/demo/ruleset-evidence.sh" o/t
   [ "$status" -eq 0 ] || { echo "$output"; false; }
-  [[ "$output" == *"| [#1](https://github.com/o/t/pull/1) | pr-certified -> main | \`aaaaaaaaaaaa\` | success | https://github.com/o/t/actions/runs/11 (attempt 1) | clean / mergeable | v0.11.0 (workflow on trunk) |"* ]]
-  [[ "$output" == *"| [#2](https://github.com/o/t/pull/2) | pr-no-notes -> main | \`bbbbbbbbbbbb\` | failure | https://github.com/o/t/actions/runs/22 (attempt 2) | blocked / not mergeable | v0.11.0 (workflow on trunk) |"* ]]
+  [[ "$output" == *"| [#1](https://github.com/o/t/pull/1) | open | pr-certified -> main | \`aaaaaaaaaaaa\` | success | https://github.com/o/t/actions/runs/11 (attempt 1) | clean / mergeable | v0.11.0 (workflow on trunk) |"* ]]
+  [[ "$output" == *"| [#2](https://github.com/o/t/pull/2) | open | pr-no-notes -> main | \`bbbbbbbbbbbb\` | failure | https://github.com/o/t/actions/runs/22 (attempt 2) | blocked / not mergeable | v0.11.0 (workflow on trunk) |"* ]]
   [[ "$output" == *'"digest": "sha256:abc"'* ]]
   [[ "$output" != *"sha256:def"* ]]                    # only the archive for the runner
   [[ "$output" == *'"enforcement": "active"'* ]]
