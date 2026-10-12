@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The verify Action could not start on a real GitHub runner.** `packaging/verify-action.sh` was stored without its executable bit and `action.yml`
+  ran it directly, so every use of the Action ended at the first step with "Permission denied" (exit 126), before it verified anything. This was
+  so in every release that has the Action, v1.0.0 included, and nothing noticed because the tests start the script with `bash script.sh`. It was found
+  by running the Action in a real repository (the ruleset fixture) for the first time. Now the script is stored executable, `action.yml` runs it with
+  `bash`, and a test runs the `run:` line the way the runner does and checks every script in `packaging/` is executable in git.
+
 ### Changed
 
 - **Dependabot is no longer used.** Its configuration (`.github/dependabot.yml`) is removed, so no update pull requests are opened or merged by a

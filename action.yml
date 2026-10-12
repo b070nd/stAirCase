@@ -53,4 +53,4 @@ runs:
         BASE_REF: ${{ github.base_ref }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GH_TOKEN: ${{ github.token }}
-      run: '"$GITHUB_ACTION_PATH/packaging/verify-action.sh"'
+      run: 'bash "$GITHUB_ACTION_PATH/packaging/verify-action.sh"'
