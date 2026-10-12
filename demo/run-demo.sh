@@ -62,8 +62,8 @@ APPROVAL_PORT="$("$DEMOTOOL" freeport)"
 say "Creating the product repository"
 mkdir -p "$TARGET_REPO"
 git -C "$TARGET_REPO" init -q -b main
-git -C "$TARGET_REPO" config user.email demo@staircase.local
-git -C "$TARGET_REPO" config user.name "stAirCase Demo"
+git -C "$TARGET_REPO" config user.email "${DEMO_GIT_EMAIL:-demo@staircase.local}"
+git -C "$TARGET_REPO" config user.name "${DEMO_GIT_NAME:-stAirCase Demo}"
 printf '# app\n\nStatus: draft\n' > "$TARGET_REPO/README.md"
 printf 'Old notes nobody reads.\n' > "$TARGET_REPO/OLD_NOTES.md"
 git -C "$TARGET_REPO" add -A
@@ -84,7 +84,7 @@ mkdir -p "$BLUEPRINT_REPO"
 cp -R "$REPO_ROOT/examples/blueprints/hello/." "$BLUEPRINT_REPO/"
 git -C "$BLUEPRINT_REPO" init -q -b main
 git -C "$BLUEPRINT_REPO" add -A
-git -C "$BLUEPRINT_REPO" -c user.email=demo@staircase.local -c user.name=demo commit -q -m "hello blueprint"
+git -C "$BLUEPRINT_REPO" -c user.email="${DEMO_GIT_EMAIL:-demo@staircase.local}" -c user.name="${DEMO_GIT_NAME:-demo}" commit -q -m "hello blueprint"
 note "$BLUEPRINT_REPO"
 
 say "Starting the stand-in model (an OpenAI-compatible gateway, no API key)"

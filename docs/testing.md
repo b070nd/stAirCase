@@ -170,18 +170,21 @@ and the record. The Action's own acquisition path is tested with a stand-in `gh`
 as a real Action in a real workflow.
 
 **Running the verify Action under a ruleset.** `demo/ruleset-fixture.sh <dir> [version]` builds a test repository for the real
-Action in GitHub: the offline demo's certified commit and its notes, the trusted key, and two kinds of workflow.
-The **required check** is `staircase-admission` (`staircase-admission.yml`, one job that runs the Action alone, so a refusal fails
-the check and a ruleset that requires it blocks the merge), with a copy per base branch: `main` (CAL 2), `other-key` (another
-trusted key) and `strict` (CAL 4), and `ruleset.json` to import (the check required on those three bases, no bypass actors). Its
-pull requests: the certified range rebuilt from its ledger into `main` (eligible), a commit with no certificate into `main`, the
-certified commit into `other-key` (wrong signer) and into `strict` (insufficient CAL), each of which must fail the check and be
-blocked; and `pr-edits-the-check`, a control that rewrites the check's own workflow (min-cal 1, `all: false`). The admission check runs on
-`pull_request_target`, which uses the base branch's copy of the workflow, so the edit should be ignored and the check should fail; with
-a plain `pull_request` trigger the pull request's own copy runs and the same commit passes (checked locally with the v0.11.0 Action
-script: "0 commit(s) checked"). The fixture pins the current release (v1.0.0 by default), and the released v1.0.0 verifier and Action script
-decide its five cases as the README says (rehearsed locally on 2026-10-09: the certified range passes; no certificate, wrong signer and
-below CAL 4 are refused; the pull request that edits its check is refused by the base's copy of it). What GitHub does is to be observed. The setup is safe only because nothing of the pull request is executed. The older **conformance harness** (`staircase-verify.yml`) runs each
+Action in GitHub: the offline demo's certified commit and its notes, two more certified commits sealed with the same workspace key
+(CAL 2, `staircase seal`), the trusted key, and two kinds of workflow. The **required check** is `staircase-admission`
+(`staircase-admission.yml`, one job that runs the Action alone, so a refusal fails the check and a ruleset that requires it blocks
+the merge), and `ruleset.json` to import (the check required on `main`, `other-key` and `strict`, no bypass actors). Its pull
+requests, each with a head commit of its own because GitHub attaches checks to a commit: `pr-certified` into `main` (the certified
+commit rebuilt from its ledger, eligible); `pr-no-notes` into `main` (no certificate); `pr-sealed` into `other-key` (wrong signer)
+and `pr-below-strict` into `strict` (CAL 2 against a required 4), each of which must fail the check and be blocked; and `pr-edits-the-check`, a control
+that rewrites the check's own workflow (min-cal 1, `all: false`). The admission check runs on `pull_request_target`, for which
+GitHub runs the workflow of the repository's **default branch** (`main`) whatever the pull request's base. So there is one copy,
+on `main`, which chooses `min-cal` from the base branch's name (4 for `strict`, else 2); a copy on any other branch would never run
+(an earlier version of the fixture had one per base, and the first real run checked a pull request into `strict` at CAL 2). The
+pull request's own edit of the workflow is not used, whereas under a plain `pull_request` trigger its own copy runs and the same
+commit passes (checked locally: "0 commit(s) checked"). The setup is safe only because nothing of the pull request is executed. The fixture pins the Action
+(`FIXTURE_ACTION_REF`, a release tag or a commit) and the verifier it installs (`FIXTURE_VERIFIER_VERSION`, default v1.0.0), and the
+released v1.0.0 verifier and the Action's script decide its cases as the README says, locally. What GitHub does is to be observed. The older **conformance harness** (`staircase-verify.yml`) runs each
 case with `continue-on-error` and asserts the refusal, so its checks are green when the Action behaved: it tests the Action and
 blocks nothing. `tests/ruleset_fixture.bats` checks, with the real binary and the Action's own script against a local origin, that
 each case is decided as the README says by the configuration each base holds, and that the admission job has no

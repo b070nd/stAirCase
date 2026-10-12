@@ -1,51 +1,83 @@
 #!/usr/bin/env bash
-# ruleset-fixture.sh <outdir> - build a test repository for running the real stAirCase verify
-# Action in GitHub, with the pull requests to open and what each must do.
+# ruleset-fixture.sh <outdir> [version] - build a test repository for running the real stAirCase verify
+# Action in GitHub under a ruleset, with the pull requests to open and what each must do.
 #
-# It runs the offline demo (a real run: a certified commit and its git notes), then makes a
-# repository with the trusted key and a workflow, and branches for four cases:
+# It runs the offline demo (a real run: a certified commit and its git notes), seals a second change with the same
+# workspace key (twice), then makes a repository with the trusted key and the workflows, and branches for five cases:
 #
-#   pr-certified        -> main        the certified commit, rebuilt from its ledger: the check PASSES
-#   pr-low-assurance    -> main        the same commit with min-cal 4: it must be REFUSED
-#   pr-no-notes         -> main        a commit with no certificate: it must be REFUSED
-#   pr-certified        -> other-key   a base that trusts another key: it must be REFUSED
+#   pr-certified        -> main        a certified commit (CAL 3), rebuilt from its ledger: the check PASSES
+#   pr-no-notes         -> main        a commit with no certificate: REFUSED
+#   pr-sealed           -> other-key   certified (CAL 2) by the workspace key, but the base trusts another key: REFUSED
+#   pr-below-strict     -> strict      certified (CAL 2) by the trusted key, but strict requires CAL 4: REFUSED
+#   pr-edits-the-check  -> main        an uncertified change that also turns the check down: REFUSED (the PR's edit is not used)
+#
+# Why a head commit of its own for each: GitHub attaches check runs to a COMMIT, not to a pull request, so pull requests that share a
+# head commit share their results, and a required check that must pass would be polluted by the ones that must fail.
 #
 # Two workflows, two different things:
 #   staircase-admission.yml  the REQUIRED CHECK ("staircase-admission"): the Action alone, so its refusal fails the check and a
-#                            ruleset that requires it blocks the merge. One copy per base: main (CAL 2), other-key (another
-#                            trusted key), strict (CAL 4). ruleset.json is the ruleset to import.
-#   staircase-verify.yml     the conformance harness: runs each case with continue-on-error and asserts the outcome, so every
-#                            check is GREEN when the Action did the right thing. It tests the Action; it blocks nothing.
-# Nothing here pushes anything: the README it writes lists the commands for you to run in your
-# own test repository (with whatever ruleset you want to exercise).
+#                            ruleset that requires it blocks the merge. It runs on pull_request_target, which GitHub runs from the
+#                            DEFAULT branch whatever the pull request's base: so there is one copy, on main, and it chooses
+#                            min-cal from the base branch (4 for strict, else 2). The key is read from the base branch.
+#   staircase-verify.yml     the conformance harness: runs each case with continue-on-error and asserts the outcome. It tests
+#                            the Action; it blocks nothing, and its green is not evidence (a crash is also a failure).
+# Nothing here pushes anything: the README it writes lists the commands for you to run in your own test repository.
 #
+# Environment: FIXTURE_GIT_NAME / FIXTURE_GIT_EMAIL (the identity of every commit), FIXTURE_ACTION_REF (what `uses:` names,
+# default the version: a commit SHA while a fix is not released), FIXTURE_VERIFIER_VERSION (the release the Action installs,
+# default the version).
 # Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v1.0.0)
 set -euo pipefail
 OUT="${1:?usage: ruleset-fixture.sh <outdir> [version]}"
 VERSION="${2:-v1.0.0}"
+ACTION_REF="${FIXTURE_ACTION_REF:-$VERSION}"
+VERIFIER="${FIXTURE_VERIFIER_VERSION:-$VERSION}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ ! -e "$OUT" ] || { echo "$OUT exists: choose a new directory" >&2; exit 1; }
 
-demo_out="$(cd "$REPO_ROOT" && DEMO_KEEP=1 ./demo/run-demo.sh --auto 2>&1)"
+# the identity of every commit the fixture holds: a public test repository should carry the owner's, not a made-up one
+FIXTURE_NAME="${FIXTURE_GIT_NAME:-ruleset fixture}"; FIXTURE_EMAIL="${FIXTURE_GIT_EMAIL:-fixture@example.com}"
+demo_out="$(cd "$REPO_ROOT" && DEMO_GIT_NAME="$FIXTURE_NAME" DEMO_GIT_EMAIL="$FIXTURE_EMAIL" DEMO_KEEP=1 ./demo/run-demo.sh --auto 2>&1)"
 KEPT="$(printf '%s\n' "$demo_out" | sed -n 's/^DEMO_KEPT=//p' | tail -1)"
 [ -n "$KEPT" ] && [ -d "$KEPT/app" ] || { echo "the demo kept nothing" >&2; exit 1; }
 trap 'rm -rf "$KEPT"' EXIT
 
+# Two more certified changes, made with the SAME workspace key: each staged in the demo's checkout and sealed (CAL 2, with its own
+# certificate and ledger). They are the heads of the pull requests that must be refused for a reason of trust or level, one each,
+# so that no two pull requests share a commit (a check attaches to a commit, and shared heads share and mix their results).
+app="$KEPT/app"
+base_demo="$(git -C "$app" rev-parse staircase/run-1^)"
+printf '{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}\n' >"$KEPT/.staircase/policy.json"
+seal_change() {   # <branch> <file>
+  git -C "$app" checkout -q -b "$1" "$base_demo"
+  printf 'A change accepted after it was made (staircase seal): CAL 2.\n' >"$app/$2"
+  git -C "$app" add "$2"
+  (cd "$app" && STAIRCASE_DIR="$KEPT/.staircase" NO_COLOR=1 "$KEPT/staircase" seal -m "a change accepted after it was made ($2)" --by "an editor agent" --allow "$2" --yes >"$KEPT/seal-$1.log" 2>&1) \
+    || { cat "$KEPT/seal-$1.log" >&2; echo "seal failed" >&2; exit 1; }
+}
+seal_change fixture-sealed SEALED.md
+seal_change fixture-below-strict BELOW-STRICT.md
+
 mkdir -p "$OUT"
 repo="$OUT/test-repo"
-git clone -q "$KEPT/app" "$repo" 2>/dev/null
+git clone -q "$app" "$repo" 2>/dev/null
 cd "$repo"
-git config user.email fixture@example.com
-git config user.name "ruleset fixture"
-git fetch -q origin 'refs/notes/*:refs/notes/*'
+git config user.email "$FIXTURE_EMAIL"
+git config user.name "$FIXTURE_NAME"
+git fetch -q origin '+refs/notes/*:refs/notes/*'
 certified="$(git rev-parse origin/staircase/run-1)"
+sealed="$(git rev-parse origin/fixture-sealed)"
+below="$(git rev-parse origin/fixture-below-strict)"
 base="$(git rev-parse "$certified^")"          # the demo's base commit: the certified commit's parent
+for c in "$sealed" "$below"; do
+  [ "$(git rev-parse "$c^")" = "$base" ] || { echo "a sealed commit is not on the demo's base" >&2; exit 1; }
+done
 git checkout -q -B main "$base"
 
 mkdir -p .github/workflows
 cp "$KEPT/.staircase/.signing.pub" .github/staircase.pub
 cat >.github/workflows/staircase-verify.yml <<YML
-name: stAirCase verify (ruleset fixture)
+name: stAirCase verify (ruleset fixture, conformance harness)
 on: pull_request
 permissions:
   contents: read
@@ -57,18 +89,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: b070nd/stAirCase@$VERSION
-        with: { key: .github/staircase.pub, rebuild: "true", min-cal: "2" }
+      - uses: b070nd/stAirCase@$ACTION_REF
+        with: { version: $VERIFIER, key: .github/staircase.pub, rebuild: "true", min-cal: "2" }
   below-the-required-level-is-refused:
-    if: github.head_ref == 'pr-low-assurance'
+    if: github.head_ref == 'pr-below-strict' && github.base_ref == 'strict'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - id: verify
         continue-on-error: true
-        uses: b070nd/stAirCase@$VERSION
-        with: { key: .github/staircase.pub, min-cal: "4" }
+        uses: b070nd/stAirCase@$ACTION_REF
+        with: { version: $VERIFIER, key: .github/staircase.pub, min-cal: "4" }
       - name: The Action must have refused
         run: test "\${{ steps.verify.outcome }}" = failure
   no-certificate-is-refused:
@@ -79,28 +111,28 @@ jobs:
         with: { fetch-depth: 0 }
       - id: verify
         continue-on-error: true
-        uses: b070nd/stAirCase@$VERSION
-        with: { key: .github/staircase.pub }
+        uses: b070nd/stAirCase@$ACTION_REF
+        with: { version: $VERIFIER, key: .github/staircase.pub }
       - name: The Action must have refused
         run: test "\${{ steps.verify.outcome }}" = failure
   wrong-trusted-key-is-refused:
-    if: github.head_ref == 'pr-certified' && github.base_ref == 'other-key'
+    if: github.head_ref == 'pr-sealed' && github.base_ref == 'other-key'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - id: verify
         continue-on-error: true
-        uses: b070nd/stAirCase@$VERSION
-        with: { key: .github/staircase.pub }
+        uses: b070nd/stAirCase@$ACTION_REF
+        with: { version: $VERIFIER, key: .github/staircase.pub }
       - name: The Action must have refused
         run: test "\${{ steps.verify.outcome }}" = failure
 YML
-admission() { # <min-cal>
-  cat >.github/workflows/staircase-admission.yml <<YML
+cat >.github/workflows/staircase-admission.yml <<YML
 name: staircase admission
-# pull_request_target runs the workflow of the BASE branch, so a pull request cannot edit the check it must pass. Nothing of the pull
-# request is executed: it is checked out only so that the verifier can read its commits, and the key is read from the base.
+# pull_request_target runs the workflow of the DEFAULT branch whatever the pull request's base, so a pull request cannot edit the
+# check it must pass, and this one copy decides for every base: min-cal is chosen from the base branch's name. The pull request is
+# checked out only so that the verifier can read its commits (nothing of it is executed); the key is read from the base branch.
 on: pull_request_target
 permissions:
   contents: read
@@ -112,16 +144,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: "\${{ github.event.pull_request.head.sha }}", fetch-depth: 0 }
-      - uses: b070nd/stAirCase@$VERSION
-        with: { key: .github/staircase.pub, rebuild: "true", min-cal: "$1" }
+      - uses: b070nd/stAirCase@$ACTION_REF
+        with:
+          version: $VERIFIER
+          key: .github/staircase.pub
+          rebuild: "true"
+          min-cal: "\${{ github.base_ref == 'strict' && '4' || '2' }}"
 YML
-}
-admission 2
 git add -A && git commit -q -m "the trusted key, the admission check and the conformance harness"
 
-# the certified commit is the demo's own (its certificate is a note on its hash), on the base main grew from
+# the two certified commits are the demo's own (a certificate is a note on the commit's hash), on the base main grew from
 git branch -f pr-certified "$certified"
-git branch -f pr-low-assurance "$certified"
+git branch -f pr-sealed "$sealed"
+git branch -f pr-below-strict "$below"
 # a commit with no certificate
 git checkout -q -b pr-no-notes "$base"
 echo "an agent-assisted change nobody certified" >uncertified.txt
@@ -130,14 +165,14 @@ git add uncertified.txt && git commit -q -m "an uncertified change"
 git checkout -q -b other-key main
 head -c 32 /dev/urandom >.github/staircase.pub
 git add -A && git commit -q -m "trust another key"
-# a base that requires CAL 4
+# a base that requires CAL 4 (the admission workflow on main reads the branch's name)
 git checkout -q -b strict main
-admission 4
-git add -A && git commit -q -m "require CAL 4"
-# a pull request that weakens the check from inside (the check's own workflow is in the pull request)
-git checkout -q -b pr-edits-the-check "$base"
-mkdir -p .github/workflows
-git show main:.github/workflows/staircase-admission.yml | sed 's/min-cal: "2" }/min-cal: "1", all: "false" }/' >.github/workflows/staircase-admission.yml
+echo "Pull requests into this branch need CAL 4: the admission check on main chooses min-cal from the base branch's name." >STRICT.md
+git add -A && git commit -q -m "this branch requires CAL 4"
+# a pull request that weakens the check from inside: its own copy of the workflow is not the one that runs
+git checkout -q -b pr-edits-the-check main
+sed -i.bak 's/^          min-cal: .*/          min-cal: "1"\n          all: "false"/' .github/workflows/staircase-admission.yml
+rm -f .github/workflows/staircase-admission.yml.bak
 echo "an agent-assisted change nobody certified, with the check turned down" >uncertified-edit.txt
 git add -A && git commit -q -m "an uncertified change that turns the check down"
 git checkout -q main
@@ -164,45 +199,46 @@ JSON
 cat >"$OUT/README.md" <<MD
 # stAirCase verify Action: ruleset test fixture
 
-Built by \`demo/ruleset-fixture.sh\` (verifier version: $VERSION). Nothing in it was pushed, and nothing here has been run in GitHub.
+Built by \`demo/ruleset-fixture.sh\` (the Action at \`$ACTION_REF\`, installing the verifier \`$VERIFIER\`). Nothing in it was pushed.
 
 It holds two different things. **Enforcement:** the required check \`staircase-admission\` and a ruleset that requires it, so that a
-pull request the verifier refuses cannot be merged. **Conformance:** the older \`staircase-verify\` harness, which runs the Action
-with continue-on-error and asserts it refused; its checks are green when the Action behaved, so it tests the Action and blocks nothing.
+pull request the verifier refuses cannot be merged. **Conformance:** the \`staircase-verify\` harness, which runs each case with
+continue-on-error and asserts the Action failed; it tests the Action and blocks nothing, and **its green is not evidence** (a crash is
+also a failure). Read the admission check.
 
 ## 1. Push it to YOUR test repository
 
 \`\`\`bash
 cd test-repo
 git remote add origin <the URL of your test repository>
-git push origin main other-key strict pr-certified pr-no-notes pr-edits-the-check pr-low-assurance
+git push origin main other-key strict pr-certified pr-sealed pr-below-strict pr-no-notes pr-edits-the-check
 git push origin refs/notes/staircase refs/notes/staircase-ledger   # the certificates and ledgers
 \`\`\`
 
-Let the first run of the workflow finish on a branch push or a pull request so that GitHub knows the check's name, then import
-\`ruleset.json\` (Settings, Rules, Rulesets, New ruleset, Import a ruleset). It requires a pull request and the check
-\`staircase-admission\` on main, other-key and strict, allows no bypass, and forbids deleting or force-pushing them. The ruleset
-targets branches: the notes refs are not covered by it, and the certificates are trusted by their signature, not by where they are.
+Open the pull requests below and let the check run once, so that GitHub knows the check's name; then import \`ruleset.json\`
+(Settings, Rules, Rulesets, New ruleset, Import a ruleset). It requires a pull request and the check \`staircase-admission\` on main,
+other-key and strict, allows no bypass, and forbids deleting or force-pushing them. The ruleset targets branches: the notes refs are
+not covered by it, and the certificates are trusted by their signature, not by where they are.
 
 ## 2. Open these pull requests, and read what each does
 
 | Head | Base | Required check \`staircase-admission\` | Merge | Why |
 |---|---|---|---|---|
-| pr-certified | main | passes | **eligible** | a real certified commit, rebuilt from its ledger, key trusted from main |
+| pr-certified | main | passes | **eligible** | a real certified commit (CAL 3), rebuilt from its ledger, key trusted from main |
 | pr-no-notes | main | **fails** | **blocked** | a commit with no certificate |
-| pr-certified | other-key | **fails** | **blocked** | wrong signer: the base trusts another key, so the certificate is not trusted |
-| pr-certified | strict | **fails** | **blocked** | insufficient CAL: strict requires CAL 4 |
-| pr-edits-the-check | main | **fails** (observe) | **blocked** (observe) | the pull request edits staircase-admission.yml itself (min-cal 1, all false); the base's copy of the workflow should run instead |
+| pr-sealed | other-key | **fails** | **blocked** | wrong signer: the base trusts another key, so the certificate is not trusted |
+| pr-below-strict | strict | **fails** | **blocked** | insufficient CAL: a sealed change is CAL 2, strict requires 4 |
+| pr-edits-the-check | main | **fails** | **blocked** | the pull request edits the check's own workflow (min-cal 1, all false); that edit is not used |
 
-The last row is a control. The admission check runs on \`pull_request_target\`, which uses the workflow of the **base** branch, so the
-pull request's own edit of staircase-admission.yml (min-cal 1, all false) should be ignored and the check should fail. With a plain
-\`pull_request\` trigger the pull request's own copy runs and it would pass (checked locally: the verifier then reports "0 commit(s) checked").
-Record what GitHub does. The setup is only safe because nothing of the pull request is executed: keep it that way, and do not add steps that
-run its files. Still protect \`.github/\` (a ruleset or CODEOWNERS rule that requires review) so the base's workflow cannot be changed unreviewed.
+Each scenario has its own head commit on purpose: GitHub attaches checks to a commit, so pull requests that shared one would share
+(and mix) their results, and a shared head could not be told apart in the evidence.
 
-The conformance harness also runs on these pull requests (its jobs are named certified-range-passes,
-below-the-required-level-is-refused, no-certificate-is-refused, wrong-trusted-key-is-refused). Its green is conformance of the Action,
-not admission. pr-low-assurance (the same commit at min-cal 4 into main) is its case for the CAL refusal.
+**What \`pull_request_target\` runs.** GitHub runs the workflow of the repository's **default branch** (main) for every pull request,
+whatever its base, and its \`GITHUB_SHA\` and \`GITHUB_REF\` are the default branch's. So a copy of the workflow on another branch never
+runs (an earlier version of this fixture had copies on strict and other-key, and a pull request into strict was checked at CAL 2),
+and a pull request that edits the workflow is simply not using its edit. The one copy on main chooses \`min-cal\` from the base
+branch's name. The setup is only safe because nothing of the pull request is executed: keep it that way. Protect \`.github/\` too
+(a ruleset or CODEOWNERS rule that requires review) so main's workflow cannot be changed unreviewed.
 
 ## 3. Record
 
@@ -213,8 +249,8 @@ not admission. pr-low-assurance (the same commit at min-cal 4 into main) is its 
 It reads GitHub's REST API with curl. A public test repository needs no login; for a private one, and for the run logs and the ruleset's
 bypass list, put a read-only token in \`GITHUB_TOKEN\` (it goes to curl on stdin and is never printed). For each pull request it writes the
 URL, the head SHA, the state of the required check and its run URL and attempt, GitHub's mergeability (blocked or clean), the verifier
-version the run installed (from the run log with a token, else from the workflow file on the base) and the release asset's digest; then the
-rules in force on each base and the ruleset as GitHub holds it. Read it before you keep it: it holds no token, only what GitHub reports.
-The certified commit is $certified.
+version the run installed (from the run log with a token, else from the workflow file on the default branch) and the release asset's
+digest; then the rules in force on each base and the ruleset as GitHub holds it. Read it before you keep it: it holds no token.
+The certified commit is $certified; the sealed ones are $sealed and $below.
 MD
 echo "fixture written to $OUT (test-repo/ and README.md)"
