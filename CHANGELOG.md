@@ -8,10 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
-- **The verify Action's script was not executable.** `packaging/verify-action.sh` was committed as 100644 and `action.yml` ran it directly, so
-  the Action exited 126 on a real runner (the tests ran it with `bash`). `action.yml` now runs it through `bash` and the file is 100755;
-  `tests/action_exec.bats` runs the `run:` line the way the runner does and requires every `packaging/*.sh` to be executable in git. The first real
-  GitHub run of the Action found this; the install, the attestation check, the verification and the rebuild had passed there.
+- **The verify Action could not start on a real GitHub runner.** `packaging/verify-action.sh` was stored without its executable bit and `action.yml`
+  ran it directly, so every use of the Action ended at the first step with "Permission denied" (exit 126), before it verified anything. This was
+  so in every release that has the Action, v1.0.0 included, and nothing noticed because the tests start the script with `bash script.sh`. It was found
+  by running the Action in a real repository (the ruleset fixture) for the first time. Now the script is stored executable, `action.yml` runs it with
+  `bash`, and a test runs the `run:` line the way the runner does and checks every script in `packaging/` is executable in git.
 
 ### Changed
 
