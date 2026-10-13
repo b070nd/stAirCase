@@ -44,16 +44,18 @@ while IFS= read -r pr; do
   for _ in 1 2 3 4 5; do   # GitHub computes mergeability when asked: null means not yet
     merge="$(api "repos/$REPO/pulls/$num")"
     [ "$(jq -r '.mergeable // "null"' <<<"$merge")" != null ] && break
+    [ "$(jq -r '.state' <<<"$pr")" != open ] && break
     sleep "${POLL_SECONDS:-2}"
   done
   runs="$(api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100")"
   # The required check of a base is named for it (CHECK-<base>). A commit can head pull requests into several bases, and each of its runs
-  # then lists all of them, so a run is taken for a pull request only by the job it holds: the one named for THIS pull request's base.
+  # then lists all of them, and a merged or closed pull request is listed by none, so a run is taken for a pull request by its head commit and the
+  # job it holds: the one named for THIS pull request's base.
   run="{}"; job="{}"
   while IFS= read -r cand; do
     j="$(api "repos/$REPO/actions/runs/$(jq -r .id <<<"$cand")/jobs" | jq -c --arg c "$CHECK-$base" '[.jobs[] | select(.name == $c)] | last // empty')"
     if [ -n "$j" ]; then run="$cand"; job="$j"; fi
-  done < <(jq -c --argjson n "$num" '[.workflow_runs[] | select(any(.pull_requests[]?; .number == $n)) | select(.path | endswith("staircase-admission.yml"))] | sort_by(.created_at) | .[]' <<<"$runs")
+  done < <(jq -c '[.workflow_runs[] | select(.path | endswith("staircase-admission.yml"))] | sort_by(.created_at) | .[]' <<<"$runs")
   rid="$(jq -r '.id // empty' <<<"$run")"
   conclusion="no run"; version="-"; digest="null"
   if [ -n "$rid" ]; then

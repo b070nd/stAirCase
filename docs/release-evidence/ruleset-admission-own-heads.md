@@ -17,8 +17,7 @@ mergeable read `blocked`.
 
 The two that read `clean` are the two that are meant to be merged, and they do not conflict with each other (the certified commit touches
 `GREETING.md`, `OLD_NOTES.md` and `README.md`, the sealed one adds `SEALED.md`; merged in either order, a merge of the other is clean). The four that
-read `blocked` are blocked by their own base's failing check. This is the state before any merge by the owner; what GitHub answers to a merge of #35 and
-#36 is still to be recorded. The refusal of a merge by the base's own rule was observed before (HTTP 405, in the previous record). The table below is the
+read `blocked` are blocked by their own base's failing check. This is the state before any merge by the owner; the merges follow in the last section. The refusal of a merge by the base's own rule was observed before (HTTP 405, in the previous record). The table below is the
 script's output, unedited; rows #1 to #34 are pull requests of earlier builds.
 
 # Admission evidence: b070nd/staircase-ruleset
@@ -1190,3 +1189,23 @@ Read at 2026-10-13T09:20:22Z with `ruleset-evidence.sh` (with a token); the requ
   }
 ]
 ```
+
+## After the owner's merges (read 2026-10-13)
+
+GitHub recorded that the owner merged #35 (`pr-certified` into `main`) at 09:24:35Z (merge commit `34f92b1`) and #36 (`pr-sealed` into `main`) at
+09:24:55Z (merge commit `1b292a5`), 20 seconds apart and in that order, with no conflict and no refusal; the ruleset's evaluation of both pushes to
+`main` is `pass`. `main` now holds the certified commit, the sealed change and the setup commit. #37 to #40 are unchanged: open, `blocked`, each by its
+own base's failing check. So the two pull requests that read `clean` were merged, and the four that read `blocked` stayed blocked, as the table above
+said they would.
+
+The rows #35 to #40 of a second read, taken after the merges with the corrected `demo/ruleset-evidence.sh` (a merged pull request is no longer listed by
+its run, so the script now finds its run by the head commit and the base's check name; the first read after the merges showed "no run" for #35 and #36):
+
+| PR | state | head -> base | head SHA | check | run (attempt) | mergeability | verifier |
+|---|---|---|---|---|---|---|---|
+| [#35](https://github.com/b070nd/staircase-ruleset/pull/35) | merged | pr-certified -> main | `a7a2dc3dcd26` | success | https://github.com/b070nd/staircase-ruleset/actions/runs/38375479693 (attempt 1) | unknown / not computed | v1.0.1 (run log) |
+| [#36](https://github.com/b070nd/staircase-ruleset/pull/36) | merged | pr-sealed -> main | `c5d7563da7ca` | success | https://github.com/b070nd/staircase-ruleset/actions/runs/38375484149 (attempt 1) | unknown / not computed | v1.0.1 (run log) |
+| [#37](https://github.com/b070nd/staircase-ruleset/pull/37) | open | pr-wrong-signer -> other-key | `2563a911369d` | failure | https://github.com/b070nd/staircase-ruleset/actions/runs/38375488565 (attempt 3) | blocked / mergeable | v1.0.1 (run log) |
+| [#38](https://github.com/b070nd/staircase-ruleset/pull/38) | open | pr-below-strict -> strict | `77bdded0cbb9` | failure | https://github.com/b070nd/staircase-ruleset/actions/runs/38375491659 (attempt 1) | blocked / mergeable | v1.0.1 (run log) |
+| [#39](https://github.com/b070nd/staircase-ruleset/pull/39) | open | pr-no-notes -> main | `4ae40e9af2b9` | failure | https://github.com/b070nd/staircase-ruleset/actions/runs/38375496401 (attempt 1) | blocked / mergeable | v1.0.1 (run log) |
+| [#40](https://github.com/b070nd/staircase-ruleset/pull/40) | open | pr-edits-the-check -> main | `6ba3e3389d3b` | failure | https://github.com/b070nd/staircase-ruleset/actions/runs/38375500805 (attempt 1) | blocked / mergeable | v1.0.1 (run log) |

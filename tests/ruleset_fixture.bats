@@ -242,7 +242,11 @@ case "$p" in
   "repos/o/t/pulls?state=all&per_page=100") echo '[{"number":1,"html_url":"https://github.com/o/t/pull/1","state":"open","head":{"ref":"pr-certified","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"}},
     {"number":2,"html_url":"https://github.com/o/t/pull/2","state":"open","head":{"ref":"pr-no-notes","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"base":{"ref":"main"}},
     {"number":3,"html_url":"https://github.com/o/t/pull/3","state":"open","head":{"ref":"pr-sealed","sha":"cccccccccccccccccccccccccccccccccccccccc"},"base":{"ref":"other-key"}},
-    {"number":4,"html_url":"https://github.com/o/t/pull/4","state":"open","head":{"ref":"pr-sealed","sha":"cccccccccccccccccccccccccccccccccccccccc"},"base":{"ref":"main"}}]' ;;
+    {"number":4,"html_url":"https://github.com/o/t/pull/4","state":"open","head":{"ref":"pr-sealed","sha":"cccccccccccccccccccccccccccccccccccccccc"},"base":{"ref":"main"}},
+    {"number":5,"html_url":"https://github.com/o/t/pull/5","state":"closed","merged_at":"2026-10-07T12:00:00Z","head":{"ref":"pr-certified","sha":"dddddddddddddddddddddddddddddddddddddddd"},"base":{"ref":"main"}}]' ;;
+  "repos/o/t/pulls/5") echo '{"mergeable":null,"mergeable_state":"unknown"}' ;;
+  "repos/o/t/actions/runs?head_sha=dddd"*) echo '{"workflow_runs":[{"id":41,"path":".github/workflows/staircase-admission.yml","created_at":"2026-10-07T11:30:00Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/41","event":"pull_request_target","head_sha":"dddd","pull_requests":[]}]}' ;;
+  "repos/o/t/actions/runs/41/jobs") echo '{"jobs":[{"id":441,"name":"staircase-admission-main","conclusion":"success","status":"completed","html_url":"https://github.com/o/t/actions/runs/41/job/441"}]}' ;;
   "repos/o/t/pulls/3") echo '{"mergeable":true,"mergeable_state":"blocked"}' ;;
   "repos/o/t/pulls/4") echo '{"mergeable":true,"mergeable_state":"clean"}' ;;
   "repos/o/t/actions/runs?head_sha=cccc"*) echo '{"workflow_runs":[{"id":31,"path":".github/workflows/staircase-admission.yml","created_at":"2026-10-07T11:00:00Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/31","event":"pull_request_target","head_sha":"cccc","pull_requests":[{"number":3},{"number":4}]},
@@ -256,7 +260,7 @@ case "$p" in
     {"id":23,"path":".github/workflows/staircase-verify.yml","created_at":"2026-10-07T10:06:00Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/23","event":"pull_request","head_sha":"bbbb","pull_requests":[{"number":2}]}]}' ;;
   "repos/o/t/actions/runs/11/jobs") echo '{"jobs":[{"id":111,"name":"staircase-admission-main","conclusion":"success","status":"completed","html_url":"https://github.com/o/t/actions/runs/11/job/111"}]}' ;;
   "repos/o/t/actions/runs/22/jobs") echo '{"jobs":[{"id":222,"name":"staircase-admission-main","conclusion":"failure","status":"completed","html_url":"https://github.com/o/t/actions/runs/22/job/222"}]}' ;;
-  "repos/o/t/actions/jobs/111/logs" | "repos/o/t/actions/jobs/222/logs" | "repos/o/t/actions/jobs/331/logs" | "repos/o/t/actions/jobs/332/logs") [ -n "${LOGS:-}" ] && echo "Installed staircase v0.11.0 (build attestation verified)" || { echo "requires authentication" >&2; exit 22; } ;;
+  "repos/o/t/actions/jobs/111/logs" | "repos/o/t/actions/jobs/222/logs" | "repos/o/t/actions/jobs/331/logs" | "repos/o/t/actions/jobs/332/logs" | "repos/o/t/actions/jobs/441/logs") [ -n "${LOGS:-}" ] && echo "Installed staircase v0.11.0 (build attestation verified)" || { echo "requires authentication" >&2; exit 22; } ;;
   "repos/o/t") echo '{"default_branch":"trunk"}' ;;
   "repos/o/t/contents/.github/workflows/staircase-admission.yml?ref=trunk") printf '{"content":"%s"}' "$(printf '      - uses: b070nd/stAirCase@0123456789abcdef0123456789abcdef01234567\n        with:\n          version: v0.11.0\n          key: k\n' | base64 | tr -d '\n')" ;;
   "repos/b070nd/stAirCase/releases/tags/v0.11.0") echo '{"assets":[{"name":"staircase_0.11.0_linux_amd64.tar.gz","digest":"sha256:abc"},{"name":"staircase_0.11.0_darwin_arm64.tar.gz","digest":"sha256:def"}]}' ;;
@@ -279,6 +283,8 @@ CURL
   # two pull requests share one head commit and each of its two runs lists both: each is given the run of ITS base's check
   [[ "$output" == *"| [#3](https://github.com/o/t/pull/3) | open | pr-sealed -> other-key | \`cccccccccccc\` | failure | https://github.com/o/t/actions/runs/32 (attempt 1) |"* ]]
   [[ "$output" == *"| [#4](https://github.com/o/t/pull/4) | open | pr-sealed -> main | \`cccccccccccc\` | success | https://github.com/o/t/actions/runs/31 (attempt 1) |"* ]]
+  # once merged, GitHub empties the run's pull_requests: the run is still found, by its head and the base's check name
+  [[ "$output" == *"| [#5](https://github.com/o/t/pull/5) | merged | pr-certified -> main | \`dddddddddddd\` | success | https://github.com/o/t/actions/runs/41 (attempt 1) |"* ]]
   [[ "$output" == *'"digest": "sha256:abc"'* ]]
   [[ "$output" != *"sha256:def"* ]]                    # only the archive for the runner
   [[ "$output" == *'"enforcement": "active"'* ]]
