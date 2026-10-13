@@ -18,7 +18,8 @@ Action from a commit before the fix was released. The ruleset (id 24927610, no b
 `9990059`), with `staircase-admission` and `certified-range-passes` both `success` on its head: the positive control, on this build. The
 earlier build's #13 was merged the same way at 09:39:32Z. The owner also armed auto-merge (squash) on #22, the wrong-signer pull request:
 GitHub accepted the request, and at 2026-10-13 the pull request is still open and `blocked`, because the required check failed and cannot
-pass. Merging a blocked pull request by hand is not yet recorded. The fixture was rebuilt and force-pushed on top of the earlier build's
+pass. A merge of #21 (no certificate) by `PUT /repos/b070nd/staircase-ruleset/pulls/21/merge` on 2026-10-13 was refused: HTTP 405, "Repository
+rule violations found. Required status check "staircase-admission" is failing."; the pull request stayed open, `main` did not move. The fixture was rebuilt and force-pushed on top of the earlier build's
 merge (the earlier ruleset was removed for the push and imported again). The table below was read before #20 was merged, so it shows #20 as
 open and `clean`.
 
