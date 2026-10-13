@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ruleset-evidence.sh <owner>/<repo> - read back what GitHub did with the fixture's pull requests (demo/ruleset-fixture.sh) and
-# keep it: for each pull request its URL, head SHA, the required check "staircase-admission" (conclusion, run URL, attempt),
+# keep it: for each pull request its URL, head SHA, the required check of its base, "staircase-admission-<base>" (conclusion, run URL, attempt),
 # GitHub's mergeability, the verifier version the run installed and the release asset's digest; then the rules in force on each base
 # branch and the ruleset as GitHub holds it. Reads only, with curl and jq (no gh): GET requests to the GitHub REST API.
 #
@@ -30,7 +30,7 @@ api() { # api <path>: GET, JSON (or the text of a log); the token travels as a c
 
 echo "# Admission evidence: $REPO"
 echo
-echo "Read at $(date -u +%Y-%m-%dT%H:%M:%SZ) with \`ruleset-evidence.sh\` ($([ -n "${GITHUB_TOKEN:-}" ] && echo "with a token" || echo "without a token")); the required check is \`$CHECK\`. Nothing here was edited."
+echo "Read at $(date -u +%Y-%m-%dT%H:%M:%SZ) with \`ruleset-evidence.sh\` ($([ -n "${GITHUB_TOKEN:-}" ] && echo "with a token" || echo "without a token")); the required check of a base is \`$CHECK-<base>\`. Nothing here was edited."
 echo
 echo "| PR | state | head -> base | head SHA | check | run (attempt) | mergeability | verifier |"
 echo "|---|---|---|---|---|---|---|---|"
@@ -47,11 +47,16 @@ while IFS= read -r pr; do
     sleep "${POLL_SECONDS:-2}"
   done
   runs="$(api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100")"
-  run="$(jq -c --argjson n "$num" '[.workflow_runs[] | select(any(.pull_requests[]?; .number == $n)) | select(.path | endswith("staircase-admission.yml"))] | sort_by(.created_at) | last // {}' <<<"$runs")"
+  # The required check of a base is named for it (CHECK-<base>). A commit can head pull requests into several bases, and each of its runs
+  # then lists all of them, so a run is taken for a pull request only by the job it holds: the one named for THIS pull request's base.
+  run="{}"; job="{}"
+  while IFS= read -r cand; do
+    j="$(api "repos/$REPO/actions/runs/$(jq -r .id <<<"$cand")/jobs" | jq -c --arg c "$CHECK-$base" '[.jobs[] | select(.name == $c)] | last // empty')"
+    if [ -n "$j" ]; then run="$cand"; job="$j"; fi
+  done < <(jq -c --argjson n "$num" '[.workflow_runs[] | select(any(.pull_requests[]?; .number == $n)) | select(.path | endswith("staircase-admission.yml"))] | sort_by(.created_at) | .[]' <<<"$runs")
   rid="$(jq -r '.id // empty' <<<"$run")"
   conclusion="no run"; version="-"; digest="null"
   if [ -n "$rid" ]; then
-    job="$(api "repos/$REPO/actions/runs/$rid/jobs" | jq -c --arg c "$CHECK" '[.jobs[] | select(.name == $c)] | last // {}')"
     conclusion="$(jq -r '.conclusion // .status // "unknown"' <<<"$job")"; jid="$(jq -r '.id // empty' <<<"$job")"
     if [ -n "$jid" ] && log="$(api "repos/$REPO/actions/jobs/$jid/logs" 2>/dev/null)" && v="$(grep -o 'Installed staircase v[0-9][0-9A-Za-z.+-]*' <<<"$log" | head -1 | sed 's/Installed staircase //')" && [ -n "$v" ]; then
       version="$v (run log)"

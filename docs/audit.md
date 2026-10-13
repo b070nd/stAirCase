@@ -357,6 +357,13 @@ signers paths with CODEOWNERS and a ruleset that requires review, and make this
 check a required status check; a check that can be skipped or edited by the change it
 judges is not a gate.
 
+**One check name per policy.** GitHub attaches a check run to a commit, not to a pull request or to the branch it targets, and a required
+status check is satisfied by any successful run of that name on the head commit. If your bases differ in what they require (another trusted
+key, another `min-cal`), give each its own check name, for example `name: staircase-admission-${{ github.base_ref }}` on the job, and require
+only that base's name in that base's ruleset. With one shared name, a pull request that passes into a laxer base unlocks the same commit for a
+stricter one: this happened in the test repository ([testing](testing.md)), and a refused pull request merged. If all your bases share one
+policy, one name is fine.
+
 **Every commit, by default.** `all: false` checks only commits that name an agent in
 an `Assisted-by:` trailer, and a run of `staircase verify` without `--all` says how
 many commits it skipped. A commit an agent made without the trailer looks like a

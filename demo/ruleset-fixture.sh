@@ -7,7 +7,8 @@
 #
 #   pr-certified        -> main        a certified commit (CAL 3), rebuilt from its ledger: the check PASSES
 #   pr-no-notes         -> main        a commit with no certificate: REFUSED
-#   pr-sealed           -> other-key   certified (CAL 2) by the workspace key, but the base trusts another key: REFUSED
+#   pr-sealed           -> main        certified (CAL 2) by main's key, which main accepts: PASSES
+#   pr-sealed           -> other-key   the same commit, but the base trusts another key: REFUSED (a pass for main must not unlock it)
 #   pr-below-strict     -> strict      certified (CAL 2) by the trusted key, but strict requires CAL 4: REFUSED
 #   pr-edits-the-check  -> main        an uncertified change that also turns the check down: REFUSED (the PR's edit is not used)
 #
@@ -131,7 +132,8 @@ YML
 cat >.github/workflows/staircase-admission.yml <<YML
 name: staircase admission
 # pull_request_target runs the workflow of the DEFAULT branch whatever the pull request's base, so a pull request cannot edit the
-# check it must pass, and this one copy decides for every base: min-cal is chosen from the base branch's name. The pull request is
+# check it must pass, and this one copy decides for every base: min-cal is chosen from the base branch's name. The job's name carries the base
+# too, because GitHub attaches a check to a COMMIT: a run for one base must not satisfy the required check of another. The pull request is
 # checked out only so that the verifier can read its commits (nothing of it is executed); the key is read from the base branch.
 on: pull_request_target
 permissions:
@@ -139,7 +141,7 @@ permissions:
   attestations: read
 jobs:
   staircase-admission:
-    name: staircase-admission
+    name: staircase-admission-\${{ github.base_ref }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -151,6 +153,32 @@ jobs:
           rebuild: "true"
           min-cal: "\${{ github.base_ref == 'strict' && '4' || '2' }}"
 YML
+cat >.github/README.md <<'RM'
+# staircase-ruleset
+
+A test repository for the [stAirCase](https://github.com/b070nd/stAirCase) verify Action under a GitHub ruleset. It is built by
+`demo/ruleset-fixture.sh` in that repository; it is not a project, and nothing here should be copied as an example of an application.
+
+**The rule it tests:** a pull request into `main`, `other-key` or `strict` can be merged only if the Action says its commits are covered by
+a change certificate signed by the key that base trusts, at the level that base requires. Each base has its own ruleset and its own required
+check (`staircase-admission-main`, `staircase-admission-other-key`, `staircase-admission-strict`).
+
+| Pull request (head into base) | The check | Why |
+|---|---|---|
+| `pr-certified` into `main` | passes, merge allowed | a real certified commit (CAL 3), rebuilt from its ledger |
+| `pr-sealed` into `main` | passes, merge allowed | a change certified after the fact (CAL 2), which `main` accepts |
+| `pr-sealed` into `other-key` | **fails, blocked** | the same commit, but this base trusts another key |
+| `pr-below-strict` into `strict` | **fails, blocked** | certified at CAL 2, and `strict` requires CAL 4 |
+| `pr-no-notes` into `main` | **fails, blocked** | a commit with no certificate |
+| `pr-edits-the-check` into `main` | **fails, blocked** | it also edits the check's own workflow; the copy on `main` runs, so the edit is not used |
+
+`pr-sealed` heads two pull requests on purpose. GitHub attaches a check to a commit, not to a pull request, so with one shared check name the
+pass on `main` would have unlocked the merge into `other-key` as well (that is what happened to an earlier build of this repository). The check's
+name carries the base, so a pass for one base satisfies only that base.
+
+The results, the run logs they come from and what GitHub answered to a merge of a blocked pull request are recorded in
+[docs/release-evidence](https://github.com/b070nd/stAirCase/tree/master/docs/release-evidence) of the stAirCase repository.
+RM
 git add -A && git commit -q -m "the trusted key, the admission check and the conformance harness"
 
 # the two certified commits are the demo's own (a certificate is a note on the commit's hash), on the base main grew from
@@ -178,31 +206,33 @@ git add -A && git commit -q -m "an uncertified change that turns the check down"
 git checkout -q main
 git remote remove origin   # it pointed at the demo's scratch folder; you add your own
 
-cat >"$OUT/ruleset.json" <<'JSON'
+for base in main other-key strict; do
+cat >"$OUT/ruleset-$base.json" <<JSON
 {
-  "name": "staircase-admission",
+  "name": "staircase-admission-$base",
   "target": "branch",
   "enforcement": "active",
-  "conditions": { "ref_name": { "include": ["refs/heads/main", "refs/heads/other-key", "refs/heads/strict"], "exclude": [] } },
+  "conditions": { "ref_name": { "include": ["refs/heads/$base"], "exclude": [] } },
   "bypass_actors": [],
   "rules": [
     { "type": "pull_request", "parameters": { "required_approving_review_count": 0, "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false, "require_last_push_approval": false, "required_review_thread_resolution": false } },
     { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": false,
-        "required_status_checks": [ { "context": "staircase-admission" } ] } },
+        "required_status_checks": [ { "context": "staircase-admission-$base" } ] } },
     { "type": "non_fast_forward" },
     { "type": "deletion" }
   ]
 }
 JSON
+done
 
 cat >"$OUT/README.md" <<MD
 # stAirCase verify Action: ruleset test fixture
 
 Built by \`demo/ruleset-fixture.sh\` (the Action at \`$ACTION_REF\`, installing the verifier \`$VERIFIER\`). Nothing in it was pushed.
 
-It holds two different things. **Enforcement:** the required check \`staircase-admission\` and a ruleset that requires it, so that a
-pull request the verifier refuses cannot be merged. **Conformance:** the \`staircase-verify\` harness, which runs each case with
+It holds two different things. **Enforcement:** one required check per base (\`staircase-admission-main\`, \`-other-key\`, \`-strict\`) and a ruleset for each that requires it,
+so that a pull request the verifier refuses cannot be merged. **Conformance:** the \`staircase-verify\` harness, which runs each case with
 continue-on-error and asserts the Action failed; it tests the Action and blocks nothing, and **its green is not evidence** (a crash is
 also a failure). Read the admission check.
 
@@ -215,23 +245,27 @@ git push origin main other-key strict pr-certified pr-sealed pr-below-strict pr-
 git push origin refs/notes/staircase refs/notes/staircase-ledger   # the certificates and ledgers
 \`\`\`
 
-Open the pull requests below and let the check run once, so that GitHub knows the check's name; then import \`ruleset.json\`
-(Settings, Rules, Rulesets, New ruleset, Import a ruleset). It requires a pull request and the check \`staircase-admission\` on main,
-other-key and strict, allows no bypass, and forbids deleting or force-pushing them. The ruleset targets branches: the notes refs are
+Open the pull requests below and let the checks run once, so that GitHub knows the checks' names; then import the three files
+\`ruleset-main.json\`, \`ruleset-other-key.json\` and \`ruleset-strict.json\` (Settings, Rules, Rulesets, New ruleset, Import a ruleset). Each
+requires a pull request and its own base's check, allows no bypass, and forbids deleting or force-pushing that branch. **Why one each:** GitHub
+attaches a check to a commit, so a single shared check name would let a pass for one base unlock the same commit for another. The ruleset targets branches: the notes refs are
 not covered by it, and the certificates are trusted by their signature, not by where they are.
 
 ## 2. Open these pull requests, and read what each does
 
-| Head | Base | Required check \`staircase-admission\` | Merge | Why |
+| Head | Base | The base's required check | Merge | Why |
 |---|---|---|---|---|
 | pr-certified | main | passes | **eligible** | a real certified commit (CAL 3), rebuilt from its ledger, key trusted from main |
+| pr-sealed | main | passes | **eligible** | a change certified after the fact (CAL 2), which main accepts, signed by main's key |
 | pr-no-notes | main | **fails** | **blocked** | a commit with no certificate |
 | pr-sealed | other-key | **fails** | **blocked** | wrong signer: the base trusts another key, so the certificate is not trusted |
 | pr-below-strict | strict | **fails** | **blocked** | insufficient CAL: a sealed change is CAL 2, strict requires 4 |
 | pr-edits-the-check | main | **fails** | **blocked** | the pull request edits the check's own workflow (min-cal 1, all false); that edit is not used |
 
-Each scenario has its own head commit on purpose: GitHub attaches checks to a commit, so pull requests that shared one would share
-(and mix) their results, and a shared head could not be told apart in the evidence.
+Each scenario has its own head commit, except one on purpose: pr-sealed heads two pull requests, into main (where it passes) and into
+other-key (where it must stay blocked). GitHub attaches a check to the same commit whatever the base, so the name of the required check
+carries the base; with one shared name the pass on main would satisfy other-key's rule too, as an earlier build of this fixture showed.
+Apart from that pair, never open two pull requests from one head: their results would be mixed in the evidence.
 
 **What \`pull_request_target\` runs.** GitHub runs the workflow of the repository's **default branch** (main) for every pull request,
 whatever its base, and its \`GITHUB_SHA\` and \`GITHUB_REF\` are the default branch's. So a copy of the workflow on another branch never
@@ -250,7 +284,7 @@ It reads GitHub's REST API with curl. A public test repository needs no login; f
 bypass list, put a read-only token in \`GITHUB_TOKEN\` (it goes to curl on stdin and is never printed). For each pull request it writes the
 URL, the head SHA, the state of the required check and its run URL and attempt, GitHub's mergeability (blocked or clean), the verifier
 version the run installed (from the run log with a token, else from the workflow file on the default branch) and the release asset's
-digest; then the rules in force on each base and the ruleset as GitHub holds it. Read it before you keep it: it holds no token.
+digest; then the rules in force on each base and the rulesets as GitHub holds them. Read it before you keep it: it holds no token.
 The certified commit is $certified; the sealed ones are $sealed and $below.
 MD
 echo "fixture written to $OUT (test-repo/ and README.md)"

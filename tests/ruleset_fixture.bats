@@ -111,7 +111,7 @@ decide() {
   admission >"$WORK/a.yml"
   [ "$(grep -c '^  [a-z-]*:$' "$WORK/a.yml")" = 1 ]
   grep -q '^  staircase-admission:$' "$WORK/a.yml"
-  grep -q 'name: staircase-admission' "$WORK/a.yml"
+  grep -q 'name: staircase-admission-\${{ github.base_ref }}' "$WORK/a.yml"      # the check's name carries the base it was run for
   [ "$(grep -c 'uses: b070nd/stAirCase@' "$WORK/a.yml")" = 1 ]
   if grep -q 'continue-on-error' "$WORK/a.yml"; then false; fi
   if grep -q 'outcome' "$WORK/a.yml"; then false; fi
@@ -127,12 +127,31 @@ decide() {
   done
 }
 
-@test "the ruleset requires that check on every base, lets nobody bypass it, and the fixture says it is not pushed" {
+@test "one ruleset per base, each requiring that base's own check, nobody may bypass, nobody may force-push or delete" {
   command -v jq >/dev/null
-  jq -e '.enforcement == "active" and (.bypass_actors | length == 0)' "$FIX/ruleset.json"
-  jq -e '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] == ["staircase-admission"]' "$FIX/ruleset.json"
-  jq -e '.conditions.ref_name.include | sort == ["refs/heads/main","refs/heads/other-key","refs/heads/strict"]' "$FIX/ruleset.json"
-  jq -e '[.rules[].type] | index("pull_request") != null and index("non_fast_forward") != null and index("deletion") != null' "$FIX/ruleset.json"
+  for base in main other-key strict; do
+    f="$FIX/ruleset-$base.json"
+    jq -e --arg b "$base" '.enforcement == "active" and (.bypass_actors | length == 0) and .name == ("staircase-admission-" + $b)' "$f"
+    jq -e --arg b "$base" '.conditions.ref_name.include == ["refs/heads/" + $b]' "$f"
+    jq -e --arg b "$base" '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] == ["staircase-admission-" + $b]' "$f"
+    jq -e '[.rules[].type] | index("pull_request") != null and index("non_fast_forward") != null and index("deletion") != null' "$f"
+  done
+}
+
+@test "a passing run for one base can never satisfy another base's required check (GitHub attaches checks to a commit, and a commit can head pull requests into several bases)" {
+  # the names GitHub would see: the job's name with github.base_ref filled in, against what each base's ruleset requires
+  admission >"$WORK/a.yml"
+  grep -q 'name: staircase-admission-\${{ github.base_ref }}' "$WORK/a.yml"
+  names=""
+  for base in main other-key strict; do
+    names+="$(jq -r '.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context' "$FIX/ruleset-$base.json")"$'\n'
+  done
+  [ "$(printf '%s' "$names" | sort -u | wc -l | tr -d ' ')" = 3 ]                                    # three different names
+  if printf '%s' "$names" | grep -qx 'staircase-admission'; then false; fi                           # and none is the bare, shared one
+  # the case that was observed: pr-sealed heads a pull request into main (valid there) and one into other-key (refused there)
+  grep -q "| pr-sealed | main |" "$FIX/README.md"
+  grep -q "| pr-sealed | other-key |" "$FIX/README.md"
+  grep -qi "same commit" "$FIX/README.md"
 }
 
 @test "admission: the certified commit into main is eligible" {
@@ -174,6 +193,13 @@ decide() {
   [[ "$output" == *"0 commit(s) checked"* ]]
 }
 
+@test "the repository carries its own README, in .github/, that says what it is and where the record is" {
+  git -C "$FIX/test-repo" show main:.github/README.md >"$WORK/r.md"
+  grep -qi "ruleset" "$WORK/r.md"
+  grep -q "pr-sealed" "$WORK/r.md"
+  grep -q "release-evidence" "$WORK/r.md"
+}
+
 @test "the README says what pull_request_target runs, and that the harness is conformance, not enforcement" {
   grep -q "pull_request_target" "$FIX/README.md"
   grep -qi "default branch" "$FIX/README.md"
@@ -213,15 +239,23 @@ case " $* " in *" -K - "*) cat >>"$API_LOG.stdin" ;; esac   # a curl config on s
 p="${url#https://api.github.com/}"
 case "$p" in
   "repos/o/t/pulls?state=all&per_page=100") echo '[{"number":1,"html_url":"https://github.com/o/t/pull/1","state":"open","head":{"ref":"pr-certified","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"}},
-    {"number":2,"html_url":"https://github.com/o/t/pull/2","state":"open","head":{"ref":"pr-no-notes","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"base":{"ref":"main"}}]' ;;
+    {"number":2,"html_url":"https://github.com/o/t/pull/2","state":"open","head":{"ref":"pr-no-notes","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"base":{"ref":"main"}},
+    {"number":3,"html_url":"https://github.com/o/t/pull/3","state":"open","head":{"ref":"pr-sealed","sha":"cccccccccccccccccccccccccccccccccccccccc"},"base":{"ref":"other-key"}},
+    {"number":4,"html_url":"https://github.com/o/t/pull/4","state":"open","head":{"ref":"pr-sealed","sha":"cccccccccccccccccccccccccccccccccccccccc"},"base":{"ref":"main"}}]' ;;
+  "repos/o/t/pulls/3") echo '{"mergeable":true,"mergeable_state":"blocked"}' ;;
+  "repos/o/t/pulls/4") echo '{"mergeable":true,"mergeable_state":"clean"}' ;;
+  "repos/o/t/actions/runs?head_sha=cccc"*) echo '{"workflow_runs":[{"id":31,"path":".github/workflows/staircase-admission.yml","created_at":"2026-10-07T11:00:00Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/31","event":"pull_request_target","head_sha":"cccc","pull_requests":[{"number":3},{"number":4}]},
+    {"id":32,"path":".github/workflows/staircase-admission.yml","created_at":"2026-10-07T11:00:20Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/32","event":"pull_request_target","head_sha":"cccc","pull_requests":[{"number":3},{"number":4}]}]}' ;;
+  "repos/o/t/actions/runs/31/jobs") echo '{"jobs":[{"id":331,"name":"staircase-admission-main","conclusion":"success","status":"completed","html_url":"https://github.com/o/t/actions/runs/31/job/331"}]}' ;;
+  "repos/o/t/actions/runs/32/jobs") echo '{"jobs":[{"id":332,"name":"staircase-admission-other-key","conclusion":"failure","status":"completed","html_url":"https://github.com/o/t/actions/runs/32/job/332"}]}' ;;
   "repos/o/t/pulls/1") echo '{"mergeable":true,"mergeable_state":"clean"}' ;;
   "repos/o/t/pulls/2") echo '{"mergeable":false,"mergeable_state":"blocked"}' ;;
   "repos/o/t/actions/runs?head_sha=aaaa"*) echo '{"workflow_runs":[{"id":11,"path":".github/workflows/staircase-admission.yml","created_at":"2026-10-07T10:00:00Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/11","event":"pull_request","head_sha":"aaaa","pull_requests":[{"number":1}]}]}' ;;
   "repos/o/t/actions/runs?head_sha=bbbb"*) echo '{"workflow_runs":[{"id":22,"path":".github/workflows/staircase-admission.yml","created_at":"2026-10-07T10:05:00Z","run_attempt":2,"html_url":"https://github.com/o/t/actions/runs/22","event":"pull_request","head_sha":"bbbb","pull_requests":[{"number":2}]},
     {"id":23,"path":".github/workflows/staircase-verify.yml","created_at":"2026-10-07T10:06:00Z","run_attempt":1,"html_url":"https://github.com/o/t/actions/runs/23","event":"pull_request","head_sha":"bbbb","pull_requests":[{"number":2}]}]}' ;;
-  "repos/o/t/actions/runs/11/jobs") echo '{"jobs":[{"id":111,"name":"staircase-admission","conclusion":"success","status":"completed","html_url":"https://github.com/o/t/actions/runs/11/job/111"}]}' ;;
-  "repos/o/t/actions/runs/22/jobs") echo '{"jobs":[{"id":222,"name":"staircase-admission","conclusion":"failure","status":"completed","html_url":"https://github.com/o/t/actions/runs/22/job/222"}]}' ;;
-  "repos/o/t/actions/jobs/111/logs" | "repos/o/t/actions/jobs/222/logs") [ -n "${LOGS:-}" ] && echo "Installed staircase v0.11.0 (build attestation verified)" || { echo "requires authentication" >&2; exit 22; } ;;
+  "repos/o/t/actions/runs/11/jobs") echo '{"jobs":[{"id":111,"name":"staircase-admission-main","conclusion":"success","status":"completed","html_url":"https://github.com/o/t/actions/runs/11/job/111"}]}' ;;
+  "repos/o/t/actions/runs/22/jobs") echo '{"jobs":[{"id":222,"name":"staircase-admission-main","conclusion":"failure","status":"completed","html_url":"https://github.com/o/t/actions/runs/22/job/222"}]}' ;;
+  "repos/o/t/actions/jobs/111/logs" | "repos/o/t/actions/jobs/222/logs" | "repos/o/t/actions/jobs/331/logs" | "repos/o/t/actions/jobs/332/logs") [ -n "${LOGS:-}" ] && echo "Installed staircase v0.11.0 (build attestation verified)" || { echo "requires authentication" >&2; exit 22; } ;;
   "repos/o/t") echo '{"default_branch":"trunk"}' ;;
   "repos/o/t/contents/.github/workflows/staircase-admission.yml?ref=trunk") printf '{"content":"%s"}' "$(printf '      - uses: b070nd/stAirCase@0123456789abcdef0123456789abcdef01234567\n        with:\n          version: v0.11.0\n          key: k\n' | base64 | tr -d '\n')" ;;
   "repos/b070nd/stAirCase/releases/tags/v0.11.0") echo '{"assets":[{"name":"staircase_0.11.0_linux_amd64.tar.gz","digest":"sha256:abc"},{"name":"staircase_0.11.0_darwin_arm64.tar.gz","digest":"sha256:def"}]}' ;;
@@ -241,6 +275,9 @@ CURL
   [ "$status" -eq 0 ] || { echo "$output"; false; }
   [[ "$output" == *"| [#1](https://github.com/o/t/pull/1) | open | pr-certified -> main | \`aaaaaaaaaaaa\` | success | https://github.com/o/t/actions/runs/11 (attempt 1) | clean / mergeable | v0.11.0 (workflow on trunk) |"* ]]
   [[ "$output" == *"| [#2](https://github.com/o/t/pull/2) | open | pr-no-notes -> main | \`bbbbbbbbbbbb\` | failure | https://github.com/o/t/actions/runs/22 (attempt 2) | blocked / not mergeable | v0.11.0 (workflow on trunk) |"* ]]
+  # two pull requests share one head commit and each of its two runs lists both: each is given the run of ITS base's check
+  [[ "$output" == *"| [#3](https://github.com/o/t/pull/3) | open | pr-sealed -> other-key | \`cccccccccccc\` | failure | https://github.com/o/t/actions/runs/32 (attempt 1) |"* ]]
+  [[ "$output" == *"| [#4](https://github.com/o/t/pull/4) | open | pr-sealed -> main | \`cccccccccccc\` | success | https://github.com/o/t/actions/runs/31 (attempt 1) |"* ]]
   [[ "$output" == *'"digest": "sha256:abc"'* ]]
   [[ "$output" != *"sha256:def"* ]]                    # only the archive for the runner
   [[ "$output" == *'"enforcement": "active"'* ]]
