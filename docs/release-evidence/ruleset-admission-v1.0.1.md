@@ -28,7 +28,7 @@ This build of the fixture is therefore not a proof that `other-key` and `strict`
 The fix is in the fixture and in the guidance: **the required check is named for its base** (`staircase-admission-main`, `-other-key`,
 `-strict`, the job's name carries `github.base_ref`), each base has its own ruleset that requires only its own name, and `pr-sealed` heads
 pull requests into both `main` (passes) and `other-key` (must stay blocked) on purpose, so that this case is tested every time. The fixture
-was rebuilt to that design on 2026-10-13; its record is the next section of this file once the run is read.
+was rebuilt to that design on 2026-10-13; its record is [ruleset-admission-per-base.md](ruleset-admission-per-base.md).
 
 Other facts: the owner merged #20, the certified commit into `main`, on 2026-10-12 at 14:26:54Z (merge commit `9990059`), with `staircase-admission` and
 `certified-range-passes` both `success` on its head (the positive control on this build; the earlier build's #13 at 09:39:32Z). A merge of #21 (no
