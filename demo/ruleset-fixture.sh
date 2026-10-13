@@ -8,7 +8,7 @@
 #   pr-certified        -> main        a certified commit (CAL 3), rebuilt from its ledger: the check PASSES
 #   pr-no-notes         -> main        a commit with no certificate: REFUSED
 #   pr-sealed           -> main        certified (CAL 2) by main's key, which main accepts: PASSES
-#   pr-sealed           -> other-key   the same commit, but the base trusts another key: REFUSED (a pass for main must not unlock it)
+#   pr-wrong-signer     -> other-key   certified (CAL 2) by the workspace key, but the base trusts another key: REFUSED
 #   pr-below-strict     -> strict      certified (CAL 2) by the trusted key, but strict requires CAL 4: REFUSED
 #   pr-edits-the-check  -> main        an uncertified change that also turns the check down: REFUSED (the PR's edit is not used)
 #
@@ -43,9 +43,9 @@ KEPT="$(printf '%s\n' "$demo_out" | sed -n 's/^DEMO_KEPT=//p' | tail -1)"
 [ -n "$KEPT" ] && [ -d "$KEPT/app" ] || { echo "the demo kept nothing" >&2; exit 1; }
 trap 'rm -rf "$KEPT"' EXIT
 
-# Two more certified changes, made with the SAME workspace key: each staged in the demo's checkout and sealed (CAL 2, with its own
-# certificate and ledger). They are the heads of the pull requests that must be refused for a reason of trust or level, one each,
-# so that no two pull requests share a commit (a check attaches to a commit, and shared heads share and mix their results).
+# Three more certified changes, made with the SAME workspace key: each staged in the demo's checkout and sealed (CAL 2, with its own
+# certificate and ledger). They are the heads of the pull request that main accepts at CAL 2 and of the two that must be refused for a reason of trust or level,
+# one each, so that no two pull requests share a commit (a check attaches to a commit, and shared heads share and mix their results).
 app="$KEPT/app"
 base_demo="$(git -C "$app" rev-parse staircase/run-1^)"
 printf '{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}\n' >"$KEPT/.staircase/policy.json"
@@ -57,6 +57,7 @@ seal_change() {   # <branch> <file>
     || { cat "$KEPT/seal-$1.log" >&2; echo "seal failed" >&2; exit 1; }
 }
 seal_change fixture-sealed SEALED.md
+seal_change fixture-wrong-signer WRONG-SIGNER.md
 seal_change fixture-below-strict BELOW-STRICT.md
 
 mkdir -p "$OUT"
@@ -68,9 +69,10 @@ git config user.name "$FIXTURE_NAME"
 git fetch -q origin '+refs/notes/*:refs/notes/*'
 certified="$(git rev-parse origin/staircase/run-1)"
 sealed="$(git rev-parse origin/fixture-sealed)"
+wrong="$(git rev-parse origin/fixture-wrong-signer)"
 below="$(git rev-parse origin/fixture-below-strict)"
 base="$(git rev-parse "$certified^")"          # the demo's base commit: the certified commit's parent
-for c in "$sealed" "$below"; do
+for c in "$sealed" "$wrong" "$below"; do
   [ "$(git rev-parse "$c^")" = "$base" ] || { echo "a sealed commit is not on the demo's base" >&2; exit 1; }
 done
 git checkout -q -B main "$base"
@@ -117,7 +119,7 @@ jobs:
       - name: The Action must have refused
         run: test "\${{ steps.verify.outcome }}" = failure
   wrong-trusted-key-is-refused:
-    if: github.head_ref == 'pr-sealed' && github.base_ref == 'other-key'
+    if: github.head_ref == 'pr-wrong-signer' && github.base_ref == 'other-key'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -167,14 +169,15 @@ check (`staircase-admission-main`, `staircase-admission-other-key`, `staircase-a
 |---|---|---|
 | `pr-certified` into `main` | passes, merge allowed | a real certified commit (CAL 3), rebuilt from its ledger |
 | `pr-sealed` into `main` | passes, merge allowed | a change certified after the fact (CAL 2), which `main` accepts |
-| `pr-sealed` into `other-key` | **fails, blocked** | the same commit, but this base trusts another key |
+| `pr-wrong-signer` into `other-key` | **fails, blocked** | certified, but this base trusts another key |
 | `pr-below-strict` into `strict` | **fails, blocked** | certified at CAL 2, and `strict` requires CAL 4 |
 | `pr-no-notes` into `main` | **fails, blocked** | a commit with no certificate |
 | `pr-edits-the-check` into `main` | **fails, blocked** | it also edits the check's own workflow; the copy on `main` runs, so the edit is not used |
 
-`pr-sealed` heads two pull requests on purpose. GitHub attaches a check to a commit, not to a pull request, so with one shared check name the
-pass on `main` would have unlocked the merge into `other-key` as well (that is what happened to an earlier build of this repository). The check's
-name carries the base, so a pass for one base satisfies only that base.
+Every pull request has a head commit of its own, and the required check is named for its base. GitHub attaches a check to a commit, not to a pull
+request: an earlier build of this repository shared one commit between a pull request into `main` and one into `other-key`, and with one check
+name the pass for `main` unlocked the merge into `other-key`, which must have been refused. Open no pull request from `other-key` or `strict`: they
+are bases, not heads.
 
 The results, the run logs they come from and what GitHub answered to a merge of a blocked pull request are recorded in
 [docs/release-evidence](https://github.com/b070nd/stAirCase/tree/master/docs/release-evidence) of the stAirCase repository.
@@ -184,6 +187,7 @@ git add -A && git commit -q -m "the trusted key, the admission check and the con
 # the two certified commits are the demo's own (a certificate is a note on the commit's hash), on the base main grew from
 git branch -f pr-certified "$certified"
 git branch -f pr-sealed "$sealed"
+git branch -f pr-wrong-signer "$wrong"
 git branch -f pr-below-strict "$below"
 # a commit with no certificate
 git checkout -q -b pr-no-notes "$base"
@@ -241,7 +245,7 @@ also a failure). Read the admission check.
 \`\`\`bash
 cd test-repo
 git remote add origin <the URL of your test repository>
-git push origin main other-key strict pr-certified pr-sealed pr-below-strict pr-no-notes pr-edits-the-check
+git push origin main other-key strict pr-certified pr-sealed pr-wrong-signer pr-below-strict pr-no-notes pr-edits-the-check
 git push origin refs/notes/staircase refs/notes/staircase-ledger   # the certificates and ledgers
 \`\`\`
 
@@ -258,14 +262,15 @@ not covered by it, and the certificates are trusted by their signature, not by w
 | pr-certified | main | passes | **eligible** | a real certified commit (CAL 3), rebuilt from its ledger, key trusted from main |
 | pr-sealed | main | passes | **eligible** | a change certified after the fact (CAL 2), which main accepts, signed by main's key |
 | pr-no-notes | main | **fails** | **blocked** | a commit with no certificate |
-| pr-sealed | other-key | **fails** | **blocked** | wrong signer: the base trusts another key, so the certificate is not trusted |
+| pr-wrong-signer | other-key | **fails** | **blocked** | wrong signer: the base trusts another key, so the certificate is not trusted |
 | pr-below-strict | strict | **fails** | **blocked** | insufficient CAL: a sealed change is CAL 2, strict requires 4 |
 | pr-edits-the-check | main | **fails** | **blocked** | the pull request edits the check's own workflow (min-cal 1, all false); that edit is not used |
 
-Each scenario has its own head commit, except one on purpose: pr-sealed heads two pull requests, into main (where it passes) and into
-other-key (where it must stay blocked). GitHub attaches a check to the same commit whatever the base, so the name of the required check
-carries the base; with one shared name the pass on main would satisfy other-key's rule too, as an earlier build of this fixture showed.
-Apart from that pair, never open two pull requests from one head: their results would be mixed in the evidence.
+Each scenario has its own head commit, and that matters: GitHub attaches a check to a commit whatever the base, so two pull requests from one
+head would share their checks, and a red one for another base would show a green one as blocked. An earlier build of this fixture shared
+one head between a pull request into main and one into other-key, and its single check name let the pass for main unlock the merge into other-key
+(a refused change merged). Now the check is named for its base as well, so a stray second pull request from one head cannot do that either.
+Never open a pull request from other-key or strict: they are bases, not heads, and GitHub's "Compare & pull request" banner offers them after a push.
 
 **What \`pull_request_target\` runs.** GitHub runs the workflow of the repository's **default branch** (main) for every pull request,
 whatever its base, and its \`GITHUB_SHA\` and \`GITHUB_REF\` are the default branch's. So a copy of the workflow on another branch never

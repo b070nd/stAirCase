@@ -22,10 +22,12 @@ GraphQL data for #29 lists exactly one required check, `staircase-admission-othe
 situation merged (#22 in the previous section). The evidence script now gives each of the two pull requests the run of its own base (#28 success,
 #29 failure) although both runs list both.
 
-**Not explained, and not recorded as passing:** #28 reads `blocked` although GitHub's GraphQL data lists its only required check,
-`staircase-admission-main`, as SUCCESS, and the commit's overall status is FAILURE only because of #29's check for the other base. Whether #28 can be
-merged is therefore not yet observed: the owner's merge of it is the test, and this file is to be extended with the answer. If GitHub refuses it, the
-fixture cannot hold two pull requests from one head in this way and the shared-head case would be replaced by a different one.
+**Not explained, and not recorded as passing:** #28 read `blocked` although GitHub's GraphQL data listed its only required check,
+`staircase-admission-main`, as SUCCESS, and the commit's overall status was FAILURE only because of #29's check for the other base. It was never
+merged: the owner merged #27 and then closed #28 to #32, seeing them as unusable. The one thing #27 (clean) and #28 (blocked) differ in is that
+#28's commit also carried a failing check run of another base; that is a suspicion, not an observation. The fixture was rebuilt on 2026-10-13 so that
+**no commit heads two pull requests** (`pr-sealed` into `main`, `pr-wrong-signer` into `other-key`, each with its own sealed change), and the shared-head
+case above stays recorded as it happened. The refusal of #29 (HTTP 405 by its own rule) is the proof that the per-base name holds.
 
 The table below is the script's output, unedited. Rows #1 to #26 are pull requests of earlier builds.
 

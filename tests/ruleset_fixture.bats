@@ -51,16 +51,16 @@ decide() {
   [ -z "$(git -C "$FIX/test-repo" remote)" ]          # no remote: nothing can be pushed by accident
   for b in pr-certified pr-sealed pr-below-strict pr-no-notes pr-edits-the-check other-key strict; do grep -q "$b" "$FIX/README.md"; done
   grep -q "refs/notes/staircase-ledger" "$FIX/README.md"
-  [ "$(git -C "$FIX/test-repo" notes --ref=staircase list | wc -l | tr -d ' ')" -ge 3 ]   # a certificate for each certified commit
+  [ "$(git -C "$FIX/test-repo" notes --ref=staircase list | wc -l | tr -d ' ')" -ge 4 ]   # a certificate for each certified commit
 }
 
-@test "each pull request has a head commit of its own: checks attach to a commit, so a shared head would share its results" {
-  heads="$(for b in pr-certified pr-sealed pr-below-strict pr-no-notes pr-edits-the-check; do git -C "$FIX/test-repo" rev-parse "$b"; done)"
-  [ "$(printf '%s\n' "$heads" | sort -u | wc -l | tr -d ' ')" = 5 ]
+@test "each pull request has a head commit of its own: checks attach to a commit, so a shared head shares results (and a red one of another base blocks a green one)" {
+  heads="$(for b in pr-certified pr-sealed pr-wrong-signer pr-below-strict pr-no-notes pr-edits-the-check; do git -C "$FIX/test-repo" rev-parse "$b"; done)"
+  [ "$(printf '%s\n' "$heads" | sort -u | wc -l | tr -d ' ')" = 6 ]
 }
 
 @test "a pull request branches from what it must merge with: no conflict with main or with the bases it targets" {
-  for pair in pr-certified:main pr-sealed:main pr-no-notes:main pr-edits-the-check:main pr-sealed:other-key pr-below-strict:strict; do
+  for pair in pr-certified:main pr-sealed:main pr-no-notes:main pr-edits-the-check:main pr-wrong-signer:other-key pr-below-strict:strict; do
     h="${pair%%:*}"; b="${pair##*:}"
     git -C "$FIX/test-repo" merge-tree --write-tree "$b" "$h" >/dev/null || { echo "$h into $b conflicts"; false; }
   done
@@ -101,7 +101,7 @@ decide() {
     grep -q "| $h |" "$FIX/README.md"
   done
   grep -q "head_ref == 'pr-below-strict' && github.base_ref == 'strict'" "$WORK/w.yml"
-  grep -q "head_ref == 'pr-sealed' && github.base_ref == 'other-key'" "$WORK/w.yml"
+  grep -q "head_ref == 'pr-wrong-signer' && github.base_ref == 'other-key'" "$WORK/w.yml"
   grep -q "head_ref == 'pr-certified' && github.base_ref == 'main'" "$WORK/w.yml"
 }
 
@@ -148,10 +148,10 @@ decide() {
   done
   [ "$(printf '%s' "$names" | sort -u | wc -l | tr -d ' ')" = 3 ]                                    # three different names
   if printf '%s' "$names" | grep -qx 'staircase-admission'; then false; fi                           # and none is the bare, shared one
-  # the case that was observed: pr-sealed heads a pull request into main (valid there) and one into other-key (refused there)
+  # and no commit heads two pull requests, so no run for one base sits on a commit that another base's pull request is waiting on
   grep -q "| pr-sealed | main |" "$FIX/README.md"
-  grep -q "| pr-sealed | other-key |" "$FIX/README.md"
-  grep -qi "same commit" "$FIX/README.md"
+  grep -q "| pr-wrong-signer | other-key |" "$FIX/README.md"
+  if grep -q "| pr-sealed | other-key |" "$FIX/README.md"; then false; fi
 }
 
 @test "admission: the certified commit into main is eligible" {
@@ -167,7 +167,7 @@ decide() {
 }
 
 @test "admission: a certificate that the base's trusted key did not sign fails the required check" {
-  decide pr-sealed other-key
+  decide pr-wrong-signer other-key
   [ "$status" -ne 0 ]
   [[ "$output" == *"no valid signature by the trusted key"* ]]
 }
@@ -197,6 +197,7 @@ decide() {
   git -C "$FIX/test-repo" show main:.github/README.md >"$WORK/r.md"
   grep -qi "ruleset" "$WORK/r.md"
   grep -q "pr-sealed" "$WORK/r.md"
+  grep -q "pr-wrong-signer" "$WORK/r.md"
   grep -q "release-evidence" "$WORK/r.md"
 }
 
