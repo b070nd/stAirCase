@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A required check named once for several bases can be satisfied by another base's pass.** Found in the ruleset test repository: a commit that
+  headed a pull request into `main` (where it passes) and one into `other-key` (which trusts another key, so it must be refused) merged into
+  `other-key` with its own check failing, because GitHub attaches a check run to the commit and the later pass satisfied the rule. The documentation
+  ([audit](docs/audit.md)) now says to name the check for its base when bases differ in policy. The test fixture does so: one ruleset and one check
+  name per base, a head commit of its own for every pull request (a red check of another base on a shared commit also showed a green pull request as blocked), and `demo/ruleset-evidence.sh` takes for each pull request the run of
+  its own base's check. The `staircase` program and the Action are unchanged; the fault was in how the check was set up.
+
 ## [1.0.1] - 2026-10-12
 
 The verify Action starts on a real GitHub runner. In v1.0.0 and every earlier release that has the Action, `uses: b070nd/stAirCase@v1.0.0`

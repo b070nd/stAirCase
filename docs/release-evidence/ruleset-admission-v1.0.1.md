@@ -14,15 +14,29 @@ Action from a commit before the fix was released. The ruleset (id 24927610, no b
 | #23 | pr-below-strict -> strict | failure | blocked | the commit reached CAL 2, below the required 4 |
 | #24 | pr-edits-the-check -> main | failure | blocked | no change certificate: the pull request's own edit of the workflow (min-cal 1, all false) was not used |
 
-**The merge.** GitHub recorded that the owner merged #20, the certified commit into `main`, on 2026-10-12 at 14:26:54Z (merge commit
-`9990059`), with `staircase-admission` and `certified-range-passes` both `success` on its head: the positive control, on this build. The
-earlier build's #13 was merged the same way at 09:39:32Z. The owner also armed auto-merge (squash) on #22, the wrong-signer pull request:
-GitHub accepted the request, and at 2026-10-13 the pull request is still open and `blocked`, because the required check failed and cannot
-pass. Merging a blocked pull request by hand is not yet recorded. The fixture was rebuilt and force-pushed on top of the earlier build's
-merge (the earlier ruleset was removed for the push and imported again). The table below was read before #20 was merged, so it shows #20 as
-open and `clean`.
+**What happened next, and what it showed.** On 2026-10-13 the owner merged #25, `pr-sealed` into `main`. That is a legitimate merge: the commit is
+certified at CAL 2 by `main`'s key, and `main` requires CAL 2 (its check passed, run 38366840645, 08:04:59Z; merged 08:05:15Z). The same commit,
+`c7887375adc0`, heads #22, `pr-sealed` into `other-key`, which must be refused and whose own run had failed (run 38249423532). Auto-merge had been
+armed on #22 (squash, by the owner), and #22 **merged at 08:05:47Z, 32 seconds after #25, with its required check failing.** GitHub's data shows
+why: the commit carries two check runs called `staircase-admission`, the failure of #22's run and the later success of #25's run, and GitHub
+attaches a check run to a **commit**, not to a pull request or its base, so the later success satisfied `other-key`'s rule. The ruleset worked
+as written; the rule was wrong. One check name for three bases with three different policies (a different trusted key, a different level) is
+unsound whenever one commit heads pull requests into two of them. The mergeable-state the evidence script read earlier (`blocked`) was true at
+that moment and said nothing about what a run for another base could do to it.
 
-Rows #1 to #19 are pull requests of earlier builds, closed. The table below is the script's output, unedited.
+This build of the fixture is therefore not a proof that `other-key` and `strict` are protected, and the table below must not be read as one.
+The fix is in the fixture and in the guidance: **the required check is named for its base** (`staircase-admission-main`, `-other-key`,
+`-strict`, the job's name carries `github.base_ref`), each base has its own ruleset that requires only its own name, and `pr-sealed` heads
+pull requests into both `main` (passes) and `other-key` (must stay blocked) on purpose, so that this case is tested every time. The fixture
+was rebuilt to that design on 2026-10-13; its record is [ruleset-admission-per-base.md](ruleset-admission-per-base.md).
+
+Other facts: the owner merged #20, the certified commit into `main`, on 2026-10-12 at 14:26:54Z (merge commit `9990059`), with `staircase-admission` and
+`certified-range-passes` both `success` on its head (the positive control on this build; the earlier build's #13 at 09:39:32Z). A merge of #21 (no
+certificate) by `PUT /repos/b070nd/staircase-ruleset/pulls/21/merge` on 2026-10-13 was refused: HTTP 405, "Repository rule violations found.
+Required status check "staircase-admission" is failing."; #21 has a head of its own, so nothing else could satisfy it. The table below was read before
+#20 was merged, so it shows #20 as open and `clean`.
+
+Rows #1 to #19 are pull requests of earlier builds, closed; #22 merged as described above. The table below is the script's output, unedited.
 
 # Admission evidence: b070nd/staircase-ruleset
 

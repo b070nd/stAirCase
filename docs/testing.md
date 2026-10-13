@@ -171,11 +171,13 @@ as a real Action in a real workflow.
 
 **Running the verify Action under a ruleset.** `demo/ruleset-fixture.sh <dir> [version]` builds a test repository for the real
 Action in GitHub: the offline demo's certified commit and its notes, two more certified commits sealed with the same workspace key
-(CAL 2, `staircase seal`), the trusted key, and two kinds of workflow. The **required check** is `staircase-admission`
-(`staircase-admission.yml`, one job that runs the Action alone, so a refusal fails the check and a ruleset that requires it blocks
-the merge), and `ruleset.json` to import (the check required on `main`, `other-key` and `strict`, no bypass actors). Its pull
+(CAL 2, `staircase seal`), the trusted key, and two kinds of workflow. The **required check** is one job that runs the Action alone
+(`staircase-admission.yml`), so a refusal fails it and a ruleset that requires it blocks the merge. Its name carries the base
+(`staircase-admission-main`, `-other-key`, `-strict`), with one ruleset to import per base (`ruleset-<base>.json`, no bypass actors), each
+requiring only its own base's check: GitHub attaches a check run to a commit, so under one shared name a pass for `main` satisfied
+`other-key`'s rule for the same commit, and a pull request that had to be refused merged (observed, see the record). Its pull
 requests, each with a head commit of its own because GitHub attaches checks to a commit: `pr-certified` into `main` (the certified
-commit rebuilt from its ledger, eligible); `pr-no-notes` into `main` (no certificate); `pr-sealed` into `other-key` (wrong signer)
+commit rebuilt from its ledger, eligible); `pr-sealed` into `main` (certified at CAL 2, eligible); `pr-no-notes` into `main` (no certificate); `pr-wrong-signer` into `other-key` (wrong signer)
 and `pr-below-strict` into `strict` (CAL 2 against a required 4), each of which must fail the check and be blocked; and `pr-edits-the-check`, a control
 that rewrites the check's own workflow (min-cal 1, `all: false`). The admission check runs on `pull_request_target`, for which
 GitHub runs the workflow of the repository's **default branch** (`main`) whatever the pull request's base. So there is one copy,
