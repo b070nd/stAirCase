@@ -55,6 +55,8 @@ parked proposal #4 (as the tree numbers them) if your checks pass with it. A dec
 - `staircase resume` and `staircase recover` refuse a run that awaits review: it has ended, and `decide` is how it goes on.
 - Seen with a real agent: one Claude Code run (2.1.236, haiku), from `--away` to `decide --accept` and a fresh-clone verify and rebuild
   ([record](release-evidence/away-claude-code-2.1.236.md)).
+- Seen with a real agent too: P on what Claude Code parked, adopted through the real prompt, accepted and verified
+  ([record](release-evidence/prototype-claude-code-2.1.236.md)).
 - Adopting a parked proposal ([ADR 0007](adr/0007-prototype-bridging.md)) is recorded as what a live approval would have written, so the
   delivered commit verifies and rebuilds like any other; it is refused, with nothing recorded, when your checks fail with it.
 - Not yet: a run that requires signed decisions cannot be away (the review in `decide` is not signed); a prototype in which the agent
