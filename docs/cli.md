@@ -888,8 +888,9 @@ Continues a run that was killed, crashed or stopped before it committed: the sam
 run, branch and worktree, under the policy, plan and options it started with (it saved
 them when it started), from the state its audit chain says it stood in. What it had
 approved stays approved; proposal numbers, limits and the time it had used carry on
-where they were; a new agent session takes over, told by the audit chain what is already
-approved. The agent's own memory of the earlier part is not carried and never trusted.
+where they were. What is approved is decided by the audit chain, never by what the agent
+remembers: an agent harness continues its own session when it can (see below), and
+otherwise a new session takes over, told by the chain what is already approved.
 
 Every check is made first, and any failure refuses with nothing changed: the run's
 audit chain must verify, nobody may be running it, it must not have a commit or a

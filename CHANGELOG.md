@@ -8,12 +8,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`staircase resume --help` contradicted itself.** Its first paragraph still said the agent's memory of the earlier part is not carried,
+  which was true before agent harnesses resumed their own session (1.0.0); it now says the audit chain decides what is approved, and a
+  harness continues its own session when it can.
 - **A required check named once for several bases can be satisfied by another base's pass.** Found in the ruleset test repository: a commit that
   headed a pull request into `main` (where it passes) and one into `other-key` (which trusts another key, so it must be refused) merged into
   `other-key` with its own check failing, because GitHub attaches a check run to the commit and the later pass satisfied the rule. The documentation
   ([audit](docs/audit.md)) now says to name the check for its base when bases differ in policy. The test fixture does so: one ruleset and one check
   name per base, a head commit of its own for every pull request (a red check of another base on a shared commit also showed a green pull request as blocked), and `demo/ruleset-evidence.sh` takes for each pull request the run of
   its own base's check. The `staircase` program and the Action are unchanged; the fault was in how the check was set up.
+
+### Changed
+
+- **A real Claude Code resume remembers its conversation.** Verified on Claude Code 2.1.236 (2026-10-14): a run killed with `kill -9` while a
+  proposal waited was continued by `staircase resume` in Claude Code's own session, and the agent wrote a code word it had only said in its first
+  session, which was nowhere on the audit chain or in the workspace; the commit verified at CAL 3 and rebuilt from a fresh clone
+  ([record](docs/release-evidence/claude-code-2.1.236-resume.md)). Gemini CLI and Codex were verified before.
 
 ## [1.0.1] - 2026-10-12
 
