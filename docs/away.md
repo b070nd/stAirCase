@@ -37,7 +37,8 @@ network (`--sandbox docker:...`, or `required` where sandbox-exec or bubblewrap 
 command must be a whole command (no `;`, `&`, `|`, redirection, `$` or second line). It is recorded as your decision made in advance
 (source `declared`, the declaration's digest on `run_bound`), and the files it changes are decided like the agent's (on evidence, or
 parked), so such a change reaches CAL 2. Gemini CLI and OpenCode run their commands without a sandbox, so they cannot be given declared
-commands ([ADR 0009](adr/0009-declared-commands-while-away.md)).
+commands ([ADR 0009](adr/0009-declared-commands-while-away.md)). Seen in a real Claude Code run: the declared command ran, an undeclared one was
+parked ([record](release-evidence/declared-commands-claude-code-2.1.236.md)).
 
 ## When you are back: `staircase decide`
 
