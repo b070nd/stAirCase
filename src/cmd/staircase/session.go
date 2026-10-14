@@ -14,6 +14,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -123,6 +124,8 @@ func init() {
 	inScopeFlag(codexCmd)
 	awayFlag(claudeCmd)
 	awayFlag(codexCmd)
+	sandboxFlag(claudeCmd)
+	sandboxFlag(codexCmd)
 	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
 	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
@@ -177,12 +180,16 @@ func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
 	validatorFlag(cmd)
 	inScopeFlag(cmd)
 	awayFlag(cmd)
+	sandboxFlag(cmd)
 	rootCmd.AddCommand(cmd)
 }
 
 // session is a governed run of harness in the current repository, with
 // nothing to set up first.
 func session(harness, name, command string, args []string) error {
+	if err := sandbox.ParseMode(runSandbox); err != nil {
+		return fmt.Errorf("--sandbox: %w", err)
+	}
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)

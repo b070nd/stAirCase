@@ -31,6 +31,20 @@ func Command(ctx context.Context, root, cwd, command, mode string, hide ...strin
 		return nil, false, func() {}, err
 	}
 	cleanup = func() { _ = os.RemoveAll(tmp) }
+	if mode == DockerPrefix || strings.HasPrefix(mode, DockerPrefix+":") { // chosen by name, never by auto; it fails rather than run unsandboxed
+		real, err := filepath.EvalSymlinks(tmp)
+		if err != nil {
+			cleanup()
+			return nil, false, func() {}, err
+		}
+		dcmd, stop, err := dockerCommand(ctx, root, cwd, real, command, mode)
+		if err != nil {
+			cleanup()
+			return nil, false, func() {}, err
+		}
+		removeTmp := cleanup // the named result is reassigned below: capture the folder's own cleanup, not itself
+		return dcmd, true, func() { stop(); removeTmp() }, nil
+	}
 	var wrap []string
 	if mode != Off {
 		if wrap, err = sandboxWrapper(root, tmp, hidden(hide)); err != nil && mode == Required {

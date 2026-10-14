@@ -67,6 +67,13 @@ stAirCase is at **1.0**: its six interfaces follow semantic versioning ([compati
    `--sandbox required` so no command runs outside the sandbox. For untrusted work,
    run stAirCase itself in a container or VM that does not mount your home folder
    or unrelated credentials: then the agent program is contained too.
+   **The docker sandbox** (`--sandbox docker:image=golang:1.26-bookworm,memory=2g,cpus=2`) runs each approved
+   command and each check in a throwaway container instead: it sees only the worktree and its own temporary folder
+   (your home folder is not there at all), as you, without network, capabilities or a writable system, within the
+   memory and CPU limits you set; a cancelled command's container is removed. The image is yours to choose and is
+   never pulled for you (`docker pull` it first). It covers what stAirCase runs: the built-in agent's commands and
+   every check, including an away run's evidence. Claude Code's and Codex's own commands still run in their own
+   sandboxes, not in the container.
 3. **Give stories a scope** so changes elsewhere come to you (`staircase story scope`).
 4. **Set a budget cap** per project (`staircase project config set --budget-cap`).
 5. **Let checks do the tedious part.** `--check` runs your tests, and security

@@ -95,9 +95,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
-	runCmd.Flags().StringVar(&runSandbox, "sandbox", sandbox.Auto,
-		"Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), "+
-			"required (refuse commands that cannot be sandboxed) or off")
+	sandboxFlag(runCmd)
 	checkFlag(runCmd)
 	signFlags(runCmd)
 	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
@@ -114,16 +112,22 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	switch runSandbox {
-	case sandbox.Auto, sandbox.Required, sandbox.Off:
-	default:
-		return fmt.Errorf("--sandbox must be auto, required or off, not %q", runSandbox)
-	}
 	return runCase(caseID)
+}
+
+// sandboxFlag adds --sandbox to cmd: where approved commands and checks run.
+func sandboxFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&runSandbox, "sandbox", sandbox.Auto,
+		"Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), "+
+			"required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] "+
+			"(a container that sees only the worktree, without network; the image is never pulled for you)")
 }
 
 // runCase runs a compiled case with the run flags.
 func runCase(caseID int64) error {
+	if err := sandbox.ParseMode(runSandbox); err != nil {
+		return fmt.Errorf("--sandbox: %w", err)
+	}
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
 	db, err := persistence.InitDB(wsDir)

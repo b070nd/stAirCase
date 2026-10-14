@@ -10,6 +10,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -201,4 +202,37 @@ func TestDecide_P_prototypes_a_parked_change_and_can_adopt_it(t *testing.T) {
 		}})
 	require.NoError(t, err)
 	assert.Contains(t, out.String(), "cannot be adopted")
+}
+
+// TestSession_away_checks_run_in_a_docker_sandbox: an away session's checks are its evidence; with --sandbox docker:image=... they run
+// in a container (recorded as sandboxed), and the change still waits for review. A docker mode without an image is refused first.
+func TestSession_away_checks_run_in_a_docker_sandbox(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - skipped in -short mode")
+	}
+	if err := exec.Command("docker", "image", "inspect", "golang:1.26-bookworm").Run(); err != nil {
+		t.Skip("docker or the image is not available")
+	}
+	_, ws, _ := sessionRepo(t)
+	t.Cleanup(func() {
+		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks, runSandbox = false, false, false, nil, nil, "auto"
+	})
+	sessionAway, sessionAllow, runChecks, runSandbox = true, []string{"HEALTH.md"}, []string{"test -f HEALTH.md && test ! -e /Users"}, "docker"
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "image")
+	runSandbox = "docker:image=golang:1.26-bookworm,memory=256m"
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	defer db.Close()
+	runs, err := persistence.NewStore(db).ListRunsByStatus(persistence.RunStatusAwaitingReview)
+	require.NoError(t, err)
+	require.Len(t, runs, 1, "the check passed in the container (the home folder is not there); the refused mode started no run")
+	assert.EqualValues(t, 1, runs[0].ID)
+	events, err := persistence.NewStore(db).ListVerifiedEventLogs(1)
+	require.NoError(t, err)
+	for _, e := range events {
+		if e.EventType == "phase_checked" {
+			assert.Contains(t, e.Payload, `"sandboxed":true`)
+		}
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -45,7 +46,10 @@ var hostSetupCmd = &cobra.Command{
 		if len(hostSetupAllow) == 0 || len(hostSetupChecks) == 0 {
 			return errors.New("hosted sessions are away runs: name the scope with --allow and at least one --check")
 		}
-		p := hostProfile{Allow: hostSetupAllow, Checks: hostSetupChecks, PassEnv: hostSetupPassEnv}
+		if err := sandbox.ParseMode(orDefaultStr(hostSetupSandbox, sandbox.Auto)); err != nil {
+			return fmt.Errorf("--sandbox: %w", err)
+		}
+		p := hostProfile{Allow: hostSetupAllow, Checks: hostSetupChecks, PassEnv: hostSetupPassEnv, Sandbox: hostSetupSandbox}
 		b, _ := json.MarshalIndent(p, "", "  ")
 		ws := viper.GetString("STAIRCASE_DIR")
 		if err := os.MkdirAll(ws, 0o700); err != nil {
@@ -60,11 +64,15 @@ var hostSetupCmd = &cobra.Command{
 	},
 }
 
-var hostSetupAllow, hostSetupChecks, hostSetupPassEnv []string
+var (
+	hostSetupAllow, hostSetupChecks, hostSetupPassEnv []string
+	hostSetupSandbox                                  string
+)
 
 func init() {
 	hostSetupCmd.Flags().StringArrayVar(&hostSetupAllow, "allow", nil, "A path (glob) hosted sessions may change; repeat for more")
 	hostSetupCmd.Flags().StringArrayVar(&hostSetupChecks, "check", nil, "A command (such as your tests) a change must pass to be approved; repeat for more")
+	hostSetupCmd.Flags().StringVar(&hostSetupSandbox, "sandbox", "", "Where the checks run, as staircase run --sandbox (for example docker:image=golang:1.26-bookworm)")
 	hostSetupCmd.Flags().StringArrayVar(&hostSetupPassEnv, "pass-env", nil,
 		"Name of an environment variable Claude Code may inherit, for its credential (for example CLAUDE_CODE_OAUTH_TOKEN); repeat for more")
 	hostCmd.AddCommand(hostClaudeCmd, hostSetupCmd)
@@ -76,6 +84,7 @@ type hostProfile struct {
 	Allow   []string `json:"allow"`
 	Checks  []string `json:"checks"`
 	PassEnv []string `json:"pass_env,omitempty"`
+	Sandbox string   `json:"sandbox,omitempty"` // as --sandbox; empty is auto
 }
 
 // hostIO, when set, is the runner's session the next Claude Code agent stands in for (agentFor).
@@ -186,6 +195,7 @@ func hostClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	hostIO = &agent.HostIO{Args: h.pass, Settings: h.settings, SystemPrompt: h.systemPrompt, SessionID: h.session, Stdin: stdin, Stdout: stdout}
 	sessionAway, sessionAllow, runChecks, runPassEnv, sessionYes = true, p.Allow, p.Checks, p.PassEnv, true
+	runSandbox = orDefaultStr(p.Sandbox, sandbox.Auto)
 	defer func() { hostIO = nil }()
 	task := fmt.Sprintf("A session started by another program (session %s); its requests reach the agent through that program.", h.session)
 	return session("claude-code", "Claude Code", "host", []string{task})

@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A docker sandbox (`--sandbox docker:image=<image>[,memory=…][,cpus=…]`).** Approved commands and checks can run in a throwaway
+  container that sees only the worktree and its own temporary folder, as the user, without network, capabilities or a writable system,
+  within the memory and CPU limits given; the container of a cancelled command is removed, and the image is never pulled implicitly.
+  `staircase claude`, `codex`, `gemini` and `host setup` take `--sandbox` too, and a mode is checked before anything starts. This is the
+  container mode of the sandbox specification; Claude Code's and Codex's own commands still use their own sandboxes ([safety](docs/safety.md)).
+
 - **Governing sessions another program starts (`staircase host claude`).** A runner such as Cloudroom can name `staircase host claude` as
   its Claude Code program, with no change to the runner. Each session it starts is an away run: the runner's stream-json passes through
   untouched (stAirCase's own output goes to a log), its session id is the agent's session on the chain, its instructions get the Away brief
