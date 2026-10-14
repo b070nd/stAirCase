@@ -12,6 +12,12 @@ same prompt ("Create a file named x.txt ... Use the Write tool"). In the first r
 | with the refusing hook | once | not created | `permission_denials` lists the `Write` call; the result says the write was blocked by the hook |
 | without a hook (control) | not applicable | created | |
 
+**The same in Cloudroom's mode.** A third run used Cloudroom 0.1.57's own flags for Claude Code (from its `src/runtime/claude.rs`): `-p
+--input-format stream-json --output-format stream-json --verbose --dangerously-skip-permissions`, the request sent as a stream-json user
+message on stdin, and the same refusing hook. The hook was called once, `permission_denials` lists the `Write`, and the file was not
+created. Cloudroom also passes `--permission-prompts none`, which Claude Code 2.1.236 refuses (`unknown option`): Cloudroom targets a
+newer Claude Code than this one, so that flag was left out.
+
 **What it shows:** on this version, skipping the permission prompts does not skip the hooks: a `PreToolUse` deny blocks the tool. So a
 Claude Code session that another program starts with that flag can still be governed change by change, provided stAirCase's hook settings
 reach it (Cloudroom would have to pass them, or start the session through stAirCase).
