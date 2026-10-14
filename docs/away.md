@@ -51,5 +51,7 @@ Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for 
   whose checks passed. Accepting again after an interruption finishes the same commit; it never makes a second one.
 - The certificate cites the checks that ran on that tree and says the change was made while you were away and accepted afterwards.
 - `staircase resume` and `staircase recover` refuse a run that awaits review: it has ended, and `decide` is how it goes on.
+- Seen with a real agent: one Claude Code run (2.1.236, haiku), from `--away` to `decide --accept` and a fresh-clone verify and rebuild
+  ([record](release-evidence/away-claude-code-2.1.236.md)).
 - Not yet: a run that requires signed decisions cannot be away (the review in `decide` is not signed); a parked proposal cannot be
   turned into a follow-up run from the inbox; work of several dependent tasks; delivery by policy without your review.
