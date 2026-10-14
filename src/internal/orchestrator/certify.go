@@ -74,6 +74,7 @@ type evidence struct {
 	ledger, policy string // SHA-256 digests
 	initiator      *certificate.Initiator
 	recovered      bool // the run was interrupted and its commit made by `recover`
+	awayReviewed   bool // an away run: approved on evidence while nobody watched, its whole change accepted afterwards (ADR 0006)
 }
 
 // certify signs a change certificate about commit with the workspace key,
@@ -163,6 +164,9 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		p.Notes = append(p.Notes, "commands changed files that were reviewed after the fact")
 	}
 
+	if ev.awayReviewed {
+		p.Notes = append(p.Notes, "made while the owner was away: changes were approved on evidence or by policy, what needed a person was parked, and the owner accepted the whole change after the run ended (staircase decide)")
+	}
 	if ev.recovered { // the end of the run (worktree check, final checks) did not happen
 		p.CAL = min(p.CAL, 2)
 		p.Notes = append(p.Notes, "the run was interrupted and its approved changes recovered afterwards: the agent's end, the check of the worktree and the definition-of-done checks did not happen")

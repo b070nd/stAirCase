@@ -173,6 +173,11 @@ type RunOptions struct {
 	// CheckTimeout is how long one check may run, wherever checks run (approving on
 	// evidence, the definition of done, after the commit): 0 means 15 minutes.
 	CheckTimeout time.Duration
+	// Away (ADR 0006): nobody is asked during the run. Changes are approved on evidence (it implies ApproveOnEvidence
+	// and needs Checks) or by policy; what would need a person is parked and the agent goes on. When the agent stops,
+	// the checks run on the exact approved tree, and a run whose tree passes ends AWAITING_REVIEW: nothing is
+	// committed until the owner decides (staircase decide).
+	Away bool
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -424,16 +429,19 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 			runErr = errors.Join(runErr, err)
 		}
 		if worktree != "" {
-			if finalStatus == persistence.RunStatusSuccess {
+			switch finalStatus {
+			case persistence.RunStatusSuccess:
 				// The deliverable is the run branch; the worktree was only scaffolding.
 				if err := removeWorktree(project.SourcePath, worktree); err != nil {
 					obs.Log.Warn("remove run worktree", "path", worktree, "err", err)
 				}
-			} else {
+			case persistence.RunStatusAwaitingReview:
+				fmt.Fprintf(os.Stdout, "   🔎 Worktree kept until your review: %s\n", worktree)
+			default:
 				fmt.Fprintf(os.Stdout, "   🔎 Worktree kept for inspection: %s\n", worktree)
 			}
 		}
-		if finalStatus != persistence.RunStatusSuccess {
+		if finalStatus != persistence.RunStatusSuccess && finalStatus != persistence.RunStatusAwaitingReview {
 			runErr = errors.Join(runErr, fmt.Errorf("run #%d finished with status %s: %w", run.ID, finalStatus, ErrRunNotSuccessful))
 		} else if evidenceErr != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("run #%d: %w", run.ID, evidenceErr))
@@ -686,6 +694,15 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		}
 	}
 	var evGate *evidenceGate
+	if opts.Away { // checked with the other options of a recorded run, like --approve-on-evidence below
+		if len(opts.Checks) == 0 {
+			return errors.New("--away needs at least one --check: while you are away, a change is approved only on evidence")
+		}
+		if opts.RequireSignedApprovals { // the review in staircase decide is not signed yet: refused rather than weaker
+			return errors.New("--away cannot be combined with signed decisions yet: the review of an away run is not signed")
+		}
+		opts.ApproveOnEvidence = true
+	}
 	if opts.ApproveOnEvidence {
 		if len(opts.Checks) == 0 && val == nil {
 			return errors.New("--approve-on-evidence needs evidence to decide on: name a --check and/or a --validator")
@@ -780,7 +797,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	if cont != nil { // the validator and the deciders continue from the counts the chain recorded
 		val.restore(cont.validator)
 	}
-	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 	if cont != nil {
@@ -902,6 +919,9 @@ runLoop:
 				if rl.evidence != nil {
 					decided["evidence"] = rl.evidence
 				}
+				if rl.parkedWhy != "" {
+					decided["parked_why"] = rl.parkedWhy
+				}
 				if rl.source == "operator" {
 					decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
 				}
@@ -1004,6 +1024,11 @@ runLoop:
 		}
 	}
 	stillGoing()
+	if opts.Away && finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
+		if finalStatus, err = r.awaitReview(ctx, run.ID, appr, evGate, dec.parked); err != nil {
+			return err
+		}
+	}
 	if finalStatus == persistence.RunStatusSuccess && (val != nil && val.unreviewed || dec.taskApproved) {
 		approved, err := dec.finalReview(baseSHA, delivered())
 		if err != nil {

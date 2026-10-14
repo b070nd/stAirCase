@@ -24,6 +24,7 @@ var (
 	sessionYes        bool
 	sessionInScope    bool         // --approve-in-scope
 	sessionOnEvidence bool         // --approve-on-evidence
+	sessionAway       bool         // --away (ADR 0006)
 	sessionReview     *plan.Review // set by staircase review
 )
 
@@ -120,6 +121,8 @@ func init() {
 	validatorFlag(codexCmd)
 	inScopeFlag(claudeCmd)
 	inScopeFlag(codexCmd)
+	awayFlag(claudeCmd)
+	awayFlag(codexCmd)
 	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
 	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
@@ -173,6 +176,7 @@ func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
 	signFlags(cmd)
 	validatorFlag(cmd)
 	inScopeFlag(cmd)
+	awayFlag(cmd)
 	rootCmd.AddCommand(cmd)
 }
 
@@ -182,6 +186,12 @@ func session(harness, name, command string, args []string) error {
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
+	}
+	if sessionAway {
+		if len(runChecks) == 0 {
+			return fmt.Errorf("--away needs at least one --check: while you are away, a change is approved only when your checks pass on it")
+		}
+		sessionOnEvidence = true
 	}
 	if sessionOnEvidence {
 		sessionInScope = true // approving on evidence is approving the task, with checks and reviewers instead of samples
@@ -222,7 +232,7 @@ func session(harness, name, command string, args []string) error {
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, onEvidence: sessionOnEvidence, validators: len(runValidator), signed: runSignKey != "", requireSigned: runRequireSigned, model: runModel,
+			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, onEvidence: sessionOnEvidence, away: sessionAway, validators: len(runValidator), signed: runSignKey != "", requireSigned: runRequireSigned, model: runModel,
 			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
@@ -259,7 +269,13 @@ func session(harness, name, command string, args []string) error {
 	branch := "staircase/run-<id>"
 	if db, err := persistence.InitDB(wsDir); err == nil {
 		if runs, err := persistence.NewStore(db).ListRunsByCase(caseID); err == nil && len(runs) > 0 {
-			branch = fmt.Sprintf("staircase/run-%d", runs[len(runs)-1].ID)
+			last := runs[len(runs)-1]
+			branch = fmt.Sprintf("staircase/run-%d", last.ID)
+			if last.Status == persistence.RunStatusAwaitingReview {
+				_ = db.Close()
+				fmt.Printf("\nNothing is committed yet: the change waits for your review. Look at it and decide with:\n  staircase decide %d\n", last.ID)
+				return nil
+			}
 		}
 		_ = db.Close()
 	}
@@ -338,7 +354,7 @@ func samePath(a, b string) bool {
 type sessionSetup struct {
 	harness, name, task, root, base, model string
 	allow, checks                          []string
-	inScope, onEvidence                    bool
+	inScope, onEvidence, away              bool
 	validators                             int
 	signed, requireSigned                  bool
 	shell                                  bool
@@ -363,6 +379,11 @@ func agreement(s sessionSetup) string {
 	}
 	fmt.Fprintf(&b, "  may change:  %s\n", scope)
 	switch {
+	case s.away:
+		fmt.Fprintf(&b, "  away:        nobody is asked. Inside the scope a change is approved only when %s;\n"+
+			"               anything that needs you (no evidence, outside the scope, a command, a sensitive file) is parked\n"+
+			"               for you and the agent goes on. When it stops, the checks run on the whole change, and it waits\n"+
+			"               for your review: staircase decide. Nothing is committed before you accept it\n", evidenceSources(s))
 	case s.onEvidence:
 		fmt.Fprintf(&b, "  edits:       inside the scope approved when the evidence is there: %s;\n"+
 			"               otherwise the change comes to you with what was missing; nothing is sampled for you,\n"+
@@ -439,6 +460,13 @@ func evidenceSources(s sessionSetup) string {
 		parts = append(parts, "the reviewer model(s) agree")
 	}
 	return strings.Join(parts, " and ")
+}
+
+// awayFlag adds --away to cmd (ADR 0006).
+func awayFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&sessionAway, "away", false,
+		"Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that "+
+			"needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow")
 }
 
 // inScopeFlag adds --approve-in-scope and --approve-on-evidence to cmd.

@@ -29,6 +29,7 @@ type deciders struct {
 	validator *Validator
 	task      bool          // ApproveInScope (or ApproveOnEvidence) with an agreed task
 	evidence  *evidenceGate // with ApproveOnEvidence: in-scope changes are approved on evidence, not on the task alone
+	away      bool          // nobody is asked: what would go to a person is parked (ADR 0006)
 	signal    *Signal
 	redact    func(string) string                                                 // removes delivered secret values from what a person is shown
 	sign      *decisionSigning                                                    // checks and adds signatures on human decisions
@@ -42,6 +43,7 @@ type deciders struct {
 	// final review, which comes after the agent and is not bound by its limit). Nil: nothing.
 	waitCtx, ctx context.Context
 
+	parked              int  // proposals parked while away
 	total, autoApproved int  // proposals so far, and those the policy approved (limits)
 	taskApproved        bool // something was approved as part of the task: a person reviews the result
 }
@@ -68,10 +70,11 @@ type ruling struct {
 	halt    bool                     // the run has drifted too far and stops
 	refused bool                     // the orchestrator refused it before anyone decided
 
-	decideMS int64          // a person's time to decide
-	lines    int            // lines the change adds or removes
-	signed   map[string]any // the signature on a person's decision, for the audit record
-	evidence map[string]any // what an evidence-based approval rests on, for the audit record
+	decideMS  int64          // a person's time to decide
+	lines     int            // lines the change adds or removes
+	signed    map[string]any // the signature on a person's decision, for the audit record
+	evidence  map[string]any // what an evidence-based approval rests on, for the audit record
+	parkedWhy string         // why a proposal was parked while away: what a person would have had to decide
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
@@ -190,6 +193,17 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 }
 
 func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
+	if d.away { // nobody is asked: the proposal is kept for the owner, and the agent goes on at once
+		d.parked++
+		why := strings.Trim(req.Review+"; "+req.Drift+"; "+req.Guard, "; ")
+		if why == "" {
+			why = "it needs a person's decision"
+		}
+		d.display.AddActivity(fmt.Sprintf("%-14s PARKED %s (%s)", req.AgentName, req.ActionType, why))
+		rl.source, rl.parkedWhy = "parked", why
+		rl.resp = domain.Decide(false, "parked for the owner, who is away: "+why+". It is kept for their review; do not propose it again. Go on with what you can do without it.")
+		return rl
+	}
 	start := time.Now()
 	rl.source = "operator"
 	rl.resp, rl.signed = d.sign.ask(orBackground(d.waitCtx), *req, d.askHuman)

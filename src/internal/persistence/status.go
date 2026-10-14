@@ -16,10 +16,11 @@ const (
 
 // Run status values.
 const (
-	RunStatusRunning = domain.RunStatusRunning
-	RunStatusSuccess = domain.RunStatusSuccess
-	RunStatusFailed  = domain.RunStatusFailed
-	RunStatusKilled  = domain.RunStatusKilled
+	RunStatusRunning        = domain.RunStatusRunning
+	RunStatusSuccess        = domain.RunStatusSuccess
+	RunStatusFailed         = domain.RunStatusFailed
+	RunStatusKilled         = domain.RunStatusKilled
+	RunStatusAwaitingReview = domain.RunStatusAwaitingReview
 )
 
 // UserStory status values.

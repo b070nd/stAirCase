@@ -257,3 +257,57 @@ func TestInitDB_database_is_private(t *testing.T) {
 		assert.Zero(t, info.Mode().Perm()&0o077, "%s is %v", filepath.Base(m), info.Mode().Perm())
 	}
 }
+
+// TestInitDB_awaiting_review_migration_keeps_every_run_and_event (ADR 0006): the runs table is rebuilt to allow the status
+// AWAITING_REVIEW. Its audit events reference it with ON DELETE CASCADE, so a careless rebuild would delete every audit chain:
+// a workspace written before the migration keeps its runs and their events byte for byte, and foreign keys are still enforced.
+func TestInitDB_awaiting_review_migration_keeps_every_run_and_event(t *testing.T) {
+	dir := t.TempDir()
+	db, err := persistence.InitDB(dir)
+	require.NoError(t, err)
+	// Make it a workspace of the version before: the old CHECK, and the migration not yet recorded.
+	last := len(persistence.Migrations) - 1
+	_, err = db.Exec(`
+		PRAGMA foreign_keys = OFF;
+		CREATE TABLE runs_old (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, case_id INTEGER NOT NULL, topology_version INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'RUNNING' CHECK(status IN ('RUNNING','SUCCESS','FAILED','KILLED')),
+			start_time DATETIME DEFAULT CURRENT_TIMESTAMP, end_time DATETIME, git_branch TEXT NOT NULL, git_commit_hash TEXT,
+			FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE);
+		DROP TABLE runs;
+		ALTER TABLE runs_old RENAME TO runs;
+		INSERT INTO vendors(id, name) VALUES (1, 'v');
+		INSERT INTO projects(id, vendor_id, name) VALUES (1, 1, 'p');
+		INSERT INTO cases(id, project_id, status) VALUES (1, 1, 'PENDING');
+		INSERT INTO runs(id, case_id, topology_version, status, git_branch, git_commit_hash) VALUES (7, 1, 1, 'SUCCESS', 'staircase/run-7', 'abc');
+		INSERT INTO run_event_logs(run_id, event_type, payload, event_hash, hash_version) VALUES (7, 'run_bound', '{"a":1}', 'h1', 2), (7, 'run_path', '{"b":2}', 'h2', 2);
+		PRAGMA foreign_keys = ON;`)
+	require.NoError(t, err)
+	_, err = db.Exec(`DELETE FROM schema_migrations WHERE idx = ?`, last)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	db, err = persistence.InitDB(dir) // applies the migration
+	require.NoError(t, err)
+	defer db.Close()
+	var events int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM run_event_logs WHERE run_id = 7 AND payload IN ('{"a":1}','{"b":2}')`).Scan(&events))
+	assert.Equal(t, 2, events, "the audit events of the run survive the rebuild")
+	var status, commit string
+	require.NoError(t, db.QueryRow(`SELECT status, git_commit_hash FROM runs WHERE id = 7`).Scan(&status, &commit))
+	assert.Equal(t, "SUCCESS", status)
+	assert.Equal(t, "abc", commit)
+	_, err = db.Exec(`INSERT INTO runs(case_id, topology_version, status, git_branch) VALUES (1, 1, 'AWAITING_REVIEW', 'staircase/run-8')`)
+	require.NoError(t, err, "the new status is allowed")
+	_, err = db.Exec(`INSERT INTO runs(case_id, topology_version, status, git_branch) VALUES (1, 1, 'NONSENSE', 'x')`)
+	assert.Error(t, err, "the status is still checked")
+	_, err = db.Exec(`INSERT INTO run_event_logs(run_id, event_type, payload, event_hash) VALUES (999, 'x', '{}', 'h')`)
+	assert.Error(t, err, "foreign keys are enforced after the migration")
+	var idx int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_runs_case'`).Scan(&idx))
+	assert.Equal(t, 1, idx, "the index on runs is there again")
+	rows, err := db.Query(`PRAGMA foreign_key_check`)
+	require.NoError(t, err)
+	defer rows.Close()
+	assert.False(t, rows.Next(), "no dangling reference")
+}

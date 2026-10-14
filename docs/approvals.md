@@ -359,6 +359,9 @@ least one check or validator. Nothing is sampled for you either: you still see a
 outside the scope, sensitive files, guard hits and shell commands, and **you approve the
 whole change once at the end**.
 
+To leave the agent working without being asked at all, see [working while you are away](away.md): `--away` parks what
+would come to you and ends the run waiting for your review.
+
 Two things to know. A check must be able to pass on each intermediate state, or you will
 be asked about every change: a build, a linter, a type check and fast tests work; a test
 suite that fails until three files exist does not. And the evidence is as good as your
