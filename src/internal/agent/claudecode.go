@@ -10,12 +10,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,6 +44,39 @@ type ClaudeCode struct {
 	// command gets (sandbox.Env): the way to give it its own credential without a login
 	// (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY). Opt-in, by name; a variable that is not set is not passed.
 	PassEnv []string
+	// Host, when set, runs Claude Code for another program that started it (ADR 0008): see HostIO.
+	Host *HostIO
+}
+
+// HostIO is a session another program (a runner such as Cloudroom) started: the arguments of its that may pass, its session id,
+// the settings and instructions it gave, and its stdin and stdout, which pass through untouched so its protocol is unchanged.
+// stAirCase's own settings still decide: its hooks, no other settings source, no MCP server; the runner's settings are kept only
+// where they are on HostSettings, under stAirCase's; the Away brief follows the runner's instructions.
+type HostIO struct {
+	Args         []string // the runner's arguments that may pass (without --settings, --mcp-config, --append-system-prompt, the session)
+	Settings     map[string]any
+	SystemPrompt string
+	SessionID    string
+	Stdin        io.Reader
+	Stdout       io.Writer
+}
+
+// HostSettings are the runner's settings that may pass under stAirCase's: they change how Claude Code presents itself, not what it may do.
+var HostSettings = map[string]bool{"fastMode": true, "enableWorkflows": true, "attribution": true}
+
+// hostedSettings are stAirCase's settings with the runner's harmless ones under them.
+func hostedSettings(own []byte, runner map[string]any) []byte {
+	var s map[string]any
+	if json.Unmarshal(own, &s) != nil {
+		return own
+	}
+	for k, v := range runner {
+		if _, taken := s[k]; HostSettings[k] && !taken {
+			s[k] = v
+		}
+	}
+	b, _ := json.Marshal(s)
+	return b
 }
 
 var envName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
@@ -100,7 +135,11 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		}
 	}
 	settings := filepath.Join(dir, "settings.json")
-	if err := os.WriteFile(settings, hookSettings(HookCommand(bin, "claude-code", "--governed"), sandboxSettings(root, env.Workspace)), 0o600); err != nil {
+	own := hookSettings(HookCommand(bin, "claude-code", "--governed"), sandboxSettings(root, env.Workspace))
+	if c.Host != nil {
+		own = hostedSettings(own, c.Host.Settings)
+	}
+	if err := os.WriteFile(settings, own, 0o600); err != nil {
 		return err
 	}
 
@@ -109,16 +148,26 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	// against Claude Code 2.1.236: "" loads none of them, --settings still loads.
 	// The session's id is chosen here and recorded on the audit chain, so a continuation can resume the agent's own
 	// conversation (`claude --resume <id>`); the governed settings apply to a resumed session as to a new one.
-	sid, resumed := sessionFor(env, "claude-code")
-	args := []string{"-p", withContinuation(c.Prompt, env), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
-		"--output-format", "json"}
-	if resumed {
-		args = append(args, "--resume", sid)
+	var args []string
+	if c.Host != nil { // the runner's session: its arguments and id, its instructions with the Away brief after them
+		env.RecordSession("claude-code", c.Host.SessionID, "started")
+		args = append(slices.Clone(c.Host.Args), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+			"--session-id", c.Host.SessionID)
+		if sp := strings.TrimSpace(c.Host.SystemPrompt + "\n\n" + env.Brief); sp != "" {
+			args = append(args, "--append-system-prompt", sp)
+		}
 	} else {
-		args = append(args, "--session-id", sid)
-	}
-	if c.Model != "" {
-		args = append(args, "--model", c.Model)
+		sid, resumed := sessionFor(env, "claude-code")
+		args = []string{"-p", withContinuation(c.Prompt, env), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+			"--output-format", "json"}
+		if resumed {
+			args = append(args, "--resume", sid)
+		} else {
+			args = append(args, "--session-id", sid)
+		}
+		if c.Model != "" {
+			args = append(args, "--model", c.Model)
+		}
 	}
 	cmd := exec.CommandContext(ctx, orDefault(c.Bin, "claude"), args...)
 	// sandbox.Env carries no LLM key: Claude Code is logged in (keychain under HOME), or is
@@ -134,7 +183,19 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	var stdout bytes.Buffer
 	stderr := &tail{max: 4096}
 	cmd.Stdout, cmd.Stderr = &stdout, stderr
+	if c.Host != nil { // the runner's protocol passes through untouched; its result is the runner's to read
+		cmd.Stdin, cmd.Stdout = c.Host.Stdin, c.Host.Stdout
+	}
 	runErr := cmd.Run()
+	if c.Host != nil {
+		switch {
+		case runErr != nil:
+			return fmt.Errorf("claude code: %w: %s", runErr, stderr)
+		case !h.started.Load():
+			return errors.New("claude code never ran staircase's hooks, so the session was not governed; nothing it did is kept")
+		}
+		return nil
+	}
 
 	var res struct {
 		IsError bool   `json:"is_error"`

@@ -548,6 +548,30 @@ Flags:
       --bin string   Path of staircase on the managed machines (default: this program)
 ```
 
+## staircase host claude
+
+Stand in for Claude Code: the runner's session, governed as an away run
+
+```
+staircase host claude [the runner's Claude Code arguments]
+```
+
+## staircase host setup
+
+Set the scope, checks and credential names for hosted sessions in this workspace
+
+```
+staircase host setup [flags]
+```
+
+Flags:
+
+```
+      --allow stringArray      A path (glob) hosted sessions may change; repeat for more
+      --check stringArray      A command (such as your tests) a change must pass to be approved; repeat for more
+      --pass-env stringArray   Name of an environment variable Claude Code may inherit, for its credential (for example CLAUDE_CODE_OAUTH_TOKEN); repeat for more
+```
+
 ## staircase init
 
 Initialize the stAirCase workspace: database and keys

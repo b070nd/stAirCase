@@ -2,6 +2,8 @@ package orchestrator_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -265,4 +267,40 @@ func TestAway_the_review_names_what_was_parked_and_why(t *testing.T) {
 	assert.Equal(t, []string{"elsewhere.txt"}, rv.ParkedProposals[1].Files)
 	assert.NotEmpty(t, rv.ParkedProposals[1].Why)
 	assert.Equal(t, "", rv.Decided)
+}
+
+// TestAway_the_agent_is_told_it_works_unattended (ADR 0008, 3): an away run gives its agent the pinned Away brief (park, do not retry,
+// hand off), and binds its version and digest on run_bound before the agent starts; a run that is not away gives none.
+func TestAway_the_agent_is_told_it_works_unattended(t *testing.T) {
+	var brief string
+	r := runtest.Run(t, runtest.Options{
+		Setup: inSrc(&operator{approve: true}),
+		Run:   awayOpts(),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			brief = env.Brief
+			write(ctx, env, "src/one.txt", "fine\n")
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	assert.Equal(t, orchestrator.AwayBrief, brief)
+	assert.Contains(t, brief, "parked")
+	bound := payload(t, r, "run_bound")
+	require.NotNil(t, bound)
+	ab, ok := bound["away_brief"].(map[string]any)
+	require.True(t, ok, "run_bound names the brief: %v", bound)
+	assert.EqualValues(t, orchestrator.AwayBriefVersion, ab["version"])
+	assert.Equal(t, briefDigest(orchestrator.AwayBrief), ab["sha256"])
+
+	var none string
+	r2 := runtest.Run(t, runtest.Options{
+		Setup: inSrc(&operator{approve: true}),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { none = env.Brief; return nil })})
+	require.NoError(t, r2.Err)
+	assert.Empty(t, none)
+	assert.Nil(t, payload(t, r2, "run_bound")["away_brief"])
+}
+
+func briefDigest(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }

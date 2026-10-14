@@ -55,6 +55,8 @@ type AgentEnv struct {
 	// Continuation is what a fresh agent session is told when the run is a continuation of an interrupted one: the
 	// task as it stood, built by Go from the audit chain ("" for a first segment). Add it to the agent's first message.
 	Continuation string
+	// Brief is the pinned Away brief when the run is away (ADR 0008): how to work when nobody answers. Put it before the task.
+	Brief string
 
 	Worktree     string        // the run's git worktree: the agent's project root
 	AllowShell   bool          // shell_exec may be proposed (--allow-shell-exec)

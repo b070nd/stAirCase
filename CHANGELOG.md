@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Governing sessions another program starts (`staircase host claude`).** A runner such as Cloudroom can name `staircase host claude` as
+  its Claude Code program, with no change to the runner. Each session it starts is an away run: the runner's stream-json passes through
+  untouched (stAirCase's own output goes to a log), its session id is the agent's session on the chain, its instructions get the Away brief
+  after them, and only its harmless settings pass under stAirCase's; its MCP server is off and an argument stAirCase does not know is
+  refused. `staircase host setup` sets the scope, checks and credential names. Run with Cloudroom 0.1.57's own argument list and a real
+  Claude Code ([hosting](docs/hosting.md), [ADR 0008](docs/adr/0008-governing-another-runner.md)).
+- **An away run's agent is told it works unattended.** A pinned, versioned Away brief (a refusal is a parking, do not retry, hand off)
+  comes before the task; its version and digest are on the run's `run_bound` entry.
+
 - **Prototype a parked change, and adopt it (`staircase decide`, P and `--adopt`).** For a proposal an away run parked, P shows what it
   would do on top of the change on offer: its diff and your checks on the result, in a checkout that is thrown away, with nothing
   recorded. A change that passes can be adopted: it becomes your approval, recorded as a live approval would be (request, journal line,

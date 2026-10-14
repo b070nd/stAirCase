@@ -279,7 +279,7 @@ func agentFor(who string, pl plan.Plan) (orchestrator.Agent, error) {
 	switch who {
 	case "built-in":
 	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
+		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv, Host: hostIO}
 	case "codex":
 		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
 	case "gemini":

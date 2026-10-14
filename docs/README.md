@@ -16,6 +16,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | Page | What you learn |
 |---|---|
 | [Approvals](approvals.md) | approve in the terminal, a browser page, a script or a service; rules; a reviewer model; approve on evidence; sign your decisions |
+| [Governing sessions another program starts](hosting.md) | `staircase host claude`: a runner such as Cloudroom starts Claude Code through stAirCase, as an away run |
 | [Working while you are away](away.md) | `--away`: the agent works on evidence, parks what needs you, and the change waits for `staircase decide` |
 | [Models and API keys](models.md) | providers, storing keys, budget caps, record and replay |
 | [Blueprints](blueprints.md) | keep your agent setup as files in its own repository |
