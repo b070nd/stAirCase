@@ -1,7 +1,7 @@
 # ADR 0006: Away mode - unattended work that ends in a durable review (design)
 
-- Status: accepted for v1.1 (the thin slice below), with the owner's decisions of 2026-10-14: build the thin slice, approve on
-  evidence while away, take Cloudroom's good patterns, offer a Y/N/D/Z decision inbox. Not yet built.
+- Status: accepted and built for v1.1 (the thin slice below), with the owner's decisions of 2026-10-14: build the thin slice, approve on
+  evidence while away, take Cloudroom's good patterns, offer a Y/N/D/Z decision inbox. Section 9 is not built.
 - Date: 2026-10-14
 - Related: the v1.1 candidate V11-C01 and the Cloudroom reuse assessment (in the maintainer's protocol), ADR 0005 (continuation).
 

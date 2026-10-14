@@ -228,3 +228,41 @@ sound() {
   [ "$(on_branch src/b.txt)" = "b content" ]
   sound
 }
+
+# Away mode (ADR 0006): accepting a run that awaits review goes through recovery's operation record and commit, so a decide
+# killed at either point is finished by accepting again, with one commit.
+away() {
+  cd "$WORK/app"   # the session runs in the drill's repository, never in the one the tests are run from
+  run sc claude --yes --away --allow "src/**" --check "test -f src/a.txt" "write two files"
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(git -C "$WORK/app" rev-parse main)" = "$(git -C "$WORK/app" rev-parse staircase/run-1)" ]   # nothing delivered yet
+}
+
+@test "decide killed after it recorded its operation: accepting again delivers one commit" {
+  away
+  cd "$WORK/app"
+  hold recover-op-recorded "$STAIRCASE_BIN" decide 1 --accept
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]   # it had not committed
+  run sc decide 1 --accept
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+  sound
+  run sc decide 1 --accept
+  [ "$status" -ne 0 ]   # delivered: nothing left to decide
+}
+
+@test "decide killed after its commit, before its evidence: accepting again repairs the same commit" {
+  away
+  cd "$WORK/app"
+  hold recover-committed "$STAIRCASE_BIN" decide 1 --accept
+  commit="$(git rev-parse staircase/run-1)"
+  [ "$commit" != "$(git rev-parse main)" ]
+  [ -z "$(note staircase)" ]
+  run sc decide 1 --accept
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(git rev-parse staircase/run-1)" = "$commit" ]
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+  [ -n "$(note staircase)" ] && [ -n "$(note staircase-ledger)" ]
+  sound
+}
