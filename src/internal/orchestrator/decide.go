@@ -23,21 +23,22 @@ import (
 // to a human, its rules decide it; the validator decides in-scope edits; a
 // human decides the rest.
 type deciders struct {
-	approvals *approvals // nil without a git repository
-	drift     *policy.Supervisor
-	policy    *policy.Engine
-	validator *Validator
-	task      bool            // ApproveInScope (or ApproveOnEvidence) with an agreed task
-	evidence  *evidenceGate   // with ApproveOnEvidence: in-scope changes are approved on evidence, not on the task alone
-	away      bool            // nobody is asked: what would go to a person is parked (ADR 0006)
-	declared  map[string]bool // the exact commands an away run may run without asking (ADR 0009)
-	signal    *Signal
-	redact    func(string) string                                                 // removes delivered secret values from what a person is shown
-	sign      *decisionSigning                                                    // checks and adds signatures on human decisions
-	askHuman  func(req domain.YieldRequest, signText string) domain.YieldResponse // signText: what a person signs, up to the verb
-	display   *monitor.Display
-	tracker   *monitor.Tracker
-	audit     func(event string, fields map[string]any) error
+	approvals     *approvals // nil without a git repository
+	drift         *policy.Supervisor
+	policy        *policy.Engine
+	validator     *Validator
+	task          bool            // ApproveInScope (or ApproveOnEvidence) with an agreed task
+	evidence      *evidenceGate   // with ApproveOnEvidence: in-scope changes are approved on evidence, not on the task alone
+	away          bool            // nobody is asked: what would go to a person is parked (ADR 0006)
+	declared      map[string]bool // the exact commands an away run may run without asking (ADR 0009)
+	declaredTools map[string]bool // the exact MCP tools an away run may call without asking (ADR 0008)
+	signal        *Signal
+	redact        func(string) string                                                 // removes delivered secret values from what a person is shown
+	sign          *decisionSigning                                                    // checks and adds signatures on human decisions
+	askHuman      func(req domain.YieldRequest, signText string) domain.YieldResponse // signText: what a person signs, up to the verb
+	display       *monitor.Display
+	tracker       *monitor.Tracker
+	audit         func(event string, fields map[string]any) error
 
 	// What ends a decision: waitCtx the run's cancellation and its time limit (for every
 	// decision in the loop, automatic or a person's), ctx cancellation alone (for the
@@ -141,6 +142,12 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		d.display.AddActivity(fmt.Sprintf("%-14s DECLARED %s", req.AgentName, req.ProposedEdits[0].ReplaceBlock))
 		rl.resp, rl.source = domain.Decide(true, "a command the owner declared for this away run"), "declared"
 		rl.evidence = map[string]any{"declared_sha256": declaredDigest(slices.Sorted(maps.Keys(d.declared)))}
+		return rl
+	}
+	if d.away && req.ActionType == domain.ActionToolCall && len(req.ProposedEdits) == 1 && d.declaredTools[req.ProposedEdits[0].File] {
+		d.display.AddActivity(fmt.Sprintf("%-14s DECLARED %s", req.AgentName, req.ProposedEdits[0].File))
+		rl.resp, rl.source = domain.Decide(true, "a tool the owner declared for this away run"), "declared"
+		rl.evidence = map[string]any{"declared_sha256": declaredDigest(slices.Sorted(maps.Keys(d.declaredTools)))}
 		return rl
 	}
 	// Drift supervision: a proposal reaching outside the stories' scope, past

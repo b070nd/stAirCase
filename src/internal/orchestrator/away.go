@@ -233,6 +233,14 @@ func awayBrief(away bool) string {
 // checkAwayCommands refuses a declaration of commands (ADR 0009) that is not an away run's, cannot run in a sandbox without network,
 // or is not a whole command: no composition, redirection, substitution or second line.
 func checkAwayCommands(o RunOptions) error {
+	for _, t := range o.AwayTools {
+		if !o.Away {
+			return errors.New("--away-tool declares tools for an away run: add --away")
+		}
+		if !strings.HasPrefix(t, "mcp__") || strings.ContainsAny(t, " *?") {
+			return fmt.Errorf("--away-tool %q: name one MCP tool exactly, as mcp__<server>__<tool>", t)
+		}
+	}
 	if len(o.AwayCommands) == 0 {
 		return nil
 	}

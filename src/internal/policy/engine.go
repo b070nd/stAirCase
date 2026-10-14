@@ -300,7 +300,7 @@ func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 	// Hard invariant: shell commands must always reach a human operator.
 	// No policy rule can override this - a broad auto-approve rule could
 	// otherwise silently execute arbitrary OS commands.
-	if req.ActionType == domain.ActionShellExec {
+	if req.ActionType == domain.ActionShellExec || req.ActionType == domain.ActionToolCall { // an MCP tool acts outside the sandbox too
 		return PolicyDecision{}
 	}
 	for i, r := range e.Rules {

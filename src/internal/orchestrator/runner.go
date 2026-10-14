@@ -181,6 +181,8 @@ type RunOptions struct {
 	// AwayCommands (ADR 0009) are the exact commands an away run may run without asking: the owner's decision made in advance.
 	// They need Away, AllowShellExec and a sandbox without network; each is a whole command, run in the worktree's root.
 	AwayCommands []string
+	// AwayTools are the exact MCP tool names (mcp__server__tool) an away run may call without asking; any other tool call is parked.
+	AwayTools []string
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -523,6 +525,9 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		if len(opts.AwayCommands) > 0 { // so are the commands it may run without asking
 			bound["away_commands"] = map[string]any{"commands": opts.AwayCommands, "sha256": declaredDigest(opts.AwayCommands)}
 		}
+		if len(opts.AwayTools) > 0 { // and the tools
+			bound["away_tools"] = map[string]any{"tools": opts.AwayTools, "sha256": declaredDigest(opts.AwayTools)}
+		}
 		if err := r.audit(run.ID, "run_bound", bound); err != nil {
 			return fmt.Errorf("audit run_bound: %w", err)
 		}
@@ -809,7 +814,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	if cont != nil { // the validator and the deciders continue from the counts the chain recorded
 		val.restore(cont.validator)
 	}
-	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), declaredTools: declaredSet(opts.AwayTools), approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 	if cont != nil {

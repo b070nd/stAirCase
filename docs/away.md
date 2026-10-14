@@ -40,6 +40,12 @@ parked), so such a change reaches CAL 2. Gemini CLI and OpenCode run their comma
 commands ([ADR 0009](adr/0009-declared-commands-while-away.md)). Seen in a real Claude Code run: the declared command ran, an undeclared one was
 parked ([record](release-evidence/declared-commands-claude-code-2.1.236.md)).
 
+### Declared MCP tools
+
+A call of an MCP server's tool is decided like a command: never by a policy rule, and while away it is parked, unless you declared that
+exact tool: `--away-tool mcp__<server>__<tool>` (repeatable). An approved tool call runs outside stAirCase's sandbox, so a change made
+with one reaches CAL 2, and the certificate says how many calls were approved.
+
 ## When you are back: `staircase decide`
 
 ```text

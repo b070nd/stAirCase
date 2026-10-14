@@ -85,7 +85,10 @@ The runner keeps its features that do not touch the branch (chat, history, its o
 
 ## Open questions, to settle by probes before building
 
-1. Does `PreToolUse` fire for MCP tool calls (`mcp__*`) under the runner's flags, and can a deny block them?
+1. ~~Does `PreToolUse` fire for MCP tool calls (`mcp__*`) under the runner's flags, and can a deny block them?~~ Yes, probed on 2.1.236
+   ([record](../release-evidence/claude-code-2.1.236-mcp-tools-under-hooks.md)); decision 1.3 is built: each call is a `tool_call` proposal,
+   never approved by a policy rule, parked while away unless its exact name is declared (`--away-tool`), and an approved one caps the
+   change at CAL 2. Not yet probed: an SDK-type server such as Cloudroom's own.
 2. Does Claude Code merge two `--settings` flags or keep the last? (The stand-in merges them itself either way.)
 3. Do Cloudroom's own features need its working directory to be its workspace (room-cli, child spawns, file views)?
 4. Which Claude Code version does Cloudroom 0.1.57 need (`--permission-prompts`), and is it one stAirCase can qualify?

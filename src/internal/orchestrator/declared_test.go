@@ -2,8 +2,11 @@ package orchestrator_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
@@ -71,4 +74,22 @@ func TestDeclared_refused_unless_away_in_a_sandbox_without_network(t *testing.T)
 			assert.Contains(t, r.Err.Error(), tc.why)
 		})
 	}
+}
+
+// TestToolCall_a_policy_rule_never_approves_it_and_an_approved_one_caps_the_level: an MCP tool call runs outside stAirCase's sandbox, so
+// like a command it is never approved by a rule (a person decides), and a change made with one reaches CAL 2, saying why.
+func TestToolCall_a_policy_rule_never_approves_it_and_an_approved_one_caps_the_level(t *testing.T) {
+	op := &operator{approve: true}
+	r, _, s := certified(t, func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		if ap := env.Propose(ctx, domain.YieldRequest{AgentName: "claude-code", ActionType: domain.ActionToolCall,
+			ProposedEdits: []domain.ProposedEdit{{File: "mcp__probe__note", SearchBlock: orchestrator.MarkerToolCall, ReplaceBlock: `{"text":"hi"}`}}}); !ap.Approved {
+			return fmt.Errorf("the person approves it: %s", ap.Feedback)
+		}
+		return writeFile("health.txt", "ok\n")(ctx, env)
+	}, orchestrator.RunOptions{}, op)
+	require.NotEmpty(t, op.seen, "a person was asked")
+	assert.Equal(t, domain.ActionToolCall, op.seen[0].ActionType)
+	assert.Equal(t, 2, s.Predicate.CAL, s.Predicate.Notes)
+	assert.Contains(t, strings.Join(s.Predicate.Notes, " "), "MCP")
+	_ = r
 }

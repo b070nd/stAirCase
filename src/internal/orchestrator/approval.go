@@ -37,6 +37,7 @@ const (
 	MarkerNewFile    = "(new file)"    // replace_block is the complete new content
 	MarkerDeleteFile = "(delete file)" // the file is removed
 	MarkerShell      = "(shell)"       // a shell_exec proposal: file is the working directory, replace_block the command
+	MarkerToolCall   = "(tool call)"   // a tool_call proposal: file is the tool's name, replace_block its input (JSON)
 )
 
 // approvedFile is what the operator approved for one path.

@@ -538,6 +538,13 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		}
 		return h.proposeEdit(ctx, in, domain.ProposedEdit{File: rel, SearchBlock: a.OldString, ReplaceBlock: a.NewString})
 	}
+	if strings.HasPrefix(in.Tool, "mcp__") { // a tool of an MCP server: decided like a command (ADR 0008), with its exact input
+		input, _ := json.Marshal(in.Input)
+		if ap := h.env.ProposeToolCall(ctx, h.who(), h.title()+" "+in.Tool, in.Tool, string(input)); !ap.Approved {
+			return "staircase: " + ap.Refusal()
+		}
+		return ""
+	}
 	return "staircase: " + in.Tool + " is not available in a governed run"
 }
 

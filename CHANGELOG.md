@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **MCP tools are decided, not switched off (`tool_call`, `--away-tool`).** A Claude Code call of an MCP server's tool is a proposal with
+  its exact input: a policy rule never approves it, a person decides it, and while away it is parked unless its exact name is declared
+  (`--away-tool`, also in `staircase host setup`). A change made with an approved tool call reaches CAL 2, with a note. Hosted sessions now
+  keep the runner's MCP server, behind this gate. Probed on Claude Code 2.1.236: a `PreToolUse` refusal stops an MCP tool call
+  ([record](docs/release-evidence/claude-code-2.1.236-mcp-tools-under-hooks.md)).
+
 - **Declared commands while away (`--away-command`).** An away run may run exactly the commands its owner declared when it started,
   without asking: byte for byte, in the worktree's root, and only in a sandbox without network (the docker sandbox, or `required` where
   sandbox-exec or bubblewrap runs). Each is a whole command (no composition, redirection or substitution); the decision is recorded as

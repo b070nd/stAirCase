@@ -219,6 +219,11 @@ func (e *AgentEnv) ProposeShell(ctx context.Context, agent, reasoning, dir, comm
 	return e.propose(ctx, agent, reasoning, domain.ActionShellExec, domain.ProposedEdit{File: dir, SearchBlock: MarkerShell, ReplaceBlock: command})
 }
 
+// ProposeToolCall asks for a call of an MCP server's tool, with its exact input (JSON): decided like a command (ADR 0008).
+func (e *AgentEnv) ProposeToolCall(ctx context.Context, agent, reasoning, tool, input string) Approval {
+	return e.propose(ctx, agent, reasoning, domain.ActionToolCall, domain.ProposedEdit{File: tool, SearchBlock: MarkerToolCall, ReplaceBlock: input})
+}
+
 func (e *AgentEnv) propose(ctx context.Context, agent, reasoning, action string, edit domain.ProposedEdit) Approval {
 	return e.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: action,
 		ProposedEdits: []domain.ProposedEdit{edit}, ReasoningTrace: reasoning, ConfidenceScore: 0.9})

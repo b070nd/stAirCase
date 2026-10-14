@@ -39,6 +39,7 @@ type savedOptions struct {
 	ValidatorModels        []string `json:"validator_models,omitempty"`
 	Away                   bool     `json:"away,omitempty"`
 	AwayCommands           []string `json:"away_commands,omitempty"`
+	AwayTools              []string `json:"away_tools,omitempty"`
 }
 
 const savedOptionsVersion = 1
@@ -46,7 +47,7 @@ const savedOptionsVersion = 1
 func optionsToSave(o RunOptions) savedOptions {
 	s := savedOptions{Version: savedOptionsVersion, Agreed: o.Agreed, ApproveInScope: o.ApproveInScope, ApproveOnEvidence: o.ApproveOnEvidence,
 		AllowShellExec: o.AllowShellExec, Sandbox: o.Sandbox, RequireSignedApprovals: o.RequireSignedApprovals, SignKey: o.SignKey,
-		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout), Away: o.Away, AwayCommands: o.AwayCommands}
+		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout), Away: o.Away, AwayCommands: o.AwayCommands, AwayTools: o.AwayTools}
 	if o.Signal != nil {
 		s.SignalModel, s.SignalURL = o.Signal.Model, o.Signal.URL
 	}
@@ -60,7 +61,7 @@ func optionsToSave(o RunOptions) savedOptions {
 func (s savedOptions) apply(base RunOptions) RunOptions {
 	base.Agreed, base.ApproveInScope, base.ApproveOnEvidence, base.AllowShellExec, base.Sandbox = s.Agreed, s.ApproveInScope, s.ApproveOnEvidence, s.AllowShellExec, s.Sandbox
 	base.RequireSignedApprovals, base.SignKey, base.SignAs, base.RequireEvidence = s.RequireSignedApprovals, s.SignKey, s.SignAs, s.RequireEvidence
-	base.Checks, base.CheckTimeout, base.Away, base.AwayCommands = s.Checks, time.Duration(s.CheckTimeoutNS), s.Away, s.AwayCommands
+	base.Checks, base.CheckTimeout, base.Away, base.AwayCommands, base.AwayTools = s.Checks, time.Duration(s.CheckTimeoutNS), s.Away, s.AwayCommands, s.AwayTools
 	if s.SignalModel != "" {
 		base.Signal = &Signal{Model: s.SignalModel, URL: s.SignalURL}
 	}

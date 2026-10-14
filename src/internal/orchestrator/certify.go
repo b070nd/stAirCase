@@ -99,7 +99,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if out, err := exec.Command("git", "-C", repo.path, "config", "user.email").Output(); err == nil {
 		p.RequestedBy = strings.TrimSpace(string(out))
 	}
-	shells, sandboxed, after := 0, 0, false
+	shells, sandboxed, after, tools := 0, 0, false, 0
 	var decideMS []int64 // people's decisions
 	quick := 0
 	signed := certificate.SignedApprovals{}
@@ -128,6 +128,9 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			p.Decisions[d.Source]++
 			if d.Approved && d.ActionType == domain.ActionShellExec {
 				shells++
+			}
+			if d.Approved && d.ActionType == domain.ActionToolCall {
+				tools++
 			}
 			if d.Source == "operator" && d.Signature != "" {
 				signed.Decisions++
@@ -158,6 +161,10 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if shells > sandboxed { // ADR 0001: CAL 3 runs no approved command outside a sandbox
 		p.CAL = 2
 		p.Notes = append(p.Notes, "shell commands were approved and ran without a sandbox")
+	}
+	if tools > 0 { // an MCP tool was decided before it ran, but it ran outside stAirCase's sandbox (ADR 0008)
+		p.CAL = min(p.CAL, 2)
+		p.Notes = append(p.Notes, fmt.Sprintf("%d call(s) of MCP tools were approved; they ran outside stAirCase's sandbox", tools))
 	}
 	if after { // ADR 0001: CAL 3 decides every action before it runs
 		p.CAL = 2
