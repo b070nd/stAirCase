@@ -22,4 +22,5 @@ const (
 	ResumeStarted     = "resume-started"      // the run is reopened and run_resumed is on the chain; the agent has not started
 	RecoverCommitted  = "recover-committed"   // recovery made its commit; its evidence is not yet written
 	RecoverOpRecorded = "recover-op-recorded" // recovery wrote its operation record, before the commit
+	AdoptApproved     = "adopt-approved"      // the owner's approval of a parked proposal is recorded; its checks and review are not (ADR 0007)
 )

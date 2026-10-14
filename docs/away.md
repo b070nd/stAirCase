@@ -41,8 +41,10 @@ Keys: Y or I accept, N or O reject, D defer and show the alternatives, Z clarify
 | **N** or **O** | Reject: nothing is committed. |
 | **D** | Defer: nothing is decided, the run keeps waiting; you see what was parked and the command for the whole diff. |
 | **Z** | Clarify: Claude Code starts in plan mode (read-only) in a separate directory that holds only this change, its evidence and what was parked. Ask what you need; nothing said there decides anything. You come back to Y, N or D. |
+| **P** | Prototype a parked change: pick one, and see what it would do on top of the change on offer, its diff and your checks on the result, in a checkout that is thrown away. One that passes can be adopted into the change as your approval; you then decide on the new review. |
 
-Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for why. A decision is bound to the review you saw:
+Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for why, and `staircase decide 12 --adopt 4` to adopt
+parked proposal #4 (as the tree numbers them) if your checks pass with it. A decision is bound to the review you saw:
 `--shown <entry>` (the review entry the list prints) is refused if the run's review is another one.
 
 ## What it guarantees, and what not yet
@@ -53,5 +55,7 @@ Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for 
 - `staircase resume` and `staircase recover` refuse a run that awaits review: it has ended, and `decide` is how it goes on.
 - Seen with a real agent: one Claude Code run (2.1.236, haiku), from `--away` to `decide --accept` and a fresh-clone verify and rebuild
   ([record](release-evidence/away-claude-code-2.1.236.md)).
-- Not yet: a run that requires signed decisions cannot be away (the review in `decide` is not signed); a parked proposal cannot be
-  turned into a follow-up run from the inbox; work of several dependent tasks; delivery by policy without your review.
+- Adopting a parked proposal ([ADR 0007](adr/0007-prototype-bridging.md)) is recorded as what a live approval would have written, so the
+  delivered commit verifies and rebuilds like any other; it is refused, with nothing recorded, when your checks fail with it.
+- Not yet: a run that requires signed decisions cannot be away (the review in `decide` is not signed); a prototype in which the agent
+  continues on top of a parked change; work of several dependent tasks; delivery by policy without your review.

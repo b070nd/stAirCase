@@ -222,6 +222,10 @@ type YieldRequest struct {
 	// Before, set by the orchestrator, is the approved content of each file a
 	// whole-file change replaces, so a person sees what changes (a line diff).
 	Before map[string]string `json:"before,omitempty"`
+
+	// Adopts, set by the orchestrator, is the number of the parked proposal this request takes over: the owner adopted it
+	// after an away run (ADR 0007).
+	Adopts int `json:"adopts,omitempty"`
 }
 
 // YieldResponse is the decision on a YieldRequest, returned to the agent.

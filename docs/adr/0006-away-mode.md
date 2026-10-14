@@ -106,8 +106,8 @@ Claude Code's hooks still decide under `--dangerously-skip-permissions` has to b
 
 ### 9. Deferred, in order of value
 
-1. **Bridging a parked decision with a disposable prototype**: a parked proposal can start a throwaway run on its own branch so the owner
-   sees the consequence before deciding.
+1. **Bridging a parked decision with a disposable prototype**: built as [ADR 0007](0007-prototype-bridging.md) (the parked change itself,
+   checked on top of the change and adoptable); a prototype in which the agent continues is still open.
 2. Policy-based local delivery (the second delivery mode).
 3. Phases of several dependent tasks, one writer, and a durable queue with parking per task.
 4. Declared command capabilities while away (this reverses the all-shell-human rule and needs its own ADR and a sandbox on every supported OS).

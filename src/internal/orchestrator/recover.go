@@ -181,27 +181,11 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if err != nil {
 		return res, err
 	}
-	// Derived against an empty directory, as a rebuild does: what is on disk
-	// now has no say in what was approved.
-	scratch, err := os.MkdirTemp("", "staircase-recover-")
+	a, cleanup, err := deriveApproved(repo, bound.Base, kept, hist.Approvals)
 	if err != nil {
 		return res, err
 	}
-	defer func() { _ = os.RemoveAll(scratch) }()
-	a, err := newApprovals(&GitRepo{r: repo.r, w: repo.w, path: scratch}, bound.Base)
-	if err != nil {
-		return res, err
-	}
-	for i, p := range kept {
-		next, err := a.derive(p.Edits)
-		if err != nil {
-			return res, fmt.Errorf("proposal %d no longer applies: %w", p.Seq, err)
-		}
-		if !matchesDigest(hist.Approvals[i].Files, next) { // what the chain says was approved is what is derived
-			return res, fmt.Errorf("proposal %d derives other bytes than the audit chain recorded as approved", p.Seq)
-		}
-		a.record(next)
-	}
+	defer cleanup()
 	// A final review the person already gave, of exactly this state, is the review recovery
 	// would ask for; one of other bytes means the chain and the approvals disagree.
 	reviewed, err := hist.finalReviewed(a.files)
@@ -492,4 +476,33 @@ func JournaledApprovals(wsDir string, runID int64) int {
 		}
 	}
 	return n
+}
+
+// deriveApproved derives the approved files again from the base commit, proposal by proposal in chain order, against an empty
+// directory as a rebuild does (what is on disk now has no say in what was approved), and checks each against the digest the chain
+// recorded for it. cleanup removes the scratch directory.
+func deriveApproved(repo *GitRepo, base string, kept []LedgerProposal, recorded []auditedApproval) (*approvals, func(), error) {
+	scratch, err := os.MkdirTemp("", "staircase-derive-")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(scratch) }
+	a, err := newApprovals(&GitRepo{r: repo.r, w: repo.w, path: scratch}, base)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	for i, p := range kept {
+		next, err := a.derive(p.Edits)
+		if err != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("proposal %d no longer applies: %w", p.Seq, err)
+		}
+		if !matchesDigest(recorded[i].Files, next) { // what the chain says was approved is what is derived
+			cleanup()
+			return nil, nil, fmt.Errorf("proposal %d derives other bytes than the audit chain recorded as approved", p.Seq)
+		}
+		a.record(next)
+	}
+	return a, cleanup, nil
 }

@@ -342,6 +342,9 @@ is committed until you decide:
   D        defer, and show the alternatives: what was parked and how to see the whole change; the run keeps waiting
   Z        clarify: a read-only session (Claude Code's plan mode) in a separate directory that holds only this change, its
            evidence and what was parked; nothing said there decides anything, you come back to Y, N or D
+  P        prototype a parked change: see what it would do on top of the change (its diff and your checks on the result,
+           in a checkout that is thrown away); one that passes can be adopted into the change, as your approval, and you
+           then decide on the new review
 
 Without a terminal, decide one run with --accept or --reject. A decision is made on the review entry you were shown; if the
 run's review is no longer that one (--shown), it is refused.
@@ -350,6 +353,7 @@ Flags:
 
 ```
       --accept           Accept the run's change: commit it, with its certificate
+      --adopt int        Adopt the parked proposal with this number (as listed) into the change, if your checks pass with it: a new review follows
   -m, --message string   Why, for the audit chain
       --reject           Reject the run's change: nothing is committed
       --shown string     The review entry (as listed) the decision is made on; refused if the run's review is another

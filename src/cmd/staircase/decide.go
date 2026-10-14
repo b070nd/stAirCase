@@ -24,6 +24,7 @@ import (
 var (
 	decideAccept, decideReject bool
 	decideShown, decideMessage string
+	decideAdopt                int
 )
 
 var decideCmd = &cobra.Command{
@@ -38,6 +39,9 @@ is committed until you decide:
   D        defer, and show the alternatives: what was parked and how to see the whole change; the run keeps waiting
   Z        clarify: a read-only session (Claude Code's plan mode) in a separate directory that holds only this change, its
            evidence and what was parked; nothing said there decides anything, you come back to Y, N or D
+  P        prototype a parked change: see what it would do on top of the change (its diff and your checks on the result,
+           in a checkout that is thrown away); one that passes can be adopted into the change, as your approval, and you
+           then decide on the new review
 
 Without a terminal, decide one run with --accept or --reject. A decision is made on the review entry you were shown; if the
 run's review is no longer that one (--shown), it is refused.`,
@@ -50,6 +54,7 @@ func init() {
 	decideCmd.Flags().BoolVar(&decideReject, "reject", false, "Reject the run's change: nothing is committed")
 	decideCmd.Flags().StringVar(&decideShown, "shown", "", "The review entry (as listed) the decision is made on; refused if the run's review is another")
 	decideCmd.Flags().StringVarP(&decideMessage, "message", "m", "", "Why, for the audit chain")
+	decideCmd.Flags().IntVar(&decideAdopt, "adopt", 0, "Adopt the parked proposal with this number (as listed) into the change, if your checks pass with it: a new review follows")
 	rootCmd.AddCommand(decideCmd)
 }
 
@@ -57,7 +62,10 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 	if decideAccept && decideReject {
 		return errors.New("either --accept or --reject, not both")
 	}
-	flagged := decideAccept || decideReject
+	if decideAdopt > 0 && (decideAccept || decideReject) {
+		return errors.New("adopt, then decide on the new review: one at a time")
+	}
+	flagged := decideAccept || decideReject || decideAdopt > 0
 	store, db, err := openStore()
 	if err != nil {
 		return err
@@ -94,7 +102,7 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 		ids = []int64{id}
 	} else {
 		if flagged {
-			return errors.New("name the run to --accept or --reject: staircase decide <run-id>")
+			return errors.New("name the run to --accept, --reject or --adopt: staircase decide <run-id>")
 		}
 		runs, err := store.ListRunsByStatus(persistence.RunStatusAwaitingReview)
 		if err != nil {
@@ -103,6 +111,23 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 		for _, r := range runs {
 			ids = append(ids, r.ID)
 		}
+	}
+	if decideAdopt > 0 {
+		shown := decideShown
+		if shown == "" {
+			rv, err := runner.ReviewOf(ids[0])
+			if err != nil {
+				return err
+			}
+			shown = rv.Entry
+		}
+		rv, err := runner.Adopt(ctx, ids[0], decideAdopt, shown)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("✅ Adopted parked proposal %d into run #%d's change. The new review:\n", decideAdopt, ids[0])
+		fmt.Print(inboxTree([]orchestrator.Review{rv}))
+		return nil
 	}
 	if flagged {
 		return decide(ids[0])(decideAccept, decideShown)
@@ -126,7 +151,18 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 	in := bufio.NewReader(os.Stdin)
 	for _, rv := range reviews {
 		repo, task := runPlace(store, rv.RunID)
-		if err := ask(in, os.Stdout, rv, decide(rv.RunID), func(rv orchestrator.Review) error { return clarify(rv, repo, task) }); err != nil {
+		id := rv.RunID
+		box := inbox{
+			decide:  decide(id),
+			clarify: func(rv orchestrator.Review) error { return clarify(rv, repo, task) },
+			prototype: func(seq int) (orchestrator.PrototypeResult, error) {
+				return runner.Prototype(ctx, id, seq)
+			},
+			adopt: func(seq int, entry string) (orchestrator.Review, error) {
+				return runner.Adopt(ctx, id, seq, entry)
+			},
+		}
+		if err := ask(in, os.Stdout, rv, box); err != nil {
 			fmt.Printf("   ⚠️  run #%d: %v\n", rv.RunID, err)
 		}
 	}
@@ -179,10 +215,14 @@ func inboxTree(reviews []orchestrator.Review) string {
 			if j == len(rv.ParkedProposals)-1 {
 				leaf = "└─"
 			}
-			fmt.Fprintf(&b, "%s   %s %s: %s\n", indent, leaf, parkedWhat(p), p.Why)
+			num := ""
+			if p.Seq > 0 {
+				num = fmt.Sprintf("#%d ", p.Seq)
+			}
+			fmt.Fprintf(&b, "%s   %s %s%s: %s\n", indent, leaf, num, parkedWhat(p), p.Why)
 		}
 	}
-	fmt.Fprintf(&b, "\nKeys: Y or I accept, N or O reject, D defer and show the alternatives, Z clarify\n")
+	fmt.Fprintf(&b, "\nKeys: Y or I accept, N or O reject, D defer and show the alternatives, Z clarify, P prototype a parked change\n")
 	return b.String()
 }
 
@@ -193,15 +233,24 @@ func parkedWhat(p orchestrator.ParkedProposal) string {
 	return p.Action
 }
 
-// ask asks the owner about one run until they decide or defer; Z opens the clarifying session and asks again. An end of input
-// defers. A decision names the review entry that was shown.
-func ask(in io.Reader, out io.Writer, rv orchestrator.Review, decide func(accept bool, entry string) error, clarify func(orchestrator.Review) error) error {
+// inbox is what the owner can do about one run from the decision inbox.
+type inbox struct {
+	decide    func(accept bool, entry string) error
+	clarify   func(orchestrator.Review) error
+	prototype func(seq int) (orchestrator.PrototypeResult, error)
+	adopt     func(seq int, entry string) (orchestrator.Review, error)
+}
+
+// ask asks the owner about one run until they decide or defer; Z opens the clarifying session and P a prototype of a parked change
+// (which may be adopted, giving a new review), and then it asks again. An end of input defers. A decision names the review entry
+// that was shown.
+func ask(in io.Reader, out io.Writer, rv orchestrator.Review, box inbox) error {
 	r, ok := in.(*bufio.Reader)
 	if !ok {
 		r = bufio.NewReader(in)
 	}
 	for {
-		fmt.Fprintf(out, "run #%d: Y accept, N reject, D defer, Z clarify > ", rv.RunID)
+		fmt.Fprintf(out, "run #%d: Y accept, N reject, D defer, Z clarify, P prototype a parked change > ", rv.RunID)
 		line, err := r.ReadString('\n')
 		key := strings.ToUpper(strings.TrimSpace(line))
 		if key == "" && err != nil {
@@ -210,21 +259,86 @@ func ask(in io.Reader, out io.Writer, rv orchestrator.Review, decide func(accept
 		}
 		switch key {
 		case "Y", "I":
-			return decide(true, rv.Entry)
+			return box.decide(true, rv.Entry)
 		case "N", "O":
-			return decide(false, rv.Entry)
+			return box.decide(false, rv.Entry)
+		case "P":
+			if next, ok := prototypeStep(r, out, rv, box); ok {
+				rv = next
+				fmt.Fprint(out, inboxTree([]orchestrator.Review{rv}))
+			}
 		case "D":
 			fmt.Fprint(out, alternatives(rv))
 			fmt.Fprintf(out, "   deferred: run #%d keeps waiting\n", rv.RunID)
 			return nil
 		case "Z":
-			if err := clarify(rv); err != nil {
+			if err := box.clarify(rv); err != nil {
 				fmt.Fprintf(out, "   the clarifying session did not start: %v\n", err)
 			}
 		default:
-			fmt.Fprintf(out, "   answer Y (or I), N (or O), D or Z\n")
+			fmt.Fprintf(out, "   answer Y (or I), N (or O), D, Z or P\n")
 		}
 	}
+}
+
+// prototypeStep is P (ADR 0007): the owner picks a parked proposal, sees what it would do on top of the change, and may adopt a
+// passing one. It returns the new review when one was adopted.
+func prototypeStep(r *bufio.Reader, out io.Writer, rv orchestrator.Review, box inbox) (orchestrator.Review, bool) {
+	if len(rv.ParkedProposals) == 0 {
+		fmt.Fprintf(out, "   nothing was parked\n")
+		return rv, false
+	}
+	for i, p := range rv.ParkedProposals {
+		fmt.Fprintf(out, "   %d) %s: %s\n", i+1, parkedWhat(p), p.Why)
+	}
+	fmt.Fprintf(out, "   which one? > ")
+	line, _ := r.ReadString('\n')
+	var n int
+	if _, err := fmt.Sscanf(strings.TrimSpace(line), "%d", &n); err != nil || n < 1 || n > len(rv.ParkedProposals) {
+		fmt.Fprintf(out, "   no such parked proposal\n")
+		return rv, false
+	}
+	p := rv.ParkedProposals[n-1]
+	res, err := box.prototype(p.Seq)
+	if err != nil {
+		fmt.Fprintf(out, "   %v\n", err)
+		return rv, false
+	}
+	fmt.Fprintf(out, "   prototype of %s on top of the change:\n", parkedWhat(p))
+	for _, c := range res.Checks {
+		fmt.Fprintf(out, "   check %s: exit %d\n", c.Command, c.ExitCode)
+	}
+	if res.Diff != "" {
+		fmt.Fprint(out, indent(res.Diff, "   | "))
+	}
+	if !res.Passed {
+		fmt.Fprintf(out, "   it cannot be adopted: %s\n", res.Failed)
+		return rv, false
+	}
+	fmt.Fprintf(out, "   adopt it into the change? [y/N] > ")
+	line, _ = r.ReadString('\n')
+	if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+		fmt.Fprintf(out, "   not adopted: it stays parked\n")
+		return rv, false
+	}
+	next, err := box.adopt(p.Seq, rv.Entry)
+	if err != nil {
+		fmt.Fprintf(out, "   not adopted: %v\n", err)
+		return rv, false
+	}
+	fmt.Fprintf(out, "   adopted: the change now includes %s; this is a new review\n", parkedWhat(p))
+	return next, true
+}
+
+func indent(s, prefix string) string {
+	lines := strings.SplitAfter(strings.TrimRight(s, "\n")+"\n", "\n")
+	var b strings.Builder
+	for _, l := range lines {
+		if l != "" {
+			b.WriteString(prefix + l)
+		}
+	}
+	return b.String()
 }
 
 // alternatives is what D shows: what was parked instead of decided, and how to see the whole change.
