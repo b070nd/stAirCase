@@ -232,7 +232,7 @@ goes on to the validator or a person.
 
 | Rule field | Meaning (all given fields must match) |
 |---|---|
-| `action_types` | `file_edit` (files; shell commands are never auto-approved) |
+| `action_types` | `file_edit` (files; shell commands are never auto-approved by a rule: the one exception is a command you declared for an away run with `--away-command`, see [away](away.md#declared-commands)) |
 | `allowed_extensions` | every file in the proposal has one of these extensions |
 | `agent_names` | the proposal comes from one of these agents |
 | `min_confidence` | the agent's confidence is at least this (0–1) |

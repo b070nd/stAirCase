@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Declared commands while away (`--away-command`).** An away run may run exactly the commands its owner declared when it started,
+  without asking: byte for byte, in the worktree's root, and only in a sandbox without network (the docker sandbox, or `required` where
+  sandbox-exec or bubblewrap runs). Each is a whole command (no composition, redirection or substitution); the decision is recorded as
+  the owner's made in advance (`declared`, the declaration's digest on `run_bound`); the files it changes are decided like the agent's.
+  Every other command is still parked, and outside away runs every command still reaches a person ([away](docs/away.md#declared-commands),
+  [ADR 0009](docs/adr/0009-declared-commands-while-away.md)).
+
 - **A docker sandbox (`--sandbox docker:image=<image>[,memory=…][,cpus=…]`).** Approved commands and checks can run in a throwaway
   container that sees only the worktree and its own temporary folder, as the user, without network, capabilities or a writable system,
   within the memory and CPU limits given; the container of a cancelled command is removed, and the image is never pulled implicitly.

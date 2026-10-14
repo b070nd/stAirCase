@@ -21,12 +21,13 @@ import (
 )
 
 var (
-	sessionAllow      []string
-	sessionYes        bool
-	sessionInScope    bool         // --approve-in-scope
-	sessionOnEvidence bool         // --approve-on-evidence
-	sessionAway       bool         // --away (ADR 0006)
-	sessionReview     *plan.Review // set by staircase review
+	sessionAllow        []string
+	sessionYes          bool
+	sessionInScope      bool         // --approve-in-scope
+	sessionOnEvidence   bool         // --approve-on-evidence
+	sessionAway         bool         // --away (ADR 0006)
+	sessionAwayCommands []string     // --away-command (ADR 0009)
+	sessionReview       *plan.Review // set by staircase review
 )
 
 var claudeCmd = &cobra.Command{
@@ -474,6 +475,9 @@ func awayFlag(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&sessionAway, "away", false,
 		"Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that "+
 			"needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow")
+	cmd.Flags().StringArrayVar(&sessionAwayCommands, "away-command", nil,
+		"An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, "+
+			"--allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root")
 }
 
 // inScopeFlag adds --approve-in-scope and --approve-on-evidence to cmd.

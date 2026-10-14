@@ -184,6 +184,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Claude Code (default: its own)
@@ -258,6 +259,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Codex (default: its own)
@@ -464,6 +466,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Gemini CLI (default: its own)
@@ -570,10 +573,11 @@ staircase host setup [flags]
 Flags:
 
 ```
-      --allow stringArray      A path (glob) hosted sessions may change; repeat for more
-      --check stringArray      A command (such as your tests) a change must pass to be approved; repeat for more
-      --pass-env stringArray   Name of an environment variable Claude Code may inherit, for its credential (for example CLAUDE_CODE_OAUTH_TOKEN); repeat for more
-      --sandbox string         Where the checks run, as staircase run --sandbox (for example docker:image=golang:1.26-bookworm)
+      --allow stringArray          A path (glob) hosted sessions may change; repeat for more
+      --away-command stringArray   An exact command hosted sessions may run without asking (ADR 0009); needs a sandbox without network
+      --check stringArray          A command (such as your tests) a change must pass to be approved; repeat for more
+      --pass-env stringArray       Name of an environment variable Claude Code may inherit, for its credential (for example CLAUDE_CODE_OAUTH_TOKEN); repeat for more
+      --sandbox string             Where the checks run, as staircase run --sandbox (for example docker:image=golang:1.26-bookworm)
 ```
 
 ## staircase init
@@ -644,6 +648,7 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for OpenCode (default: its own)

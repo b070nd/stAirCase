@@ -178,6 +178,9 @@ type RunOptions struct {
 	// the checks run on the exact approved tree, and a run whose tree passes ends AWAITING_REVIEW: nothing is
 	// committed until the owner decides (staircase decide).
 	Away bool
+	// AwayCommands (ADR 0009) are the exact commands an away run may run without asking: the owner's decision made in advance.
+	// They need Away, AllowShellExec and a sandbox without network; each is a whole command, run in the worktree's root.
+	AwayCommands []string
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -517,6 +520,9 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		if opts.Away { // the brief the agent is given is bound before it starts
 			bound["away_brief"] = map[string]any{"version": AwayBriefVersion, "sha256": sha256Hex([]byte(AwayBrief))}
 		}
+		if len(opts.AwayCommands) > 0 { // so are the commands it may run without asking
+			bound["away_commands"] = map[string]any{"commands": opts.AwayCommands, "sha256": declaredDigest(opts.AwayCommands)}
+		}
 		if err := r.audit(run.ID, "run_bound", bound); err != nil {
 			return fmt.Errorf("audit run_bound: %w", err)
 		}
@@ -706,6 +712,9 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		}
 		opts.ApproveOnEvidence = true
 	}
+	if err := checkAwayCommands(opts); err != nil {
+		return err
+	}
 	if opts.ApproveOnEvidence {
 		if len(opts.Checks) == 0 && val == nil {
 			return errors.New("--approve-on-evidence needs evidence to decide on: name a --check and/or a --validator")
@@ -800,7 +809,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	if cont != nil { // the validator and the deciders continue from the counts the chain recorded
 		val.restore(cont.validator)
 	}
-	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
 		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
 	if cont != nil {

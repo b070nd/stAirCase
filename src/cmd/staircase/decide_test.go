@@ -236,3 +236,13 @@ func TestSession_away_checks_run_in_a_docker_sandbox(t *testing.T) {
 		}
 	}
 }
+
+// TestSession_away_command_reaches_the_run: --away-command is the run's declaration; without --allow-shell-exec it is refused by the run.
+func TestSession_away_command_reaches_the_run(t *testing.T) {
+	sessionRepo(t)
+	t.Cleanup(func() {
+		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks, sessionAwayCommands = false, false, false, nil, nil, nil
+	})
+	sessionAway, sessionAllow, runChecks, sessionAwayCommands = true, []string{"HEALTH.md"}, []string{"true"}, []string{"go generate ./..."}
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow-shell-exec")
+}

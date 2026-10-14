@@ -108,3 +108,22 @@ func dockerCommand(ctx context.Context, root, cwd, tmp, command, mode string) (*
 	cleanup := func() { _ = exec.Command(bin, "rm", "-f", name).Run() }
 	return cmd, cleanup, nil
 }
+
+// NoNetworkSandbox says this machine has a sandbox that also cuts the network: sandbox-exec (macOS) or bubblewrap (Linux). Landlock
+// alone cannot stop network access, so it does not count.
+func NoNetworkSandbox() bool {
+	for _, st := range Status() {
+		if st.Err == nil && st.Name != "landlock" {
+			return true
+		}
+	}
+	return false
+}
+
+// NoNetworkMode says commands run in mode can reach no network: the docker sandbox, or required with a sandbox that cuts it.
+func NoNetworkMode(mode string) bool {
+	if mode == DockerPrefix || strings.HasPrefix(mode, DockerPrefix+":") {
+		return ParseMode(mode) == nil
+	}
+	return mode == Required && NoNetworkSandbox()
+}

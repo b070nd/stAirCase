@@ -22,6 +22,23 @@ staircase decide
   does not pass ends the run failed. One that passes ends it **awaiting review**, with nothing committed and the run branch where it
   started. The process exits; nothing has to keep running.
 
+## Declared commands
+
+An away run parks every command, because a command needs a person. When the work needs a command you can name in advance (a code
+generator, a formatter, a build), declare it:
+
+```bash
+staircase claude "regenerate the API client and fix what breaks" --allow "src/**" --away --check "go test ./..." \
+  --allow-shell-exec --away-command "go generate ./..." --sandbox docker:image=golang:1.26-bookworm
+```
+
+A declared command runs without asking only if it is exactly what you wrote, in the worktree's root, and only in a sandbox without
+network (`--sandbox docker:...`, or `required` where sandbox-exec or bubblewrap runs); anything else is parked as before. A declared
+command must be a whole command (no `;`, `&`, `|`, redirection, `$` or second line). It is recorded as your decision made in advance
+(source `declared`, the declaration's digest on `run_bound`), and the files it changes are decided like the agent's (on evidence, or
+parked), so such a change reaches CAL 2. Gemini CLI and OpenCode run their commands without a sandbox, so they cannot be given declared
+commands ([ADR 0009](adr/0009-declared-commands-while-away.md)).
+
 ## When you are back: `staircase decide`
 
 ```text

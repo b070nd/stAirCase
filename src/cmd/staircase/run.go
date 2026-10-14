@@ -218,6 +218,7 @@ func runCase(caseID int64) error {
 		ApproveInScope:    sessionInScope,
 		ApproveOnEvidence: sessionOnEvidence,
 		Away:              sessionAway,
+		AwayCommands:      sessionAwayCommands,
 		Signal:            sig,
 		SignKey:           runSignKey,
 		SignAs:            orDefaultStr(runSignAs, gitConfig("user.email")),

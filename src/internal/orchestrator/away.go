@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
 // Away mode (ADR 0006): a run nobody watches ends, when its approved tree passes the checks, awaiting the owner's review.
@@ -226,4 +228,42 @@ func awayBrief(away bool) string {
 		return AwayBrief
 	}
 	return ""
+}
+
+// checkAwayCommands refuses a declaration of commands (ADR 0009) that is not an away run's, cannot run in a sandbox without network,
+// or is not a whole command: no composition, redirection, substitution or second line.
+func checkAwayCommands(o RunOptions) error {
+	if len(o.AwayCommands) == 0 {
+		return nil
+	}
+	switch {
+	case !o.Away:
+		return errors.New("--away-command declares commands for an away run: add --away")
+	case !o.AllowShellExec:
+		return errors.New("--away-command needs commands to be allowed at all: add --allow-shell-exec")
+	case !sandbox.NoNetworkMode(o.Sandbox):
+		return errors.New("--away-command needs a sandbox without network: --sandbox docker:image=<image>, or --sandbox required where sandbox-exec or bubblewrap runs")
+	case o.Plan != nil && (o.Plan.Harness == "gemini" || o.Plan.Harness == "opencode"):
+		return fmt.Errorf("--away-command: %s runs its commands without a sandbox", o.Plan.Harness)
+	}
+	for _, c := range o.AwayCommands {
+		if strings.TrimSpace(c) != c || c == "" || strings.ContainsAny(c, ";&|<>`$\n\r") {
+			return fmt.Errorf("--away-command %q: a declared command must be the whole command, without ; & | < > ` $ or a second line", c)
+		}
+	}
+	return nil
+}
+
+// declaredSet is the declared commands, for an exact match.
+func declaredSet(commands []string) map[string]bool {
+	set := map[string]bool{}
+	for _, c := range commands {
+		set[c] = true
+	}
+	return set
+}
+
+// declaredDigest names a declaration: the SHA-256 of its commands, sorted, one per line.
+func declaredDigest(commands []string) string {
+	return sha256Hex([]byte(strings.Join(slices.Sorted(slices.Values(commands)), "\n")))
 }

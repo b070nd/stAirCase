@@ -27,9 +27,10 @@ type deciders struct {
 	drift     *policy.Supervisor
 	policy    *policy.Engine
 	validator *Validator
-	task      bool          // ApproveInScope (or ApproveOnEvidence) with an agreed task
-	evidence  *evidenceGate // with ApproveOnEvidence: in-scope changes are approved on evidence, not on the task alone
-	away      bool          // nobody is asked: what would go to a person is parked (ADR 0006)
+	task      bool            // ApproveInScope (or ApproveOnEvidence) with an agreed task
+	evidence  *evidenceGate   // with ApproveOnEvidence: in-scope changes are approved on evidence, not on the task alone
+	away      bool            // nobody is asked: what would go to a person is parked (ADR 0006)
+	declared  map[string]bool // the exact commands an away run may run without asking (ADR 0009)
 	signal    *Signal
 	redact    func(string) string                                                 // removes delivered secret values from what a person is shown
 	sign      *decisionSigning                                                    // checks and adds signatures on human decisions
@@ -134,6 +135,14 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		}
 	}
 
+	// A command the owner declared for this away run, byte for byte and in the worktree's root, is their decision made in advance.
+	if d.away && req.ActionType == domain.ActionShellExec && len(req.ProposedEdits) == 1 && d.declared[req.ProposedEdits[0].ReplaceBlock] &&
+		(req.ProposedEdits[0].File == "." || req.ProposedEdits[0].File == "") {
+		d.display.AddActivity(fmt.Sprintf("%-14s DECLARED %s", req.AgentName, req.ProposedEdits[0].ReplaceBlock))
+		rl.resp, rl.source = domain.Decide(true, "a command the owner declared for this away run"), "declared"
+		rl.evidence = map[string]any{"declared_sha256": declaredDigest(slices.Sorted(maps.Keys(d.declared)))}
+		return rl
+	}
 	// Drift supervision: a proposal reaching outside the stories' scope, past
 	// a limit or at a checkpoint goes to a human, never to policy.
 	rl.drift, rl.halt = d.drift.Check(rl.files)
