@@ -1010,7 +1010,7 @@ func (s *Store) UpdateRunStatus(runID int64, status string, endTime *time.Time, 
 // FinishRun atomically records a terminal run and its case outcome. Execution
 // does not accept stories: a successful case with unverified work stays pending.
 func (s *Store) FinishRun(runID int64, status string, endTime time.Time, commitHash string) error {
-	if status != RunStatusSuccess && status != RunStatusFailed && status != RunStatusKilled {
+	if status != RunStatusSuccess && status != RunStatusFailed && status != RunStatusKilled && status != RunStatusAwaitingReview {
 		return fmt.Errorf("finish run: invalid terminal status %q", status)
 	}
 	tx, err := s.db.Begin()
@@ -1042,6 +1042,9 @@ func (s *Store) FinishRun(runID int64, status string, endTime time.Time, commitH
 // success completes the case only once every story is operator-accepted
 // (IMPLEMENTED); otherwise it stays pending. Any other run outcome fails it.
 func caseStatusAfter(tx *sql.Tx, caseID int64, runStatus string) (string, error) {
+	if runStatus == RunStatusAwaitingReview { // the work waits for the owner's review: nothing is decided yet
+		return CaseStatusPending, nil
+	}
 	if runStatus != RunStatusSuccess {
 		return CaseStatusFailed, nil
 	}

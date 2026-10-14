@@ -22,6 +22,8 @@ const (
 	RunStatusSuccess = "SUCCESS"
 	RunStatusFailed  = "FAILED"
 	RunStatusKilled  = "KILLED"
+	// RunStatusAwaitingReview: an away run ended with approved, checked changes that wait for the owner's review (ADR 0006).
+	RunStatusAwaitingReview = "AWAITING_REVIEW"
 )
 
 // UserStory status values - enforced by CHECK constraint on new databases.

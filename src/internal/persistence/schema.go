@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS runs (
     case_id INTEGER NOT NULL,
     topology_version INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'RUNNING'
-        CHECK(status IN ('RUNNING','SUCCESS','FAILED','KILLED')),
+        CHECK(status IN ('RUNNING','SUCCESS','FAILED','KILLED','AWAITING_REVIEW')),
     start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     end_time DATETIME,
     git_branch TEXT NOT NULL,
@@ -237,4 +237,28 @@ var Migrations = []string{
 	// Audit chain version 2: the hash covers the event type too (docs/audit.md).
 	// Rows written before it are version 1.
 	`ALTER TABLE run_event_logs ADD COLUMN hash_version INTEGER NOT NULL DEFAULT 1`,
+	// Away mode (ADR 0006): a run may end AWAITING_REVIEW. SQLite cannot change a CHECK, so the runs table is rebuilt the
+	// documented way: foreign keys off (run_event_logs cascades on runs, and dropping runs with them on would delete every audit
+	// chain), the copy in one transaction, a foreign key check before it commits, foreign keys on again.
+	`PRAGMA foreign_keys = OFF;
+	BEGIN IMMEDIATE;
+	CREATE TABLE runs_new (
+	    id INTEGER PRIMARY KEY AUTOINCREMENT,
+	    case_id INTEGER NOT NULL,
+	    topology_version INTEGER NOT NULL,
+	    status TEXT NOT NULL DEFAULT 'RUNNING'
+	        CHECK(status IN ('RUNNING','SUCCESS','FAILED','KILLED','AWAITING_REVIEW')),
+	    start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+	    end_time DATETIME,
+	    git_branch TEXT NOT NULL,
+	    git_commit_hash TEXT,
+	    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+	);
+	INSERT INTO runs_new (id, case_id, topology_version, status, start_time, end_time, git_branch, git_commit_hash)
+	    SELECT id, case_id, topology_version, status, start_time, end_time, git_branch, git_commit_hash FROM runs;
+	DROP TABLE runs;
+	ALTER TABLE runs_new RENAME TO runs;
+	CREATE INDEX IF NOT EXISTS idx_runs_case ON runs(case_id);
+	COMMIT;
+	PRAGMA foreign_keys = ON;`,
 }

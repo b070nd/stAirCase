@@ -36,6 +36,10 @@ Events you will see:
 | `signal_rated` | a decision model was asked about a change that was not decided by a person: the model, the probabilities it gave that the change is risky and that it serves a story, the kind of change and the cost, or the error when it could not answer. It can only send the change to a person |
 | `recovery_final_review` | the final review of a recovered run, asked of a person before any commit was made: approved or not, and the digest of what was shown |
 | `run_recovered` | `staircase recover` committed what the run had approved: the commit, how many proposals, whether a final review was given |
+| `phase_checked` | an away run's agent stopped: the checks ran once more on the exact approved tree; the tree, each check's result, whether all passed ([ADR 0006](adr/0006-away-mode.md)) |
+| `awaiting_review` | an away run's approved tree passed its checks and waits for the owner: the tree, the approved files' digests, the `phase_checked` entry it rests on, how many proposals were parked |
+| `review_accepted`, `review_rejected` | the owner's decision on an away run (`staircase decide`), naming the `awaiting_review` entry it was made on |
+| `review_delivered` | an accepted away run was committed, without starting its agent: the commit and how many proposals |
 | `recovery_repaired` | a later `recover` finished the evidence (ledger, certificate, notes) of a commit that was already made, and which parts were still missing |
 | `certificate_failed`, `evidence_failed` | the commit was made but its certificate, or other evidence, could not be written, and why (`--require-evidence` makes this a failure) |
 | `run_resumed` | the run was continued (`staircase resume`): the segment number, the chain head it resumed from (`generation`), the approvals it stood on, the next proposal number, the policy and plan digests it continues under, how many requests of earlier segments were never decided, the time earlier segments used, whether drift was acknowledged, and how the agent's context was carried (`native_resume`: the vendor session was resumed; `fresh_grounded`: a new session grounded by the chain) |

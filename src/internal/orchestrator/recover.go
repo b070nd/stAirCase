@@ -74,6 +74,8 @@ type RecoverOptions struct {
 	// RequireEvidence makes a recovery whose commit is made but whose evidence is
 	// incomplete end with ErrEvidenceIncomplete (the result still names the commit).
 	RequireEvidence bool
+
+	accepted *acceptedReview // set by Decide: the owner accepted the change an away run offered for review
 }
 
 // RecoverResult is what a recovery committed.
@@ -120,6 +122,8 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		return res, fmt.Errorf("run #%d already has a commit (%.12s): there is nothing to recover", runID, run.GitCommitHash)
 	case run.Status == persistence.RunStatusSuccess:
 		return res, fmt.Errorf("run #%d finished: there is nothing to recover", runID)
+	case run.Status == persistence.RunStatusAwaitingReview && opts.accepted == nil:
+		return res, fmt.Errorf("run #%d has ended and awaits your review: decide it with staircase decide %d", runID, runID)
 	}
 	// Is the run's process alive? Where the run took its owner lock (every run of this version) the lock
 	// answers: held means running, and nothing recovers a live run, --force or not; free means the process is
@@ -204,11 +208,14 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if err != nil {
 		return res, err
 	}
-	needReview = needReview && !reviewed
-	a.repo = repo // the commit is made in the run's repository
+	needReview = needReview && !reviewed && opts.accepted == nil // an accepted away run: the owner's review is that review
+	a.repo = repo                                                // the commit is made in the run's repository
 	want, err := a.tree()
 	if err != nil {
 		return res, err
+	}
+	if opts.accepted != nil && want != opts.accepted.tree {
+		return res, fmt.Errorf("the approved changes of run #%d derive tree %.12s, not the tree %.12s that was offered for review", runID, want, opts.accepted.tree)
 	}
 	branch := strings.TrimPrefix(bound.Branch, "refs/heads/")
 	fingerprint := approvalsOf(hist.Approvals)
@@ -347,7 +354,11 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 
 	// The evidence. Every step is safe to do again, so a recover after a crash or a
 	// failure repairs what is missing on the same commit.
-	ev := evidence{recovered: true, policy: hist.PolicyDigest, initiator: hist.Initiator}
+	ev := evidence{recovered: opts.accepted == nil, policy: hist.PolicyDigest, initiator: hist.Initiator}
+	delivered := "run_recovered"
+	if opts.accepted != nil { // the run reached its end: its worktree was checked and its checks ran on this tree
+		ev.checks, ev.awayReviewed, delivered = opts.accepted.checks, true, "review_delivered"
+	}
 	ledger := Ledger{Base: bound.Base, Proposals: kept}
 	// The run's own ledger and certificate, if it got that far, stay: the certificate names the ledger's digest.
 	ownLedger, _ := os.ReadFile(LedgerPath(r.wsDir, runID))
@@ -374,8 +385,11 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if crashed {
 		status = persistence.RunStatusKilled
 	}
-	if !hasEvent(r.store, runID, "run_recovered", hash) {
-		if err := r.audit(runID, "run_recovered", map[string]any{"commit": hash, "proposals": len(kept), "final_review": op.Reviewed,
+	if opts.accepted != nil {
+		status = persistence.RunStatusSuccess
+	}
+	if !hasEvent(r.store, runID, delivered, hash) {
+		if err := r.audit(runID, delivered, map[string]any{"commit": hash, "proposals": len(kept), "final_review": op.Reviewed,
 			"forced": opts.Force, "evidence_errors": evidenceErrs}); err != nil {
 			evidenceErrs = append(evidenceErrs, "audit record: "+err.Error())
 		}
@@ -385,6 +399,9 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		}
 	}
 	outcome := OutcomeRecovered
+	if opts.accepted != nil {
+		outcome = OutcomeCertified
+	}
 	if len(evidenceErrs) > 0 {
 		outcome = OutcomeWithoutEvidence
 	}
@@ -396,7 +413,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	// this point leaves a run that recover finishes again (it recognizes its commit).
 	if run.GitCommitHash != hash {
 		update := func() error { return r.store.UpdateRunStatus(runID, status, &now, hash) }
-		if crashed { // nobody finished the run, so nobody finished its case either
+		if crashed || opts.accepted != nil { // nobody finished the run (or its case waits for this review), so the case is finished here
 			update = func() error { return r.store.FinishRun(runID, status, now, hash) }
 		}
 		if err := update(); err != nil {

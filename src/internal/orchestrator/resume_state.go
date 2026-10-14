@@ -37,6 +37,7 @@ type savedOptions struct {
 	SignalModel            string   `json:"signal_model,omitempty"`
 	SignalURL              string   `json:"signal_url,omitempty"`
 	ValidatorModels        []string `json:"validator_models,omitempty"`
+	Away                   bool     `json:"away,omitempty"`
 }
 
 const savedOptionsVersion = 1
@@ -44,7 +45,7 @@ const savedOptionsVersion = 1
 func optionsToSave(o RunOptions) savedOptions {
 	s := savedOptions{Version: savedOptionsVersion, Agreed: o.Agreed, ApproveInScope: o.ApproveInScope, ApproveOnEvidence: o.ApproveOnEvidence,
 		AllowShellExec: o.AllowShellExec, Sandbox: o.Sandbox, RequireSignedApprovals: o.RequireSignedApprovals, SignKey: o.SignKey,
-		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout)}
+		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout), Away: o.Away}
 	if o.Signal != nil {
 		s.SignalModel, s.SignalURL = o.Signal.Model, o.Signal.URL
 	}
@@ -58,7 +59,7 @@ func optionsToSave(o RunOptions) savedOptions {
 func (s savedOptions) apply(base RunOptions) RunOptions {
 	base.Agreed, base.ApproveInScope, base.ApproveOnEvidence, base.AllowShellExec, base.Sandbox = s.Agreed, s.ApproveInScope, s.ApproveOnEvidence, s.AllowShellExec, s.Sandbox
 	base.RequireSignedApprovals, base.SignKey, base.SignAs, base.RequireEvidence = s.RequireSignedApprovals, s.SignKey, s.SignAs, s.RequireEvidence
-	base.Checks, base.CheckTimeout = s.Checks, time.Duration(s.CheckTimeoutNS)
+	base.Checks, base.CheckTimeout, base.Away = s.Checks, time.Duration(s.CheckTimeoutNS), s.Away
 	if s.SignalModel != "" {
 		base.Signal = &Signal{Model: s.SignalModel, URL: s.SignalURL}
 	}
@@ -222,6 +223,9 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	}
 	if run.GitCommitHash != "" {
 		return nil, notContinuable("run #%d already has a commit (%.12s): there is nothing to continue", runID, run.GitCommitHash)
+	}
+	if run.Status == persistence.RunStatusAwaitingReview {
+		return nil, notContinuable("run #%d has ended and awaits your review: decide it with staircase decide %d", runID, runID)
 	}
 	if run.Status != persistence.RunStatusRunning && run.Status != persistence.RunStatusKilled {
 		return nil, notContinuable("run #%d is %s: only a run that was interrupted (or stopped) before it committed is continued", runID, run.Status)

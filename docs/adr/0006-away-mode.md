@@ -36,7 +36,7 @@ nothing (no `--approve-in-scope` sampling), and nothing is approved because a pe
 
 A proposal that would go to a person (evidence missing, out of scope, a shell command, a sensitive file) is **parked**: the agent is
 answered at once with a refusal whose feedback says the proposal is kept for the owner and to go on with what it can do without it, and the
-chain records `proposal_parked` with the request's hash. The rule that every shell command needs a person is unchanged; while away such a
+chain records the decision as a `yield_decided` whose source is `parked` (the request itself is on the chain as every request is). The rule that every shell command needs a person is unchanged; while away such a
 command is parked, not run. A parked proposal is never applied later by itself: it is information for the owner (section 6), and a later run
 can be started from it.
 
@@ -70,7 +70,8 @@ The same decisions without a terminal: `staircase decide <run> --accept | --reje
 **Finalize** is the recovery path entered from an awaiting run: the approved files are derived again from the chain; the derived tree must
 equal the tree of `awaiting_review`, and the `phase_checked` it names must be for that tree; the owner's decision is recorded (signed if the
 run requires signed decisions) as the run's final review; then `commit_prepared`, the compare-and-swap and the evidence, under the recovery
-lock and operation record. The agent is not started again. The certificate says the run finished and was reviewed after it ended.
+lock and operation record. The agent is not started again. The certificate says the run was made while the owner was away and accepted after it ended; it cites the checks of `phase_checked`
+(they ran on this very tree), and its level is not capped as a recovered run's is, because the run did reach its end.
 
 **A decision is bound to what was shown.** The inbox shows the hash of the `awaiting_review` entry; a decision names it, and is refused if the
 run's chain no longer ends in that entry (a stale screen, a second inbox, a concurrent `recover`). Same identity, other content: refused.
@@ -87,7 +88,7 @@ Taken as patterns (no code is copied; Cloudroom is Apache-2.0 and any later port
 
 | Cloudroom pattern | Here |
 |---|---|
-| Durable receipts with explicit uncertainty | `proposal_parked`, `phase_checked`, `awaiting_review` and the decisions are chain entries written before the state they describe is acted on; an outcome that cannot be established is reported as unknown, not as success |
+| Durable receipts with explicit uncertainty | parked decisions, `phase_checked`, `awaiting_review` and the decisions are chain entries written before the state they describe is acted on; an outcome that cannot be established is reported as unknown, not as success |
 | Content-bound retry identity | a decision names the `awaiting_review` entry it was shown; same identity with other content refuses |
 | Claim before launch, bounded recovery | finalize takes the recovery lock and writes its operation record before git moves |
 | Lifecycle separate from acceptance | the agent's exit is lifecycle; acceptance is `phase_checked` on the exact tree |
@@ -115,10 +116,13 @@ Claude Code's hooks still decide under `--dangerously-skip-permissions` has to b
 
 ## Consequences
 
-- New audit events (`proposal_parked`, `phase_checked`, `awaiting_review`, `review_accepted`, `review_rejected`) and a new run status.
+- New audit events (`phase_checked`, `awaiting_review`, `review_accepted`, `review_rejected`, `review_delivered`), a new decision source
+  (`parked`) and a new run status, `AWAITING_REVIEW` (a schema migration rebuilds the `runs` table to allow it, keeping every run and event).
   The audited history (`auditedHistory`) learns them; a chain from an earlier version is read as before. The certificate predicate and the
   CAL rules do not change: a change approved by evidence and reviewed by a person reaches the level it reaches today with a live final review.
 - `staircase recover` and `staircase resume` refuse a run awaiting review and name `staircase decide`.
+- A run that requires signed decisions cannot be away in v1.1: the review in `staircase decide` is not signed yet, and a weaker decision is
+  refused rather than accepted silently.
 - The existing interactive final review is unchanged for runs that are not away.
 
 ## Acceptance, mapped to tests
