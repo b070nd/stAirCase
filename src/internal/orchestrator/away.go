@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
@@ -63,6 +64,7 @@ var ErrNotAwaiting = errors.New("the run is not awaiting review")
 
 // ParkedProposal is a proposal an away run kept for the owner instead of asking: what it would have changed and why it needed a person.
 type ParkedProposal struct {
+	Seq    int // the number of its decision
 	Action string
 	Files  []string
 	Why    string
@@ -109,16 +111,20 @@ func (r *Runner) ReviewOf(runID int64) (Review, error) {
 			at = i
 		case "yield_decided":
 			var d struct {
+				Seq    int      `json:"seq"`
 				Source string   `json:"source"`
 				Action string   `json:"action_type"`
 				Paths  []string `json:"paths"`
 				Why    string   `json:"parked_why"`
 			}
 			if json.Unmarshal([]byte(e.Payload), &d) == nil && d.Source == "parked" {
-				rv.ParkedProposals = append(rv.ParkedProposals, ParkedProposal{Action: d.Action, Files: d.Paths, Why: d.Why})
+				rv.ParkedProposals = append(rv.ParkedProposals, ParkedProposal{Seq: d.Seq, Action: d.Action, Files: d.Paths, Why: d.Why})
 			}
 		}
 	}
+	// A parked proposal the owner adopted (ADR 0007) is part of the change now, not parked.
+	adopted := adoptedProposals(events)
+	rv.ParkedProposals = slices.DeleteFunc(rv.ParkedProposals, func(p ParkedProposal) bool { return adopted[p.Seq] })
 	if at < 0 {
 		return rv, fmt.Errorf("run #%d has no awaiting_review entry on its chain", runID)
 	}

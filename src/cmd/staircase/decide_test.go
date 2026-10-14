@@ -20,7 +20,7 @@ func awaySession(t *testing.T) (repo string, git func(args ...string) string) {
 	sessionAway, sessionAllow, runChecks = true, []string{"HEALTH.md"}, []string{"test -f HEALTH.md"}
 	t.Cleanup(func() {
 		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks = false, false, false, nil, nil
-		decideAccept, decideReject, decideShown, decideMessage = false, false, "", ""
+		decideAccept, decideReject, decideShown, decideMessage, decideAdopt = false, false, "", "", 0
 	})
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
 	return repo, git
@@ -59,8 +59,10 @@ func TestDecide_reject_and_a_stale_review(t *testing.T) {
 // TestDecide_accept_and_reject_are_one_or_the_other: both, or neither without a terminal, is refused before anything happens.
 func TestDecide_accept_and_reject_are_one_or_the_other(t *testing.T) {
 	decideAccept, decideReject = true, true
-	t.Cleanup(func() { decideAccept, decideReject = false, false })
+	t.Cleanup(func() { decideAccept, decideReject, decideAdopt = false, false, 0 })
 	assert.ErrorContains(t, decideHandler(nil, []string{"1"}), "either")
+	decideReject, decideAdopt = false, 2
+	assert.ErrorContains(t, decideHandler(nil, []string{"1"}), "one at a time", "adopting and deciding are separate steps")
 }
 
 func sampleReview() orchestrator.Review {
@@ -81,6 +83,9 @@ func TestDecide_the_inbox_is_a_tree_of_what_waits(t *testing.T) {
 		assert.Contains(t, text, want)
 	}
 	assert.Contains(t, inboxTree(nil), "Nothing waits")
+	numbered := sampleReview()
+	numbered.ParkedProposals[0].Seq = 2
+	assert.Contains(t, inboxTree([]orchestrator.Review{numbered}), "#2 src/bad.txt", "the number --adopt takes")
 }
 
 // TestDecide_keys: Y and I accept, N and O reject, D defers and shows what was parked, Z opens the clarifying session; anything
@@ -96,12 +101,12 @@ func TestDecide_keys(t *testing.T) {
 	} {
 		var out bytes.Buffer
 		decided, shown, clarified := "", "", false
-		ask(strings.NewReader(tc.in), &out, sampleReview(),
-			func(accept bool, entry string) error {
+		ask(strings.NewReader(tc.in), &out, sampleReview(), inbox{
+			decide: func(accept bool, entry string) error {
 				decided, shown = map[bool]string{true: "accept", false: "reject"}[accept], entry
 				return nil
 			},
-			func(orchestrator.Review) error { clarified = true; return nil })
+			clarify: func(orchestrator.Review) error { clarified = true; return nil }})
 		assert.Equal(t, tc.decided, decided, "input %q", tc.in)
 		assert.Equal(t, tc.clarify, clarified, "input %q", tc.in)
 		if decided != "" {
@@ -149,4 +154,51 @@ func TestSession_away_says_what_will_happen_and_needs_a_check(t *testing.T) {
 	})
 	sessionAway, sessionAllow, runChecks = true, []string{"src/**"}, nil
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--check")
+}
+
+// TestDecide_P_prototypes_a_parked_change_and_can_adopt_it (ADR 0007): P shows what a parked proposal would do (files, checks, diff);
+// a passing one can be adopted, after which the owner decides on the new review; a failing one cannot be adopted.
+func TestDecide_P_prototypes_a_parked_change_and_can_adopt_it(t *testing.T) {
+	rv := sampleReview()
+	rv.ParkedProposals[0].Seq, rv.ParkedProposals[1].Seq = 2, 4
+	adoptedRv := rv
+	adoptedRv.Entry = "ffffeeeeddddcccc"
+	adoptedRv.ParkedProposals = rv.ParkedProposals[1:]
+	var out bytes.Buffer
+	var prototyped, adopted []int
+	decidedOn := ""
+	err := ask(strings.NewReader("p\n1\ny\ny\n"), &out, rv, inbox{
+		decide:  func(accept bool, entry string) error { decidedOn = entry; return nil },
+		clarify: func(orchestrator.Review) error { return nil },
+		prototype: func(seq int) (orchestrator.PrototypeResult, error) {
+			prototyped = append(prototyped, seq)
+			return orchestrator.PrototypeResult{Seq: seq, Files: []string{"src/bad.txt"}, Applies: true, Passed: true,
+				Checks: []certificate.Check{{Command: "go test ./...", ExitCode: 0}}, Diff: "+fixed\n"}, nil
+		},
+		adopt: func(seq int, entry string) (orchestrator.Review, error) {
+			adopted = append(adopted, seq)
+			assert.Equal(t, rv.Entry, entry, "adopted on the review that was shown")
+			return adoptedRv, nil
+		}})
+	require.NoError(t, err)
+	assert.Equal(t, []int{2}, prototyped)
+	assert.Equal(t, []int{2}, adopted)
+	assert.Equal(t, "ffffeeeeddddcccc", decidedOn, "Y after the adoption accepts the new review")
+	assert.Contains(t, out.String(), "+fixed")
+	assert.Contains(t, out.String(), "go test ./...")
+
+	out.Reset()
+	adopted, decidedOn = nil, ""
+	err = ask(strings.NewReader("p\n1\nd\n"), &out, rv, inbox{
+		decide:  func(bool, string) error { return nil },
+		clarify: func(orchestrator.Review) error { return nil },
+		prototype: func(seq int) (orchestrator.PrototypeResult, error) {
+			return orchestrator.PrototypeResult{Seq: seq, Applies: true, Failed: `check "go test ./..." failed (exit 1)`}, nil
+		},
+		adopt: func(int, string) (orchestrator.Review, error) {
+			t.Fatal("a failing prototype is not offered for adoption")
+			return rv, nil
+		}})
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "cannot be adopted")
 }

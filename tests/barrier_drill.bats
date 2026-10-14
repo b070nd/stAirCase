@@ -266,3 +266,40 @@ away() {
   [ -n "$(note staircase)" ] && [ -n "$(note staircase-ledger)" ]
   sound
 }
+
+# ADR 0007: an adoption killed after the owner's approval is on the chain, before its checks and review, leaves a review that no
+# longer matches the approvals: accepting it is refused; adopting again finishes it; accepting then delivers both files, once.
+@test "adopt killed after the owner's approval: accepting the old review is refused, adopting again finishes it" {
+  # this agent writes a file only when its hook allows it, as Claude Code does (the shared stand-in writes regardless)
+  cat >"$WORK/bin/claude" <<'FAKE'
+#!/bin/bash
+settings=""
+while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+cmd="$(sed -n 's/.*"command": *"\([^"]*\)".*/\1/p' "$settings" | head -1)"
+hook() { printf '%s' "$1" | sh -c "$cmd"; }
+hook '{"hook_event_name":"SessionStart","cwd":"'"$PWD"'"}' >/dev/null
+for f in a b; do
+  if hook '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"'"$PWD"'/src/'$f'.txt","content":"'$f' content\n"},"tool_use_id":"t-'$f'","cwd":"'"$PWD"'"}' | grep -q '"allow"'; then
+    mkdir -p src && printf '%s content\n' $f >src/$f.txt
+  fi
+done
+FAKE
+  chmod +x "$WORK/bin/claude"
+  cd "$WORK/app"
+  run sc claude --yes --away --allow "src/a.txt" --check "test -f src/a.txt" "write two files"
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  run sc decide </dev/null
+  [[ "$output" == *"#2 src/b.txt"* ]] || { echo "$output"; false; }   # b is outside the scope: parked
+  hold adopt-approved "$STAIRCASE_BIN" decide 1 --adopt 2
+  run sc decide 1 --accept
+  [ "$status" -ne 0 ]                                                 # the review on offer is not what the approvals derive
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]
+  run sc decide 1 --adopt 2
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  run sc decide 1 --accept
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+  sound
+}

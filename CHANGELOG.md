@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Prototype a parked change, and adopt it (`staircase decide`, P and `--adopt`).** For a proposal an away run parked, P shows what it
+  would do on top of the change on offer: its diff and your checks on the result, in a checkout that is thrown away, with nothing
+  recorded. A change that passes can be adopted: it becomes your approval, recorded as a live approval would be (request, journal line,
+  decision, then the checks of the new tree and a new review), so delivery, verify and rebuild need no new rule; one whose checks fail is
+  refused with nothing recorded, and a review shown before an adoption is stale afterwards. An adoption interrupted after the approval is
+  finished by adopting again ([away](docs/away.md), [ADR 0007](docs/adr/0007-prototype-bridging.md)).
+
+### Added
+
 - **Working while you are away (`--away`, `staircase decide`).** `staircase claude`, `codex` and `gemini` take `--away`: nobody is asked;
   a change inside the scope is approved only when the `--check` commands pass on it (or by policy), and what would need a person is parked,
   with the agent told at once to go on. When the agent stops, the checks run once more on the exact approved tree, and a run that passes

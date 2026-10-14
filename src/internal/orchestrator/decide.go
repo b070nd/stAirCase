@@ -81,8 +81,8 @@ type ruling struct {
 // Review). A signal can only turn an automatic approval into a person's
 // decision.
 func (d *deciders) decide(ctx context.Context, req *domain.YieldRequest) ruling {
-	req.Drift, req.Guard, req.Review, req.Before = "", "", "", nil // the orchestrator's to fill, never the agent's
-	for i := range req.ProposedEdits {                             // what a person is shown instead of unreadable bytes
+	req.Drift, req.Guard, req.Review, req.Before, req.Adopts = "", "", "", nil, 0 // the orchestrator's to fill, never the agent's
+	for i := range req.ProposedEdits {                                            // what a person is shown instead of unreadable bytes
 		e := &req.ProposedEdits[i]
 		e.BinaryBytes, e.BinarySHA256 = 0, ""
 		if b, err := base64.StdEncoding.DecodeString(e.ContentB64); err == nil && e.ContentB64 != "" {
