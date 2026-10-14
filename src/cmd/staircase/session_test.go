@@ -26,6 +26,9 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "hook" {
 		os.Exit(agent.RunHook(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
+	if os.Getenv("FAKE_CLAUDE_STREAM") != "" {
+		os.Exit(fakeClaudeStream())
+	}
 	if os.Getenv("FAKE_CLAUDE") != "" {
 		os.Exit(fakeClaude())
 	}
