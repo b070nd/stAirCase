@@ -102,7 +102,8 @@ counted as matching without comparing its bytes.
 **Cloudroom beside stAirCase.** Work done in Cloudroom can be governed today with no new code: `staircase review <branch> --by "Cloudroom
 agent"` brings the branch in one file at a time and certifies what the owner approves (CAL 2, changes made elsewhere). A tighter integration,
 Cloudroom launching its harnesses with stAirCase's hook settings so that each change is decided before it is made, is a follow-on: whether
-Claude Code's hooks still decide under `--dangerously-skip-permissions` has to be probed on a real host first.
+Claude Code's hooks still decide under `--dangerously-skip-permissions` was probed on 2.1.236: a `PreToolUse` deny still blocks the
+write ([record](../release-evidence/claude-code-2.1.236-hooks-under-skip-permissions.md)).
 
 ### 9. Deferred, in order of value
 
