@@ -15,6 +15,18 @@ import (
 
 // Away mode (ADR 0006): a run nobody watches ends, when its approved tree passes the checks, awaiting the owner's review.
 
+// AwayBrief is what an away run's agent is told before its task (ADR 0008): it works unattended, and a refusal is a parking, not a
+// question. It is guidance, never permission: what is approved is still decided by the run. Its version and digest are on the run's
+// run_bound entry; a change of its text is a new version.
+const AwayBrief = `You are working unattended: nobody will answer questions or approve anything while you work.
+- Every file change you make is decided by stAirCase. Changes inside the agreed scope are approved only when the project's checks pass on them.
+- A change that is refused has been parked for the owner, who will see it and why. Do not retry it or work around it; go on with what you can do without it.
+- Make each change complete on its own, so the checks can pass after it.
+- When you are done or cannot go on, stop, and say in your last message what you did, what you left for the owner and why.`
+
+// AwayBriefVersion is the version of AwayBrief.
+const AwayBriefVersion = 1
+
 // awaitReview is the acceptance of an away run when its agent stopped: the checks run once more, on the exact approved tree
 // (the agent stopping is not acceptance), and their result is recorded as phase_checked. A tree that passes is offered for
 // review (awaiting_review, naming that phase_checked entry); one that does not ends the run FAILED. Nothing is committed.
@@ -206,4 +218,12 @@ func (r *Runner) Decide(ctx context.Context, runID int64, o DecideOptions) (Reco
 		}
 	}
 	return r.Recover(ctx, runID, RecoverOptions{RequireEvidence: o.RequireEvidence, accepted: &acceptedReview{tree: rv.Tree, checks: rv.Checks}})
+}
+
+// awayBrief is the brief an agent is given: AwayBrief when the run is away, nothing otherwise.
+func awayBrief(away bool) string {
+	if away {
+		return AwayBrief
+	}
+	return ""
 }
