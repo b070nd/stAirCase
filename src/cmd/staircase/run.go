@@ -213,6 +213,7 @@ func runCase(caseID int64) error {
 		Sandbox:           runSandbox,
 		ApproveInScope:    sessionInScope,
 		ApproveOnEvidence: sessionOnEvidence,
+		Away:              sessionAway,
 		Signal:            sig,
 		SignKey:           runSignKey,
 		SignAs:            orDefaultStr(runSignAs, gitConfig("user.email")),

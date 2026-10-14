@@ -429,14 +429,15 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 			runErr = errors.Join(runErr, err)
 		}
 		if worktree != "" {
-			if finalStatus == persistence.RunStatusSuccess {
+			switch finalStatus {
+			case persistence.RunStatusSuccess:
 				// The deliverable is the run branch; the worktree was only scaffolding.
 				if err := removeWorktree(project.SourcePath, worktree); err != nil {
 					obs.Log.Warn("remove run worktree", "path", worktree, "err", err)
 				}
-			} else if finalStatus == persistence.RunStatusAwaitingReview {
+			case persistence.RunStatusAwaitingReview:
 				fmt.Fprintf(os.Stdout, "   🔎 Worktree kept until your review: %s\n", worktree)
-			} else {
+			default:
 				fmt.Fprintf(os.Stdout, "   🔎 Worktree kept for inspection: %s\n", worktree)
 			}
 		}
@@ -917,6 +918,9 @@ runLoop:
 				maps.Copy(decided, rl.signed)
 				if rl.evidence != nil {
 					decided["evidence"] = rl.evidence
+				}
+				if rl.parkedWhy != "" {
+					decided["parked_why"] = rl.parkedWhy
 				}
 				if rl.source == "operator" {
 					decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines

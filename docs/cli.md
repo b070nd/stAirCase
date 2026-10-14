@@ -183,6 +183,7 @@ Flags:
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
+      --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Claude Code (default: its own)
@@ -255,6 +256,7 @@ Flags:
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
+      --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Codex (default: its own)
@@ -321,6 +323,36 @@ Output the project dependency graph in DOT format
 
 ```
 staircase dag viz [project-id]
+```
+
+## staircase decide
+
+Review what your away runs left for you: accept, reject, defer or clarify
+
+```
+staircase decide [run-id] [flags]
+```
+
+Lists the runs that ended while you were away (staircase claude --away ...) and wait for your review, as a tree: each
+run's change, the checks that ran on exactly that change, and the proposals it parked because they needed you. Nothing of it
+is committed until you decide:
+
+  Y or I   accept: the change is committed on the run's branch, with its certificate, without starting the agent again
+  N or O   reject: nothing is committed
+  D        defer, and show the alternatives: what was parked and how to see the whole change; the run keeps waiting
+  Z        clarify: a read-only session (Claude Code's plan mode) in a separate directory that holds only this change, its
+           evidence and what was parked; nothing said there decides anything, you come back to Y, N or D
+
+Without a terminal, decide one run with --accept or --reject. A decision is made on the review entry you were shown; if the
+run's review is no longer that one (--shown), it is refused.
+
+Flags:
+
+```
+      --accept           Accept the run's change: commit it, with its certificate
+  -m, --message string   Why, for the audit chain
+      --reject           Reject the run's change: nothing is committed
+      --shown string     The review entry (as listed) the decision is made on; refused if the run's review is another
 ```
 
 ## staircase doctor
@@ -425,6 +457,7 @@ Flags:
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
+      --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Gemini CLI (default: its own)
@@ -578,6 +611,7 @@ Flags:
       --approval-token string      Token for the approval API (default: a new one, printed)
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
+      --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for OpenCode (default: its own)

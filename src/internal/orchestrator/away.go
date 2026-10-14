@@ -61,15 +61,25 @@ type DecideOptions struct {
 // ErrNotAwaiting: the run is not waiting for a review (it never was, or it was decided).
 var ErrNotAwaiting = errors.New("the run is not awaiting review")
 
+// ParkedProposal is a proposal an away run kept for the owner instead of asking: what it would have changed and why it needed a person.
+type ParkedProposal struct {
+	Action string
+	Files  []string
+	Why    string
+}
+
 // Review is what an away run offers for review, read from its verified audit chain.
 type Review struct {
 	RunID   int64
 	Entry   string // the hash of its awaiting_review entry: a decision names it
+	Base    string // the commit the run started from
 	Tree    string
 	Files   map[string]string // path -> SHA-256 of the approved content
 	Parked  int
 	Checks  []certificate.Check
 	Decided string // "", "accepted" (delivery not finished) or "rejected"
+
+	ParkedProposals []ParkedProposal
 }
 
 // ReviewOf reads the review an away run offers. It trusts the chain only after verifying it, and the checks only when they ran
@@ -87,10 +97,26 @@ func (r *Runner) ReviewOf(runID int64) (Review, error) {
 	if err != nil {
 		return rv, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
 	}
+	hist, err := auditedHistory(events)
+	if err != nil {
+		return rv, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
+	}
+	rv.Base = hist.Bound.Base
 	at := -1
 	for i, e := range events {
-		if e.EventType == "awaiting_review" {
+		switch e.EventType {
+		case "awaiting_review":
 			at = i
+		case "yield_decided":
+			var d struct {
+				Source string   `json:"source"`
+				Action string   `json:"action_type"`
+				Paths  []string `json:"paths"`
+				Why    string   `json:"parked_why"`
+			}
+			if json.Unmarshal([]byte(e.Payload), &d) == nil && d.Source == "parked" {
+				rv.ParkedProposals = append(rv.ParkedProposals, ParkedProposal{Action: d.Action, Files: d.Paths, Why: d.Why})
+			}
 		}
 	}
 	if at < 0 {

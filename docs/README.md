@@ -16,6 +16,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | Page | What you learn |
 |---|---|
 | [Approvals](approvals.md) | approve in the terminal, a browser page, a script or a service; rules; a reviewer model; approve on evidence; sign your decisions |
+| [Working while you are away](away.md) | `--away`: the agent works on evidence, parks what needs you, and the change waits for `staircase decide` |
 | [Models and API keys](models.md) | providers, storing keys, budget caps, record and replay |
 | [Blueprints](blueprints.md) | keep your agent setup as files in its own repository |
 | [Drift supervision](drift.md) | keep runs on their stories with scope and limits |

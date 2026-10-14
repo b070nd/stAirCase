@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **Working while you are away (`--away`, `staircase decide`).** `staircase claude`, `codex` and `gemini` take `--away`: nobody is asked;
+  a change inside the scope is approved only when the `--check` commands pass on it (or by policy), and what would need a person is parked,
+  with the agent told at once to go on. When the agent stops, the checks run once more on the exact approved tree, and a run that passes
+  ends `AWAITING_REVIEW` with nothing committed. `staircase decide` lists what waits as a tree (the change, the checks of that tree, the
+  parked proposals and why) and takes Y or I to accept (exactly that change is committed with its certificate, without starting the agent),
+  N or O to reject, D to defer and show the alternatives, and Z to clarify in a read-only Claude Code session that sees only this change;
+  `--accept` and `--reject` without a terminal. A decision is bound to the review it was made on. Ideas taken from Cloudroom (durable
+  records before acting, content-bound identity, lifecycle separate from acceptance), not its code ([away](docs/away.md),
+  [ADR 0006](docs/adr/0006-away-mode.md)). A workspace's `runs` table is rebuilt once to allow the new status, keeping every run and event.
+
 ### Fixed
 
 - **`staircase resume --help` contradicted itself.** Its first paragraph still said the agent's memory of the earlier part is not carried,

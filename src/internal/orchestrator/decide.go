@@ -70,10 +70,11 @@ type ruling struct {
 	halt    bool                     // the run has drifted too far and stops
 	refused bool                     // the orchestrator refused it before anyone decided
 
-	decideMS int64          // a person's time to decide
-	lines    int            // lines the change adds or removes
-	signed   map[string]any // the signature on a person's decision, for the audit record
-	evidence map[string]any // what an evidence-based approval rests on, for the audit record
+	decideMS  int64          // a person's time to decide
+	lines     int            // lines the change adds or removes
+	signed    map[string]any // the signature on a person's decision, for the audit record
+	evidence  map[string]any // what an evidence-based approval rests on, for the audit record
+	parkedWhy string         // why a proposal was parked while away: what a person would have had to decide
 }
 
 // decide rules on req, completing it with what the human is shown (Drift,
@@ -199,7 +200,7 @@ func (d *deciders) human(req *domain.YieldRequest, rl ruling) ruling {
 			why = "it needs a person's decision"
 		}
 		d.display.AddActivity(fmt.Sprintf("%-14s PARKED %s (%s)", req.AgentName, req.ActionType, why))
-		rl.source = "parked"
+		rl.source, rl.parkedWhy = "parked", why
 		rl.resp = domain.Decide(false, "parked for the owner, who is away: "+why+". It is kept for their review; do not propose it again. Go on with what you can do without it.")
 		return rl
 	}

@@ -1,0 +1,278 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"maps"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"golang.org/x/term"
+)
+
+var (
+	decideAccept, decideReject bool
+	decideShown, decideMessage string
+)
+
+var decideCmd = &cobra.Command{
+	Use:   "decide [run-id]",
+	Short: "Review what your away runs left for you: accept, reject, defer or clarify",
+	Long: `Lists the runs that ended while you were away (staircase claude --away ...) and wait for your review, as a tree: each
+run's change, the checks that ran on exactly that change, and the proposals it parked because they needed you. Nothing of it
+is committed until you decide:
+
+  Y or I   accept: the change is committed on the run's branch, with its certificate, without starting the agent again
+  N or O   reject: nothing is committed
+  D        defer, and show the alternatives: what was parked and how to see the whole change; the run keeps waiting
+  Z        clarify: a read-only session (Claude Code's plan mode) in a separate directory that holds only this change, its
+           evidence and what was parked; nothing said there decides anything, you come back to Y, N or D
+
+Without a terminal, decide one run with --accept or --reject. A decision is made on the review entry you were shown; if the
+run's review is no longer that one (--shown), it is refused.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: decideHandler,
+}
+
+func init() {
+	decideCmd.Flags().BoolVar(&decideAccept, "accept", false, "Accept the run's change: commit it, with its certificate")
+	decideCmd.Flags().BoolVar(&decideReject, "reject", false, "Reject the run's change: nothing is committed")
+	decideCmd.Flags().StringVar(&decideShown, "shown", "", "The review entry (as listed) the decision is made on; refused if the run's review is another")
+	decideCmd.Flags().StringVarP(&decideMessage, "message", "m", "", "Why, for the audit chain")
+	rootCmd.AddCommand(decideCmd)
+}
+
+func decideHandler(cmd *cobra.Command, args []string) error {
+	if decideAccept && decideReject {
+		return errors.New("either --accept or --reject, not both")
+	}
+	flagged := decideAccept || decideReject
+	store, db, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+	parent := context.Background()
+	if cmd != nil && cmd.Context() != nil {
+		parent = cmd.Context()
+	}
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt)
+	defer stop()
+	runner := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR"))
+	decide := func(runID int64) func(bool, string) error {
+		return func(accept bool, entry string) error {
+			res, err := runner.Decide(ctx, runID, orchestrator.DecideOptions{Accept: accept, Shown: entry, Feedback: decideMessage})
+			if err != nil && res.Commit == "" {
+				return err
+			}
+			if accept {
+				fmt.Printf("✅ Run #%d accepted: committed %.12s on staircase/run-%d\n", runID, res.Commit, runID)
+			} else {
+				fmt.Printf("✋ Run #%d rejected: nothing committed\n", runID)
+			}
+			return err
+		}
+	}
+
+	var ids []int64
+	if len(args) == 1 {
+		id, err := parseID("run-id", args[0])
+		if err != nil {
+			return err
+		}
+		ids = []int64{id}
+	} else {
+		if flagged {
+			return errors.New("name the run to --accept or --reject: staircase decide <run-id>")
+		}
+		runs, err := store.ListRunsByStatus(persistence.RunStatusAwaitingReview)
+		if err != nil {
+			return err
+		}
+		for _, r := range runs {
+			ids = append(ids, r.ID)
+		}
+	}
+	if flagged {
+		return decide(ids[0])(decideAccept, decideShown)
+	}
+
+	var reviews []orchestrator.Review
+	for _, id := range ids {
+		rv, err := runner.ReviewOf(id)
+		if err != nil {
+			return err
+		}
+		reviews = append(reviews, rv)
+	}
+	fmt.Print(inboxTree(reviews))
+	if len(reviews) == 0 {
+		return nil
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return errors.New("no terminal to decide in: decide a run with staircase decide <run-id> --accept or --reject")
+	}
+	in := bufio.NewReader(os.Stdin)
+	for _, rv := range reviews {
+		repo, task := runPlace(store, rv.RunID)
+		if err := ask(in, os.Stdout, rv, decide(rv.RunID), func(rv orchestrator.Review) error { return clarify(rv, repo, task) }); err != nil {
+			fmt.Printf("   ⚠️  run #%d: %v\n", rv.RunID, err)
+		}
+	}
+	return nil
+}
+
+// runPlace is the repository a run worked in and its task, for the clarifying session.
+func runPlace(store *persistence.Store, runID int64) (repo, task string) {
+	run, err := store.GetRun(runID)
+	if err != nil || run == nil {
+		return "", ""
+	}
+	c, err := store.GetCase(run.CaseID)
+	if err != nil || c == nil {
+		return "", ""
+	}
+	if p, err := store.GetProject(c.ProjectID); err == nil && p != nil {
+		repo = p.SourcePath
+	}
+	return repo, c.PrdJSON
+}
+
+// inboxTree is what waits for the owner, as a tree: run, change, checks, parked proposals.
+func inboxTree(reviews []orchestrator.Review) string {
+	if len(reviews) == 0 {
+		return "Nothing waits for your review.\n"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Awaiting your review\n")
+	for i, rv := range reviews {
+		branch, indent := "├─", "│  "
+		if i == len(reviews)-1 {
+			branch, indent = "└─", "   "
+		}
+		fmt.Fprintf(&b, "%s run #%d   review %.12s   from %.12s\n", branch, rv.RunID, rv.Entry, rv.Base)
+		files := slices.Sorted(maps.Keys(rv.Files))
+		fmt.Fprintf(&b, "%s├─ change   %d file(s): %s\n", indent, len(files), strings.Join(files, ", "))
+		var checks []string
+		for _, c := range rv.Checks {
+			checks = append(checks, fmt.Sprintf("%s (exit %d)", c.Command, c.ExitCode))
+		}
+		fmt.Fprintf(&b, "%s├─ checks   passed on exactly this change (tree %.12s): %s\n", indent, rv.Tree, strings.Join(checks, "; "))
+		if len(rv.ParkedProposals) == 0 {
+			fmt.Fprintf(&b, "%s└─ parked   nothing\n", indent)
+			continue
+		}
+		fmt.Fprintf(&b, "%s└─ parked   %d proposal(s) that needed you:\n", indent, len(rv.ParkedProposals))
+		for j, p := range rv.ParkedProposals {
+			leaf := "├─"
+			if j == len(rv.ParkedProposals)-1 {
+				leaf = "└─"
+			}
+			fmt.Fprintf(&b, "%s   %s %s: %s\n", indent, leaf, parkedWhat(p), p.Why)
+		}
+	}
+	fmt.Fprintf(&b, "\nKeys: Y or I accept, N or O reject, D defer and show the alternatives, Z clarify\n")
+	return b.String()
+}
+
+func parkedWhat(p orchestrator.ParkedProposal) string {
+	if len(p.Files) > 0 {
+		return strings.Join(p.Files, ", ")
+	}
+	return p.Action
+}
+
+// ask asks the owner about one run until they decide or defer; Z opens the clarifying session and asks again. An end of input
+// defers. A decision names the review entry that was shown.
+func ask(in io.Reader, out io.Writer, rv orchestrator.Review, decide func(accept bool, entry string) error, clarify func(orchestrator.Review) error) error {
+	r, ok := in.(*bufio.Reader)
+	if !ok {
+		r = bufio.NewReader(in)
+	}
+	for {
+		fmt.Fprintf(out, "run #%d: Y accept, N reject, D defer, Z clarify > ", rv.RunID)
+		line, err := r.ReadString('\n')
+		key := strings.ToUpper(strings.TrimSpace(line))
+		if key == "" && err != nil {
+			fmt.Fprintf(out, "\n   deferred: run #%d keeps waiting\n", rv.RunID)
+			return nil
+		}
+		switch key {
+		case "Y", "I":
+			return decide(true, rv.Entry)
+		case "N", "O":
+			return decide(false, rv.Entry)
+		case "D":
+			fmt.Fprint(out, alternatives(rv))
+			fmt.Fprintf(out, "   deferred: run #%d keeps waiting\n", rv.RunID)
+			return nil
+		case "Z":
+			if err := clarify(rv); err != nil {
+				fmt.Fprintf(out, "   the clarifying session did not start: %v\n", err)
+			}
+		default:
+			fmt.Fprintf(out, "   answer Y (or I), N (or O), D or Z\n")
+		}
+	}
+}
+
+// alternatives is what D shows: what was parked instead of decided, and how to see the whole change.
+func alternatives(rv orchestrator.Review) string {
+	var b strings.Builder
+	if len(rv.ParkedProposals) == 0 {
+		fmt.Fprintf(&b, "   nothing was parked: the change on offer is all the run did\n")
+	}
+	for _, p := range rv.ParkedProposals {
+		fmt.Fprintf(&b, "   parked: %s - %s\n", parkedWhat(p), p.Why)
+	}
+	fmt.Fprintf(&b, "   the whole change: git diff %.12s %.12s\n", rv.Base, rv.Tree)
+	return b.String()
+}
+
+// clarifyCommand is the read-only assistant Z starts.
+var clarifyCommand = "claude"
+
+// clarify starts a session whose whole context is this run's review: a separate directory holding REVIEW.md (the task, the
+// change, the checks, what was parked) and CHANGE.diff, never the repository; the assistant runs in Claude Code's plan mode,
+// which changes nothing. The directory is removed afterwards.
+func clarify(rv orchestrator.Review, repo, task string) error {
+	dir, err := os.MkdirTemp("", "staircase-clarify-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Review of run #%d\n\nTask: %s\n\nFrom commit %s to tree %s (review entry %s).\n\n%s", rv.RunID, task, rv.Base, rv.Tree, rv.Entry, inboxTree([]orchestrator.Review{rv}))
+	if err := os.WriteFile(filepath.Join(dir, "REVIEW.md"), []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	diff := []byte("the change could not be read from the repository\n")
+	if repo != "" {
+		if out, err := exec.Command("git", "-C", repo, "diff", rv.Base, rv.Tree).Output(); err == nil {
+			diff = out
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "CHANGE.diff"), diff, 0o600); err != nil {
+		return err
+	}
+	path, err := exec.LookPath(clarifyCommand)
+	if err != nil {
+		return fmt.Errorf("no %s to clarify with (the material was in %s)", clarifyCommand, dir)
+	}
+	c := exec.Command(path, "--permission-mode", "plan",
+		"The owner is deciding whether to accept an AI agent's change. Read REVIEW.md and CHANGE.diff here and answer their questions. "+
+			"You cannot change anything, and nothing you say decides the review.")
+	c.Dir, c.Stdin, c.Stdout, c.Stderr = dir, os.Stdin, os.Stdout, os.Stderr
+	return c.Run()
+}

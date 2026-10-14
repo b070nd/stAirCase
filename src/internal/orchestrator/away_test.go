@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -246,4 +248,21 @@ func TestAway_a_run_that_requires_signed_decisions_cannot_be_away(t *testing.T) 
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
 	require.Error(t, r.Err)
 	assert.Contains(t, r.Err.Error(), "signed")
+}
+
+// TestAway_the_review_names_what_was_parked_and_why: the owner sees each parked proposal's files and the reason it needed them,
+// read from the verified chain, next to the change on offer and the checks of its tree.
+func TestAway_the_review_names_what_was_parked_and_why(t *testing.T) {
+	agentRuns := 0
+	r := awayRun(t, &agentRuns)
+	rv, err := orchestrator.NewRunner(r.Store, r.WsDir).ReviewOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"src/one.txt", "src/two.txt"}, slices.Sorted(maps.Keys(rv.Files)))
+	assert.NotEmpty(t, rv.Base)
+	require.Len(t, rv.ParkedProposals, 2)
+	assert.Equal(t, []string{"src/bad.txt"}, rv.ParkedProposals[0].Files)
+	assert.Contains(t, rv.ParkedProposals[0].Why, "FORBIDDEN found", "the failing check is why")
+	assert.Equal(t, []string{"elsewhere.txt"}, rv.ParkedProposals[1].Files)
+	assert.NotEmpty(t, rv.ParkedProposals[1].Why)
+	assert.Equal(t, "", rv.Decided)
 }
