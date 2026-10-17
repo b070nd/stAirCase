@@ -24,6 +24,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/policy"
@@ -336,25 +337,13 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 	if err != nil || len(runs) != 1 {
 		return nil, fmt.Errorf("the scenario's run was not recorded: %v", err)
 	}
-	events, err := store.ListEventLogs(runs[0].ID)
+	h, err := history.Read(store, runs[0].ID)
 	if err != nil {
 		return nil, err
 	}
-	var decided []struct {
-		Source, Feedback, Guard, Drift, Review string
-		Approved                               bool
-		ActionType                             string `json:"action_type"`
-	}
-	for _, e := range events {
-		if e.EventType != "yield_decided" {
-			continue
-		}
-		var d struct {
-			Source, Feedback, Guard, Drift, Review string
-			Approved                               bool
-			ActionType                             string `json:"action_type"`
-		}
-		if json.Unmarshal([]byte(e.Payload), &d) == nil && d.ActionType == domain.ActionFileEdit {
+	var decided []history.Decision
+	for _, d := range h.Decisions {
+		if d.ActionType == domain.ActionFileEdit {
 			decided = append(decided, d)
 		}
 	}
@@ -371,7 +360,7 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 			continue
 		}
 		d := decided[i]
-		reasons := nonEmpty(d.Guard, d.Drift, d.Review, d.Feedback)
+		reasons := nonEmpty(d.Guard, d.Drift, d.Feedback)
 		switch {
 		case d.Source == "operator":
 			r.Got = Human
@@ -399,7 +388,7 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 		out = append(out, r)
 	}
 	if s.ExpectDelivered != nil || s.ExpectCertificate {
-		out = append(out, deliveryResult(s, repo, runs[0].ID, events))
+		out = append(out, deliveryResult(s, repo, runs[0].ID, h))
 	}
 	return out, nil
 }
@@ -407,7 +396,7 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 // deliveryResult checks what reached the run branch and its evidence, from the repository
 // and the audit chain, not from the decisions: the file list the branch differs from the
 // base in, and (with expect_certificate) a certificate issued for a commit.
-func deliveryResult(s Scenario, repo string, runID int64, events []domain.RunEventLog) Result {
+func deliveryResult(s Scenario, repo string, runID int64, h history.History) Result {
 	r := Result{Scenario: s.Name, Index: 0, Want: "delivery"}
 	out, err := exec.Command("git", "-C", repo, "diff", "--name-only", "main", fmt.Sprintf("staircase/run-%d", runID)).Output()
 	if err != nil {
@@ -428,11 +417,7 @@ func deliveryResult(s Scenario, repo string, runID int64, events []domain.RunEve
 		}
 	}
 	if s.ExpectCertificate {
-		issued := false
-		for _, e := range events {
-			issued = issued || e.EventType == "certificate_issued"
-		}
-		if !issued {
+		if !slices.ContainsFunc(h.Delivered, func(d history.Delivery) bool { return d.Event == "certificate_issued" }) {
 			r.Pass = false
 			r.Detail = strings.TrimSpace(r.Detail + " no change certificate was issued")
 		}

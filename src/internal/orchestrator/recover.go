@@ -14,6 +14,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/barrier"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 )
@@ -139,16 +140,12 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	}
 	// The audit chain must verify before any row of it is believed: it is read once,
 	// and what is replayed is the very slice that was verified.
-	events, err := r.store.ListVerifiedEventLogs(runID)
+	hist, err := history.Read(r.store, runID)
 	if err != nil {
-		return res, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
-	}
-	hist, err := auditedHistory(events)
-	if err != nil {
-		return res, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
+		return res, err
 	}
 	bound := hist.Bound
-	if bound.Base == "" || bound.Branch == "" {
+	if bound.BaseSHA == "" || bound.Branch == "" {
 		return res, fmt.Errorf("run #%d never got as far as a run branch: there is nothing to recover", runID)
 	}
 	journal, err := readJournalFile(r.wsDir, runID)
@@ -164,6 +161,8 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if len(kept) == 0 {
 		return res, fmt.Errorf("run #%d had nothing approved: there is nothing to recover", runID)
 	}
+	// Stricter than a finished run, which asks after task or evidence approvals or what its reviewer model left unreviewed:
+	// every approval not made by a person or a policy rule is reviewed (ADR 0010, Q23).
 	needReview := false
 	for _, p := range kept {
 		needReview = needReview || (p.Source != "operator" && p.Source != "policy")
@@ -181,14 +180,14 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if err != nil {
 		return res, err
 	}
-	a, cleanup, err := deriveApproved(repo, bound.Base, kept, hist.Approvals)
+	a, cleanup, err := deriveApproved(repo, bound.BaseSHA, kept, hist.Approvals())
 	if err != nil {
 		return res, err
 	}
 	defer cleanup()
 	// A final review the person already gave, of exactly this state, is the review recovery
 	// would ask for; one of other bytes means the chain and the approvals disagree.
-	reviewed, err := hist.finalReviewed(a.files)
+	reviewed, err := hist.FinalReviewed(digest(a.files))
 	if err != nil {
 		return res, err
 	}
@@ -202,7 +201,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		return res, fmt.Errorf("the approved changes of run #%d derive tree %.12s, not the tree %.12s that was offered for review", runID, want, opts.accepted.tree)
 	}
 	branch := strings.TrimPrefix(bound.Branch, "refs/heads/")
-	fingerprint := approvalsOf(hist.Approvals)
+	fingerprint := approvalsOf(hist.Approvals())
 
 	if err := ctx.Err(); err != nil { // cancelled while the history was read: nothing was begun
 		return res, err
@@ -228,14 +227,14 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if run.GitCommitHash != "" && (op == nil || op.Commit != run.GitCommitHash) {
 		return res, fmt.Errorf("run #%d already has a commit (%.12s): there is nothing to recover", runID, run.GitCommitHash)
 	}
-	if op != nil && !op.matches(bound.Base, bound.Branch, want, fingerprint) {
+	if op != nil && !op.matches(bound.BaseSHA, bound.Branch, want, fingerprint) {
 		return res, errors.New("a recovery of this run was started for other approvals than the ones it has now: not continuing it")
 	}
 	if run.GitCommitHash != "" && r.recoveryEvidenceComplete(run, repo) {
 		return res, fmt.Errorf("run #%d is already recovered (%.12s): there is nothing to recover", runID, run.GitCommitHash)
 	}
 
-	pl := &plan.Plan{Harness: bound.Harness, Digest: bound.PlanDigest, BlueprintHash: bound.Blueprint}
+	pl := &plan.Plan{Harness: bound.Harness, Digest: bound.PlanDigest, BlueprintHash: bound.BlueprintHash}
 	// The final review a finished run would have had, kept durably before any commit
 	// is made: if it cannot be recorded, nothing is committed.
 	review := func() error {
@@ -255,8 +254,9 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		reqJSON, _ := json.Marshal(req)
-		if err := r.audit(runID, "recovery_final_review", map[string]any{"approved": resp.Approved, "feedback": resp.Feedback, "request_sha256": sha256Hex(reqJSON)}); err != nil {
+		decided := yieldDecided(hist.LastDecided+1, "operator", req, resp, bound.BaseSHA, nil, "") // as a finished run's (ADR 0010, Q21)
+		decided.Files = digest(a.files)                                                            // what was put to the person, approved or not
+		if err := r.audit(runID, "yield_decided", decided); err != nil {
 			return fmt.Errorf("record the final review: %w", err)
 		}
 		if !resp.Approved {
@@ -269,8 +269,8 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	// was needed, is then already on the audit chain.
 	ownTip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
 	ownHead, adopted := "", false
-	if ownTip != "" && ownTip != bound.Base {
-		ownHead, adopted = runMadeCommit(repo.path, runID, run.CaseID, bound.Base, ownTip, a, events, needReview)
+	if ownTip != "" && ownTip != bound.BaseSHA {
+		ownHead, adopted = runMadeCommit(repo.path, runID, run.CaseID, bound.BaseSHA, ownTip, a, hist, needReview)
 		needReview = needReview && !adopted
 	}
 	if op == nil {
@@ -287,7 +287,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		if err != nil {
 			return res, err
 		}
-		op = &recoveryOp{Op: id, RunID: runID, Base: bound.Base, Branch: bound.Branch, Tree: want, Approvals: fingerprint,
+		op = &recoveryOp{Op: id, RunID: runID, Base: bound.BaseSHA, Branch: bound.Branch, Tree: want, Approvals: fingerprint,
 			ChainHead: chainHead, NeedsReview: needReview, Reviewed: needReview}
 		if err := op.save(r.wsDir); err != nil {
 			return res, fmt.Errorf("keep the recovery record: %w", err)
@@ -312,7 +312,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	switch tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); {
 	case tip == "":
 		return res, fmt.Errorf("the branch %s no longer exists", branch)
-	case tip == bound.Base:
+	case tip == bound.BaseSHA:
 		if hash, err = a.commit(branch, commitMessage(runID, run.CaseID, pl, op.ChainHead)+recoveryTrailer+": "+op.Op+"\n"); err != nil {
 			return res, fmt.Errorf("commit the recovered change: %w", err)
 		}
@@ -338,12 +338,12 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 
 	// The evidence. Every step is safe to do again, so a recover after a crash or a
 	// failure repairs what is missing on the same commit.
-	ev := evidence{recovered: opts.accepted == nil, policy: hist.PolicyDigest, initiator: hist.Initiator}
+	ev := evidence{recovered: opts.accepted == nil, policy: policyDigest(hist), initiator: initiatorOf(hist)}
 	delivered := "run_recovered"
 	if opts.accepted != nil { // the run reached its end: its worktree was checked and its checks ran on this tree
 		ev.checks, ev.awayReviewed, delivered = opts.accepted.checks, true, "review_delivered"
 	}
-	ledger := Ledger{Base: bound.Base, Proposals: kept}
+	ledger := Ledger{Base: bound.BaseSHA, Proposals: kept}
 	// The run's own ledger and certificate, if it got that far, stay: the certificate names the ledger's digest.
 	ownLedger, _ := os.ReadFile(LedgerPath(r.wsDir, runID))
 	if adopted && len(ownLedger) > 0 {
@@ -360,7 +360,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	ownCertificate := adopted && gitOut(repo.path, "notes", "--ref="+NotesRef, "show", hash) != "" && hasEvent(r.store, runID, "certificate_issued", hash)
 	res.CertificateKept = ownCertificate
 	if !ownCertificate {
-		if err := r.certify(runID, hash, bound.Base, op.ChainHead, pl, repo, ev); err != nil {
+		if err := r.certify(runID, hash, bound.BaseSHA, op.ChainHead, pl, repo, ev); err != nil {
 			evidenceErrs = append(evidenceErrs, "certificate: "+err.Error())
 		}
 	}
@@ -413,16 +413,8 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 
 // hasEvent reports whether the run's chain holds an event of that type about commit.
 func hasEvent(store *persistence.Store, runID int64, eventType, commit string) bool {
-	events, err := store.ListVerifiedEventLogs(runID) // what recovery repairs is decided from the verified chain only
-	if err != nil {
-		return false
-	}
-	for _, e := range events {
-		if e.EventType == eventType && strings.Contains(e.Payload, `"commit":"`+commit+`"`) {
-			return true
-		}
-	}
-	return false
+	h, err := history.Read(store, runID) // what recovery repairs is decided from the verified chain only
+	return err == nil && h.Delivers(eventType, commit)
 }
 
 // recoveryEvidenceComplete reports whether everything a recovery writes is there for
@@ -481,7 +473,7 @@ func JournaledApprovals(wsDir string, runID int64) int {
 // deriveApproved derives the approved files again from the base commit, proposal by proposal in chain order, against an empty
 // directory as a rebuild does (what is on disk now has no say in what was approved), and checks each against the digest the chain
 // recorded for it. cleanup removes the scratch directory.
-func deriveApproved(repo *GitRepo, base string, kept []LedgerProposal, recorded []auditedApproval) (*approvals, func(), error) {
+func deriveApproved(repo *GitRepo, base string, kept []LedgerProposal, recorded []history.Decision) (*approvals, func(), error) {
 	scratch, err := os.MkdirTemp("", "staircase-derive-")
 	if err != nil {
 		return nil, nil, err

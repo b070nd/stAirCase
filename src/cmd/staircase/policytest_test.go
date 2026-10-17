@@ -21,7 +21,12 @@ func TestPolicyReplay(t *testing.T) {
 	caseID, topo := seedFullCase(t, s)
 	run, err := s.CreateRun(caseID, topo, "main")
 	require.NoError(t, err)
+	_, err = s.AppendEventLogChained(run.ID, "run_bound", `{"base_sha":"b","branch":"staircase/run-1"}`, "")
+	require.NoError(t, err)
+	seq := 0
 	record := func(req domain.YieldRequest, decided map[string]any) {
+		seq++
+		decided["seq"], decided["action_type"] = seq, req.ActionType
 		b, _ := json.Marshal(req)
 		_, err := s.AppendEventLogChained(run.ID, "yield_request", string(b), "")
 		require.NoError(t, err)
@@ -51,6 +56,20 @@ func TestPolicyReplay(t *testing.T) {
 	require.Len(t, rep.RejectedByPerson, 1, "CHANGES.md: the change to look at")
 	assert.Contains(t, rep.RejectedByPerson[0], "CHANGES.md")
 	assert.Equal(t, 3, rep.Unchanged, "main.go (no rule), the shell command, the guarded change")
+	assert.Empty(t, rep.Skipped)
+
+	// a run whose chain no run can have written (a decision nothing asked for) is named, not counted (ADR 0010)
+	other, err := s.CreateRun(caseID, topo, "main")
+	require.NoError(t, err)
+	_, err = s.AppendEventLogChained(other.ID, "run_bound", `{"base_sha":"b"}`, "")
+	require.NoError(t, err)
+	_, err = s.AppendEventLogChained(other.ID, "yield_decided", `{"seq":1,"action_type":"file_edit","source":"operator","approved":false}`, "")
+	require.NoError(t, err)
+	rep, err = policyReplay(s, e)
+	require.NoError(t, err)
+	assert.Equal(t, 5, rep.Proposals)
+	require.Len(t, rep.Skipped, 1)
+	assert.Contains(t, rep.Skipped[0], "has no request before it")
 }
 
 // TestPolicyScenarios_command: --scenarios asserts. A met expectation exits

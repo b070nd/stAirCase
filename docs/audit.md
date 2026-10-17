@@ -18,9 +18,9 @@ Events you will see:
 
 | Event | Meaning |
 |---|---|
-| `run_bound` | what the run started from (commit, plan, blueprint) |
+| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`) |
 | `yield_request` | an agent proposed a change or a command |
-| `yield_decided` | the decision: who decided (`policy`, `operator`, `validator:<model>`, …), the reason, and for an approved change the hash of the exact approved content |
+| `yield_decided` | the decision: who decided (`policy`, `operator`, `validator:<model>`, …), the reason, the `yield_request` entry it answers (`request_entry`), and for an approved change the hash of the exact approved content. A final review (`action_type` `final_review`, a finished run's or a recovery's) answers no request and holds the digest of the whole change put to the person |
 | `shell_exec_rejected` | a shell command was refused because the run did not allow shell commands |
 | `approval_path_escape` | a proposal tried to reach a path outside the repository |
 | `approval_content_mismatch`, `unapproved_worktree_change`, `run_branch_moved` | at the end, the worktree was not exactly what was approved; nothing was committed |
@@ -34,7 +34,7 @@ Events you will see:
 | `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed and the digest of its output |
 | `shell_ran` | an approved shell command ran: the agent, the command and whether it ran in the sandbox |
 | `signal_rated` | a decision model was asked about a change that was not decided by a person: the model, the probabilities it gave that the change is risky and that it serves a story, the kind of change and the cost, or the error when it could not answer. It can only send the change to a person |
-| `recovery_final_review` | the final review of a recovered run, asked of a person before any commit was made: approved or not, and the digest of what was shown |
+| `recovery_final_review` | the final review of a recovered run, as versions before [ADR 0010](adr/0010-one-replay-of-the-audit-chain.md) recorded it; recovery now records it as a `yield_decided` final review |
 | `run_recovered` | `staircase recover` committed what the run had approved: the commit, how many proposals, whether a final review was given |
 | `phase_checked` | an away run's agent stopped: the checks ran once more on the exact approved tree; the tree, each check's result, whether all passed ([ADR 0006](adr/0006-away-mode.md)) |
 | `awaiting_review` | an away run's approved tree passed its checks and waits for the owner: the tree, the approved files' digests, the `phase_checked` entry it rests on, how many proposals were parked |
@@ -82,6 +82,24 @@ Both are in the checkpoints you export and in the `staircase inspect log` output
 Conformance vectors are in [`spec/audit-chain-vectors.json`](spec/audit-chain-vectors.json);
 `python3 docs/spec/audit_chain_vectors.py` checks them with a program that shares no code
 with stAirCase.
+
+### What a run can have written
+
+A chain whose hashes verify must also be one a run can have written. Recovery, resume, review and the
+certificate read it through one replay ([ADR 0010](adr/0010-one-replay-of-the-audit-chain.md)). That replay
+refuses a chain that breaks any of these rules, and names the entry that breaks it:
+
+- `run_bound` comes first, and only once.
+- Every decision except a final review answers a request audited earlier in the same segment, of the same kind.
+  Requests a segment left undecided are not carried past a `run_resumed`.
+- Proposal numbers increase.
+- After `commit_prepared` only a final review may be decided. After `certificate_issued`, `run_recovered` or
+  `review_delivered`, nothing is decided and the run is not resumed.
+
+A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
+often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or
+when its reviewer model left something unreviewed. Recovery asks whenever anything was approved by neither a person
+nor a policy rule, reviewer-model approvals included.
 
 ## The change certificate on every commit
 
