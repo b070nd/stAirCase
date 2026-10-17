@@ -413,7 +413,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 
 // hasEvent reports whether the run's chain holds an event of that type about commit.
 func hasEvent(store *persistence.Store, runID int64, eventType, commit string) bool {
-	events, err := store.ListEventLogs(runID)
+	events, err := store.ListVerifiedEventLogs(runID) // what recovery repairs is decided from the verified chain only
 	if err != nil {
 		return false
 	}

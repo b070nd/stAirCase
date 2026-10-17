@@ -127,3 +127,12 @@ func SetNoNetworkModeForTest(f func(string) bool) (restore func()) {
 	noNetworkMode = f
 	return func() { noNetworkMode = old }
 }
+
+// ExportedCertify signs the change certificate of a run's commit again, as recovery's repair does.
+func ExportedCertify(r *Runner, runID int64, commit, base, chainHead, repoPath string) error {
+	repo, err := OpenGitRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	return r.certify(runID, commit, base, chainHead, nil, repo, evidence{})
+}

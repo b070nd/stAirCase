@@ -87,9 +87,10 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		fmt.Fprintf(os.Stdout, "   ⚠️  No change certificate: %v\n", err)
 		return fmt.Errorf("no signing key: %w", err)
 	}
-	events, err := r.store.ListEventLogs(runID)
+	// The decisions are counted from the chain, so it is read only as verified: a changed row gets no certificate.
+	events, err := r.store.ListVerifiedEventLogs(runID)
 	if err != nil {
-		return err
+		return fmt.Errorf("the audit chain of run #%d does not verify, so no certificate is signed over it: %w", runID, err)
 	}
 	p := certificate.Predicate{Run: runID, BaseCommit: baseSHA, Agents: assistants(pl), ChainHead: chainHead,
 		Decisions: map[string]int{}, CAL: 3, Checks: ev.checks, Ledger: ev.ledger, Policy: ev.policy, Initiator: ev.initiator}

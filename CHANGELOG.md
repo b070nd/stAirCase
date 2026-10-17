@@ -43,8 +43,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   refused with nothing recorded, and a review shown before an adoption is stale afterwards. An adoption interrupted after the approval is
   finished by adopting again ([away](docs/away.md), [ADR 0007](docs/adr/0007-prototype-bridging.md)).
 
-### Added
-
 - **Working while you are away (`--away`, `staircase decide`).** `staircase claude`, `codex` and `gemini` take `--away`: nobody is asked;
   a change inside the scope is approved only when the `--check` commands pass on it (or by policy), and what would need a person is parked,
   with the agent told at once to go on. When the agent stops, the checks run once more on the exact approved tree, and a run that passes
@@ -55,7 +53,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   records before acting, content-bound identity, lifecycle separate from acceptance), not its code ([away](docs/away.md),
   [ADR 0006](docs/adr/0006-away-mode.md)). A workspace's `runs` table is rebuilt once to allow the new status, keeping every run and event.
 
+### Changed
+
+- **A real Claude Code resume remembers its conversation.** Verified on Claude Code 2.1.236 (2026-10-14): a run killed with `kill -9` while a
+  proposal waited was continued by `staircase resume` in Claude Code's own session, and the agent wrote a code word it had only said in its first
+  session, which was nowhere on the audit chain or in the workspace; the commit verified at CAL 3 and rebuilt from a fresh clone
+  ([record](docs/release-evidence/claude-code-2.1.236-resume.md)). Gemini CLI and Codex were verified before.
+
 ### Fixed
+
+- **Nothing is signed or decided over an audit chain that does not verify.** The change certificate counted a run's decisions from the
+  chain without verifying it, so a chain whose rows were changed after the run could get a certificate signed over the changed counts;
+  `staircase audit export` signed its checkpoint the same way; whether a case needs `--ack-drift` was read from an unverified chain, so
+  changing a `drift_halt` row let the case run again unacknowledged; and recovery's repair checks read unverified rows. All four now read
+  the verified chain, and a chain that does not verify gets no certificate, no checkpoint and no run, with the reason. Display commands
+  (`inspect`, `replay`) still show the rows as they are.
 
 - **`staircase resume --help` contradicted itself.** Its first paragraph still said the agent's memory of the earlier part is not carried,
   which was true before agent harnesses resumed their own session (1.0.0); it now says the audit chain decides what is approved, and a
@@ -66,13 +78,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   ([audit](docs/audit.md)) now says to name the check for its base when bases differ in policy. The test fixture does so: one ruleset and one check
   name per base, a head commit of its own for every pull request (a red check of another base on a shared commit also showed a green pull request as blocked), and `demo/ruleset-evidence.sh` takes for each pull request the run of
   its own base's check. The `staircase` program and the Action are unchanged; the fault was in how the check was set up.
-
-### Changed
-
-- **A real Claude Code resume remembers its conversation.** Verified on Claude Code 2.1.236 (2026-10-14): a run killed with `kill -9` while a
-  proposal waited was continued by `staircase resume` in Claude Code's own session, and the agent wrote a code word it had only said in its first
-  session, which was nowhere on the audit chain or in the workspace; the commit verified at CAL 3 and rebuilt from a fresh clone
-  ([record](docs/release-evidence/claude-code-2.1.236-resume.md)). Gemini CLI and Codex were verified before.
 
 ## [1.0.1] - 2026-10-12
 

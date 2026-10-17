@@ -259,3 +259,14 @@ func TestRun_a_webhook_secret_that_cannot_be_read_stops_the_run(t *testing.T) {
 	assert.Empty(t, r.Run.GitCommitHash)
 	assert.Empty(t, op.seen, "nobody was asked")
 }
+
+// TestCertify_refuses_a_chain_that_does_not_verify: the certificate counts the run's decisions from its audit chain, so it reads the
+// chain only after verifying it; a chain whose rows were changed afterwards gets no certificate, rather than one signed over them.
+func TestCertify_refuses_a_chain_that_does_not_verify(t *testing.T) {
+	r, commit, s := certified(t, writeFile("health.txt", "ok\n"), orchestrator.RunOptions{}, nil)
+	_, err := r.DB.Exec(`UPDATE run_event_logs SET payload = replace(payload, '"source":"policy"', '"source":"operator"') WHERE event_type = 'yield_decided'`)
+	require.NoError(t, err)
+	err = orchestrator.ExportedCertify(orchestrator.NewRunner(r.Store, r.WsDir), r.Run.ID, commit, s.Predicate.BaseCommit, s.Predicate.ChainHead, r.Repo)
+	require.Error(t, err, "a certificate over a tampered chain must not be signed")
+	assert.Contains(t, err.Error(), "verify")
+}

@@ -1318,9 +1318,9 @@ func (r *Runner) lastDriftHalt(caseID int64) (int64, error) {
 	if err != nil || len(runs) == 0 {
 		return 0, err
 	}
-	events, err := r.store.ListEventLogs(runs[0].ID)
+	events, err := r.store.ListVerifiedEventLogs(runs[0].ID) // a changed chain must not lift a halt
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("the audit chain of the case's last run (#%d) does not verify, so whether it was halted for drift cannot be known: %w", runs[0].ID, err)
 	}
 	for _, e := range events {
 		if e.EventType == "drift_halt" {
