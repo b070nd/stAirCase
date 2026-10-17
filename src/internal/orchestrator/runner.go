@@ -275,7 +275,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	// uncommitted changes there are not visible to the agent.
 	baseSHA := ""
 	if cont != nil { // the run's own base, never today's HEAD
-		baseSHA = cont.history.Bound.Base
+		baseSHA = cont.history.Bound.BaseSHA
 	} else if gr != nil {
 		if baseSHA, err = gr.HeadSHA(); err != nil {
 			return fmt.Errorf("resolve base commit: %w", err)
@@ -484,10 +484,10 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		if err := r.store.ReopenRun(run.ID); err != nil {
 			return err
 		}
-		initiator = cont.history.Initiator // the signed request of whoever started the run is kept, never signed again
+		initiator = initiatorOf(cont.history) // the signed request of whoever started the run is kept, never signed again
 		if err := r.audit(run.ID, "run_resumed", map[string]any{
-			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals),
-			"next_seq": cont.lastSeq + 1, "policy": cont.history.PolicyDigest, "plan_digest": cont.history.Bound.PlanDigest,
+			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals()),
+			"next_seq": cont.lastSeq + 1, "policy": policyDigest(cont.history), "plan_digest": cont.history.Bound.PlanDigest,
 			"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
 		}); err != nil {
 			return fmt.Errorf("audit run_resumed: %w", err)

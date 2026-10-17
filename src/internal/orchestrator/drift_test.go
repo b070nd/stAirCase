@@ -279,3 +279,30 @@ func TestDecide_shows_what_a_whole_file_change_replaces(t *testing.T) {
 	assert.Equal(t, map[string]string{"README.md": "Status: draft\n"}, op.seen[0].Before)
 	assert.NotContains(t, op.seen[0].Review, "the validator approved")
 }
+
+// TestDrift_an_acknowledged_resume_clears_the_halt (ADR 0010, Q20): a halted run continued with --ack-drift has had its halt
+// acknowledged; when that continuation is interrupted too, the next one is not refused for the same halt again.
+func TestDrift_an_acknowledged_resume_clears_the_halt(t *testing.T) {
+	op := &operator{approve: false}
+	r := runtest.Run(t, runtest.Options{
+		Setup: scoped(op, `{"rules":[{"action_types":["file_edit"],"effect":"approve"}],"limits":{"max_scope_violations":1}}`),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			create(ctx, env, "a.txt")
+			create(ctx, env, "b.txt")
+			<-ctx.Done()
+			return ctx.Err()
+		})})
+	require.Error(t, r.Err)
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	require.ErrorContains(t, runner.Resume(context.Background(), r.Run.ID, orchestrator.ResumeOptions{Agent: idle}), "--ack-drift")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	interrupted := orchestrator.AgentFunc(func(c context.Context, env *orchestrator.AgentEnv) error {
+		cancel()
+		<-c.Done()
+		return c.Err()
+	})
+	require.Error(t, runner.Resume(ctx, r.Run.ID, orchestrator.ResumeOptions{Agent: interrupted, AckDrift: true}), "the continuation is interrupted")
+	assert.NoError(t, runner.Resume(context.Background(), r.Run.ID, orchestrator.ResumeOptions{Agent: idle}), "the halt was acknowledged once")
+}

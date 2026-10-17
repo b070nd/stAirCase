@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/wslock"
 )
 
@@ -125,7 +125,7 @@ func (o *recoveryOp) owns(repoPath, tip string) bool {
 // a commit with the same parent, tree and message made by anyone else is another commit. Such a commit
 // holds exactly the approved bytes under the run's own audit record: a recovery that
 // kept it finishes the run's evidence instead of leaving a branch nothing can complete.
-func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *approvals, events []domain.RunEventLog, needReview bool) (string, bool) {
+func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *approvals, h history.History, needReview bool) (string, bool) {
 	if gitOut(repoPath, "rev-list", "--parents", "-n", "1", tip) != tip+" "+base {
 		return "", false
 	}
@@ -139,17 +139,8 @@ func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *ap
 	}
 	head := gitOut(repoPath, "log", "-1", "--format=%(trailers:key=Staircase-Chain,valueonly)", tip)
 	head = strings.TrimPrefix(head, "sha256:")
-	onChain, named := false, false
-	for _, e := range events {
-		onChain = onChain || (head != "" && e.EventHash == head)
-		var c struct {
-			Commit string `json:"commit"`
-		}
-		if e.EventType == "commit_prepared" && json.Unmarshal([]byte(e.Payload), &c) == nil && c.Commit == tip {
-			named = true // the run named this very commit on its chain before the branch moved
-		}
-	}
-	if !onChain || !named || needReview {
+	// the run named this very commit on its chain before the branch moved
+	if !h.Holds(head) || !h.Delivers("commit_prepared", tip) || needReview {
 		return "", false
 	}
 	return head, true
@@ -182,10 +173,10 @@ func lockRecovery(wsDir string, runID int64) (unlock func(), err error) {
 
 // approvalsOf is the fingerprint of the approvals a recovery is about: the
 // numbers, who decided and the hash of each request, as the chain recorded them.
-func approvalsOf(approvals []auditedApproval) []opApproval {
+func approvalsOf(approvals []history.Decision) []opApproval {
 	out := make([]opApproval, len(approvals))
 	for i, a := range approvals {
-		out[i] = opApproval{Seq: a.Seq, Source: a.Source, RequestSHA256: a.Hash}
+		out[i] = opApproval{Seq: a.Seq, Source: a.Source, RequestSHA256: a.RequestSHA256}
 	}
 	return out
 }
