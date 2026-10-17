@@ -24,7 +24,7 @@ type Signal struct {
 const signalThreshold = 0.5
 
 // escalate returns why a person must decide the change, or "".
-func (s *Signal) escalate(ctx context.Context, before, after map[string]*approvedFile, audit func(string, map[string]any) error) string {
+func (s *Signal) escalate(ctx context.Context, before, after map[string]*approvedFile, audit func(string, any) error) string {
 	change, err := changeFiles(before, after)
 	if err != nil {
 		return "signal: " + err.Error() + " - a person decides"

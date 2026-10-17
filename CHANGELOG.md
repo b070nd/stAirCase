@@ -55,12 +55,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **One replay of the audit chain ([ADR 0010](docs/adr/0010-one-replay-of-the-audit-chain.md)).** Recovery, resume, review, prototype and
+  adoption, the certificate, the drift-halt check, lessons, `staircase policy test` and the policy simulator read a run's chain through one
+  verified replay (`internal/history`), instead of each parsing events its own way. A chain whose hashes verify but that no run can have
+  written is refused with the entry that breaks it (`docs/audit.md`). Lessons and `policy test` now name such a run and skip it, where
+  they used to read unverified rows and miscount. New entries record more: a decision names the request it answers (`request_entry`),
+  `run_bound` holds the digest of the options a run saved (`terms_sha256`), and recovery's final review is a `yield_decided` final review
+  like a finished run's, which the certificate counts the same way. Older chains read as before.
+
 - **A real Claude Code resume remembers its conversation.** Verified on Claude Code 2.1.236 (2026-10-14): a run killed with `kill -9` while a
   proposal waited was continued by `staircase resume` in Claude Code's own session, and the agent wrote a code word it had only said in its first
   session, which was nowhere on the audit chain or in the workspace; the commit verified at CAL 3 and rebuilt from a fresh clone
   ([record](docs/release-evidence/claude-code-2.1.236-resume.md)). Gemini CLI and Codex were verified before.
 
 ### Fixed
+
+- **Readers of the chain disagreed, and some were wrong.** Found when the readers were compared for ADR 0010:
+  - Prototype and adoption paired a parked decision with the most recent request. With interleaved requests that is another proposal's
+    edits.
+  - A run continued after an approved final review could not be recovered, because the earlier review no longer matched.
+  - A continuation whose drift halt had been acknowledged needed `--ack-drift` again at every later continuation.
+  - Recovery carried an earlier segment's undecided requests into the next one.
+  - An away run's delivery (`review_delivered`) did not seal its chain.
+  - Resume and prototype trusted the saved options without checking them against the chain.
+
+  Each is now a rule of the one replay, with a test.
 
 - **Nothing is signed or decided over an audit chain that does not verify.** The change certificate counted a run's decisions from the
   chain without verifying it, so a chain whose rows were changed after the run could get a certificate signed over the changed counts;

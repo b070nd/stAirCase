@@ -16,6 +16,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/barrier"
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 )
 
 // Bridging a parked proposal with a prototype (ADR 0007): the parked change on top of the change an away run offers, checked and
@@ -36,8 +37,7 @@ type PrototypeResult struct {
 type approvedNow struct {
 	a       *approvals
 	repo    *GitRepo
-	hist    history
-	events  []domain.RunEventLog
+	hist    history.History
 	opts    savedOptions
 	cleanup func()
 }
@@ -59,13 +59,9 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 	if err != nil {
 		return nil, err
 	}
-	events, err := r.store.ListVerifiedEventLogs(runID)
+	hist, err := history.Read(r.store, runID)
 	if err != nil {
-		return nil, fmt.Errorf("the audit chain of run #%d does not verify: %w", runID, err)
-	}
-	hist, err := auditedHistory(events)
-	if err != nil {
-		return nil, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
+		return nil, err
 	}
 	journal, err := readJournalFile(r.wsDir, runID)
 	if err != nil {
@@ -76,15 +72,19 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 		return nil, err
 	}
 	var opts savedOptions
-	if b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID)); err != nil || json.Unmarshal(b, &opts) != nil || len(opts.Checks) == 0 {
+	b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID))
+	if err == nil && !termsBound(hist, b) {
+		return nil, fmt.Errorf("the options saved for run #%d are not the ones the audit chain names", runID)
+	}
+	if err != nil || json.Unmarshal(b, &opts) != nil || len(opts.Checks) == 0 {
 		return nil, fmt.Errorf("the checks run #%d was started with cannot be read", runID)
 	}
-	a, cleanup, err := deriveApproved(repo, hist.Bound.Base, kept, hist.Approvals)
+	a, cleanup, err := deriveApproved(repo, hist.Bound.BaseSHA, kept, hist.Approvals())
 	if err != nil {
 		return nil, err
 	}
 	a.repo = repo // checkouts for the checks are made from the run's repository
-	return &approvedNow{a: a, repo: repo, hist: hist, events: events, opts: opts, cleanup: cleanup}, nil
+	return &approvedNow{a: a, repo: repo, hist: hist, opts: opts, cleanup: cleanup}, nil
 }
 
 func (s *approvedNow) gate(wsDir string) *evidenceGate {
@@ -92,58 +92,19 @@ func (s *approvedNow) gate(wsDir string) *evidenceGate {
 }
 
 // parkedRequest is the request of the parked proposal number seq, as the chain holds it (what the owner was shown).
-func parkedRequest(events []domain.RunEventLog, seq int) (domain.YieldRequest, error) {
-	var last string
-	for _, e := range events {
-		switch e.EventType {
-		case "yield_request":
-			last = e.Payload
-		case "yield_decided":
-			var d struct {
-				Seq    int    `json:"seq"`
-				Source string `json:"source"`
-			}
-			if json.Unmarshal([]byte(e.Payload), &d) != nil || d.Seq != seq {
-				continue
-			}
-			if d.Source != "parked" {
-				return domain.YieldRequest{}, fmt.Errorf("proposal %d was not parked", seq)
-			}
-			var req domain.YieldRequest
-			if json.Unmarshal([]byte(last), &req) != nil || len(req.ProposedEdits) == 0 {
-				return domain.YieldRequest{}, fmt.Errorf("the request of parked proposal %d is not on the chain whole (too large to keep?)", seq)
-			}
-			if req.ActionType != domain.ActionFileEdit {
-				return domain.YieldRequest{}, fmt.Errorf("parked proposal %d is a %s: only a file change can be prototyped (a command would have to run)", seq, req.ActionType)
-			}
-			return req, nil
-		}
+func parkedRequest(h history.History, seq int) (domain.YieldRequest, error) {
+	d, ok := h.Decision(seq)
+	switch {
+	case !ok:
+		return domain.YieldRequest{}, fmt.Errorf("no parked proposal %d on the chain", seq)
+	case d.Source != "parked":
+		return domain.YieldRequest{}, fmt.Errorf("proposal %d was not parked", seq)
+	case d.Request == nil || len(d.Request.ProposedEdits) == 0:
+		return domain.YieldRequest{}, fmt.Errorf("the request of parked proposal %d is not on the chain whole (too large to keep?)", seq)
+	case d.Request.ActionType != domain.ActionFileEdit:
+		return domain.YieldRequest{}, fmt.Errorf("parked proposal %d is a %s: only a file change can be prototyped (a command would have to run)", seq, d.Request.ActionType)
 	}
-	return domain.YieldRequest{}, fmt.Errorf("no parked proposal %d on the chain", seq)
-}
-
-// adoptedProposals are the parked proposals an owner adopted: their numbers, from approved requests that name them.
-func adoptedProposals(events []domain.RunEventLog) map[int]bool {
-	adopted, pending := map[int]bool{}, 0
-	for _, e := range events {
-		switch e.EventType {
-		case "yield_request":
-			var q struct {
-				Adopts int `json:"adopts"`
-			}
-			_ = json.Unmarshal([]byte(e.Payload), &q)
-			pending = q.Adopts
-		case "yield_decided":
-			var d struct {
-				Approved bool `json:"approved"`
-			}
-			if json.Unmarshal([]byte(e.Payload), &d) == nil && d.Approved && pending > 0 {
-				adopted[pending] = true
-			}
-			pending = 0
-		}
-	}
-	return adopted
+	return d.Request.YieldRequest, nil
 }
 
 // Prototype shows what parked proposal seq would do on top of the change an away run offers: its files, its diff and the run's own
@@ -158,7 +119,7 @@ func (r *Runner) Prototype(ctx context.Context, runID int64, seq int) (Prototype
 		return res, err
 	}
 	defer st.cleanup()
-	req, err := parkedRequest(st.events, seq)
+	req, err := parkedRequest(st.hist, seq)
 	if err != nil {
 		return res, err
 	}
@@ -222,14 +183,14 @@ func (r *Runner) Adopt(ctx context.Context, runID int64, seq int, shown string) 
 	}
 	defer st.cleanup()
 
-	adopted := adoptedProposals(st.events)[seq]
-	if adopted && reviewedSinceAdoption(st.events, seq) {
+	_, adopted := st.hist.Adopted()[seq]
+	if adopted && st.hist.ReviewedSinceAdoption(seq) {
 		return rv, fmt.Errorf("parked proposal %d of run #%d is already part of its change", seq, runID)
 	}
 	gate := st.gate(r.wsDir)
 	var results []certificate.Check
 	if !adopted {
-		req, err := parkedRequest(st.events, seq)
+		req, err := parkedRequest(st.hist, seq)
 		if err != nil {
 			return rv, err
 		}
@@ -279,20 +240,19 @@ func (r *Runner) Adopt(ctx context.Context, runID int64, seq int, shown string) 
 func (r *Runner) recordAdoption(runID int64, st *approvedNow, parked domain.YieldRequest, seq int, next map[string]*approvedFile) error {
 	req := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: domain.ActionFileEdit, ProposedEdits: parked.ProposedEdits,
 		ReasoningTrace: fmt.Sprintf("the owner adopted parked proposal %d after a prototype", seq), Adopts: seq}
-	fields := map[string]any{}
-	b, _ := json.Marshal(req)
-	if err := json.Unmarshal(b, &fields); err != nil {
-		return err
-	}
-	if err := r.audit(runID, "yield_request", fields); err != nil {
+	if err := r.audit(runID, "yield_request", req); err != nil {
 		return fmt.Errorf("record the adopted request: %w", err)
+	}
+	entry, err := r.store.GetLastEventHash(runID) // the run's lock is held: nothing else writes in between
+	if err != nil {
+		return err
 	}
 	n := st.hist.LastDecided + 1
 	if err := r.journalOnce(runID, req, n); err != nil {
 		return err
 	}
-	decided := yieldDecided(n, "operator", req, domain.Decide(true, "adopted by the owner after a prototype"), st.hist.Bound.Base, next, "")
-	decided["paths"], decided["adopts"] = slices.Sorted(maps.Keys(next)), seq
+	decided := yieldDecided(n, "operator", req, domain.Decide(true, "adopted by the owner after a prototype"), st.hist.Bound.BaseSHA, next, "")
+	decided.RequestEntry, decided.Paths, decided.Adopts = entry, slices.Sorted(maps.Keys(next)), seq
 	if err := r.audit(runID, "yield_decided", decided); err != nil {
 		return fmt.Errorf("record the owner's approval: %w", err)
 	}
@@ -316,30 +276,4 @@ func (r *Runner) journalOnce(runID int64, req domain.YieldRequest, n int) error 
 		}
 	}
 	return appendJournal(r.wsDir, runID, req, n, "operator")
-}
-
-// reviewedSinceAdoption: a review was offered after the owner adopted parked proposal seq (the adoption finished).
-func reviewedSinceAdoption(events []domain.RunEventLog, seq int) bool {
-	adoptedAt := -1
-	pending := 0
-	for i, e := range events {
-		switch e.EventType {
-		case "yield_request":
-			var q struct {
-				Adopts int `json:"adopts"`
-			}
-			_ = json.Unmarshal([]byte(e.Payload), &q)
-			pending = q.Adopts
-		case "yield_decided":
-			if pending == seq {
-				adoptedAt = i
-			}
-			pending = 0
-		case "awaiting_review":
-			if adoptedAt >= 0 && i > adoptedAt {
-				return true
-			}
-		}
-	}
-	return false
 }

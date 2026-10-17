@@ -71,7 +71,7 @@ func TestRecover_a_commit_that_looks_like_its_own_but_is_not(t *testing.T) {
 // on the audit chain before any commit is made.
 func TestRecover_review_that_cannot_be_recorded_commits_nothing(t *testing.T) {
 	r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
-	_, err := r.DB.Exec(`CREATE TRIGGER no_review BEFORE INSERT ON run_event_logs WHEN NEW.event_type = 'recovery_final_review' BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
+	_, err := r.DB.Exec(`CREATE TRIGGER no_review BEFORE INSERT ON run_event_logs WHEN NEW.event_type = 'yield_decided' AND NEW.payload LIKE '%"action_type":"final_review"%' BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
 	require.NoError(t, err)
 	_, err = orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Confirm: approveAll})
 	assert.ErrorContains(t, err, "record the final review")

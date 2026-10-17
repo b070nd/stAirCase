@@ -11,6 +11,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 )
 
 // What a run approved is known from two records that must agree: the audit chain
@@ -20,152 +21,20 @@ import (
 // certifying a prefix of what was approved would pass an incomplete change off as
 // the run's own.
 
-// runBinding is what a run recorded about where it started.
-type runBinding struct {
-	Base, Branch, Harness, PlanDigest, Blueprint, Worktree string
-	TopologyVersion                                        int
-}
-
-// auditedApproval is one approved file change as the audit chain records it.
-type auditedApproval struct {
-	Seq    int
-	Source string
-	Hash   string            // the request's SHA-256
-	Files  map[string]string // the digest of exactly the approved state
-}
-
-// auditedFinalReview is a final review as the audit chain records it.
-type auditedFinalReview struct {
-	Approved bool
-	Files    map[string]string
-}
-
-// history is what recovery reads from a run's audit events.
-type history struct {
-	Bound       runBinding
-	Approvals   []auditedApproval // in the order the chain recorded them
-	LastDecided int               // the highest proposal number the chain decided, approved or not
-	// The final reviews a person decided (a decision of its own, with no request before it):
-	// each is the digest of the whole approved state that was put to them.
-	FinalReviews []auditedFinalReview
-	// Unconsumed is the journal lines of authorizations that expired between the journal
-	// and the chain: proposal number -> the request's SHA-256. The chain says they were
-	// rejected; their line in the journal is not an approval and not corruption.
-	Unconsumed map[int]string
-	// What the run loaded and was started with, as it recorded it: the policy it
-	// ran under (not whatever policy.json holds now) and the signed request of the
-	// person who started it.
-	PolicyDigest      string
-	PolicySigned      bool // as the run recorded it when it loaded the policy
-	PolicySnapshotted bool // a policy_snapshot is on the chain (its digest may be empty: there was no policy.json)
-	Initiator         *certificate.Initiator
-}
-
-// auditedHistory reads a run's audit events, oldest first, and refuses a history
-// that no run could have written even though its hashes are right (a decision
-// before the run began, proposal numbers that do not increase, a decision after
-// the run's evidence was issued, a decision no request led to). It is pure: it reads
-// events and nothing else.
-//
-// The legal shape, from what a run writes (v0.6.0, the first version with a journal,
-// and later): run_bound first and once; a yield_request audited before every
-// decision it leads to (each decision uses up one request of its kind; the requests
-// of different proposals may be audited in another order than they are decided, and
-// a request may stay undecided when the run dies); proposal numbers that increase;
-// a final review is a yield_decided of its own and uses up no request; nothing is
-// decided after the certificate or a recovery.
-func auditedHistory(events []domain.RunEventLog) (history, error) {
-	var h history
-	bounds, lastSeq, sealed := 0, 0, ""
-	pending := map[string]int{} // requests not yet decided, by action type
-	for i, e := range events {
-		var p struct {
-			BaseSHA         string            `json:"base_sha"`
-			Branch          string            `json:"branch"`
-			Harness         string            `json:"harness"`
-			PlanDigest      string            `json:"plan_digest"`
-			BlueprintHash   string            `json:"blueprint_hash"`
-			Worktree        string            `json:"worktree"`
-			TopologyVersion int               `json:"topology_version"`
-			Seq             int               `json:"seq"`
-			Source          string            `json:"source"`
-			Approved        bool              `json:"approved"`
-			ActionType      string            `json:"action_type"`
-			RequestSHA256   string            `json:"request_sha256"`
-			Files           map[string]string `json:"files"`
-			Digest          string            `json:"digest"`
-			Signed          bool              `json:"signed"`
-			Principal       string            `json:"principal"`
-			Signature       string            `json:"signature"`
-			Unconsumed      bool              `json:"unconsumed"`
-		}
-		if i == 0 && e.EventType != "run_bound" {
-			return h, fmt.Errorf("the audit history begins with %q, not run_bound", e.EventType)
-		}
-		switch e.EventType {
-		case "run_bound":
-			bounds++
-			if bounds > 1 {
-				return h, errors.New("the audit history binds the run to a commit more than once")
-			}
-			if json.Unmarshal([]byte(e.Payload), &p) != nil {
-				return h, errors.New("the run_bound record is unreadable")
-			}
-			h.Bound = runBinding{p.BaseSHA, p.Branch, p.Harness, p.PlanDigest, p.BlueprintHash, p.Worktree, p.TopologyVersion}
-		case "policy_snapshot":
-			if json.Unmarshal([]byte(e.Payload), &p) == nil {
-				h.PolicyDigest, h.PolicySigned, h.PolicySnapshotted = p.Digest, p.Signed, true
-			}
-		case "initiator_signed":
-			if json.Unmarshal([]byte(e.Payload), &p) == nil && p.Signature != "" {
-				h.Initiator = &certificate.Initiator{Principal: p.Principal, Signature: p.Signature}
-			}
-		case "yield_request":
-			var q struct {
-				ActionType string `json:"action_type"`
-			}
-			if json.Unmarshal([]byte(e.Payload), &q) != nil {
-				return h, fmt.Errorf("the request at entry %d is unreadable", i+1)
-			}
-			pending[q.ActionType]++
-		case "run_resumed":
-			if sealed != "" {
-				return h, fmt.Errorf("the run was resumed after %s", sealed)
-			}
-		case "certificate_issued", "run_recovered":
-			sealed = e.EventType
-		case "yield_decided":
-			if json.Unmarshal([]byte(e.Payload), &p) != nil {
-				return h, fmt.Errorf("the decision at entry %d is unreadable", i+1)
-			}
-			if sealed != "" {
-				return h, fmt.Errorf("a decision (proposal %d) follows %s", p.Seq, sealed)
-			}
-			if p.Seq <= lastSeq {
-				return h, fmt.Errorf("proposal numbers do not increase: %d follows %d", p.Seq, lastSeq)
-			}
-			lastSeq = p.Seq
-			if p.Unconsumed && !p.Approved {
-				if h.Unconsumed == nil {
-					h.Unconsumed = map[int]string{}
-				}
-				h.Unconsumed[p.Seq] = p.RequestSHA256
-			}
-			if p.ActionType == domain.ActionFinalReview {
-				h.FinalReviews = append(h.FinalReviews, auditedFinalReview{p.Approved, p.Files})
-				continue
-			}
-			if pending[p.ActionType] == 0 {
-				return h, fmt.Errorf("the decision of proposal %d (%s) has no request before it", p.Seq, p.ActionType)
-			}
-			pending[p.ActionType]--
-			if p.Approved && p.ActionType == domain.ActionFileEdit {
-				h.Approvals = append(h.Approvals, auditedApproval{p.Seq, p.Source, p.RequestSHA256, p.Files})
-			}
-		}
+// policyDigest is the digest of the policy the run recorded it loaded; "" when it recorded none.
+func policyDigest(h history.History) string {
+	if h.Policy == nil {
+		return ""
 	}
-	h.LastDecided = lastSeq
-	return h, nil
+	return h.Policy.Digest
+}
+
+// initiatorOf is the signed request of the person who started the run, as a certificate names it.
+func initiatorOf(h history.History) *certificate.Initiator {
+	if h.Initiator == nil {
+		return nil
+	}
+	return &certificate.Initiator{Principal: h.Initiator.Principal, Signature: h.Initiator.Signature}
 }
 
 // journalRead is the approval journal as it can be trusted.
@@ -282,20 +151,20 @@ func isCutJournalLine(line []byte) bool {
 // approval for are what a crash leaves (written, not yet audited, so never
 // released) and are ignored only after the last decision the chain holds; anywhere
 // else they are corruption.
-func reconcile(h history, j journalRead) ([]LedgerProposal, error) {
+func reconcile(h history.History, j journalRead) ([]LedgerProposal, error) {
 	bySeq := map[int]journalEntry{}
 	for _, e := range j.Entries {
 		bySeq[e.Seq] = e
 	}
 	audited := map[int]bool{}
 	var kept []LedgerProposal
-	for _, a := range h.Approvals {
+	for _, a := range h.Approvals() {
 		audited[a.Seq] = true
 		e, ok := bySeq[a.Seq]
 		if !ok {
 			return nil, fmt.Errorf("proposal %d was approved and is on the audit chain, but the journal does not have it: the change cannot be recovered whole", a.Seq)
 		}
-		if sha256Hex(e.Request) != a.Hash {
+		if sha256Hex(e.Request) != a.RequestSHA256 {
 			return nil, fmt.Errorf("the journal's request for proposal %d is not the one the audit chain recorded", a.Seq)
 		}
 		var req domain.YieldRequest
@@ -304,8 +173,9 @@ func reconcile(h history, j journalRead) ([]LedgerProposal, error) {
 		}
 		kept = append(kept, LedgerProposal{Seq: a.Seq, Source: a.Source, Edits: req.ProposedEdits}) // who decided is the chain's word, not the journal's
 	}
+	unconsumed := h.Unconsumed()
 	for _, e := range j.Entries {
-		if sum, ok := h.Unconsumed[e.Seq]; ok && sum == sha256Hex(e.Request) {
+		if sum, ok := unconsumed[e.Seq]; ok && sum == sha256Hex(e.Request) {
 			continue // the chain says this authorization expired before it was consumed
 		}
 		if !audited[e.Seq] && e.Seq <= h.LastDecided {
@@ -336,21 +206,4 @@ func readJournalFile(wsDir string, runID int64) (journalRead, error) {
 // lenient to.
 func matchesDigest(recorded map[string]string, derived map[string]*approvedFile) bool {
 	return maps.Equal(recorded, digest(derived))
-}
-
-// finalReviewed reports whether a person's final review of exactly this approved
-// state is on the chain, and an error when the chain holds an approved final review
-// of other bytes: what was reviewed is not what the approvals derive.
-func (h history) finalReviewed(files map[string]*approvedFile) (bool, error) {
-	reviewed := false
-	for _, f := range h.FinalReviews {
-		if !f.Approved {
-			continue
-		}
-		if !maps.Equal(f.Files, digest(files)) {
-			return false, errors.New("the audit chain records a final review that approved other bytes than the approvals derive")
-		}
-		reviewed = true
-	}
-	return reviewed, nil
 }

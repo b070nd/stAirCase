@@ -33,6 +33,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/b070nd/stAirCase/src/internal/governance"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/llm"
 	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/b070nd/stAirCase/src/internal/obs"
@@ -274,7 +275,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	// uncommitted changes there are not visible to the agent.
 	baseSHA := ""
 	if cont != nil { // the run's own base, never today's HEAD
-		baseSHA = cont.history.Bound.Base
+		baseSHA = cont.history.Bound.BaseSHA
 	} else if gr != nil {
 		if baseSHA, err = gr.HeadSHA(); err != nil {
 			return fmt.Errorf("resolve base commit: %w", err)
@@ -483,10 +484,10 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		if err := r.store.ReopenRun(run.ID); err != nil {
 			return err
 		}
-		initiator = cont.history.Initiator // the signed request of whoever started the run is kept, never signed again
+		initiator = initiatorOf(cont.history) // the signed request of whoever started the run is kept, never signed again
 		if err := r.audit(run.ID, "run_resumed", map[string]any{
-			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals),
-			"next_seq": cont.lastSeq + 1, "policy": cont.history.PolicyDigest, "plan_digest": cont.history.Bound.PlanDigest,
+			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals()),
+			"next_seq": cont.lastSeq + 1, "policy": policyDigest(cont.history), "plan_digest": cont.history.Bound.PlanDigest,
 			"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
 		}); err != nil {
 			return fmt.Errorf("audit run_resumed: %w", err)
@@ -495,10 +496,9 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	} else {
 		// The terms this run starts under, saved for a continuation (ADR 0005): its options and its plan now, its policy
 		// when it is read (below). A run that cannot save them still runs; it simply cannot be continued, only recovered.
-		if b, err := json.Marshal(optionsToSave(opts)); err == nil {
-			if err := saveRunFile(savedOptionsPath(r.wsDir, run.ID), b); err != nil {
-				obs.Log.Warn("save run options: the run cannot be continued", "err", err)
-			}
+		terms, _ := json.Marshal(optionsToSave(opts))
+		if err := saveRunFile(savedOptionsPath(r.wsDir, run.ID), terms); err != nil {
+			obs.Log.Warn("save run options: the run cannot be continued", "err", err)
 		}
 		if opts.Plan != nil && len(opts.Plan.Raw) > 0 {
 			if err := saveRunFile(savedPlanPath(r.wsDir, run.ID), opts.Plan.Raw); err != nil {
@@ -506,27 +506,19 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 			}
 		}
 		// Provenance: what this run started from, before the agent runs.
-		bound := map[string]any{
-			"type": "run_bound", "base_sha": baseSHA, "branch": runBranch,
-			"worktree": worktree, "topology_version": topoVersion,
-		}
+		bound := history.Bound{BaseSHA: baseSHA, Branch: runBranch, Worktree: worktree, TopologyVersion: topoVersion,
+			Harness: harness, AckDrift: haltedRun, TermsSHA256: sha256Hex(terms)} // the saved options are the terms a continuation keeps
 		if opts.Plan != nil {
-			bound["plan_digest"], bound["blueprint_hash"] = opts.Plan.Digest, opts.Plan.BlueprintHash
-		}
-		if harness != "" {
-			bound["harness"] = harness
-		}
-		if haltedRun != 0 {
-			bound["ack_drift"] = haltedRun
+			bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
 		}
 		if opts.Away { // the brief the agent is given is bound before it starts
-			bound["away_brief"] = map[string]any{"version": AwayBriefVersion, "sha256": sha256Hex([]byte(AwayBrief))}
+			bound.AwayBrief = &history.AwayBrief{Version: AwayBriefVersion, SHA256: sha256Hex([]byte(AwayBrief))}
 		}
 		if len(opts.AwayCommands) > 0 { // so are the commands it may run without asking
-			bound["away_commands"] = map[string]any{"commands": opts.AwayCommands, "sha256": declaredDigest(opts.AwayCommands)}
+			bound.AwayCommands = &history.DeclaredCommands{Commands: opts.AwayCommands, SHA256: declaredDigest(opts.AwayCommands)}
 		}
 		if len(opts.AwayTools) > 0 { // and the tools
-			bound["away_tools"] = map[string]any{"tools": opts.AwayTools, "sha256": declaredDigest(opts.AwayTools)}
+			bound.AwayTools = &history.DeclaredTools{Tools: opts.AwayTools, SHA256: declaredDigest(opts.AwayTools)}
 		}
 		if err := r.audit(run.ID, "run_bound", bound); err != nil {
 			return fmt.Errorf("audit run_bound: %w", err)
@@ -816,7 +808,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	}
 	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), declaredTools: declaredSet(opts.AwayTools), approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
-		audit: func(event string, fields map[string]any) error { return r.audit(run.ID, event, fields) }}
+		audit: func(event string, fields any) error { return r.audit(run.ID, event, fields) }}
 	if cont != nil {
 		dec.total, dec.autoApproved, dec.taskApproved = cont.lastSeq, cont.autoApproved, cont.taskApproved
 	}
@@ -887,7 +879,7 @@ runLoop:
 			// and once the run is over nothing is consumed, however it was decided.
 			expire := func() {
 				rl.resp, rl.next, rl.evidence = domain.Decide(false, "the run ended before this was decided"), nil, nil
-				rl.source, rl.signed = "orchestrator", nil
+				rl.source, rl.signed = "orchestrator", history.Signed{}
 			}
 			if rl.resp.Approved && waitCtx.Err() != nil {
 				expire()
@@ -921,26 +913,21 @@ runLoop:
 			// chain: the run's limit and cancellation are checked under the chain's append lock,
 			// immediately before the insert (there is no wait for another writer in between), and an
 			// insert that has begun is written, which is the last moment the run's end can matter.
-			decidedFor := func() map[string]any {
+			decidedFor := func() history.Decided {
 				decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
+				decided.RequestEntry = p.entry
 				if st := val.state(); st != nil {
-					decided["validator_state"] = st
+					decided.ValidatorState, _ = json.Marshal(st)
 				}
-				if len(rl.files) > 0 {
-					decided["paths"] = rl.files // what a proposal touched: a continuation replays the drift supervisor from it
-				}
-				if journaled && !rl.resp.Approved {
-					decided["unconsumed"] = true // its journal line is an authorization that was never consumed
-				}
-				maps.Copy(decided, rl.signed)
+				decided.Paths = rl.files                            // what a proposal touched: a continuation replays the drift supervisor from it
+				decided.Unconsumed = journaled && !rl.resp.Approved // its journal line is an authorization that was never consumed
+				decided.Signed = rl.signed
 				if rl.evidence != nil {
-					decided["evidence"] = rl.evidence
+					decided.Evidence, _ = json.Marshal(rl.evidence)
 				}
-				if rl.parkedWhy != "" {
-					decided["parked_why"] = rl.parkedWhy
-				}
+				decided.ParkedWhy = rl.parkedWhy
 				if rl.source == "operator" {
-					decided["decide_ms"], decided["lines"] = rl.decideMS, rl.lines
+					decided.DecideMS, decided.Lines = &rl.decideMS, rl.lines
 				}
 				return decided
 			}
@@ -1318,14 +1305,12 @@ func (r *Runner) lastDriftHalt(caseID int64) (int64, error) {
 	if err != nil || len(runs) == 0 {
 		return 0, err
 	}
-	events, err := r.store.ListVerifiedEventLogs(runs[0].ID) // a changed chain must not lift a halt
+	h, err := history.Read(r.store, runs[0].ID) // a changed chain must not lift a halt
 	if err != nil {
-		return 0, fmt.Errorf("the audit chain of the case's last run (#%d) does not verify, so whether it was halted for drift cannot be known: %w", runs[0].ID, err)
+		return 0, fmt.Errorf("whether the case's last run was halted for drift cannot be known: %w", err)
 	}
-	for _, e := range events {
-		if e.EventType == "drift_halt" {
-			return runs[0].ID, nil
-		}
+	if h.Halted {
+		return runs[0].ID, nil
 	}
 	return 0, nil
 }
@@ -1370,20 +1355,18 @@ func (r *Runner) driftScope(caseID int64, pl *plan.Plan) (scope []string, maxFil
 
 // audit appends event to the run's chain; its payload is fields with the
 // event's type.
-func (r *Runner) audit(runID int64, event string, fields map[string]any) error {
+func (r *Runner) audit(runID int64, event string, fields any) error {
 	return r.auditIf(runID, event, fields, func() error { return nil })
 }
 
 // auditIf appends an event unless proceed (called under the chain's append lock, right before the
 // insert) says not to: then nothing is written and proceed's error is returned.
-func (r *Runner) auditIf(runID int64, event string, fields map[string]any, proceed func() error) error {
-	payload := map[string]any{"type": event}
-	maps.Copy(payload, fields)
-	b, err := json.Marshal(payload)
+func (r *Runner) auditIf(runID int64, event string, fields any, proceed func() error) error {
+	payload, err := history.Encode(event, fields)
 	if err != nil {
 		return err
 	}
-	_, err = r.store.AppendEventLogChainedIf(runID, event, string(b), "", proceed)
+	_, err = r.store.AppendEventLogChainedIf(runID, event, payload, "", proceed)
 	return err
 }
 
@@ -1481,7 +1464,7 @@ func reviewAfter(p *proposal, appr *approvals, host *agentHost) bool {
 		return false
 	}
 	p.req.ProposedEdits = edits
-	if err := host.auditRequest(p.req); err != nil {
+	if p.entry, err = host.auditRequest(p.req); err != nil {
 		why := "the orchestrator could not record this request, so it was not decided: " + err.Error()
 		paths := make([]string, len(edits))
 		for i, e := range edits {

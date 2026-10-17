@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/policy"
@@ -100,7 +101,7 @@ type usageRecord struct {
 // continuation is everything a run needs to continue from where its chain says it stood.
 type continuation struct {
 	run       *domain.Run
-	history   history
+	history   history.History
 	kept      []LedgerProposal // the approvals, in chain order, with their requests
 	lastSeq   int
 	segment   int // this segment's number: 2 for the first continuation
@@ -130,81 +131,23 @@ type continuation struct {
 	contextKind string // how the agent's context is carried: "fresh_grounded" (the only kind so far)
 }
 
-// replayChain reads the parts of a run's history that a continuation needs beyond what recovery needs.
-func replayChain(events []domain.RunEventLog, c *continuation) error {
-	c.segment = 1
-	var segStart, last time.Time
-	undecided := map[string]int{}
-	for _, e := range events {
-		var p struct {
-			Source         string          `json:"source"`
-			Approved       bool            `json:"approved"`
-			ActionType     string          `json:"action_type"`
-			Seq            int             `json:"seq"`
-			Paths          []string        `json:"paths"`
-			ValidatorState *validatorState `json:"validator_state"`
-			State          struct {
-				Model string `json:"model"`
-				In    int    `json:"input_tokens"`
-				Out   int    `json:"output_tokens"`
-			} `json:"state"`
-			ActiveAgent string `json:"active_agent"`
-			Agent       string `json:"agent"`
-			ID          string `json:"id"`
+// continueFrom is what a continuation takes from the run's history beyond what recovery needs: the counters the deciders stand
+// at, the drift supervisor's decisions, the validator's state, usage, time used, segments and requests nobody decided.
+func continueFrom(h history.History, c *continuation) error {
+	c.segment, c.elapsed, c.undecided, c.chainHead, c.halted = h.Segment, h.Elapsed, h.Undecided, h.Head, h.Halted
+	c.session.Agent, c.session.ID = h.Session.Agent, h.Session.ID
+	c.autoApproved, c.taskApproved = h.AutoApproved(), h.TaskApproved()
+	if st := h.ValidatorState(); st != nil {
+		c.validator = &validatorState{}
+		if err := json.Unmarshal(st, c.validator); err != nil {
+			return fmt.Errorf("the reviewer model's state on the chain is unreadable: %w", err)
 		}
-		switch e.EventType {
-		case "agent_session":
-			if json.Unmarshal([]byte(e.Payload), &p) == nil && p.ID != "" {
-				c.session.Agent, c.session.ID = p.Agent, p.ID
-			}
-		case "run_bound":
-			segStart = e.Timestamp
-		case "run_resumed":
-			c.elapsed += last.Sub(segStart)
-			segStart = e.Timestamp
-			c.segment++
-			undecided = map[string]int{} // what an earlier segment left pending is counted at its resume
-		case "yield_request":
-			if json.Unmarshal([]byte(e.Payload), &p) == nil {
-				undecided[p.ActionType]++
-			}
-		case "drift_halt":
-			c.halted = true
-		case "state_emit":
-			if json.Unmarshal([]byte(e.Payload), &p) == nil {
-				c.usage = append(c.usage, usageRecord{p.ActiveAgent, p.State.Model, p.State.In, p.State.Out})
-			}
-		case "yield_decided":
-			if json.Unmarshal([]byte(e.Payload), &p) != nil {
-				return fmt.Errorf("the decision at entry %d is unreadable", e.ID)
-			}
-			if p.ActionType == domain.ActionFinalReview {
-				break
-			}
-			if undecided[p.ActionType] > 0 {
-				undecided[p.ActionType]--
-			}
-			if p.Approved && p.Source == "policy" {
-				c.autoApproved++
-			}
-			if p.Approved && (p.Source == "task" || p.Source == "evidence") {
-				c.taskApproved = true
-			}
-			if p.ValidatorState != nil {
-				c.validator = p.ValidatorState
-			}
-			if p.Source != "orchestrator" { // refused before the supervisor saw it
-				c.decisions = append(c.decisions, replayedDecision{p.Seq, p.Source, p.Approved, p.Paths})
-			}
-		}
-		last = e.Timestamp
 	}
-	c.elapsed += last.Sub(segStart)
-	for _, n := range undecided {
-		c.undecided += n
+	for _, d := range h.Supervised() {
+		c.decisions = append(c.decisions, replayedDecision{d.Seq, d.Source, d.Approved, d.Paths})
 	}
-	if len(events) > 0 {
-		c.chainHead = events[len(events)-1].EventHash
+	for _, u := range h.Usage {
+		c.usage = append(c.usage, usageRecord{u.ActiveAgent, u.State.Model, u.State.In, u.State.Out})
 	}
 	return nil
 }
@@ -237,21 +180,14 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	} else if op != nil {
 		return nil, notContinuable("a recovery of run #%d has begun: it is recovered, not continued", runID)
 	}
-	events, err := r.store.ListVerifiedEventLogs(runID)
+	hist, err := history.Read(r.store, runID)
 	if err != nil {
-		return nil, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
+		return nil, err
 	}
-	for _, e := range events {
-		switch e.EventType {
-		case "commit_prepared", "certificate_issued", "run_recovered":
-			return nil, notContinuable("run #%d already made its commit (%s is on its chain): recover it with `staircase recover %d`", runID, e.EventType, runID)
-		}
+	if hist.Sealed != "" {
+		return nil, notContinuable("run #%d already made its commit (%s is on its chain): recover it with `staircase recover %d`", runID, hist.Sealed, runID)
 	}
-	hist, err := auditedHistory(events)
-	if err != nil {
-		return nil, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
-	}
-	if hist.Bound.Base == "" || hist.Bound.Branch == "" || hist.Bound.Worktree == "" {
+	if hist.Bound.BaseSHA == "" || hist.Bound.Branch == "" || hist.Bound.Worktree == "" {
 		return nil, notContinuable("run #%d never got as far as a run branch and worktree", runID)
 	}
 	journal, err := readJournalFile(r.wsDir, runID)
@@ -266,7 +202,7 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 		return nil, fmt.Errorf("run #%d cannot be continued: %w", runID, err)
 	}
 	c := &continuation{run: run, history: hist, kept: kept, lastSeq: hist.LastDecided}
-	if err := replayChain(events, c); err != nil {
+	if err := continueFrom(hist, c); err != nil {
 		return nil, err
 	}
 	c.segment++ // this is the next segment
@@ -274,6 +210,8 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	// The terms the run started under, saved when it started.
 	if b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID)); err != nil {
 		return nil, notContinuable("run #%d saved no options when it started (it began before runs could be continued): recover it instead", runID)
+	} else if !termsBound(hist, b) {
+		return nil, notContinuable("the options saved for run #%d are not the ones the audit chain names", runID)
 	} else if json.Unmarshal(b, &c.opts) != nil || c.opts.Version != savedOptionsVersion {
 		return nil, notContinuable("the options saved for run #%d are unreadable", runID)
 	}
@@ -292,23 +230,29 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	return c, nil
 }
 
+// termsBound reports whether saved are the options the run bound (ADR 0010, Q22). A run bound before the digest was recorded is
+// read as before.
+func termsBound(h history.History, saved []byte) bool {
+	return h.Bound.TermsSHA256 == "" || h.Bound.TermsSHA256 == sha256Hex(saved)
+}
+
 // savedPolicy is the policy the run decided under: the bytes it saved, which must be the ones the chain names.
-func (r *Runner) savedPolicy(runID int64, hist history) (*policy.Snapshot, error) {
-	if hist.PolicyDigest == "" && !hist.PolicySnapshotted {
+func (r *Runner) savedPolicy(runID int64, hist history.History) (*policy.Snapshot, error) {
+	if hist.Policy == nil {
 		return nil, notContinuable("the audit chain of run #%d names no policy it decided under", runID)
 	}
-	if hist.PolicyDigest == "" { // there was no policy.json: nothing approves
+	if hist.Policy.Digest == "" { // there was no policy.json: nothing approves
 		return &policy.Snapshot{Engine: &policy.Engine{}}, nil
 	}
 	b, err := os.ReadFile(savedPolicyPath(r.wsDir, runID))
 	if err != nil {
 		return nil, notContinuable("run #%d saved no policy when it started: recover it instead", runID)
 	}
-	snap, err := policy.SnapshotFromBytes(b, hist.PolicySigned)
+	snap, err := policy.SnapshotFromBytes(b, hist.Policy.Signed)
 	if err != nil {
 		return nil, notContinuable("the policy saved for run #%d does not load: %v", runID, err)
 	}
-	if snap.Digest != hist.PolicyDigest {
+	if snap.Digest != hist.Policy.Digest {
 		return nil, notContinuable("the policy saved for run #%d is not the one the audit chain names", runID)
 	}
 	return snap, nil
