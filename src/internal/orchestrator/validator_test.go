@@ -40,7 +40,7 @@ func (r *reviewer) Chat(_ context.Context, req llm.Request) (llm.Response, error
 func validated(t *testing.T, rv *reviewer, op *operator, agent orchestrator.AgentFunc) runtest.Result {
 	return runtest.Run(t, runtest.Options{
 		Setup: scoped(op, `{"rules":[]}`),
-		Run:   orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: rv}},
+		Run:   orchestrator.RunOptions{ValidatorChat: rv, Terms: orchestrator.Terms{ValidatorModels: []string{"review/model"}}},
 		Agent: agent})
 }
 
@@ -110,7 +110,7 @@ func TestValidator_hands_over_to_a_human(t *testing.T) {
 			stories, _ := s.ListUserStoriesByCase(cases[0].ID)
 			_ = s.SetUserStoryScope(stories[0].ID, `{"allow":["**"]}`)
 		},
-		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: rv}},
+		Run: orchestrator.RunOptions{ValidatorChat: rv, Terms: orchestrator.Terms{ValidatorModels: []string{"review/model"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			create(ctx, env, ".github/workflows/ci.yml")
 			for _, f := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"} {
@@ -141,7 +141,7 @@ func TestValidator_tokens_count_against_the_budget(t *testing.T) {
 			scoped(&operator{approve: true}, `{"rules":[]}`)(s, wsDir, projectID)
 			require.NoError(t, s.SetProjectBudgetCap(projectID, 0.0001))
 		},
-		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: &reviewer{}}},
+		Run: orchestrator.RunOptions{ValidatorChat: &reviewer{}, Terms: orchestrator.Terms{ValidatorModels: []string{"review/model"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			create(ctx, env, "GREETING.md")
 			<-ctx.Done()
@@ -184,7 +184,7 @@ func TestValidator_two_models_must_agree(t *testing.T) {
 			stories, _ := s.ListUserStoriesByCase(cases[0].ID)
 			_ = s.SetUserStoryScope(stories[0].ID, `{"allow":["**"]}`)
 		},
-		Run: orchestrator.RunOptions{Validator: &orchestrator.Validator{Models: []string{"a/one", "b/two"}, Chat: p}},
+		Run: orchestrator.RunOptions{ValidatorChat: p, Terms: orchestrator.Terms{ValidatorModels: []string{"a/one", "b/two"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
 				ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",

@@ -127,6 +127,9 @@ func Run(t testing.TB, o Options) Result {
 
 	runs, err := s.ListRunsByCase(c.ID)
 	must(t, err)
+	if len(runs) == 0 && runErr != nil { // refused before the run existed
+		return Result{DB: db, Store: s, Repo: repo, WsDir: wsDir, Err: runErr}
+	}
 	if len(runs) != 1 {
 		t.Fatalf("want 1 run, got %d (run error: %v)", len(runs), runErr)
 	}

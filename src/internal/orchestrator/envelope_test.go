@@ -26,7 +26,7 @@ func TestApproveInScope_approves_the_agreed_task_not_every_step(t *testing.T) {
 				_ = s.SetUserStoryScope(st.ID, `{"allow":["src/**"]}`)
 			}
 		},
-		Run: orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"},
+		Run: orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for _, f := range []string{"src/a.txt", "src/b.txt", "src/c.txt", "src/d.txt", "src/e.txt", "README.md", "src/run.sh", "src/f.txt"} {
 				create(ctx, env, f)
@@ -46,17 +46,16 @@ func TestApproveInScope_approves_the_agreed_task_not_every_step(t *testing.T) {
 	assert.Equal(t, "x\n", got)
 }
 
-// TestApproveInScope_needs_an_agreed_task: without an agreement the option
-// approves nothing.
+// TestApproveInScope_needs_an_agreed_task: approving as part of the task needs a task someone agreed to; without one the run is
+// refused before it starts, rather than run with an option that approves nothing.
 func TestApproveInScope_needs_an_agreed_task(t *testing.T) {
-	op := &operator{approve: true}
 	r := runtest.Run(t, runtest.Options{
-		Setup: scoped(op, `{"rules":[]}`),
-		Run:   orchestrator.RunOptions{ApproveInScope: true},
+		Setup: scoped(&operator{approve: true}, `{"rules":[]}`),
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			create(ctx, env, "GREETING.md")
 			return nil
 		})})
-	require.NoError(t, r.Err)
-	assert.Equal(t, []string{"file_edit:operator"}, sources(t, r))
+	require.ErrorContains(t, r.Err, "nobody agreed")
+	assert.Zero(t, r.Run.ID, "no run was made")
 }

@@ -190,7 +190,7 @@ func TestConsumption_expiry_before_the_branch_moves(t *testing.T) {
 func TestConsumption_the_final_review_is_not_bound_by_the_run_limit(t *testing.T) {
 	person, _ := slowPerson(t, 2500*time.Millisecond)
 	r := runtest.Run(t, runtest.Options{
-		Run: orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"},
+		Run: orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}},
 		Setup: func(st *persistence.Store, ws string, p int64) {
 			require.NoError(t, crypto.GenerateSigningKey(ws))
 			require.NoError(t, os.WriteFile(filepath.Join(ws, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_secs":1}}`), 0o600))

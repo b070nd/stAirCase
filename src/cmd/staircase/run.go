@@ -191,48 +191,42 @@ func runCase(caseID int64) error {
 		return err
 	}
 
-	var validator *orchestrator.Validator
 	for _, m := range runValidator {
 		if llm.SecretFor(m) == "" {
 			return fmt.Errorf("--validator %q: no provider serves this model", m)
 		}
 	}
-	if len(runValidator) > 0 {
-		validator = &orchestrator.Validator{Models: runValidator}
-	}
-	var sig *orchestrator.Signal
-	if runSignal != "" {
-		sig = &orchestrator.Signal{Model: runSignal, URL: runSignalURL}
-	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
-		DryRun:            runDryRun,
-		SkipGates:         runSkipGate,
-		Debug:             runDebug,
-		Reconcile:         runReconcile,
-		ApprovalPort:      runApprovalPort,
-		ApprovalToken:     runApprovalToken,
-		AllowShellExec:    runAllowShellExec,
-		Sandbox:           runSandbox,
-		ApproveInScope:    sessionInScope,
-		ApproveOnEvidence: sessionOnEvidence,
-		Away:              sessionAway,
-		AwayCommands:      sessionAwayCommands,
-		AwayTools:         sessionAwayTools,
-		Signal:            sig,
-		SignKey:           runSignKey,
-		SignAs:            orDefaultStr(runSignAs, gitConfig("user.email")),
-
-		RequireSignedApprovals: runRequireSigned,
-		RequireEvidence:        runRequireEvidence,
-		Checks:                 runChecks,
-		CheckTimeout:           runCheckTimeout,
-		AckDrift:               runAckDrift,
-		Validator:              validator,
-		Agreed:                 runAgreedBy,
-		Agent:                  ag,
-		Plan:                   &pl,
+		DryRun:        runDryRun,
+		SkipGates:     runSkipGate,
+		Debug:         runDebug,
+		Reconcile:     runReconcile,
+		ApprovalPort:  runApprovalPort,
+		ApprovalToken: runApprovalToken,
+		AckDrift:      runAckDrift,
+		Agent:         ag,
+		Plan:          &pl,
+		Terms: orchestrator.Terms{
+			Agreed:                 runAgreedBy,
+			AllowShellExec:         runAllowShellExec,
+			Sandbox:                runSandbox,
+			ApproveInScope:         sessionInScope,
+			ApproveOnEvidence:      sessionOnEvidence,
+			Away:                   sessionAway,
+			AwayCommands:           sessionAwayCommands,
+			AwayTools:              sessionAwayTools,
+			SignalModel:            runSignal,
+			SignalURL:              runSignalURL,
+			ValidatorModels:        runValidator,
+			SignKey:                runSignKey,
+			SignAs:                 orDefaultStr(runSignAs, gitConfig("user.email")),
+			RequireSignedApprovals: runRequireSigned,
+			RequireEvidence:        runRequireEvidence,
+			Checks:                 runChecks,
+			CheckTimeout:           runCheckTimeout,
+		},
 	})
 }
 

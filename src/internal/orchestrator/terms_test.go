@@ -1,9 +1,14 @@
 package orchestrator_test
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,4 +80,20 @@ func TestNewTerms_refuses_what_no_run_can_decide_under(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.why)
 		})
 	}
+}
+
+// TestTerms_refused_before_the_run_exists (Q4): terms no run can decide under are refused before anything is made: no run
+// record, no run branch, no worktree.
+func TestTerms_refused_before_the_run_exists(t *testing.T) {
+	r := runtest.Run(t, runtest.Options{
+		Setup: inSrc(&operator{approve: true}),
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{Away: true, Agreed: "dev@example.com"}}, // away, but no check to approve on
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
+	require.ErrorContains(t, r.Err, "--check")
+	var runs int
+	require.NoError(t, r.DB.QueryRow(`SELECT COUNT(*) FROM runs`).Scan(&runs))
+	assert.Zero(t, runs, "no run record")
+	assert.Equal(t, "main", strings.TrimSpace(git(t, r.Repo, "branch", "--format=%(refname:short)")), "no run branch")
+	_, err := os.Stat(filepath.Join(r.WsDir, "worktrees"))
+	assert.True(t, os.IsNotExist(err), "no worktree")
 }

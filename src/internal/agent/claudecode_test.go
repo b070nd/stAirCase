@@ -316,7 +316,7 @@ func TestClaudeCode_cannot_stop_until_checks_pass(t *testing.T) {
 		filepath.Join(dir, "script.json"), logFile, os.Args[0]), 0o755))
 	r := runtest.Run(t, runtest.Options{
 		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
-		Run:   orchestrator.RunOptions{Checks: []string{"echo junk > junk.txt && grep -q done health.txt"}},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{Checks: []string{"echo junk > junk.txt && grep -q done health.txt"}}},
 	})
 	require.NoError(t, r.Err)
 	log, err := os.ReadFile(logFile)
@@ -354,7 +354,7 @@ func TestClaudeCode_commands_run_in_its_sandbox(t *testing.T) {
 		filepath.Join(dir, "script.json"), logFile, settingsFile, os.Args[0]), 0o755))
 	r := runtest.Run(t, runtest.Options{
 		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
-		Run:   orchestrator.RunOptions{AllowShellExec: true},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{AllowShellExec: true}},
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
 			require.NoError(t, crypto.GenerateSigningKey(wsDir))
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -439,7 +439,7 @@ func TestClaudeCode_an_MCP_tool_call_is_decided_like_a_command(t *testing.T) {
 		filepath.Join(dir, "script.json"), logFile, os.Args[0]), 0o755))
 	r := runtest.Run(t, runtest.Options{
 		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
-		Run:   orchestrator.RunOptions{Away: true, Agreed: "dev@example.com", Checks: []string{"true"}, AwayTools: []string{"mcp__probe__ok"}},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{Away: true, Agreed: "dev@example.com", Checks: []string{"true"}, AwayTools: []string{"mcp__probe__ok"}}},
 	})
 	require.NoError(t, r.Err)
 	log, err := os.ReadFile(logFile)

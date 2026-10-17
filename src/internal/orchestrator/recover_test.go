@@ -103,7 +103,7 @@ func TestRecover_commits_what_was_approved(t *testing.T) {
 // recovery asks for that review, and a refusal commits nothing.
 func TestRecover_needs_a_final_review_for_approvals_nobody_made(t *testing.T) {
 	setup := inSrc(&operator{approve: true})
-	r := interrupted(t, setup, orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
+	r := interrupted(t, setup, orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}})
 	runner := orchestrator.NewRunner(r.Store, r.WsDir)
 
 	var asked []domain.YieldRequest

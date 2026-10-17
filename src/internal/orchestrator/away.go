@@ -175,15 +175,6 @@ func awayBrief(away bool) string {
 	return ""
 }
 
-// checkAwayCommands refuses a declaration of tools or commands no run can decide under (Terms.checkDeclared).
-func checkAwayCommands(o RunOptions) error {
-	harness := ""
-	if o.Plan != nil {
-		harness = o.Plan.Harness
-	}
-	return Terms{Away: o.Away, AllowShellExec: o.AllowShellExec, Sandbox: o.Sandbox, AwayCommands: o.AwayCommands, AwayTools: o.AwayTools}.checkDeclared(harness)
-}
-
 // declaredSet is the declared commands, for an exact match.
 func declaredSet(commands []string) map[string]bool {
 	set := map[string]bool{}

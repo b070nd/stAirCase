@@ -324,7 +324,7 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 	})
 	runCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	opts := orchestrator.RunOptions{Agent: agent, SkipGates: true, ApproveInScope: s.ApproveInScope, ApproveOnEvidence: s.ApproveOnEvidence, Checks: s.Checks}
+	opts := orchestrator.RunOptions{Agent: agent, SkipGates: true, Terms: orchestrator.Terms{ApproveInScope: s.ApproveInScope, ApproveOnEvidence: s.ApproveOnEvidence, Checks: s.Checks}}
 	if s.ApproveInScope || s.ApproveOnEvidence {
 		opts.Agreed = "scenarios"
 	}

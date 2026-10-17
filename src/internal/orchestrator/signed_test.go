@@ -213,7 +213,7 @@ func TestSignedApprovals(t *testing.T) {
 	})
 
 	t.Run("requiring signatures needs to know the trusted signers", func(t *testing.T) {
-		r, _, _, _ := signedRun(t, orchestrator.RunOptions{RequireSignedApprovals: true}, "", remoteDecider{approve: true})
+		r, _, _, _ := signedRun(t, orchestrator.RunOptions{Terms: orchestrator.Terms{RequireSignedApprovals: true}}, "", remoteDecider{approve: true})
 		require.Error(t, r.Err)
 		assert.Contains(t, r.Err.Error(), "allowed_signers")
 	})
@@ -226,7 +226,7 @@ func TestSignedApprovals(t *testing.T) {
 		assert.Equal(t, 1, p.Signed.Decisions)
 		assert.Empty(t, p.Signed.Signers, "an untrusted key names no one")
 
-		r, decided, _, _ = signedRun(t, orchestrator.RunOptions{RequireSignedApprovals: true}, aliceLine,
+		r, decided, _, _ = signedRun(t, orchestrator.RunOptions{Terms: orchestrator.Terms{RequireSignedApprovals: true}}, aliceLine,
 			remoteDecider{approve: true, sign: signer(t, malloryKey, "alice@example.com")})
 		require.NoError(t, r.Err)
 		assert.Empty(t, r.Run.GitCommitHash, "nothing was approved")
@@ -240,7 +240,7 @@ func TestSignedApprovals(t *testing.T) {
 		assert.NotContains(t, decided[0], "signed_by")
 		assert.Nil(t, p.Signed)
 
-		r, decided, _, _ = signedRun(t, orchestrator.RunOptions{RequireSignedApprovals: true}, aliceLine, remoteDecider{approve: true})
+		r, decided, _, _ = signedRun(t, orchestrator.RunOptions{Terms: orchestrator.Terms{RequireSignedApprovals: true}}, aliceLine, remoteDecider{approve: true})
 		require.NoError(t, r.Err)
 		assert.Empty(t, r.Run.GitCommitHash, "nothing was approved")
 		assert.Equal(t, false, decided[0]["approved"])
@@ -248,7 +248,7 @@ func TestSignedApprovals(t *testing.T) {
 	})
 
 	t.Run("stAirCase signs the decision with your key", func(t *testing.T) {
-		r, decided, p, _ := signedRun(t, orchestrator.RunOptions{SignKey: aliceKey, SignAs: "alice@example.com", RequireSignedApprovals: true},
+		r, decided, p, _ := signedRun(t, orchestrator.RunOptions{Terms: orchestrator.Terms{SignKey: aliceKey, SignAs: "alice@example.com", RequireSignedApprovals: true}},
 			aliceLine, remoteDecider{approve: true})
 		require.NoError(t, r.Err)
 		assert.Equal(t, "alice@example.com", decided[0]["signed_by"])
@@ -267,7 +267,7 @@ func TestSignedApprovals_a_signature_is_good_for_one_proposal(t *testing.T) {
 		create(ctx, env, "GREETING.md") // ... and proposed again, byte for byte
 		return nil
 	}
-	_, decided, _, seen := signedRunWith(t, twice, orchestrator.RunOptions{RequireSignedApprovals: true}, aliceLine,
+	_, decided, _, seen := signedRunWith(t, twice, orchestrator.RunOptions{Terms: orchestrator.Terms{RequireSignedApprovals: true}}, aliceLine,
 		remoteDecider{approve: false, replay: true, sign: signer(t, aliceKey, "alice@example.com")})
 	require.GreaterOrEqual(t, len(decided), 2)
 	require.GreaterOrEqual(t, len(seen), 2)
@@ -285,7 +285,7 @@ func TestRun_the_initiator_signs_the_request(t *testing.T) {
 	aliceKey, _ := sshKey(t, "alice@example.com")
 	plan := &plan.Plan{Harness: "claude-code", Digest: "p1an"}
 	r, commit, s := certified(t, writeFile("health.txt", "ok\n"),
-		orchestrator.RunOptions{Plan: plan, SignKey: aliceKey, SignAs: "alice@example.com"}, nil)
+		orchestrator.RunOptions{Plan: plan, Terms: orchestrator.Terms{SignKey: aliceKey, SignAs: "alice@example.com"}}, nil)
 	require.NotNil(t, s.Predicate.Initiator, "the certificate names its initiator")
 	assert.Equal(t, "alice@example.com", s.Predicate.Initiator.Principal)
 	sig, err := base64.StdEncoding.DecodeString(s.Predicate.Initiator.Signature)
@@ -303,7 +303,7 @@ func TestRun_the_initiator_signs_the_request(t *testing.T) {
 	// A key that cannot sign: the run stops before the agent runs.
 	ran := false
 	agent := orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error { ran = true; return nil })
-	res := runtest.Run(t, runtest.Options{Agent: agent, Run: orchestrator.RunOptions{Plan: plan, SignKey: filepath.Join(t.TempDir(), "missing"), SignAs: "alice@example.com"}})
+	res := runtest.Run(t, runtest.Options{Agent: agent, Run: orchestrator.RunOptions{Plan: plan, Terms: orchestrator.Terms{SignKey: filepath.Join(t.TempDir(), "missing"), SignAs: "alice@example.com"}}})
 	require.Error(t, res.Err)
 	assert.Contains(t, res.Err.Error(), "initiator")
 	assert.False(t, ran, "the agent never ran")

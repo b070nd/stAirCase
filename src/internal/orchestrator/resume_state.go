@@ -46,16 +46,10 @@ type savedOptions struct {
 const savedOptionsVersion = 1
 
 func optionsToSave(o RunOptions) savedOptions {
-	s := savedOptions{Version: savedOptionsVersion, Agreed: o.Agreed, ApproveInScope: o.ApproveInScope, ApproveOnEvidence: o.ApproveOnEvidence,
+	return savedOptions{Version: savedOptionsVersion, Agreed: o.Agreed, ApproveInScope: o.ApproveInScope, ApproveOnEvidence: o.ApproveOnEvidence,
 		AllowShellExec: o.AllowShellExec, Sandbox: o.Sandbox, RequireSignedApprovals: o.RequireSignedApprovals, SignKey: o.SignKey,
-		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout), Away: o.Away, AwayCommands: o.AwayCommands, AwayTools: o.AwayTools}
-	if o.Signal != nil {
-		s.SignalModel, s.SignalURL = o.Signal.Model, o.Signal.URL
-	}
-	if o.Validator != nil {
-		s.ValidatorModels = o.Validator.Models
-	}
-	return s
+		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout), Away: o.Away,
+		AwayCommands: o.AwayCommands, AwayTools: o.AwayTools, SignalModel: o.SignalModel, SignalURL: o.SignalURL, ValidatorModels: o.ValidatorModels}
 }
 
 // apply returns the run options a continuation runs with: the saved terms, and nothing else of the first segment.
@@ -63,12 +57,7 @@ func (s savedOptions) apply(base RunOptions) RunOptions {
 	base.Agreed, base.ApproveInScope, base.ApproveOnEvidence, base.AllowShellExec, base.Sandbox = s.Agreed, s.ApproveInScope, s.ApproveOnEvidence, s.AllowShellExec, s.Sandbox
 	base.RequireSignedApprovals, base.SignKey, base.SignAs, base.RequireEvidence = s.RequireSignedApprovals, s.SignKey, s.SignAs, s.RequireEvidence
 	base.Checks, base.CheckTimeout, base.Away, base.AwayCommands, base.AwayTools = s.Checks, time.Duration(s.CheckTimeoutNS), s.Away, s.AwayCommands, s.AwayTools
-	if s.SignalModel != "" {
-		base.Signal = &Signal{Model: s.SignalModel, URL: s.SignalURL}
-	}
-	if len(s.ValidatorModels) > 0 {
-		base.Validator = &Validator{Models: s.ValidatorModels}
-	}
+	base.SignalModel, base.SignalURL, base.ValidatorModels = s.SignalModel, s.SignalURL, s.ValidatorModels
 	return base
 }
 

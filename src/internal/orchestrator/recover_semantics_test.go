@@ -136,7 +136,7 @@ func TestRecover_refuses_histories_with_a_wrong_shape_even_when_their_hashes_are
 // derive is refused.
 func TestRecover_the_final_review_on_the_chain_is_the_review(t *testing.T) {
 	taskRun := func(t *testing.T) runtest.Result {
-		return interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
+		return interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}})
 	}
 	finalReview := func(approved bool, files map[string]string) map[string]any {
 		return map[string]any{"seq": 3, "source": "operator", "agent": "staircase", "action_type": domain.ActionFinalReview,

@@ -61,8 +61,7 @@ func TestApproveOnEvidence_checks_decide_inside_the_scope(t *testing.T) {
 	op := &strictPerson{} // rejects the changes that reach them, approves the final review
 	r := runtest.Run(t, runtest.Options{
 		Setup: inSrc(op),
-		Run: orchestrator.RunOptions{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com", // as the CLI sets both
-			Checks: []string{`! grep -rq FORBIDDEN src || { echo "FORBIDDEN found"; exit 1; }`}},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com", Checks: []string{`! grep -rq FORBIDDEN src || { echo "FORBIDDEN found"; exit 1; }`}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for i := 0; i < 7; i++ { // more than the old checkpoint of five
 				write(ctx, env, fmt.Sprintf("src/ok%d.txt", i), "fine\n")
@@ -112,8 +111,7 @@ func TestApproveOnEvidence_checks_see_the_proposed_state(t *testing.T) {
 	op := &operator{approve: true}
 	r := runtest.Run(t, runtest.Options{
 		Setup: inSrc(op),
-		Run: orchestrator.RunOptions{ApproveOnEvidence: true, Agreed: "dev@example.com",
-			Checks: []string{"test -f src/a.txt && test -f src/b.txt"}},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveOnEvidence: true, Agreed: "dev@example.com", Checks: []string{"test -f src/a.txt && test -f src/b.txt"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			write(ctx, env, "src/a.txt", "a\n") // b does not exist yet: no evidence, a person decides
 			write(ctx, env, "src/b.txt", "b\n") // a was approved, and b is in the state: evidence
@@ -131,8 +129,7 @@ func TestApproveOnEvidence_panel_is_evidence(t *testing.T) {
 	op := &operator{approve: true}
 	r := runtest.Run(t, runtest.Options{
 		Setup: inSrc(op),
-		Run: orchestrator.RunOptions{ApproveOnEvidence: true, Agreed: "dev@example.com",
-			Validator: &orchestrator.Validator{Models: []string{"review/model"}, Chat: rv}},
+		Run:   orchestrator.RunOptions{ValidatorChat: rv, Terms: orchestrator.Terms{ApproveOnEvidence: true, Agreed: "dev@example.com", ValidatorModels: []string{"review/model"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			write(ctx, env, "src/a.txt", "a\n") // approved by the panel
 			write(ctx, env, "src/b.txt", "b\n") // rejected by the panel
@@ -154,7 +151,7 @@ func TestApproveOnEvidence_panel_is_evidence(t *testing.T) {
 func TestApproveOnEvidence_needs_evidence_to_exist(t *testing.T) {
 	r := runtest.Run(t, runtest.Options{
 		Setup: inSrc(&operator{approve: true}),
-		Run:   orchestrator.RunOptions{ApproveOnEvidence: true, Agreed: "dev@example.com"},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveOnEvidence: true, Agreed: "dev@example.com"}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
 	require.Error(t, r.Err)
 	assert.Contains(t, r.Err.Error(), "--check")
@@ -169,8 +166,7 @@ func TestCheckTimeout(t *testing.T) {
 	op := &operator{approve: true}
 	r := runtest.Run(t, runtest.Options{
 		Setup: inSrc(op),
-		Run: orchestrator.RunOptions{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com",
-			Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com", Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			write(ctx, env, "src/a.txt", "a\n")
 			return nil
@@ -183,7 +179,7 @@ func TestCheckTimeout(t *testing.T) {
 
 	// After the commit the same timeout applies, and the certificate says the check could not run.
 	_, _, s := certified(t, writeFile("health.txt", "ok\n"),
-		orchestrator.RunOptions{Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond}, nil)
+		orchestrator.RunOptions{Terms: orchestrator.Terms{Checks: []string{"sleep 30"}, CheckTimeout: 300 * time.Millisecond}}, nil)
 	require.Len(t, s.Predicate.Checks, 1)
 	assert.Equal(t, -1, s.Predicate.Checks[0].ExitCode)
 }
@@ -195,7 +191,7 @@ func TestFinalReview_shows_a_binary_file_by_its_digest(t *testing.T) {
 	op := &operator{approve: true}
 	r := runtest.Run(t, runtest.Options{
 		Setup: inSrc(op),
-		Run:   orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			write(ctx, env, "src/a.txt", "approved as part of the task\n") // so a final review is asked
 			ap := env.ProposeEdit(ctx, "coder", "an image", domain.ProposedEdit{File: "src/logo.png", SearchBlock: orchestrator.MarkerNewFile,

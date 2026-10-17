@@ -55,7 +55,7 @@ func TestSignal_only_sends_changes_to_a_person(t *testing.T) {
 	rt := &rater{}
 	r := runtest.Run(t, runtest.Options{
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
-		Run:   orchestrator.RunOptions{Signal: &orchestrator.Signal{Model: "typesafe-ai/jev", Eval: rt}},
+		Run:   orchestrator.RunOptions{SignalEval: rt, Terms: orchestrator.Terms{SignalModel: "typesafe-ai/jev"}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for _, f := range []string{"ok.txt", "upload.sh", "unrelated.txt", "flaky.txt"} {
 				create(ctx, env, f)
@@ -100,7 +100,7 @@ func TestSignal_url_talks_to_a_local_server(t *testing.T) {
 	op := &operator{approve: true}
 	r := runtest.Run(t, runtest.Options{
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
-		Run:   orchestrator.RunOptions{Signal: &orchestrator.Signal{Model: "laya", URL: srv.URL}},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{SignalModel: "laya", SignalURL: srv.URL}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for _, f := range []string{"ok.txt", "upload.sh"} {
 				create(ctx, env, f)
@@ -149,8 +149,8 @@ func TestSignal_a_wrong_late_or_invalid_answer_only_sends_the_change_to_a_person
 	files := []string{"ok.txt", "missing.txt", "range.txt", "garbage.txt", "late.txt", "denied.txt"}
 	r := runtest.Run(t, runtest.Options{
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
-		Run: orchestrator.RunOptions{Signal: &orchestrator.Signal{Model: "laya", Eval: &signal.Client{Model: "laya", BaseURL: srv.URL,
-			API: signal.SystemOne, HTTP: &http.Client{Timeout: 300 * time.Millisecond}}}},
+		Run: orchestrator.RunOptions{SignalEval: &signal.Client{Model: "laya", BaseURL: srv.URL,
+			API: signal.SystemOne, HTTP: &http.Client{Timeout: 300 * time.Millisecond}}, Terms: orchestrator.Terms{SignalModel: "laya"}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for _, f := range files {
 				create(ctx, env, f)

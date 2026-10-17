@@ -99,7 +99,7 @@ func TestTerms_saved_options_that_changed_are_refused(t *testing.T) {
 // TestRecover_the_final_review_is_a_decision (Q21): recovery's final review is written as a live run's is, a final_review decision
 // of the whole approved state, so the certificate counts it as it counts a finished run's.
 func TestRecover_the_final_review_is_a_decision(t *testing.T) {
-	r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
+	r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}})
 	res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Confirm: approveAll})
 	require.NoError(t, err)
 	require.True(t, res.FinalReview)
