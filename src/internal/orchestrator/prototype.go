@@ -36,7 +36,7 @@ type PrototypeResult struct {
 type approvedNow struct {
 	a       *approvals
 	repo    *GitRepo
-	hist    history
+	hist    auditHistory
 	events  []domain.RunEventLog
 	opts    savedOptions
 	cleanup func()
