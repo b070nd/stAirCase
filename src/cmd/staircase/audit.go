@@ -128,9 +128,9 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 	}
 
 	// ── 3. Load event logs ────────────────────────────────────────────────────
-	entries, err := store.ListEventLogs(runID)
+	entries, err := store.ListVerifiedEventLogs(runID) // a checkpoint signs the chain: never one that does not verify
 	if err != nil {
-		return fmt.Errorf("list event logs: %w", err)
+		return fmt.Errorf("the audit chain of run #%d does not verify, so no checkpoint is signed over it: %w", runID, err)
 	}
 
 	// ── 4. Sign ───────────────────────────────────────────────────────────────

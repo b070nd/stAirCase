@@ -62,9 +62,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
-- **A change certificate is signed only over a verified audit chain.** The certificate counts a run's decisions from its chain, and it read
-  the chain without verifying it; a chain whose rows were changed after the run could get a certificate signed over the changed counts.
-  It now reads the verified chain, and a chain that does not verify gets no certificate, with the reason.
+- **Nothing is signed or decided over an audit chain that does not verify.** The change certificate counted a run's decisions from the
+  chain without verifying it, so a chain whose rows were changed after the run could get a certificate signed over the changed counts;
+  `staircase audit export` signed its checkpoint the same way; whether a case needs `--ack-drift` was read from an unverified chain, so
+  changing a `drift_halt` row let the case run again unacknowledged; and recovery's repair checks read unverified rows. All four now read
+  the verified chain, and a chain that does not verify gets no certificate, no checkpoint and no run, with the reason. Display commands
+  (`inspect`, `replay`) still show the rows as they are.
 
 - **`staircase resume --help` contradicted itself.** Its first paragraph still said the agent's memory of the earlier part is not carried,
   which was true before agent harnesses resumed their own session (1.0.0); it now says the audit chain decides what is approved, and a

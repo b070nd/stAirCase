@@ -858,3 +858,21 @@ func TestInspectLog_cannot_be_driven_by_the_log(t *testing.T) {
 	assert.NotContains(t, out, "\r")
 	assert.NotContains(t, out, "TAMPERED")
 }
+
+// TestAudit_Export_refuses_a_chain_that_does_not_verify: a checkpoint is a signature over the run's chain, so it is never signed over
+// rows that were changed after they were written.
+func TestAudit_Export_refuses_a_chain_that_does_not_verify(t *testing.T) {
+	wsDir, s := e2eWorkspace(t)
+	require.NoError(t, crypto.GenerateSigningKey(wsDir))
+	runID := seedRunWithLogs(t, s, 3)
+	db, err := persistence.InitDB(wsDir)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE run_event_logs SET payload = '{"step":99}' WHERE run_id = ? AND payload = '{"step":1}'`, runID)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	err = auditExportHandler(nil, []string{strconv.FormatInt(runID, 10)})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "verify")
+	assert.NoFileExists(t, filepath.Join(wsDir, "audit", fmt.Sprintf("run-%d.checkpoint.json", runID)))
+}

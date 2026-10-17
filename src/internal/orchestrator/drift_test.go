@@ -118,6 +118,30 @@ func TestDrift_out_of_scope_goes_to_a_human(t *testing.T) {
 	assert.Equal(t, []string{"src/other.go"}, sum.Drift.OutOfScope)
 }
 
+// TestDrift_a_changed_chain_cannot_lift_a_halt: whether the next run needs --ack-drift is read from the halted run's chain, so only
+// from a verified one: a drift_halt row changed into something else does not let the case run again unacknowledged.
+func TestDrift_a_changed_chain_cannot_lift_a_halt(t *testing.T) {
+	op := &operator{approve: false}
+	r := runtest.Run(t, runtest.Options{
+		Setup: scoped(op, `{"rules":[{"action_types":["file_edit"],"effect":"approve"}],"limits":{"max_scope_violations":1}}`),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			create(ctx, env, "a.txt")
+			create(ctx, env, "b.txt")
+			<-ctx.Done()
+			return ctx.Err()
+		})})
+	require.Error(t, r.Err)
+	_, err := r.DB.Exec(`UPDATE run_event_logs SET event_type = 'state_emit' WHERE run_id = ? AND event_type = 'drift_halt'`, r.Run.ID)
+	require.NoError(t, err)
+
+	err = orchestrator.NewRunner(r.Store, r.WsDir).Run(context.Background(), r.Run.CaseID, orchestrator.RunOptions{SkipGates: true, Agent: idle})
+	require.Error(t, err, "the halt is not lifted by changing the chain")
+	assert.Contains(t, err.Error(), "verify")
+	runs, err := r.Store.ListRunsByCase(r.Run.CaseID)
+	require.NoError(t, err)
+	assert.Len(t, runs, 1, "no run was started")
+}
+
 // TestDrift_halt_and_ack: past max_scope_violations the run halts (KILLED,
 // drift_halt audited) and the case does not run again until the operator
 // acknowledges it.
