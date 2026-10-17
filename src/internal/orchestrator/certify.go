@@ -13,6 +13,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
@@ -88,9 +89,9 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		return fmt.Errorf("no signing key: %w", err)
 	}
 	// The decisions are counted from the chain, so it is read only as verified: a changed row gets no certificate.
-	events, err := r.store.ListVerifiedEventLogs(runID)
+	hist, err := history.Read(r.store, runID)
 	if err != nil {
-		return fmt.Errorf("the audit chain of run #%d does not verify, so no certificate is signed over it: %w", runID, err)
+		return fmt.Errorf("no certificate is signed over it: %w", err)
 	}
 	p := certificate.Predicate{Run: runID, BaseCommit: baseSHA, Agents: assistants(pl), ChainHead: chainHead,
 		Decisions: map[string]int{}, CAL: 3, Checks: ev.checks, Ledger: ev.ledger, Policy: ev.policy, Initiator: ev.initiator}
@@ -100,56 +101,35 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if out, err := exec.Command("git", "-C", repo.path, "config", "user.email").Output(); err == nil {
 		p.RequestedBy = strings.TrimSpace(string(out))
 	}
-	shells, sandboxed, after, tools := 0, 0, false, 0
+	shells, after, tools := 0, false, 0
 	var decideMS []int64 // people's decisions
 	quick := 0
 	signed := certificate.SignedApprovals{}
-	for _, e := range events {
-		var d struct {
-			Source      string `json:"source"`
-			ActionType  string `json:"action_type"`
-			Approved    bool   `json:"approved"`
-			ReviewAfter bool   `json:"review_after"`
-			Sandboxed   bool   `json:"sandboxed"`
-			DecideMS    *int64 `json:"decide_ms"`
-			Signature   string `json:"signature"`
-			SignedBy    string `json:"signed_by"`
-			Trusted     bool   `json:"trusted"`
-			Lines       int    `json:"lines"`
+	for _, d := range hist.Decisions {
+		p.Decisions[d.Source]++
+		if d.Approved && d.ActionType == domain.ActionShellExec {
+			shells++
 		}
-		if json.Unmarshal([]byte(e.Payload), &d) != nil {
-			continue
+		if d.Approved && d.ActionType == domain.ActionToolCall {
+			tools++
 		}
-		switch e.EventType {
-		case "shell_ran":
-			if d.Sandboxed {
-				sandboxed++
+		if d.Source == "operator" && d.Signature != "" {
+			signed.Decisions++
+			if d.Trusted && !slices.Contains(signed.Signers, d.SignedBy) {
+				signed.Signers = append(signed.Signers, d.SignedBy)
 			}
-		case "yield_decided":
-			p.Decisions[d.Source]++
-			if d.Approved && d.ActionType == domain.ActionShellExec {
-				shells++
-			}
-			if d.Approved && d.ActionType == domain.ActionToolCall {
-				tools++
-			}
-			if d.Source == "operator" && d.Signature != "" {
-				signed.Decisions++
-				if d.Trusted && !slices.Contains(signed.Signers, d.SignedBy) {
-					signed.Signers = append(signed.Signers, d.SignedBy)
-				}
-			}
-			if d.Source == "operator" && d.DecideMS != nil {
-				decideMS = append(decideMS, *d.DecideMS)
-				// ponytail: a fixed bar for "approved without reading"; tune once teams report numbers.
-				if d.Approved && d.Lines >= quickLines && *d.DecideMS < quickMS {
-					quick++
-				}
-			}
-			// a sandboxed command was decided before it ran; what it wrote is decided too
-			after = after || (d.Approved && d.ReviewAfter && !d.Sandboxed)
 		}
+		if d.Source == "operator" && d.DecideMS != nil {
+			decideMS = append(decideMS, *d.DecideMS)
+			// ponytail: a fixed bar for "approved without reading"; tune once teams report numbers.
+			if d.Approved && d.Lines >= quickLines && *d.DecideMS < quickMS {
+				quick++
+			}
+		}
+		// a sandboxed command was decided before it ran; what it wrote is decided too
+		after = after || (d.Approved && d.ReviewAfter && !d.Sandboxed)
 	}
+	sandboxed := hist.Shells.Sandboxed
 	if signed.Decisions > 0 {
 		slices.Sort(signed.Signers)
 		p.Signed = &signed
@@ -199,8 +179,8 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		return fmt.Errorf("attach the change certificate to %s: %w", commit, err)
 	}
 	fmt.Fprintf(os.Stdout, "   📜 Change certificate (CAL %d): %s, also in git notes (refs/notes/staircase)\n", p.CAL, path)
-	for _, e := range events { // signing again gives the same certificate: it is on the chain once
-		if e.EventType == "certificate_issued" && strings.Contains(e.Payload, `"envelope_sha256":"`+sha256Hex(b)+`"`) {
+	for _, d := range hist.Delivered { // signing again gives the same certificate: it is on the chain once
+		if d.Event == "certificate_issued" && d.EnvelopeSHA256 == sha256Hex(b) {
 			return nil
 		}
 	}
