@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A change certificate is signed only over a verified audit chain.** The certificate counts a run's decisions from its chain, and it read
+  the chain without verifying it; a chain whose rows were changed after the run could get a certificate signed over the changed counts.
+  It now reads the verified chain, and a chain that does not verify gets no certificate, with the reason.
+
 ### Added
 
 - **MCP tools are decided, not switched off (`tool_call`, `--away-tool`).** A Claude Code call of an MCP server's tool is a proposal with
