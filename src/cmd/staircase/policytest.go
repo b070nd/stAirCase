@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/b070nd/stAirCase/src/internal/policysim"
@@ -57,7 +57,8 @@ approving what it must not, or from escalating what it should approve.`,
 			heading string
 			items   []string
 		}{{"⚠️  a person REJECTED these, the policy would APPROVE them:", rep.RejectedByPerson},
-			{"the policy would reject these, which were approved:", rep.WouldReject}} {
+			{"the policy would reject these, which were approved:", rep.WouldReject},
+			{"⚠️  these runs were not replayed:", rep.Skipped}} {
 			if len(title.items) > 0 {
 				fmt.Printf("\n%s\n  %s\n", title.heading, strings.Join(title.items, "\n  "))
 			}
@@ -111,6 +112,7 @@ type replayReport struct {
 	RejectedByPerson    []string // the policy approves what a person rejected
 	WouldReject         []string // the policy rejects what was approved
 	Unchanged           int
+	Skipped             []string // runs whose history could not be read, and why
 }
 
 // policyReplay replays the workspace's recorded proposals against e.
@@ -131,27 +133,17 @@ func policyReplay(store *persistence.Store, e *policy.Engine) (replayReport, err
 				return rep, err
 			}
 			for _, r := range runs {
-				events, err := store.ListEventLogs(r.ID)
-				if err != nil {
-					return rep, err
+				h, err := history.Read(store, r.ID)
+				if err != nil { // a run whose history cannot be trusted is not counted: it is named instead
+					rep.Skipped = append(rep.Skipped, err.Error())
+					continue
 				}
-				var req domain.YieldRequest
-				for _, ev := range events {
-					switch ev.EventType {
-					case "yield_request":
-						req = domain.YieldRequest{}
-						_ = json.Unmarshal([]byte(ev.Payload), &req)
-					case "yield_decided":
-						var d struct {
-							Source, Drift, Guard string
-							Approved             bool
-						}
-						if json.Unmarshal([]byte(ev.Payload), &d) != nil {
-							continue
-						}
-						rep.Proposals++
-						replayOne(&rep, e, r.ID, req, d.Source, d.Drift, d.Guard, d.Approved)
+				for _, d := range h.Decisions {
+					if d.Request == nil { // a final review is a decision on the whole change, not a proposal
+						continue
 					}
+					rep.Proposals++
+					replayOne(&rep, e, r.ID, d.Request.YieldRequest, d.Source, d.Drift, d.Guard, d.Approved)
 				}
 			}
 		}

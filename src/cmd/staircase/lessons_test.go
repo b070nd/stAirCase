@@ -23,11 +23,14 @@ func TestProjectLessons(t *testing.T) {
 		require.NoError(t, err)
 	}
 	request := func(file string) {
-		event("yield_request", map[string]any{"type": "yield_request", "proposed_edits": []map[string]string{{"file": file}}})
+		event("yield_request", map[string]any{"type": "yield_request", "action_type": "file_edit", "proposed_edits": []map[string]string{{"file": file}}})
 	}
+	seq := 0
 	decided := func(source string, approved bool, feedback string) {
-		event("yield_decided", map[string]any{"source": source, "approved": approved, "feedback": feedback})
+		seq++
+		event("yield_decided", map[string]any{"seq": seq, "action_type": "file_edit", "source": source, "approved": approved, "feedback": feedback})
 	}
+	event("run_bound", map[string]any{"base_sha": "b", "branch": "staircase/run-1"})
 	request("src/api.go")
 	decided("operator", false, "no global variables, use the Server struct")
 	request("go.mod")
@@ -37,7 +40,7 @@ func TestProjectLessons(t *testing.T) {
 	request("docs/x.md")
 	decided("operator", false, "")
 	// a proposal too large for the audit log is recorded as a truncation note: no files known
-	event("yield_request", map[string]any{"truncated": true, "bytes": 90000, "sha256": "ab"})
+	event("yield_request", map[string]any{"truncated": true, "action_type": "file_edit", "bytes": 90000, "sha256": "ab"})
 	decided("operator", false, "split this into smaller changes")
 
 	lessons, err := projectLessons(s, mustProject(t, s, caseID))
