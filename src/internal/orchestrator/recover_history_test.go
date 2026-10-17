@@ -185,69 +185,6 @@ func TestRecover_journal_corruption_and_torn_tails(t *testing.T) {
 	})
 }
 
-// TestAuditedHistory_refuses_what_no_run_can_have_written is a unit test of the pure
-// history check: its events are bare (no hashes, nothing in a store), so it shows what
-// the check refuses and nothing about hash-valid chains. Real-store, hash-valid histories
-// are refused (and legitimate ones recovered) in recover_semantics_test.go and
-// TestRecover_* above, which run Recover on a run that was really made.
-func TestAuditedHistory_refuses_what_no_run_can_have_written(t *testing.T) {
-	ev := func(typ string, payload map[string]any) domain.RunEventLog {
-		b, _ := json.Marshal(payload)
-		return domain.RunEventLog{EventType: typ, Payload: string(b)}
-	}
-	bound := ev("run_bound", map[string]any{"base_sha": "b", "branch": "refs/heads/x"})
-	decided := func(seq int, approved bool) domain.RunEventLog {
-		return ev("yield_decided", map[string]any{"seq": seq, "approved": approved, "action_type": domain.ActionFileEdit, "request_sha256": "h"})
-	}
-	request := ev("yield_request", map[string]any{"action_type": domain.ActionFileEdit})
-	good := []domain.RunEventLog{bound, request, request, decided(1, true), decided(2, false), request, decided(3, true)} // requests may be audited ahead of their decisions
-	approved, last, err := orchestrator.ExportedAuditedHistory(good)
-	require.NoError(t, err, "an interrupted run's history is recoverable")
-	assert.Equal(t, []int{1, 3}, approved)
-	assert.Equal(t, 3, last)
-
-	for name, events := range map[string][]domain.RunEventLog{
-		"a decision before the run began":    {decided(1, true), bound},
-		"two bindings":                       {bound, bound},
-		"proposal numbers that do not grow":  {bound, decided(2, true), decided(2, true)},
-		"numbers going backwards":            {bound, decided(3, true), decided(1, true)},
-		"a decision after the certificate":   {bound, decided(1, true), ev("certificate_issued", nil), decided(2, true)},
-		"a decision after a recovery":        {bound, decided(1, true), ev("run_recovered", nil), decided(2, true)},
-		"an unreadable decision":             {bound, {EventType: "yield_decided", Payload: "not json"}},
-		"a history that is not bound at all": {request, bound},
-		"a decision with no request":         {bound, decided(1, true)},
-		"more decisions than requests":       {bound, request, decided(1, true), decided(2, true)},
-		"a request of another kind":          {bound, ev("yield_request", map[string]any{"action_type": domain.ActionShellExec}), decided(1, true)},
-	} {
-		_, _, err := orchestrator.ExportedAuditedHistory(events)
-		assert.Error(t, err, name)
-	}
-}
-
-// TestAuditedHistory_names_the_policy_and_the_initiator: what a run recorded about
-// the policy it loaded and who started it is what a recovered certificate names.
-func TestAuditedHistory_names_the_policy_and_the_initiator(t *testing.T) {
-	ev := func(typ string, payload map[string]any) domain.RunEventLog {
-		b, _ := json.Marshal(payload)
-		return domain.RunEventLog{EventType: typ, Payload: string(b)}
-	}
-	policy, who, sig, err := orchestrator.ExportedRunContext([]domain.RunEventLog{
-		ev("run_bound", map[string]any{"base_sha": "b", "branch": "x"}),
-		ev("initiator_signed", map[string]any{"principal": "dev@example.com", "signature": "c2ln"}),
-		ev("policy_snapshot", map[string]any{"digest": "abc123", "signed": true}),
-	})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"abc123", "dev@example.com", "c2ln"}, []string{policy, who, sig})
-
-	policy, who, _, err = orchestrator.ExportedRunContext([]domain.RunEventLog{
-		ev("run_bound", map[string]any{"base_sha": "b", "branch": "x"}),
-		ev("initiator_signed", map[string]any{"principal": "old@example.com"}), // a record from before the signature was kept
-	})
-	require.NoError(t, err)
-	assert.Empty(t, policy)
-	assert.Empty(t, who, "without a signature there is nothing to carry into a certificate")
-}
-
 // TestRecover_only_a_cut_append_is_a_torn_tail: appendJournal writes a line and its
 // newline in one write, so a crash leaves a line that stops short of its newline
 // and is not complete JSON. A last record that is complete (terminated, or valid

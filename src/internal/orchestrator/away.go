@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
@@ -109,82 +109,27 @@ func (r *Runner) ReviewOf(runID int64) (Review, error) {
 	if run.Status != persistence.RunStatusAwaitingReview {
 		return rv, fmt.Errorf("run #%d is %s: %w", runID, run.Status, ErrNotAwaiting)
 	}
-	events, err := r.store.ListVerifiedEventLogs(runID)
+	hist, err := history.Read(r.store, runID)
 	if err != nil {
-		return rv, fmt.Errorf("the audit chain of run #%d does not verify, so nothing in it can be trusted: %w", runID, err)
+		return rv, err
 	}
-	hist, err := auditedHistory(events)
-	if err != nil {
-		return rv, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
+	rv.Base = hist.Bound.BaseSHA
+	for _, d := range hist.Parked() { // a parked proposal the owner adopted (ADR 0007) is part of the change now, not parked
+		rv.ParkedProposals = append(rv.ParkedProposals, ParkedProposal{Seq: d.Seq, Action: d.ActionType, Files: d.Paths, Why: d.ParkedWhy})
 	}
-	rv.Base = hist.Bound.Base
-	at := -1
-	for i, e := range events {
-		switch e.EventType {
-		case "awaiting_review":
-			at = i
-		case "yield_decided":
-			var d struct {
-				Seq    int      `json:"seq"`
-				Source string   `json:"source"`
-				Action string   `json:"action_type"`
-				Paths  []string `json:"paths"`
-				Why    string   `json:"parked_why"`
-			}
-			if json.Unmarshal([]byte(e.Payload), &d) == nil && d.Source == "parked" {
-				rv.ParkedProposals = append(rv.ParkedProposals, ParkedProposal{Seq: d.Seq, Action: d.Action, Files: d.Paths, Why: d.Why})
-			}
-		}
-	}
-	// A parked proposal the owner adopted (ADR 0007) is part of the change now, not parked.
-	adopted := adoptedProposals(events)
-	rv.ParkedProposals = slices.DeleteFunc(rv.ParkedProposals, func(p ParkedProposal) bool { return adopted[p.Seq] })
-	if at < 0 {
+	aw := hist.Review
+	if aw == nil {
 		return rv, fmt.Errorf("run #%d has no awaiting_review entry on its chain", runID)
 	}
-	var aw struct {
-		Tree         string            `json:"tree"`
-		Files        map[string]string `json:"files"`
-		PhaseChecked string            `json:"phase_checked"`
-		Parked       int               `json:"parked"`
-	}
-	if err := json.Unmarshal([]byte(events[at].Payload), &aw); err != nil {
-		return rv, fmt.Errorf("the awaiting_review entry of run #%d: %w", runID, err)
-	}
-	rv.Entry, rv.Tree, rv.Files, rv.Parked = events[at].EventHash, aw.Tree, aw.Files, aw.Parked
-	checked := false
-	for _, e := range events[:at] {
-		if e.EventType != "phase_checked" || e.EventHash != aw.PhaseChecked {
-			continue
-		}
-		var pc struct {
-			Tree   string `json:"tree"`
-			Passed bool   `json:"passed"`
-			Checks []struct {
-				Command      string `json:"command"`
-				ExitCode     int    `json:"exit_code"`
-				Sandboxed    bool   `json:"sandboxed"`
-				OutputSHA256 string `json:"output_sha256"`
-			} `json:"checks"`
-		}
-		if err := json.Unmarshal([]byte(e.Payload), &pc); err != nil || !pc.Passed || pc.Tree != aw.Tree {
-			return rv, fmt.Errorf("the checks run #%d names did not pass on the tree it offers", runID)
-		}
-		for _, c := range pc.Checks {
-			rv.Checks = append(rv.Checks, certificate.Check{Command: c.Command, ExitCode: c.ExitCode, Sandboxed: c.Sandboxed, OutputSHA256: c.OutputSHA256})
-		}
-		checked = true
-	}
-	if !checked {
+	rv.Entry, rv.Tree, rv.Files, rv.Parked, rv.Decided = aw.Entry, aw.Tree, aw.Files, aw.Parked, aw.Decided
+	if aw.Checked == nil {
 		return rv, fmt.Errorf("run #%d offers a tree without the checks that ran on it", runID)
 	}
-	for _, e := range events[at+1:] {
-		switch e.EventType {
-		case "review_accepted":
-			rv.Decided = "accepted"
-		case "review_rejected":
-			rv.Decided = "rejected"
-		}
+	if !aw.Checked.Passed || aw.Checked.Tree != aw.Tree {
+		return rv, fmt.Errorf("the checks run #%d names did not pass on the tree it offers", runID)
+	}
+	for _, c := range aw.Checked.Checks {
+		rv.Checks = append(rv.Checks, certificate.Check{Command: c.Command, ExitCode: c.ExitCode, Sandboxed: c.Sandboxed, OutputSHA256: c.OutputSHA256})
 	}
 	return rv, nil
 }

@@ -144,11 +144,11 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 	}
 	b := c.history.Bound
 	branch := strings.TrimPrefix(b.Branch, "refs/heads/")
-	if err := exec.Command("git", "-C", repo.path, "cat-file", "-e", b.Base+"^{commit}").Run(); err != nil {
-		return nil, notContinuable("the run's base commit %.12s no longer exists", b.Base)
+	if err := exec.Command("git", "-C", repo.path, "cat-file", "-e", b.BaseSHA+"^{commit}").Run(); err != nil {
+		return nil, notContinuable("the run's base commit %.12s no longer exists", b.BaseSHA)
 	}
-	if tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); tip != b.Base {
-		return nil, notContinuable("the run branch %s is not at the run's base (%.12s): it moved, or it was deleted", branch, b.Base)
+	if tip := gitOut(repo.path, "rev-parse", "--verify", "-q", "refs/heads/"+branch); tip != b.BaseSHA {
+		return nil, notContinuable("the run branch %s is not at the run's base (%.12s): it moved, or it was deleted", branch, b.BaseSHA)
 	}
 	if st, err := os.Stat(b.Worktree); err != nil || !st.IsDir() {
 		return nil, notContinuable("the run's worktree %s is gone", b.Worktree)
@@ -168,16 +168,17 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 		return nil, err
 	}
 	defer func() { _ = os.RemoveAll(scratch) }()
-	a, err := newApprovals(&GitRepo{r: wgr.r, w: wgr.w, path: scratch}, b.Base)
+	a, err := newApprovals(&GitRepo{r: wgr.r, w: wgr.w, path: scratch}, b.BaseSHA)
 	if err != nil {
 		return nil, err
 	}
+	recorded := c.history.Approvals()
 	for i, p := range c.kept {
 		next, derr := a.derive(p.Edits)
 		if derr != nil {
 			return nil, fmt.Errorf("proposal %d no longer applies: %w", p.Seq, derr)
 		}
-		if !matchesDigest(c.history.Approvals[i].Files, next) {
+		if !matchesDigest(recorded[i].Files, next) {
 			return nil, fmt.Errorf("proposal %d derives other bytes than the audit chain recorded as approved", p.Seq)
 		}
 		a.record(next)

@@ -83,6 +83,24 @@ Conformance vectors are in [`spec/audit-chain-vectors.json`](spec/audit-chain-ve
 `python3 docs/spec/audit_chain_vectors.py` checks them with a program that shares no code
 with stAirCase.
 
+### What a run can have written
+
+A chain whose hashes verify must also be one a run can have written. Recovery, resume, review and the
+certificate read it through one replay ([ADR 0010](adr/0010-one-replay-of-the-audit-chain.md)). That replay
+refuses a chain that breaks any of these rules, and names the entry that breaks it:
+
+- `run_bound` comes first, and only once.
+- Every decision except a final review answers a request audited earlier in the same segment, of the same kind.
+  Requests a segment left undecided are not carried past a `run_resumed`.
+- Proposal numbers increase.
+- After `commit_prepared` only a final review may be decided. After `certificate_issued`, `run_recovered` or
+  `review_delivered`, nothing is decided and the run is not resumed.
+
+A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
+often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or
+when its reviewer model left something unreviewed. Recovery asks whenever anything was approved by neither a person
+nor a policy rule, reviewer-model approvals included.
+
 ## The change certificate on every commit
 
 Each run that commits leaves a **change certificate** about exactly that commit: a
