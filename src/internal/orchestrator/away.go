@@ -175,36 +175,13 @@ func awayBrief(away bool) string {
 	return ""
 }
 
-// checkAwayCommands refuses a declaration of commands (ADR 0009) that is not an away run's, cannot run in a sandbox without network,
-// or is not a whole command: no composition, redirection, substitution or second line.
+// checkAwayCommands refuses a declaration of tools or commands no run can decide under (Terms.checkDeclared).
 func checkAwayCommands(o RunOptions) error {
-	for _, t := range o.AwayTools {
-		if !o.Away {
-			return errors.New("--away-tool declares tools for an away run: add --away")
-		}
-		if !strings.HasPrefix(t, "mcp__") || strings.ContainsAny(t, " *?") {
-			return fmt.Errorf("--away-tool %q: name one MCP tool exactly, as mcp__<server>__<tool>", t)
-		}
+	harness := ""
+	if o.Plan != nil {
+		harness = o.Plan.Harness
 	}
-	if len(o.AwayCommands) == 0 {
-		return nil
-	}
-	switch {
-	case !o.Away:
-		return errors.New("--away-command declares commands for an away run: add --away")
-	case !o.AllowShellExec:
-		return errors.New("--away-command needs commands to be allowed at all: add --allow-shell-exec")
-	case !noNetworkMode(o.Sandbox):
-		return errors.New("--away-command needs a sandbox without network: --sandbox docker:image=<image>, or --sandbox required where sandbox-exec or bubblewrap runs")
-	case o.Plan != nil && (o.Plan.Harness == "gemini" || o.Plan.Harness == "opencode"):
-		return fmt.Errorf("--away-command: %s runs its commands without a sandbox", o.Plan.Harness)
-	}
-	for _, c := range o.AwayCommands {
-		if strings.TrimSpace(c) != c || c == "" || strings.ContainsAny(c, ";&|<>`$\n\r") {
-			return fmt.Errorf("--away-command %q: a declared command must be the whole command, without ; & | < > ` $ or a second line", c)
-		}
-	}
-	return nil
+	return Terms{Away: o.Away, AllowShellExec: o.AllowShellExec, Sandbox: o.Sandbox, AwayCommands: o.AwayCommands, AwayTools: o.AwayTools}.checkDeclared(harness)
 }
 
 // declaredSet is the declared commands, for an exact match.
