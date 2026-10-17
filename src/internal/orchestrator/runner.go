@@ -33,6 +33,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/b070nd/stAirCase/src/internal/governance"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/llm"
 	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/b070nd/stAirCase/src/internal/obs"
@@ -1318,14 +1319,12 @@ func (r *Runner) lastDriftHalt(caseID int64) (int64, error) {
 	if err != nil || len(runs) == 0 {
 		return 0, err
 	}
-	events, err := r.store.ListVerifiedEventLogs(runs[0].ID) // a changed chain must not lift a halt
+	h, err := history.Read(r.store, runs[0].ID) // a changed chain must not lift a halt
 	if err != nil {
-		return 0, fmt.Errorf("the audit chain of the case's last run (#%d) does not verify, so whether it was halted for drift cannot be known: %w", runs[0].ID, err)
+		return 0, fmt.Errorf("whether the case's last run was halted for drift cannot be known: %w", err)
 	}
-	for _, e := range events {
-		if e.EventType == "drift_halt" {
-			return runs[0].ID, nil
-		}
+	if h.Halted {
+		return runs[0].ID, nil
 	}
 	return 0, nil
 }

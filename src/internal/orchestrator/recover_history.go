@@ -41,7 +41,7 @@ type auditedFinalReview struct {
 }
 
 // history is what recovery reads from a run's audit events.
-type history struct {
+type auditHistory struct {
 	Bound       runBinding
 	Approvals   []auditedApproval // in the order the chain recorded them
 	LastDecided int               // the highest proposal number the chain decided, approved or not
@@ -74,8 +74,8 @@ type history struct {
 // a request may stay undecided when the run dies); proposal numbers that increase;
 // a final review is a yield_decided of its own and uses up no request; nothing is
 // decided after the certificate or a recovery.
-func auditedHistory(events []domain.RunEventLog) (history, error) {
-	var h history
+func auditedHistory(events []domain.RunEventLog) (auditHistory, error) {
+	var h auditHistory
 	bounds, lastSeq, sealed := 0, 0, ""
 	pending := map[string]int{} // requests not yet decided, by action type
 	for i, e := range events {
@@ -282,7 +282,7 @@ func isCutJournalLine(line []byte) bool {
 // approval for are what a crash leaves (written, not yet audited, so never
 // released) and are ignored only after the last decision the chain holds; anywhere
 // else they are corruption.
-func reconcile(h history, j journalRead) ([]LedgerProposal, error) {
+func reconcile(h auditHistory, j journalRead) ([]LedgerProposal, error) {
 	bySeq := map[int]journalEntry{}
 	for _, e := range j.Entries {
 		bySeq[e.Seq] = e
@@ -341,7 +341,7 @@ func matchesDigest(recorded map[string]string, derived map[string]*approvedFile)
 // finalReviewed reports whether a person's final review of exactly this approved
 // state is on the chain, and an error when the chain holds an approved final review
 // of other bytes: what was reviewed is not what the approvals derive.
-func (h history) finalReviewed(files map[string]*approvedFile) (bool, error) {
+func (h auditHistory) finalReviewed(files map[string]*approvedFile) (bool, error) {
 	reviewed := false
 	for _, f := range h.FinalReviews {
 		if !f.Approved {

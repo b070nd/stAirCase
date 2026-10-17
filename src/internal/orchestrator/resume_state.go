@@ -100,7 +100,7 @@ type usageRecord struct {
 // continuation is everything a run needs to continue from where its chain says it stood.
 type continuation struct {
 	run       *domain.Run
-	history   history
+	history   auditHistory
 	kept      []LedgerProposal // the approvals, in chain order, with their requests
 	lastSeq   int
 	segment   int // this segment's number: 2 for the first continuation
@@ -293,7 +293,7 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 }
 
 // savedPolicy is the policy the run decided under: the bytes it saved, which must be the ones the chain names.
-func (r *Runner) savedPolicy(runID int64, hist history) (*policy.Snapshot, error) {
+func (r *Runner) savedPolicy(runID int64, hist auditHistory) (*policy.Snapshot, error) {
 	if hist.PolicyDigest == "" && !hist.PolicySnapshotted {
 		return nil, notContinuable("the audit chain of run #%d names no policy it decided under", runID)
 	}
