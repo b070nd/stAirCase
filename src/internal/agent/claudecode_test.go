@@ -421,3 +421,41 @@ func claudeBinWithArgs(t *testing.T) (bin, logFile, argsFile string) {
 		filepath.Join(dir, "script.json"), logFile, argsFile, os.Args[0]), 0o755))
 	return bin, logFile, argsFile
 }
+
+// TestClaudeCode_an_MCP_tool_call_is_decided_like_a_command (ADR 0008, 1.3): a tool of an MCP server is a proposal: in an away run, a
+// tool its owner declared is allowed, any other is parked (the host is told no); a file write is decided as before.
+func TestClaudeCode_an_MCP_tool_call_is_decided_like_a_command(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "decisions.log")
+	script, err := json.Marshal([]fakeCall{
+		{Tool: "mcp__probe__ok", Input: map[string]any{"a": 1}},
+		{Tool: "mcp__probe__other", Input: map[string]any{}},
+		{Tool: "Write", Input: map[string]any{"file_path": "$WT/new.txt", "content": "hello\n"}},
+	})
+	require.NoError(t, err)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.json"), script, 0o600))
+	bin := filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(bin, fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=%s FAKE_CLAUDE_LOG=%s exec %s \"$@\"\n",
+		filepath.Join(dir, "script.json"), logFile, os.Args[0]), 0o755))
+	r := runtest.Run(t, runtest.Options{
+		Agent: &agent.ClaudeCode{Prompt: "p", Bin: bin},
+		Run:   orchestrator.RunOptions{Away: true, Agreed: "dev@example.com", Checks: []string{"true"}, AwayTools: []string{"mcp__probe__ok"}},
+	})
+	require.NoError(t, r.Err)
+	log, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	decisions := strings.Split(strings.TrimSpace(string(log)), "\n")
+	require.Len(t, decisions, 3, string(log))
+	assert.True(t, strings.HasPrefix(decisions[0], "mcp__probe__ok allow"), decisions[0])
+	assert.True(t, strings.HasPrefix(decisions[1], "mcp__probe__other deny"), decisions[1])
+	assert.True(t, strings.HasPrefix(decisions[2], "Write allow"), decisions[2])
+	var sources []string
+	for _, e := range r.Events {
+		if e.EventType == "yield_decided" {
+			var m map[string]any
+			require.NoError(t, json.Unmarshal([]byte(e.Payload), &m))
+			sources = append(sources, m["action_type"].(string)+":"+m["source"].(string))
+		}
+	}
+	assert.Equal(t, []string{"tool_call:declared", "tool_call:parked", "file_edit:policy"}, sources) // the harness's policy approves edits
+}

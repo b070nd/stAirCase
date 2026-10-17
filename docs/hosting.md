@@ -23,7 +23,10 @@ it).
 - **Its session id**, on the audit chain as the agent's session.
 - **Its instructions**, with stAirCase's Away brief after them (versioned; its digest is on the chain).
 - **Its harmless settings** (`fastMode`, `enableWorkflows`, `attribution`), under stAirCase's own.
-- **Not its MCP server.** The runner's own tools are off in hosted sessions: stAirCase admits no tool it cannot put behind its gate.
+- **Its MCP server, behind the gate.** Every call of the runner's tools is a proposal stAirCase decides: never by a policy rule; while away
+  it is parked unless you declared its exact name (`staircase host setup --away-tool mcp__<server>__<tool>`). A change made with an approved
+  tool call reaches CAL 2: the tool ran outside stAirCase's sandbox. Probed on Claude Code 2.1.236 with a stdio server
+  ([record](release-evidence/claude-code-2.1.236-mcp-tools-under-hooks.md)); an SDK-type server like Cloudroom's own is not probed yet.
 - **Not an argument stAirCase does not know.** An unknown argument could widen what the agent may do, so the session is refused, naming it.
 - **Not its working copy.** The agent works in stAirCase's run worktree; what reaches `staircase/run-N` is only what stAirCase derived from
   recorded decisions, with its certificate.
@@ -33,5 +36,4 @@ it).
 - Claude Code's hooks still decide when a runner switches its permission prompts off: probed on 2.1.236
   ([record](release-evidence/claude-code-2.1.236-hooks-under-skip-permissions.md)). A session in which stAirCase's hooks never ran keeps nothing.
 - Seen with a real agent through Cloudroom 0.1.57's own argument list ([record](release-evidence/host-cloudroom-args-claude-code-2.1.236.md)).
-- Not yet: a resumed or forked runner session (refused, naming the reason), the runner's own tools behind the gate, other agents than
-  Claude Code, and a run inside Cloudroom itself.
+- Not yet: a resumed or forked runner session (refused, naming the reason), other agents than Claude Code, and a run inside Cloudroom itself.

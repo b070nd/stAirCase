@@ -244,6 +244,7 @@ type YieldResponse struct {
 const (
 	ActionFileEdit    = "file_edit"    // create, edit or delete files
 	ActionShellExec   = "shell_exec"   // run a shell command
+	ActionToolCall    = "tool_call"    // call a tool of an MCP server (ADR 0008): it acts outside stAirCase's sandbox
 	ActionFinalReview = "final_review" // a human approves a run's whole change
 )
 

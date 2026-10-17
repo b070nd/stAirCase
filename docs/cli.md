@@ -184,12 +184,15 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
+      --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Claude Code (default: its own)
       --pass-env stringArray       Name of an environment variable Claude Code may inherit, to give it its own credential (for example CLAUDE_CODE_OAUTH_TOKEN); it, and any command it runs, can read the value. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
@@ -257,11 +260,14 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
+      --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Codex (default: its own)
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
@@ -462,12 +468,15 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
+      --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Gemini CLI (default: its own)
       --pass-env stringArray       Name of an environment variable Gemini may inherit, to give it its own credential (for example GEMINI_API_KEY); it, and any command it runs, can read the value. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
@@ -567,9 +576,12 @@ staircase host setup [flags]
 Flags:
 
 ```
-      --allow stringArray      A path (glob) hosted sessions may change; repeat for more
-      --check stringArray      A command (such as your tests) a change must pass to be approved; repeat for more
-      --pass-env stringArray   Name of an environment variable Claude Code may inherit, for its credential (for example CLAUDE_CODE_OAUTH_TOKEN); repeat for more
+      --allow stringArray          A path (glob) hosted sessions may change; repeat for more
+      --away-command stringArray   An exact command hosted sessions may run without asking (ADR 0009); needs a sandbox without network
+      --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) hosted sessions may call without asking; other tool calls are parked
+      --check stringArray          A command (such as your tests) a change must pass to be approved; repeat for more
+      --pass-env stringArray       Name of an environment variable Claude Code may inherit, for its credential (for example CLAUDE_CODE_OAUTH_TOKEN); repeat for more
+      --sandbox string             Where the checks run, as staircase run --sandbox (for example docker:image=golang:1.26-bookworm)
 ```
 
 ## staircase init
@@ -640,11 +652,14 @@ Flags:
       --approve-in-scope           Approve changes inside the --allow scope as part of the agreed task instead of one by one: 1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end
       --approve-on-evidence        Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
+      --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
+      --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for OpenCode (default: its own)
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
+      --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
@@ -1052,7 +1067,7 @@ Flags:
       --replay-llm string          File path to replay recorded LLM exchanges instead of calling the real API.
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
-      --sandbox string             Where approved shell commands run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed) or off (default "auto")
+      --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one

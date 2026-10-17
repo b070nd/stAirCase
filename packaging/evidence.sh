@@ -59,7 +59,7 @@ want go-tests && {
 golog="$out/go_tests.jsonl"
 go test ./... -count=1 -timeout=600s -json >"$golog" 2>"$out/go_tests.stderr"; gorc=$?
 # TestDrillRotateHelper is the child process of a drill, which skips unless the drill starts it: not a check that was skipped.
-# A sandbox engine's subtest (.../bwrap, .../landlock, .../sandbox-exec) that skipped because this machine has no such
+# A sandbox engine's subtest (.../bwrap, .../landlock, .../sandbox-exec, .../docker) that skipped because this machine has no such
 # engine is an optional skip unless STAIRCASE_REQUIRE_SANDBOX names that engine (then the test fails instead of
 # skipping): it is listed, and it never makes the result look complete.
 helpers='["TestDrillRotateHelper"]'
@@ -67,7 +67,7 @@ req="${STAIRCASE_REQUIRE_SANDBOX:-}"
 # A skip whose message begins "documented limit:" is a limit the project documents (a kernel that cannot do
 # what the test needs), not a missing dependency: also optional, and listed.
 known="$(jq -sc '[.[] | select(.Action == "output" and .Test != null and ((.Output // "") | test("documented limit:"))) | .Test] | unique' "$golog")"
-lib='def opt($t; $req): ((($t | test("/(bwrap|landlock|sandbox-exec)$")) and (($t | sub(".*/"; "")) as $e | ($req | split(" ") | index($e)) == null)) or ($known | index($t) != null));
+lib='def opt($t; $req): ((($t | test("/(bwrap|landlock|sandbox-exec|docker)$")) and (($t | sub(".*/"; "")) as $e | ($req | split(" ") | index($e)) == null)) or ($known | index($t) != null));
      def real($h): select(.Test != null and (.Test as $t | $h | index($t) | not) and (.Action == "pass" or .Action == "fail" or .Action == "skip"));'
 counts="$(jq -sc --argjson h "$helpers" --argjson known "$known" --arg req "$req" "$lib"'
   [.[] | real($h)] as $r

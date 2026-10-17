@@ -88,7 +88,7 @@ func hostRepo(t *testing.T) (repo, ws string, git func(args ...string) string) {
 
 // TestHost_governs_a_session_a_runner_starts (ADR 0008): run with Cloudroom's own arguments, the stand-in keeps the runner's protocol
 // (stdin and stdout pass through, nothing of stAirCase's own output in them) and its session id, and gives Claude Code stAirCase's
-// hooks and nothing that widens them: no MCP server, no other settings source, the runner's harmless settings under stAirCase's,
+// hooks and nothing that widens them: its MCP tools behind the gate, no other settings source, the runner's harmless settings under stAirCase's,
 // the Away brief after the runner's instructions. The session is an away run that ends waiting for the owner's review.
 func TestHost_governs_a_session_a_runner_starts(t *testing.T) {
 	repo, ws, git := hostRepo(t)
@@ -110,8 +110,7 @@ func TestHost_governs_a_session_a_runner_starts(t *testing.T) {
 		"--model haiku", "--session-id 11111111-2222-3333-4444-555555555555", "--strict-mcp-config", "--disallowedTools"} {
 		assert.Contains(t, args, want)
 	}
-	assert.NotContains(t, args, "--mcp-config", "the runner's MCP server is off in this slice")
-	assert.NotContains(t, args, "cloudroom")
+	assert.Contains(t, args, `--mcp-config {"mcpServers":{"cloudroom"`, "the runner's MCP server is kept: its tools are decided like commands")
 	for i, a := range report.Args {
 		if a == "--setting-sources" {
 			assert.Equal(t, "", report.Args[i+1], "no user or project settings")

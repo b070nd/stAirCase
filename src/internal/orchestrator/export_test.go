@@ -120,3 +120,10 @@ func ExportedRunContext(events []domain.RunEventLog) (policy, principal, signatu
 	}
 	return h.PolicyDigest, principal, signature, err
 }
+
+// SetNoNetworkModeForTest replaces the check that a sandbox mode cuts the network; restore puts the real one back.
+func SetNoNetworkModeForTest(f func(string) bool) (restore func()) {
+	old := noNetworkMode
+	noNetworkMode = f
+	return func() { noNetworkMode = old }
+}

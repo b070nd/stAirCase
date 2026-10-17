@@ -14,18 +14,21 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
 
 var (
-	sessionAllow      []string
-	sessionYes        bool
-	sessionInScope    bool         // --approve-in-scope
-	sessionOnEvidence bool         // --approve-on-evidence
-	sessionAway       bool         // --away (ADR 0006)
-	sessionReview     *plan.Review // set by staircase review
+	sessionAllow        []string
+	sessionYes          bool
+	sessionInScope      bool         // --approve-in-scope
+	sessionOnEvidence   bool         // --approve-on-evidence
+	sessionAway         bool         // --away (ADR 0006)
+	sessionAwayCommands []string     // --away-command (ADR 0009)
+	sessionAwayTools    []string     // --away-tool (ADR 0008)
+	sessionReview       *plan.Review // set by staircase review
 )
 
 var claudeCmd = &cobra.Command{
@@ -123,6 +126,8 @@ func init() {
 	inScopeFlag(codexCmd)
 	awayFlag(claudeCmd)
 	awayFlag(codexCmd)
+	sandboxFlag(claudeCmd)
+	sandboxFlag(codexCmd)
 	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
 	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
@@ -177,12 +182,16 @@ func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
 	validatorFlag(cmd)
 	inScopeFlag(cmd)
 	awayFlag(cmd)
+	sandboxFlag(cmd)
 	rootCmd.AddCommand(cmd)
 }
 
 // session is a governed run of harness in the current repository, with
 // nothing to set up first.
 func session(harness, name, command string, args []string) error {
+	if err := sandbox.ParseMode(runSandbox); err != nil {
+		return fmt.Errorf("--sandbox: %w", err)
+	}
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
@@ -467,6 +476,11 @@ func awayFlag(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&sessionAway, "away", false,
 		"Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that "+
 			"needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow")
+	cmd.Flags().StringArrayVar(&sessionAwayTools, "away-tool", nil,
+		"An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked")
+	cmd.Flags().StringArrayVar(&sessionAwayCommands, "away-command", nil,
+		"An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, "+
+			"--allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root")
 }
 
 // inScopeFlag adds --approve-in-scope and --approve-on-evidence to cmd.
