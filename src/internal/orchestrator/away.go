@@ -249,7 +249,7 @@ func checkAwayCommands(o RunOptions) error {
 		return errors.New("--away-command declares commands for an away run: add --away")
 	case !o.AllowShellExec:
 		return errors.New("--away-command needs commands to be allowed at all: add --allow-shell-exec")
-	case !sandbox.NoNetworkMode(o.Sandbox):
+	case !noNetworkMode(o.Sandbox):
 		return errors.New("--away-command needs a sandbox without network: --sandbox docker:image=<image>, or --sandbox required where sandbox-exec or bubblewrap runs")
 	case o.Plan != nil && (o.Plan.Harness == "gemini" || o.Plan.Harness == "opencode"):
 		return fmt.Errorf("--away-command: %s runs its commands without a sandbox", o.Plan.Harness)
@@ -275,3 +275,6 @@ func declaredSet(commands []string) map[string]bool {
 func declaredDigest(commands []string) string {
 	return sha256Hex([]byte(strings.Join(slices.Sorted(slices.Values(commands)), "\n")))
 }
+
+// noNetworkMode is sandbox.NoNetworkMode; a test replaces it, as the decisions do not depend on the machine's sandboxes.
+var noNetworkMode = sandbox.NoNetworkMode

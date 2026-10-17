@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// declaredOpts are an away run's options with declared commands. The decisions do not depend on the machine: "required" counts as a
+// sandbox without network here, whatever this machine has (the real check is sandbox.NoNetworkMode, tested in its package).
 func declaredOpts(t *testing.T, commands ...string) orchestrator.RunOptions {
-	if !sandbox.NoNetworkSandbox() {
-		t.Skip("this machine has no sandbox without network (sandbox-exec or bwrap)")
-	}
+	t.Cleanup(orchestrator.SetNoNetworkModeForTest(func(mode string) bool { return mode == sandbox.Required }))
 	opts := awayOpts()
 	opts.AllowShellExec, opts.Sandbox, opts.AwayCommands = true, sandbox.Required, commands
 	return opts

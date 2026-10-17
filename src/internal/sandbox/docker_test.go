@@ -44,6 +44,9 @@ func needDocker(t *testing.T) {
 		t.Skip("integration test - skipped in -short mode")
 	}
 	if err := exec.Command("docker", "image", "inspect", testImage).Run(); err != nil {
+		if os.Getenv("STAIRCASE_REQUIRE_SANDBOX") != "" && strings.Contains(" "+os.Getenv("STAIRCASE_REQUIRE_SANDBOX")+" ", " docker ") {
+			t.Fatalf("docker is required here, and the image %s is not available: %v", testImage, err)
+		}
 		t.Skipf("docker or the image %s is not available: %v", testImage, err)
 	}
 }
@@ -52,6 +55,10 @@ func needDocker(t *testing.T) {
 // container: it writes in the worktree (as the user, so the files are the user's), nowhere else; it has no network; it cannot see
 // the home folder at all; and the memory limit holds.
 func TestDocker_a_command_runs_in_a_container_that_can_write_only_the_worktree(t *testing.T) {
+	t.Run("docker", testDockerContained) // an engine's subtest: optional where the machine has no docker image (packaging/evidence.sh)
+}
+
+func testDockerContained(t *testing.T) {
 	needDocker(t)
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	home, _ := os.UserHomeDir()
@@ -94,6 +101,10 @@ cat /sys/fs/cgroup/memory.max`
 
 // TestDocker_a_cancelled_command_leaves_no_container: killing the docker client does not stop its container, so cleanup does.
 func TestDocker_a_cancelled_command_leaves_no_container(t *testing.T) {
+	t.Run("docker", testDockerCancelled)
+}
+
+func testDockerCancelled(t *testing.T) {
 	needDocker(t)
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

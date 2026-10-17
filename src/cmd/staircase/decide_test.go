@@ -207,6 +207,10 @@ func TestDecide_P_prototypes_a_parked_change_and_can_adopt_it(t *testing.T) {
 // TestSession_away_checks_run_in_a_docker_sandbox: an away session's checks are its evidence; with --sandbox docker:image=... they run
 // in a container (recorded as sandboxed), and the change still waits for review. A docker mode without an image is refused first.
 func TestSession_away_checks_run_in_a_docker_sandbox(t *testing.T) {
+	t.Run("docker", testSessionAwayDocker) // an engine's subtest: optional where the machine has no docker image (packaging/evidence.sh)
+}
+
+func testSessionAwayDocker(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test - skipped in -short mode")
 	}

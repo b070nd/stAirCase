@@ -127,6 +127,15 @@ sandbox_skips() {
   [ "$(field '.steps[] | select(.name == "go tests") | .counts.skipped')" = 1 ]
 }
 
+@test "the docker engine is an engine too: optional where the machine has no image, a counted skip where it is required" {
+  sandbox_skips 'echo "{\"Action\":\"skip\",\"Test\":\"TestDocker_a_cancelled_command_leaves_no_container/docker\"}"'
+  evidence go-tests
+  [ "$(field '.steps[] | select(.name == "go tests") | .status')" = passed ]
+  [ "$(field '.steps[] | select(.name == "go tests") | .counts.optional_skipped')" = 2 ]
+  STAIRCASE_REQUIRE_SANDBOX=docker evidence go-tests
+  [ "$(field '.steps[] | select(.name == "go tests") | .status')" = skipped ]
+}
+
 @test "an ordinary skipped test counts against the run" {
   sandbox_skips 'echo "{\"Action\":\"skip\",\"Test\":\"TestNeedsSomething\"}"'
   evidence go-tests
