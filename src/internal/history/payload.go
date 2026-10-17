@@ -2,6 +2,7 @@ package history
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
@@ -75,16 +76,36 @@ type Decided struct {
 	Adopts        int               `json:"adopts,omitempty"` // the parked proposal an owner's approval takes over (ADR 0007)
 	DecideMS      *int64            `json:"decide_ms,omitempty"`
 	Lines         int               `json:"lines,omitempty"`
-	// A person's signature, when they signed (signed.go).
-	Signature        string `json:"signature,omitempty"`
-	SignedBy         string `json:"signed_by,omitempty"`
-	Key              string `json:"key,omitempty"`
-	Trusted          bool   `json:"trusted,omitempty"`
-	SignedText       string `json:"signed_text,omitempty"`
-	SignatureRefused string `json:"signature_refused,omitempty"`
+	Signed
 	// Varying by source, kept as written (ADR 0010, Q8).
 	Evidence       json.RawMessage `json:"evidence,omitempty"`
 	ValidatorState json.RawMessage `json:"validator_state,omitempty"`
+}
+
+// Signed is what a decision records about a person's signature on it (signed.go): who signed, with which key, the text, and
+// whether the signer is trusted; or why the signature was refused.
+type Signed struct {
+	Signature        string `json:"signature,omitempty"`
+	SignedBy         string `json:"signed_by,omitempty"`
+	Key              string `json:"key,omitempty"`
+	Trusted          *bool  `json:"trusted,omitempty"` // present whenever a signature is: an untrusted one says so
+	SignedText       string `json:"signed_text,omitempty"`
+	SignatureRefused string `json:"signature_refused,omitempty"`
+}
+
+// Encode is the payload of an event as it is put on the chain: v's fields and the event's type, keys in order.
+func Encode(event string, v any) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(b, &fields); err != nil {
+		return "", fmt.Errorf("the payload of %s is not a JSON object: %w", event, err)
+	}
+	fields["type"], _ = json.Marshal(event)
+	b, err = json.Marshal(fields)
+	return string(b), err
 }
 
 // Resumed is run_resumed: a continuation began (ADR 0005).

@@ -1,7 +1,7 @@
 # ADR 0010: One replay of the audit chain
 
-- Status: accepted (2026-10-17). The owner settled every question of the design session (Q1 to Q23) as proposed. It is built in
-  steps on one branch, each step with `make check` green.
+- Status: accepted (2026-10-17), and built (2026-10-18). The owner settled every question of the design session (Q1 to Q23) as
+  proposed. It was built in steps on one branch, each step with `make check` green.
 - Related: ADR 0004 (audit chain version 2), ADR 0005 (durable continuation, section 1, which this ADR carries out), ADR 0006 (Away
   mode), ADR 0007 (prototype bridging), ADR 0009 (declared commands).
 
@@ -85,9 +85,11 @@ run and skip it rather than miscount it. The rules:
 ### 4. Delivery (Q6, Q11, Q12)
 
 1. `GLOSSARY.md`, and the package with table tests for every rule and every field.
-2. `audit export` and `lastDriftHalt` read through the package.
+2. `lastDriftHalt` reads through the package. As built, `audit export` keeps its verified read of the raw entries, because
+   exporting the entries themselves is its job (like the display commands).
 3. Recovery and resume, with the rule changes above.
-4. Review, decide, prototype and adopt, with the pairing fix.
+4. Review, decide, prototype and adopt, with the pairing fix. As built, steps 3 and 4 are one commit, because the four share
+   `reconcile` and the derivation of the approved state.
 5. Certify.
 6. The CLI readers (`lessons`, `policy test`) and `policysim`.
 7. The writers, with `request_entry`, `terms_sha256` and recovery's final review in the live shape.

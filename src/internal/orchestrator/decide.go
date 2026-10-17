@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/monitor"
 	"github.com/b070nd/stAirCase/src/internal/policy"
 )
@@ -38,7 +39,7 @@ type deciders struct {
 	askHuman      func(req domain.YieldRequest, signText string) domain.YieldResponse // signText: what a person signs, up to the verb
 	display       *monitor.Display
 	tracker       *monitor.Tracker
-	audit         func(event string, fields map[string]any) error
+	audit         func(event string, fields any) error
 
 	// What ends a decision: waitCtx the run's cancellation and its time limit (for every
 	// decision in the loop, automatic or a person's), ctx cancellation alone (for the
@@ -74,7 +75,7 @@ type ruling struct {
 
 	decideMS  int64          // a person's time to decide
 	lines     int            // lines the change adds or removes
-	signed    map[string]any // the signature on a person's decision, for the audit record
+	signed    history.Signed // the signature on a person's decision, for the audit record
 	evidence  map[string]any // what an evidence-based approval rests on, for the audit record
 	parkedWhy string         // why a proposal was parked while away: what a person would have had to decide
 }
@@ -244,15 +245,14 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 	start := time.Now()
 	resp, signed := d.sign.ask(orBackground(d.ctx), final, d.askHuman)
 	decided := yieldDecided(d.total+1, "operator", final, resp, baseSHA, d.approvals.files, "")
-	maps.Copy(decided, signed)
-	decided["decide_ms"] = time.Since(start).Milliseconds()
-	lines := 0
+	decided.Signed = signed
+	ms := time.Since(start).Milliseconds()
+	decided.DecideMS = &ms
 	for p, f := range d.approvals.files {
 		base, _ := d.approvals.fromBase(p)
-		lines += changedLines(map[string]*approvedFile{p: base}, map[string]*approvedFile{p: f})
+		decided.Lines += changedLines(map[string]*approvedFile{p: base}, map[string]*approvedFile{p: f})
 	}
-	decided["lines"] = lines
-	decided["files"] = digest(d.approvals.files) // what was offered, approved or not
+	decided.Files = digest(d.approvals.files) // what was offered, approved or not
 	if err := d.audit("yield_decided", decided); err != nil {
 		return false, fmt.Errorf("audit final review: %w", err)
 	}
@@ -261,26 +261,15 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 
 // yieldDecided is the audit record of a decision: the request's hash, and for
 // an approved change the digest of exactly the approved state.
-func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.YieldResponse, baseSHA string, approved map[string]*approvedFile, drift string) map[string]any {
+func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.YieldResponse, baseSHA string, approved map[string]*approvedFile, drift string) history.Decided {
 	reqJSON, _ := json.Marshal(req)
-	fields := map[string]any{"seq": seq, "source": source, "agent": req.AgentName, "action_type": req.ActionType,
-		"approved": resp.Approved, "feedback": resp.Feedback, "request_sha256": sha256Hex(reqJSON), "base_sha": baseSHA}
+	d := history.Decided{Seq: seq, Source: source, Agent: req.AgentName, ActionType: req.ActionType, Approved: resp.Approved,
+		Feedback: resp.Feedback, RequestSHA256: sha256Hex(reqJSON), BaseSHA: baseSHA, Drift: drift, Guard: req.Guard,
+		ReviewAfter: req.ReviewAfter, Sandboxed: req.ReviewAfter && req.Sandboxed}
 	if resp.Approved && approved != nil {
-		fields["files"] = digest(approved)
+		d.Files = digest(approved)
 	}
-	if drift != "" {
-		fields["drift"] = drift
-	}
-	if req.ReviewAfter {
-		fields["review_after"] = true
-		if req.Sandboxed {
-			fields["sandboxed"] = true
-		}
-	}
-	if req.Guard != "" {
-		fields["guard"] = req.Guard
-	}
-	return fields
+	return d
 }
 
 // changedLines counts the lines a change adds or removes, file by file.

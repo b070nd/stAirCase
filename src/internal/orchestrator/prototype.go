@@ -72,7 +72,11 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 		return nil, err
 	}
 	var opts savedOptions
-	if b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID)); err != nil || json.Unmarshal(b, &opts) != nil || len(opts.Checks) == 0 {
+	b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID))
+	if err == nil && !termsBound(hist, b) {
+		return nil, fmt.Errorf("the options saved for run #%d are not the ones the audit chain names", runID)
+	}
+	if err != nil || json.Unmarshal(b, &opts) != nil || len(opts.Checks) == 0 {
 		return nil, fmt.Errorf("the checks run #%d was started with cannot be read", runID)
 	}
 	a, cleanup, err := deriveApproved(repo, hist.Bound.BaseSHA, kept, hist.Approvals())
@@ -236,20 +240,19 @@ func (r *Runner) Adopt(ctx context.Context, runID int64, seq int, shown string) 
 func (r *Runner) recordAdoption(runID int64, st *approvedNow, parked domain.YieldRequest, seq int, next map[string]*approvedFile) error {
 	req := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: domain.ActionFileEdit, ProposedEdits: parked.ProposedEdits,
 		ReasoningTrace: fmt.Sprintf("the owner adopted parked proposal %d after a prototype", seq), Adopts: seq}
-	fields := map[string]any{}
-	b, _ := json.Marshal(req)
-	if err := json.Unmarshal(b, &fields); err != nil {
-		return err
-	}
-	if err := r.audit(runID, "yield_request", fields); err != nil {
+	if err := r.audit(runID, "yield_request", req); err != nil {
 		return fmt.Errorf("record the adopted request: %w", err)
+	}
+	entry, err := r.store.GetLastEventHash(runID) // the run's lock is held: nothing else writes in between
+	if err != nil {
+		return err
 	}
 	n := st.hist.LastDecided + 1
 	if err := r.journalOnce(runID, req, n); err != nil {
 		return err
 	}
 	decided := yieldDecided(n, "operator", req, domain.Decide(true, "adopted by the owner after a prototype"), st.hist.Bound.BaseSHA, next, "")
-	decided["paths"], decided["adopts"] = slices.Sorted(maps.Keys(next)), seq
+	decided.RequestEntry, decided.Paths, decided.Adopts = entry, slices.Sorted(maps.Keys(next)), seq
 	if err := r.audit(runID, "yield_decided", decided); err != nil {
 		return fmt.Errorf("record the owner's approval: %w", err)
 	}

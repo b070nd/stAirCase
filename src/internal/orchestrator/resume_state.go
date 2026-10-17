@@ -210,6 +210,8 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	// The terms the run started under, saved when it started.
 	if b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID)); err != nil {
 		return nil, notContinuable("run #%d saved no options when it started (it began before runs could be continued): recover it instead", runID)
+	} else if !termsBound(hist, b) {
+		return nil, notContinuable("the options saved for run #%d are not the ones the audit chain names", runID)
 	} else if json.Unmarshal(b, &c.opts) != nil || c.opts.Version != savedOptionsVersion {
 		return nil, notContinuable("the options saved for run #%d are unreadable", runID)
 	}
@@ -226,6 +228,12 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// termsBound reports whether saved are the options the run bound (ADR 0010, Q22). A run bound before the digest was recorded is
+// read as before.
+func termsBound(h history.History, saved []byte) bool {
+	return h.Bound.TermsSHA256 == "" || h.Bound.TermsSHA256 == sha256Hex(saved)
 }
 
 // savedPolicy is the policy the run decided under: the bytes it saved, which must be the ones the chain names.
