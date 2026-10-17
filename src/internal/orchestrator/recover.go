@@ -254,8 +254,9 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		reqJSON, _ := json.Marshal(req)
-		if err := r.audit(runID, "recovery_final_review", map[string]any{"approved": resp.Approved, "feedback": resp.Feedback, "request_sha256": sha256Hex(reqJSON)}); err != nil {
+		decided := yieldDecided(hist.LastDecided+1, "operator", req, resp, bound.BaseSHA, nil, "") // as a finished run's (ADR 0010, Q21)
+		decided.Files = digest(a.files)                                                            // what was put to the person, approved or not
+		if err := r.audit(runID, "yield_decided", decided); err != nil {
 			return fmt.Errorf("record the final review: %w", err)
 		}
 		if !resp.Approved {

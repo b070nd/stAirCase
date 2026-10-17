@@ -32,6 +32,8 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 			"trusted":true,"signed_text":"approve"}`, &Decided{}},
 		"yield_decided on evidence": {`{"seq":4,"source":"evidence","agent":"coder","action_type":"file_edit","approved":false,"feedback":"",
 			"request_sha256":"r","base_sha":"b","unconsumed":true,"evidence":{"checks":[{"command":"go test"}]},"validator_state":{"approvals":1}}`, &Decided{}},
+		"yield_decided signed by an untrusted key": {`{"seq":6,"source":"operator","agent":"coder","action_type":"file_edit","approved":true,
+			"feedback":"","request_sha256":"r","base_sha":"b","signature":"s","signed_by":"x","key":"SHA256:k","trusted":false,"signed_text":"t"}`, &Decided{}},
 		"yield_decided parked": {`{"seq":5,"source":"parked","agent":"coder","action_type":"shell_exec","approved":false,"feedback":"parked",
 			"request_sha256":"r","base_sha":"b","parked_why":"it needs a person's decision","signature_refused":"unsigned"}`, &Decided{}},
 		"run_resumed": {`{"segment":2,"generation":"g","approvals":[{"seq":1,"source":"policy","request_sha256":"r"}],"next_seq":2,"policy":"p",
@@ -59,4 +61,17 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 			assert.JSONEq(t, tc.written, string(again), "the type writes the keys it read")
 		})
 	}
+}
+
+// TestEncode: a payload is its value's keys and the event's type, in key order, as runs have always written them; a value
+// that is not an object is refused.
+func TestEncode(t *testing.T) {
+	got, err := Encode("yield_decided", map[string]any{"seq": 1, "approved": true})
+	require.NoError(t, err)
+	assert.Equal(t, `{"approved":true,"seq":1,"type":"yield_decided"}`, got)
+	got, err = Encode("policy_snapshot", PolicySnapshot{Digest: "d", Signed: true})
+	require.NoError(t, err)
+	assert.Equal(t, `{"digest":"d","signed":true,"type":"policy_snapshot"}`, got)
+	_, err = Encode("x", []int{1})
+	assert.Error(t, err)
 }

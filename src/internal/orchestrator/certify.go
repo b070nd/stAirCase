@@ -115,7 +115,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		}
 		if d.Source == "operator" && d.Signature != "" {
 			signed.Decisions++
-			if d.Trusted && !slices.Contains(signed.Signers, d.SignedBy) {
+			if d.Trusted != nil && *d.Trusted && !slices.Contains(signed.Signers, d.SignedBy) {
 				signed.Signers = append(signed.Signers, d.SignedBy)
 			}
 		}
