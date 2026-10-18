@@ -463,7 +463,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	} else {
 		// The terms this run starts under, saved for a continuation (ADR 0005): its options and its plan now, its policy
 		// when it is read (below). A run that cannot save them still runs; it simply cannot be continued, only recovered.
-		terms, _ := json.Marshal(optionsToSave(opts))
+		terms, _ := json.Marshal(savedTerms{termsVersion, opts.Terms})
 		if err := saveRunFile(savedOptionsPath(r.wsDir, run.ID), terms); err != nil {
 			obs.Log.Warn("save run options: the run cannot be continued", "err", err)
 		}

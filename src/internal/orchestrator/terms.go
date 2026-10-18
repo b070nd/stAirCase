@@ -1,11 +1,14 @@
 package orchestrator
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
@@ -45,6 +48,32 @@ type Terms struct {
 	// AwayCommands (ADR 0009) and AwayTools (ADR 0008) are what an away run may run or call without asking.
 	AwayCommands []string `json:"away_commands,omitempty"`
 	AwayTools    []string `json:"away_tools,omitempty"`
+}
+
+// termsVersion is the version of the saved form of Terms (options.json).
+const termsVersion = 1
+
+// savedTerms is the saved form: the terms and their version.
+type savedTerms struct {
+	Version int `json:"version"`
+	Terms
+}
+
+// loadTerms reads the terms run runID saved when it started. It refuses bytes the chain did not bind (a run bound before the
+// digest was recorded is read as before), another version, and terms no run can decide under. No saved terms is os.ErrNotExist.
+func loadTerms(wsDir string, runID int64, h history.History, harness string) (Terms, error) {
+	b, err := os.ReadFile(savedOptionsPath(wsDir, runID))
+	if err != nil {
+		return Terms{}, err
+	}
+	if !termsBound(h, b) {
+		return Terms{}, errors.New("the options it saved are not the ones the audit chain names")
+	}
+	var s savedTerms
+	if json.Unmarshal(b, &s) != nil || s.Version != termsVersion {
+		return Terms{}, errors.New("the options it saved are unreadable")
+	}
+	return NewTerms(s.Terms, harness)
 }
 
 // NewTerms normalizes t and refuses what no run can decide under, judged from the terms alone and the harness that carries

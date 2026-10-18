@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/barrier"
 	"github.com/b070nd/stAirCase/src/internal/certificate"
@@ -38,7 +37,7 @@ type approvedNow struct {
 	a       *approvals
 	repo    *GitRepo
 	hist    history.History
-	opts    savedOptions
+	terms   Terms
 	cleanup func()
 }
 
@@ -71,24 +70,23 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 	if err != nil {
 		return nil, err
 	}
-	var opts savedOptions
-	b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID))
-	if err == nil && !termsBound(hist, b) {
-		return nil, fmt.Errorf("the options saved for run #%d are not the ones the audit chain names", runID)
+	terms, err := loadTerms(r.wsDir, runID, hist, hist.Bound.Harness)
+	if err != nil {
+		return nil, fmt.Errorf("the terms run #%d was started with: %w", runID, err)
 	}
-	if err != nil || json.Unmarshal(b, &opts) != nil || len(opts.Checks) == 0 {
-		return nil, fmt.Errorf("the checks run #%d was started with cannot be read", runID)
+	if len(terms.Checks) == 0 {
+		return nil, fmt.Errorf("run #%d was started with no checks to run", runID)
 	}
 	a, cleanup, err := deriveApproved(repo, hist.Bound.BaseSHA, kept, hist.Approvals())
 	if err != nil {
 		return nil, err
 	}
 	a.repo = repo // checkouts for the checks are made from the run's repository
-	return &approvedNow{a: a, repo: repo, hist: hist, opts: opts, cleanup: cleanup}, nil
+	return &approvedNow{a: a, repo: repo, hist: hist, terms: terms, cleanup: cleanup}, nil
 }
 
 func (s *approvedNow) gate(wsDir string) *evidenceGate {
-	return &evidenceGate{approvals: s.a, checks: s.opts.Checks, sandbox: s.opts.Sandbox, wsDir: wsDir, timeout: time.Duration(s.opts.CheckTimeoutNS)}
+	return &evidenceGate{approvals: s.a, checks: s.terms.Checks, sandbox: s.terms.Sandbox, wsDir: wsDir, timeout: s.terms.CheckTimeout}
 }
 
 // parkedRequest is the request of the parked proposal number seq, as the chain holds it (what the owner was shown).

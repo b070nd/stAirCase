@@ -43,8 +43,8 @@ func (r *Runner) Resume(ctx context.Context, runID int64, opts ResumeOptions) er
 	if err != nil {
 		return err
 	}
-	ro := cont.opts.apply(RunOptions{Agent: opts.Agent, ApprovalPort: opts.ApprovalPort, ApprovalToken: opts.ApprovalToken,
-		Debug: opts.Debug, AckDrift: opts.AckDrift, SkipGates: true})
+	ro := RunOptions{Terms: cont.terms, Agent: opts.Agent, ApprovalPort: opts.ApprovalPort, ApprovalToken: opts.ApprovalToken,
+		Debug: opts.Debug, AckDrift: opts.AckDrift, SkipGates: true} // a continuation decides under the terms the run saved
 	if cont.history.Bound.PlanDigest != "" {
 		ro.Plan = &cont.plan
 	}
