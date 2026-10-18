@@ -12,9 +12,9 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/plan"
-	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -189,25 +189,18 @@ func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
 // session is a governed run of harness in the current repository, with
 // nothing to set up first.
 func session(harness, name, command string, args []string) error {
-	if err := sandbox.ParseMode(runSandbox); err != nil {
-		return fmt.Errorf("--sandbox: %w", err)
-	}
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
 	}
-	if sessionAway {
-		if len(runChecks) == 0 {
-			return fmt.Errorf("--away needs at least one --check: while you are away, a change is approved only when your checks pass on it")
-		}
-		sessionOnEvidence = true
+	// The terms are judged before anything is asked or made. Who agrees to the task is asked below, so it stands in here.
+	t := flagTerms()
+	t.Agreed = "the person asked below"
+	t, err := orchestrator.NewTerms(t, harness)
+	if err != nil {
+		return err
 	}
-	if sessionOnEvidence {
-		sessionInScope = true // approving on evidence is approving the task, with checks and reviewers instead of samples
-		if len(runChecks) == 0 && len(runValidator) == 0 {
-			return fmt.Errorf("--approve-on-evidence needs evidence to decide on: name a --check (your tests) and/or a --validator")
-		}
-	}
+	sessionInScope, sessionOnEvidence = t.ApproveInScope, t.ApproveOnEvidence
 	if sessionInScope && len(sessionAllow) == 0 {
 		return fmt.Errorf("--approve-in-scope and --approve-on-evidence need the task's scope: name the paths it may change with --allow")
 	}

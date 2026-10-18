@@ -70,6 +70,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **Options no run can decide under are refused before the run exists.** For example, `--away` without a check, or a declared
+  command that is not a whole command.
+  - Before: the refusal came after the run record, run branch and worktree were made, and left them behind.
+  - Now: the terms are judged first, by the same rule for the CLI, the runner, resume and Prototype.
+  - Approving in scope now needs a task someone agreed to. Before, such a run quietly asked a person about everything.
+  - `staircase host setup` refuses a profile no hosted session could run under, instead of the first session failing.
+  - Prototype checks the version of the saved options, as resume does.
+
 - **Readers of the chain disagreed, and some were wrong.** Found when the readers were compared for ADR 0010:
   - Prototype and adoption paired a parked decision with the most recent request. With interleaved requests that is another proposal's
     edits.

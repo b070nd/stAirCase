@@ -125,8 +125,8 @@ func sandboxFlag(cmd *cobra.Command) {
 
 // runCase runs a compiled case with the run flags.
 func runCase(caseID int64) error {
-	if err := sandbox.ParseMode(runSandbox); err != nil {
-		return fmt.Errorf("--sandbox: %w", err)
+	if _, err := orchestrator.NewTerms(flagTerms(), ""); err != nil { // the run judges them again, with its plan's harness
+		return err
 	}
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
@@ -208,26 +208,31 @@ func runCase(caseID int64) error {
 		AckDrift:      runAckDrift,
 		Agent:         ag,
 		Plan:          &pl,
-		Terms: orchestrator.Terms{
-			Agreed:                 runAgreedBy,
-			AllowShellExec:         runAllowShellExec,
-			Sandbox:                runSandbox,
-			ApproveInScope:         sessionInScope,
-			ApproveOnEvidence:      sessionOnEvidence,
-			Away:                   sessionAway,
-			AwayCommands:           sessionAwayCommands,
-			AwayTools:              sessionAwayTools,
-			SignalModel:            runSignal,
-			SignalURL:              runSignalURL,
-			ValidatorModels:        runValidator,
-			SignKey:                runSignKey,
-			SignAs:                 orDefaultStr(runSignAs, gitConfig("user.email")),
-			RequireSignedApprovals: runRequireSigned,
-			RequireEvidence:        runRequireEvidence,
-			Checks:                 runChecks,
-			CheckTimeout:           runCheckTimeout,
-		},
+		Terms:         flagTerms(),
 	})
+}
+
+// flagTerms are the run's terms as its flags give them; NewTerms judges them.
+func flagTerms() orchestrator.Terms {
+	return orchestrator.Terms{
+		Agreed:                 runAgreedBy,
+		AllowShellExec:         runAllowShellExec,
+		Sandbox:                runSandbox,
+		ApproveInScope:         sessionInScope,
+		ApproveOnEvidence:      sessionOnEvidence,
+		Away:                   sessionAway,
+		AwayCommands:           sessionAwayCommands,
+		AwayTools:              sessionAwayTools,
+		SignalModel:            runSignal,
+		SignalURL:              runSignalURL,
+		ValidatorModels:        runValidator,
+		SignKey:                runSignKey,
+		SignAs:                 orDefaultStr(runSignAs, gitConfig("user.email")),
+		RequireSignedApprovals: runRequireSigned,
+		RequireEvidence:        runRequireEvidence,
+		Checks:                 runChecks,
+		CheckTimeout:           runCheckTimeout,
+	}
 }
 
 // checkFlag adds --check to cmd.

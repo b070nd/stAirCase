@@ -13,6 +13,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -150,4 +151,18 @@ func TestHost_refuses_what_it_does_not_know(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(ws, "host.json")))
 	assert.ErrorContains(t, hostClaude(cloudroomArgs("s"), strings.NewReader(""), &out), "host setup")
 	assert.Empty(t, out.String(), "nothing reaches the runner's stdout")
+}
+
+// TestHost_setup_refuses_terms_no_session_can_run_under: the profile is the terms of every hosted session, judged when it is
+// set up rather than when a runner first starts a session; nothing is written for a refused one.
+func TestHost_setup_refuses_terms_no_session_can_run_under(t *testing.T) {
+	ws := t.TempDir()
+	viper.Set("STAIRCASE_DIR", ws)
+	t.Cleanup(func() { viper.Set("STAIRCASE_DIR", "") })
+	hostSetupAllow, hostSetupChecks, hostSetupAwayTools = []string{"src/**"}, []string{"go test ./..."}, []string{"mcp__probe__*"}
+	t.Cleanup(func() { hostSetupAllow, hostSetupChecks, hostSetupAwayTools = nil, nil, nil })
+	err := hostSetupCmd.RunE(hostSetupCmd, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly")
+	assert.NoFileExists(t, filepath.Join(ws, "host.json"))
 }

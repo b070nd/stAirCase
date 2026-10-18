@@ -54,5 +54,14 @@ that passed on that tree (`awaiting_review`, resting on `phase_checked`). It is 
 adopted proposals, the offered review, the continuation's counters, and what sealed it (`internal/history`, ADR 0010). A chain that
 no run can have written has no history. It is refused with the entry that breaks the grammar.
 
-**Terms**: what a run was started under and a continuation must keep: its saved options, plan and policy, each checked against
-the chain.
+**Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
+- who agreed to the task;
+- how changes are approved;
+- where commands and checks run, and the checks;
+- what signs;
+- what an away run may do without asking.
+
+They are plain data (`orchestrator.Terms`), made only through `NewTerms`, which normalizes them once and refuses what no run can
+decide under. A run saves them as its `options.json`, bound by digest on `run_bound`. A continuation also keeps the saved plan and
+policy, each checked against the chain the same way. Where a run listens, how it is shown and which agent carries it out are not
+terms.

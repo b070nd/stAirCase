@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -47,8 +48,11 @@ var hostSetupCmd = &cobra.Command{
 		if len(hostSetupAllow) == 0 || len(hostSetupChecks) == 0 {
 			return errors.New("hosted sessions are away runs: name the scope with --allow and at least one --check")
 		}
-		if err := sandbox.ParseMode(orDefaultStr(hostSetupSandbox, sandbox.Auto)); err != nil {
-			return fmt.Errorf("--sandbox: %w", err)
+		// a hosted session is an away run under these terms: judged now, not when the runner first starts one
+		if _, err := orchestrator.NewTerms(orchestrator.Terms{Agreed: "the runner's session", Away: true, Checks: hostSetupChecks,
+			Sandbox: hostSetupSandbox, AllowShellExec: len(hostSetupAwayCommands) > 0, AwayCommands: hostSetupAwayCommands,
+			AwayTools: hostSetupAwayTools}, "claude-code"); err != nil {
+			return err
 		}
 		p := hostProfile{Allow: hostSetupAllow, Checks: hostSetupChecks, PassEnv: hostSetupPassEnv, Sandbox: hostSetupSandbox, AwayCommands: hostSetupAwayCommands, AwayTools: hostSetupAwayTools}
 		b, _ := json.MarshalIndent(p, "", "  ")
