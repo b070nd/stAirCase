@@ -2,14 +2,12 @@ package orchestrator
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +24,6 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/b070nd/stAirCase/src/internal/signal"
-	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/b070nd/stAirCase/src/internal/wslock"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,6 +38,7 @@ type runState struct {
 	caseID int64
 	opts   RunOptions
 	cont   *continuation // nil for a new run
+	seg    segment       // what this segment does that another would not
 
 	harness, signers string
 
@@ -109,7 +107,7 @@ func (s *runState) cleanup() {
 
 // prepare loads what the run starts from and checks that it may start, making nothing. A dry run stops here (done).
 func (s *runState) prepare() (done bool, err error) {
-	r, opts, cont, caseID := s.r, s.opts, s.cont, s.caseID
+	r, opts, caseID := s.r, s.opts, s.caseID
 	// ── Load case + project ───────────────────────────────────────────────────
 	if s.caseRec, err = r.store.GetCase(caseID); err != nil {
 		return false, fmt.Errorf("load case: %w", err)
@@ -132,7 +130,7 @@ func (s *runState) prepare() (done bool, err error) {
 	}
 
 	// ── Optional reconcile ────────────────────────────────────────────────────
-	if opts.Reconcile && s.project.SourcePath != "" && cont == nil {
+	if opts.Reconcile && s.project.SourcePath != "" && s.seg.first() {
 		result, err := r.Reconcile(s.ctx, caseID, s.project.SourcePath, true)
 		if err != nil {
 			obs.Log.Warn("reconcile", "err", err)
@@ -146,16 +144,8 @@ func (s *runState) prepare() (done bool, err error) {
 	// The run works in its own git worktree at the current HEAD commit; the
 	// developer's checkout (branch, index, files, stash) is never modified, so
 	// uncommitted changes there are not visible to the agent.
-	if cont != nil { // the run's own base, never today's HEAD
-		s.baseSHA = cont.history.Bound.BaseSHA
-	} else if s.gr != nil {
-		if s.baseSHA, err = s.gr.HeadSHA(); err != nil {
-			return false, fmt.Errorf("resolve base commit: %w", err)
-		}
-		if clean, err := s.gr.IsClean(); err == nil && !clean {
-			fmt.Fprintf(os.Stdout, "   ℹ️  %s has uncommitted changes; the agent works on commit %.12s without them\n",
-				s.project.SourcePath, s.baseSHA)
-		}
+	if s.baseSHA, err = s.seg.base(s); err != nil {
+		return false, err
 	}
 
 	// ── Resolve topology ──────────────────────────────────────────────────────
@@ -182,7 +172,7 @@ func (s *runState) prepare() (done bool, err error) {
 	}
 
 	// ── Quality gate pre-flight ───────────────────────────────────────────────
-	if !opts.SkipGates && cont == nil { // a continuation is checked by loadContinuation and the worktree checks, not by the case's gates
+	if !opts.SkipGates && s.seg.first() { // a continuation is checked by loadContinuation and the worktree checks, not by the case's gates
 		if err := r.runGates(caseID); err != nil {
 			return false, err
 		}
@@ -197,7 +187,7 @@ func (s *runState) prepare() (done bool, err error) {
 	if s.haltedRun, err = r.lastDriftHalt(caseID); err != nil {
 		return false, err
 	}
-	if cont != nil { // the halt that matters is this run's own (below), not a previous run's
+	if !s.seg.first() { // the halt that matters is this run's own (below), not a previous run's
 		s.haltedRun = 0
 	}
 	if s.haltedRun != 0 && !opts.AckDrift {
@@ -207,31 +197,7 @@ func (s *runState) prepare() (done bool, err error) {
 }
 
 // open makes the run's record, or takes the continued run's, and owns it for the run's whole life (runowner.go).
-func (s *runState) open() error {
-	r, cont, caseID := s.r, s.cont, s.caseID
-	if cont != nil {
-		s.run = cont.run
-		fmt.Fprintf(os.Stdout, "↻ Run #%d  case=%d  continued (segment %d)\n", s.run.ID, caseID, cont.segment)
-		s.releaseOwner = cont.release // Resume took the claim before it checked anything, and hands it over
-		return nil
-	}
-	if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
-		obs.Log.Warn("kill stale runs", "err", err)
-	} else if n > 0 {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
-	}
-	var err error
-	if s.run, err = r.store.CreateRun(caseID, s.topoVersion, s.gitBranch); err != nil {
-		return fmt.Errorf("create run: %w", err)
-	}
-	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", s.run.ID, caseID, s.gitBranch)
-	// It cannot already be owned: the number is new. A failure to take the lock is a failure to run, not something to go on without.
-	if s.releaseOwner, err = claimRun(r.wsDir, s.run.ID); err != nil {
-		_ = r.store.FinishRun(s.run.ID, persistence.RunStatusFailed, time.Now(), "")
-		return fmt.Errorf("claim run #%d: %w", s.run.ID, err)
-	}
-	return nil
-}
+func (s *runState) open() error { return s.seg.open(s) }
 
 // finish records how the run ended, whatever happened: its status, the summary, its path, and what becomes of its worktree.
 func (s *runState) finish(runErr error) error {
@@ -301,124 +267,14 @@ func (s *runState) finish(runErr error) error {
 	return runErr
 }
 
-// bind makes the run's branch and worktree, or takes the continued run's, and puts on its chain what it starts from and under
-// which terms, before the agent runs.
-func (s *runState) bind() error {
-	r, opts, cont, run := s.r, s.opts, s.cont, s.run
-	// ── BRANCH_CREATE ─────────────────────────────────────────────────────────
-	s.runBranch = fmt.Sprintf("staircase/run-%d", run.ID)
-	if cont != nil {
-		s.runBranch = cont.history.Bound.Branch
-	} else if err := r.enter(PhaseBranchCreate); err != nil {
-		return err
-	}
-	if cont != nil { // the run's own worktree, already checked to hold exactly the approved state
-		s.worktree, s.appr = cont.worktree, cont.appr
-		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s (continued)\n", s.runBranch, s.worktree)
-	} else if s.gr != nil {
-		// A workspace-local run ID does not prove ownership of an existing ref.
-		if s.gr.BranchExists(s.runBranch) {
-			return fmt.Errorf("run branch %q already exists; inspect and preserve it before retrying", s.runBranch)
-		}
-		wt := filepath.Join(r.wsDir, "worktrees", fmt.Sprintf("run-%d", run.ID))
-		if err := addWorktree(s.project.SourcePath, wt, s.runBranch, s.baseSHA); err != nil {
-			return fmt.Errorf("create run worktree: %w", err)
-		}
-		s.worktree = wt
-		wgr, err := OpenGitRepo(s.worktree)
-		if err != nil {
-			return fmt.Errorf("open run worktree: %w", err)
-		}
-		if s.appr, err = newApprovals(wgr, s.baseSHA); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", s.runBranch, s.worktree)
-	}
-	if cont != nil {
-		// The run is reopened and the continuation put on its chain before anything else happens: from here on it is
-		// a run that is going again, and the chain says from which state (the chain head) and under which terms.
-		if err := r.store.ReopenRun(run.ID); err != nil {
-			return err
-		}
-		s.initiator = initiatorOf(cont.history) // the signed request of whoever started the run is kept, never signed again
-		resumed := map[string]any{
-			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals()),
-			"next_seq": cont.lastSeq + 1, "policy": policyDigest(cont.history), "plan_digest": cont.history.Bound.PlanDigest,
-			"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
-		}
-		if cont.journalDropped > 0 {
-			resumed["journal_dropped"] = cont.journalDropped
-		}
-		if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
-			return fmt.Errorf("audit run_resumed: %w", err)
-		}
-		// Only now, with the chain saying so, are the never-consumed lines dropped; a crash in between drops them next time.
-		if err := trimJournal(r.wsDir, run.ID, cont.lastSeq); err != nil {
-			return fmt.Errorf("drop the journal lines that were never consumed: %w", err)
-		}
-		barrier.Hit(barrier.ResumeStarted)
-		return nil
-	}
-	// The terms this run starts under, saved for a continuation (ADR 0005): its options and its plan now, its policy
-	// when it is read (setup). A run that cannot save them still runs; it simply cannot be continued, only recovered.
-	terms, _ := json.Marshal(savedTerms{termsVersion, opts.Terms})
-	if err := saveRunFile(savedOptionsPath(r.wsDir, run.ID), terms); err != nil {
-		obs.Log.Warn("save run options: the run cannot be continued", "err", err)
-	}
-	if opts.Plan != nil && len(opts.Plan.Raw) > 0 {
-		if err := saveRunFile(savedPlanPath(r.wsDir, run.ID), opts.Plan.Raw); err != nil {
-			obs.Log.Warn("save run plan: the run cannot be continued", "err", err)
-		}
-	}
-	// Provenance: what this run started from, before the agent runs.
-	bound := history.Bound{BaseSHA: s.baseSHA, Branch: s.runBranch, Worktree: s.worktree, TopologyVersion: s.topoVersion,
-		Harness: s.harness, AckDrift: s.haltedRun, TermsSHA256: sha256Hex(terms)} // the saved options are the terms a continuation keeps
-	if opts.Plan != nil {
-		bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
-	}
-	if opts.Away { // the brief the agent is given is bound before it starts
-		bound.AwayBrief = &history.AwayBrief{Version: AwayBriefVersion, SHA256: sha256Hex([]byte(AwayBrief))}
-	}
-	if len(opts.AwayCommands) > 0 { // so are the commands it may run without asking
-		bound.AwayCommands = &history.DeclaredCommands{Commands: opts.AwayCommands, SHA256: declaredDigest(opts.AwayCommands)}
-	}
-	if len(opts.AwayTools) > 0 { // and the tools
-		bound.AwayTools = &history.DeclaredTools{Tools: opts.AwayTools, SHA256: declaredDigest(opts.AwayTools)}
-	}
-	if err := r.audit(run.ID, "run_bound", bound); err != nil {
-		return fmt.Errorf("audit run_bound: %w", err)
-	}
-	if opts.SignKey != "" { // the person who starts the run proves who they are, before any work is done
-		var digest string
-		if opts.Plan != nil {
-			digest = opts.Plan.Digest
-		}
-		sig, err := sshsig.SignContext(s.ctx, opts.SignKey, certificate.InitiatorNamespace,
-			certificate.InitiatorText(certificate.Predicate{Run: run.ID, BaseCommit: s.baseSHA, PlanDigest: digest}, opts.SignAs))
-		if err != nil {
-			return fmt.Errorf("sign as the run's initiator: %w", err)
-		}
-		s.initiator = &certificate.Initiator{Principal: opts.SignAs, Signature: base64.StdEncoding.EncodeToString(sig)}
-		if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs, "signature": s.initiator.Signature}); err != nil {
-			return fmt.Errorf("audit initiator_signed: %w", err)
-		}
-	}
-	if opts.Agreed != "" {
-		agreed := map[string]any{"by": opts.Agreed}
-		if opts.Plan != nil {
-			agreed["plan_digest"] = opts.Plan.Digest
-		}
-		if err := r.audit(run.ID, "task_agreed", agreed); err != nil {
-			return fmt.Errorf("audit task_agreed: %w", err)
-		}
-	}
-	return nil
-}
+// bind makes the run's branch and worktree, or takes the continued run's, and puts on its chain what this segment starts from
+// and under which terms, before the agent runs.
+func (s *runState) bind() error { return s.seg.checkout(s) }
 
 // setup holds the workspace key, reads the policy the run decides under, sets the drift supervisor and the run's time limit,
 // and starts what a person decides through and what the run shows.
 func (s *runState) setup() error {
-	r, opts, cont, run := s.r, s.opts, s.cont, s.run
+	r, opts, run := s.r, s.opts, s.run
 	// ── RUN SETUP ─────────────────────────────────────────────────────────────
 	// Acquire a shared advisory flock on the key file for the duration of this
 	// run so that 'staircase secret rotate' (which holds an exclusive lock)
@@ -452,25 +308,8 @@ func (s *runState) setup() error {
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
-	// One read of policy.json: the rules, the signature check and the digest the
-	// certificate names all come from the same bytes. Fail closed: a broken or
-	// tampered policy never runs as "no policy".
-	if cont != nil { // the policy the run started under, never today's file
-		s.snap = cont.policy
-	} else {
-		if s.snap, err = policy.LoadSnapshot(r.wsDir); err != nil {
-			return fmt.Errorf("load policy: %w", err)
-		}
-		if len(s.snap.Raw) > 0 { // the exact bytes it decides under, for a continuation
-			if err := saveRunFile(savedPolicyPath(r.wsDir, run.ID), s.snap.Raw); err != nil {
-				obs.Log.Warn("save run policy: the run cannot be continued", "err", err)
-			}
-		}
-		// The policy this run decides under, on the chain, so evidence made later (a
-		// recovery) names it and not whatever policy.json holds by then.
-		if err := r.audit(run.ID, "policy_snapshot", map[string]any{"digest": s.snap.Digest, "signed": s.snap.Signed}); err != nil {
-			return fmt.Errorf("audit policy_snapshot: %w", err)
-		}
+	if s.snap, err = s.seg.policy(s); err != nil {
+		return err
 	}
 	s.limits = s.snap.Engine.Limits.Limits // the drift-supervision limits of the policy …
 	if opts.Plan != nil {
@@ -485,17 +324,9 @@ func (s *runState) setup() error {
 		s.limits = s.limits.Tighter(plan.Limits{CheckpointEvery: taskCheckpointEvery}) // spot checks inside the task
 	}
 	s.sup = policy.NewSupervisor(scope, s.limits)
-	if cont != nil { // the supervisor stands where it stood: every proposal of the earlier segments replayed
-		for _, d := range cont.decisions {
-			s.sup.Replay(d.Paths, d.Approved, d.Source == "operator")
-		}
-	}
 	s.waitCtx = s.ctx
 	if s.limits.MaxRunSecs > 0 {
-		remaining := time.Duration(s.limits.MaxRunSecs) * time.Second
-		if cont != nil { // the limit is for the whole run: what earlier segments used is spent (prepareContinuation refused a run with none left)
-			remaining -= cont.elapsed
-		}
+		remaining := time.Duration(s.limits.MaxRunSecs)*time.Second - s.seg.spent()
 		s.runDeadline = time.After(remaining)
 		var cancelWait context.CancelFunc
 		s.waitCtx, cancelWait = context.WithTimeout(s.ctx, remaining)
@@ -523,11 +354,7 @@ func (s *runState) setup() error {
 		}
 	}
 	s.tracker = monitor.NewTracker(run.ID, s.caseID, s.project.Name, s.gitBranch)
-	if cont != nil { // tokens and cost used by the earlier segments count against the budget cap
-		for _, u := range cont.usage {
-			s.tracker.Record(u.Agent, u.Model, u.In, u.Out)
-		}
-	}
+	s.seg.carry(s.sup, s.tracker)
 	_, budgetCap, _ := r.store.GetProjectConfig(s.caseRec.ProjectID)
 	s.display = monitor.NewDisplay(s.tracker, budgetCap)
 	s.display.Render()
@@ -624,16 +451,11 @@ func (s *runState) startAgent() error {
 			sig.brief = opts.Plan.Brief()
 		}
 	}
-	if cont != nil { // the validator and the deciders continue from the counts the chain recorded
-		s.val.restore(cont.validator)
-	}
 	delivered := s.host.deliveredSecrets
 	s.dec = (&deciders{sign: signing, redact: func(str string) string { return redact(str, delivered()) }, signal: sig, evidence: s.evGate, approvals: s.appr, drift: s.sup, policy: s.snap.Engine, validator: s.val, askHuman: askHuman, waitCtx: s.waitCtx, ctx: s.ctx,
 		display: s.display, tracker: s.tracker,
 		audit: func(event string, fields any) error { return r.audit(run.ID, event, fields) }}).under(opts.Terms)
-	if cont != nil {
-		s.dec.total, s.dec.autoApproved, s.dec.taskApproved = cont.lastSeq, cont.autoApproved, cont.taskApproved
-	}
+	s.seg.resume(s.dec, s.val)
 	return nil
 }
 
@@ -904,15 +726,12 @@ func (s *runState) finalize() error {
 	return nil
 }
 
-// newRunState is a run about to start: its terms judged, nothing made yet.
+// newRunState is a run, or one segment of it, about to start: nothing made yet.
 func (r *Runner) newRunState(ctx context.Context, caseID int64, opts RunOptions, cont *continuation) *runState {
-	s := &runState{r: r, ctx: ctx, caseID: caseID, opts: opts, cont: cont, finalStatus: persistence.RunStatusFailed}
+	s := &runState{r: r, ctx: ctx, caseID: caseID, opts: opts, cont: cont, seg: segmentOf(cont)}
 	if opts.Plan != nil {
 		s.harness = opts.Plan.Harness
 	}
-	if cont != nil { // a continuation that fails to get going leaves the run interrupted, not failed: it can be continued or recovered
-		s.finalStatus = persistence.RunStatusKilled
-		s.ledger.Proposals = slices.Clone(cont.kept)
-	}
+	s.seg.init(s)
 	return s
 }

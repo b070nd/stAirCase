@@ -174,10 +174,6 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		obs.ActiveRuns.Dec()
 		obs.RunDuration.Observe(time.Since(t0Run).Seconds())
 	}()
-	r.phase, r.path = PhasePreFlight, []RunPhase{PhasePreFlight}
-	if cont != nil {
-		r.phase, r.path = PhaseResume, []RunPhase{PhaseResume}
-	}
 	s := r.newRunState(ctx, caseID, opts, cont)
 	// The terms are judged before anything exists: a run no one can decide under leaves no record, branch or worktree.
 	terms, err := NewTerms(opts.Terms, s.harness)
