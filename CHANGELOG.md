@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-18
+
+New:
+- **Work while you are away.** `--away`, decided with `staircase decide`, with prototypes and adoption of what was parked.
+- **Commands and tools without asking.** Commands and MCP tools an away run may use without asking (`--away-command`,
+  `--away-tool`).
+- **A docker sandbox.**
+- **Governing sessions another program starts.** `staircase host claude`, for a runner such as Cloudroom.
+
+Fixed:
+- **A continuation that could not be recovered.** A run killed between an approval's journal line and its decision could be
+  continued, but that continuation could not be recovered (present since 1.0.0).
+- **Unverified reads.** Several readers trusted an audit chain they had not verified.
+
+Under the hood, every reader of the audit chain now goes through one verified replay, and a run's options are one value, judged
+before the run exists.
+
+Nothing you already use changes meaning: certificates, policy files, the hook bridge and existing records read as before. Two
+changes to new audit records, for tools that read them:
+- **Recovery's final review** is now recorded as a `yield_decided` final review, like a finished run's. New chains no longer write
+  `recovery_final_review`, so read the final review from `yield_decided` (`action_type` `final_review`). The certificate's
+  `decisions` of a recovered run now counts that review, as a finished run's counts its own.
+- **Empty fields** may be left out of a new record instead of written empty or zero (for example `plan_digest`, `lines`). Read a
+  missing one as empty.
+
 ### Added
 
 - **MCP tools are decided, not switched off (`tool_call`, `--away-tool`).** A Claude Code call of an MCP server's tool is a proposal with

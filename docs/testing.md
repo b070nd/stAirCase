@@ -185,7 +185,7 @@ on `main`, which chooses `min-cal` from the base branch's name (4 for `strict`, 
 (an earlier version of the fixture had one per base, and the first real run checked a pull request into `strict` at CAL 2). The
 pull request's own edit of the workflow is not used, whereas under a plain `pull_request` trigger its own copy runs and the same
 commit passes (checked locally: "0 commit(s) checked"). The setup is safe only because nothing of the pull request is executed. The fixture pins the Action
-(`FIXTURE_ACTION_REF`, a release tag or a commit) and the verifier it installs (`FIXTURE_VERIFIER_VERSION`, default v1.0.1), and the
+(`FIXTURE_ACTION_REF`, a release tag or a commit) and the verifier it installs (`FIXTURE_VERIFIER_VERSION`, default v1.1.0), and the
 v1.0.0 verifier with the Action's script decided its cases as the README says, locally and then in GitHub (the record is linked in the acceptance matrix). What GitHub does is to be observed. The older **conformance harness** (`staircase-verify.yml`) runs each
 case with `continue-on-error` and asserts the refusal, so its checks are green when the Action behaved: it tests the Action and
 blocks nothing. `tests/ruleset_fixture.bats` checks, with the real binary and the Action's own script against a local origin, that
