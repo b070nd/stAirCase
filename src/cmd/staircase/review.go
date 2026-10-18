@@ -31,15 +31,15 @@ Fetch a pull request first, for example:
 
 func init() {
 	reviewCmd.Flags().StringVar(&reviewBy, "by", "", "Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)")
-	reviewCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
+	reviewCmd.Flags().StringArrayVar(&cli.allow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
 	checkFlag(reviewCmd)
 	signFlags(reviewCmd)
 	validatorFlag(reviewCmd)
 	inScopeFlag(reviewCmd)
-	reviewCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")
-	reviewCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+	reviewCmd.Flags().BoolVarP(&cli.yes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")
+	reviewCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0,
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
-	reviewCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	reviewCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	rootCmd.AddCommand(reviewCmd)
 }
 
@@ -56,7 +56,7 @@ func reviewHandler(_ *cobra.Command, args []string) error {
 	if by == "" {
 		by = "an external agent"
 	}
-	sessionReview = &plan.Review{Ref: args[0], Commit: commit, By: by}
-	defer func() { sessionReview = nil }()
-	return session("review", by, "review", []string{fmt.Sprintf("%s (commit %.12s), made by %s", args[0], commit, by)})
+	l := cli
+	l.review = &plan.Review{Ref: args[0], Commit: commit, By: by}
+	return session(l, "review", by, "review", []string{fmt.Sprintf("%s (commit %.12s), made by %s", args[0], commit, by)})
 }

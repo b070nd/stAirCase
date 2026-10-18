@@ -18,9 +18,8 @@ import (
 // awaySession runs `staircase claude --away` with the fake Claude Code, which writes HEALTH.md; the check passes on it.
 func awaySession(t *testing.T) (repo string, git func(args ...string) string) {
 	repo, _, git = sessionRepo(t)
-	sessionAway, sessionAllow, runChecks = true, []string{"HEALTH.md"}, []string{"test -f HEALTH.md"}
+	cli.terms.Away, cli.allow, cli.terms.Checks = true, []string{"HEALTH.md"}, []string{"test -f HEALTH.md"}
 	t.Cleanup(func() {
-		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks = false, false, false, nil, nil
 		decideAccept, decideReject, decideShown, decideMessage, decideAdopt = false, false, "", "", 0
 	})
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
@@ -150,10 +149,8 @@ func TestSession_away_says_what_will_happen_and_needs_a_check(t *testing.T) {
 	for _, want := range []string{"nobody is asked", "parked", "staircase decide", "Nothing is committed"} {
 		assert.Contains(t, text, want)
 	}
-	t.Cleanup(func() {
-		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks = false, false, false, nil, nil
-	})
-	sessionAway, sessionAllow, runChecks = true, []string{"src/**"}, nil
+	keepCLI(t)
+	cli.terms.Away, cli.allow, cli.terms.Checks = true, []string{"src/**"}, nil
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--check")
 }
 
@@ -218,12 +215,9 @@ func testSessionAwayDocker(t *testing.T) {
 		t.Skip("docker or the image is not available")
 	}
 	_, ws, _ := sessionRepo(t)
-	t.Cleanup(func() {
-		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks, runSandbox = false, false, false, nil, nil, "auto"
-	})
-	sessionAway, sessionAllow, runChecks, runSandbox = true, []string{"HEALTH.md"}, []string{"test -f HEALTH.md && test ! -e /Users"}, "docker"
+	cli.terms.Away, cli.allow, cli.terms.Checks, cli.terms.Sandbox = true, []string{"HEALTH.md"}, []string{"test -f HEALTH.md && test ! -e /Users"}, "docker"
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "image")
-	runSandbox = "docker:image=golang:1.26-bookworm,memory=256m"
+	cli.terms.Sandbox = "docker:image=golang:1.26-bookworm,memory=256m"
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
 	db, err := persistence.InitDB(ws)
 	require.NoError(t, err)
@@ -244,9 +238,6 @@ func testSessionAwayDocker(t *testing.T) {
 // TestSession_away_command_reaches_the_run: --away-command is the run's declaration; without --allow-shell-exec it is refused by the run.
 func TestSession_away_command_reaches_the_run(t *testing.T) {
 	sessionRepo(t)
-	t.Cleanup(func() {
-		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks, sessionAwayCommands = false, false, false, nil, nil, nil
-	})
-	sessionAway, sessionAllow, runChecks, sessionAwayCommands = true, []string{"HEALTH.md"}, []string{"true"}, []string{"go generate ./..."}
+	cli.terms.Away, cli.allow, cli.terms.Checks, cli.terms.AwayCommands = true, []string{"HEALTH.md"}, []string{"true"}, []string{"go generate ./..."}
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow-shell-exec")
 }

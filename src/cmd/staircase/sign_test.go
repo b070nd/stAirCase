@@ -73,13 +73,13 @@ func TestVerify_authenticated_initiator(t *testing.T) {
 	alicePub, aliceAllowed := sshKey(t, "alice@example.com")
 	bobPub, bobAllowed := sshKey(t, "bob@example.com")
 	alicePriv := strings.TrimSuffix(alicePub, ".pub")
-	runSignKey, runSignAs = alicePriv, "alice@example.com"
+	cli.terms.SignKey, cli.terms.SignAs = alicePriv, "alice@example.com"
 	t.Cleanup(func() {
-		runSignKey, runSignAs, verifyMinCAL, verifySigners, verifyRequireInitiator = "", "", 0, "", false
+		verifyMinCAL, verifySigners, verifyRequireInitiator = 0, "", false
 	})
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
 	signed := strings.TrimSpace(git("rev-parse", "staircase/run-1"))
-	runSignKey, runSignAs = "", ""
+	cli.terms.SignKey, cli.terms.SignAs = "", ""
 	require.NoError(t, claudeSession(nil, []string{"add", "another", "file"}))
 	anon := strings.TrimSpace(git("rev-parse", "staircase/run-2"))
 
