@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,6 +50,9 @@ type Terms struct {
 	// AwayCommands (ADR 0009) and AwayTools (ADR 0008) are what an away run may run or call without asking.
 	AwayCommands []string `json:"away_commands,omitempty"`
 	AwayTools    []string `json:"away_tools,omitempty"`
+	// ProtectedPaths hold the checks' definitions (paths or ** patterns, from the repository's root): a change to one always
+	// needs a person, whatever the policy says, and is parked while away. Those the checks name are added (checkDefinitions).
+	ProtectedPaths []string `json:"protected_paths,omitempty"`
 }
 
 // termsVersion is the version of the saved form of Terms (options.json).
@@ -100,7 +105,92 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	if err := sandbox.ParseMode(orAuto(t.Sandbox)); err != nil {
 		return t, fmt.Errorf("--sandbox: %w", err)
 	}
+	if err := t.protect(); err != nil {
+		return t, err
+	}
 	return t, t.checkDeclared(harness)
+}
+
+// protect makes ProtectedPaths the declared paths, cleaned, and every path the checks name as their definition, sorted once.
+func (t *Terms) protect() error {
+	var paths []string
+	for _, p := range t.ProtectedPaths {
+		clean, ok := repoPath(p)
+		if !ok {
+			return fmt.Errorf("--protect %q: name a path or pattern inside the repository, from its root", p)
+		}
+		paths = append(paths, clean)
+	}
+	for _, c := range t.Checks {
+		paths = append(paths, checkDefinitions(c)...)
+	}
+	slices.Sort(paths)
+	t.ProtectedPaths = slices.Compact(paths)
+	return nil
+}
+
+// repoPath is p cleaned, if it names something inside the repository from its root.
+func repoPath(p string) (string, bool) {
+	clean := path.Clean(p)
+	if p == "" || clean == "." || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", false
+	}
+	return clean, true
+}
+
+// checkDefinitions are the paths a check names as its definition, where that can be known: the script it runs, the files a
+// test runner is given, a build tool's file. What it only looks at (test -f x) or finds by itself (go test ./...) is not known.
+// After a cd nothing more is known: the paths are no longer from the root.
+func checkDefinitions(command string) []string {
+	var out []string
+	add := func(tok string, dir bool) {
+		if p, ok := repoPath(strings.Trim(tok, `'"`)); ok && !strings.ContainsAny(p, "*?[{$`") {
+			out = append(out, p)
+			if dir && path.Ext(p) == "" {
+				out = append(out, p+"/**")
+			}
+		}
+	}
+	for _, segment := range strings.FieldsFunc(command, func(r rune) bool { return strings.ContainsRune(";&|\n", r) }) {
+		words := strings.Fields(segment)
+		for len(words) > 0 && strings.Contains(words[0], "=") { // FOO=1 before the command
+			words = words[1:]
+		}
+		if len(words) == 0 {
+			continue
+		}
+		prog, args := strings.Trim(words[0], `'"`), words[1:]
+		if strings.Contains(prog, "/") {
+			add(prog, false)
+		}
+		switch path.Base(prog) {
+		case "cd", "pushd":
+			return out
+		case "make", "gmake":
+			out = append(out, "Makefile", "GNUmakefile")
+		case "just":
+			out = append(out, "justfile")
+		case "npm", "yarn", "pnpm":
+			out = append(out, "package.json")
+		case "sh", "bash", "zsh", "dash", "python", "python3", "node", "ruby", "perl": // the first argument not a flag is the script
+			for _, a := range args {
+				if a == "-c" || a == "-e" || a == "-m" { // code given inline, or a module found by name
+					break
+				}
+				if !strings.HasPrefix(a, "-") {
+					add(a, false)
+					break
+				}
+			}
+		case "bats", "pytest": // every argument not a flag is a test file or directory
+			for _, a := range args {
+				if !strings.HasPrefix(a, "-") {
+					add(a, true)
+				}
+			}
+		}
+	}
+	return out
 }
 
 func orAuto(mode string) string {
