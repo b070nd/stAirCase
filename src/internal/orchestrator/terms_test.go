@@ -27,6 +27,14 @@ func TestNewTerms_normalizes_once(t *testing.T) {
 		"in scope":         {orchestrator.Terms{Agreed: agreed, ApproveInScope: true}, orchestrator.Terms{Agreed: agreed, ApproveInScope: true}},
 		"a person decides": {orchestrator.Terms{}, orchestrator.Terms{}},
 		"a docker sandbox": {orchestrator.Terms{Sandbox: "docker:image=golang:1.26"}, orchestrator.Terms{Sandbox: "docker:image=golang:1.26"}},
+		"the checks name their definitions": {
+			orchestrator.Terms{ProtectedPaths: []string{"docs/rules.md", "./tests/check"}, Checks: []string{"sh tests/check", "make check",
+				"go test ./...", "test -f HEALTH.md && bats tests/unit", "python3 -m pytest", "./scripts/lint.sh --fix", "FOO=1 node ci/run.js",
+				"cd sub && sh run"}},
+			orchestrator.Terms{ProtectedPaths: []string{"GNUmakefile", "Makefile", "ci/run.js", "docs/rules.md", "scripts/lint.sh",
+				"tests/check", "tests/unit", "tests/unit/**"}, Checks: []string{"sh tests/check", "make check",
+				"go test ./...", "test -f HEALTH.md && bats tests/unit", "python3 -m pytest", "./scripts/lint.sh --fix", "FOO=1 node ci/run.js",
+				"cd sub && sh run"}}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := orchestrator.NewTerms(tc.in, "")
@@ -53,22 +61,25 @@ func TestNewTerms_refuses_what_no_run_can_decide_under(t *testing.T) {
 		harness string
 		why     string
 	}{
-		"away without a check":          {away(func(t *orchestrator.Terms) { t.Checks = nil }), "", "--check"},
-		"away with signed decisions":    {away(func(t *orchestrator.Terms) { t.RequireSignedApprovals = true }), "", "signed"},
-		"on evidence without evidence":  {orchestrator.Terms{Agreed: agreed, ApproveOnEvidence: true}, "", "evidence to decide on"},
-		"in scope with no agreed task":  {orchestrator.Terms{ApproveInScope: true}, "", "nobody agreed"},
-		"on evidence, no agreed task":   {orchestrator.Terms{ApproveOnEvidence: true, Checks: checks}, "", "nobody agreed"},
-		"an unknown sandbox":            {orchestrator.Terms{Sandbox: "vm"}, "", "--sandbox"},
-		"a tool without away":           {orchestrator.Terms{AwayTools: []string{"mcp__a__b"}}, "", "add --away"},
-		"a tool by pattern":             {away(func(t *orchestrator.Terms) { t.AwayTools = []string{"mcp__a__*"} }), "", "exactly"},
-		"a command without away":        {orchestrator.Terms{AwayCommands: []string{"make"}, AllowShellExec: true, Sandbox: sandbox.Required}, "", "add --away"},
-		"a command, commands off":       {away(func(t *orchestrator.Terms) { t.AwayCommands, t.AllowShellExec = []string{"make"}, false }), "", "--allow-shell-exec"},
-		"a command, network":            {away(func(t *orchestrator.Terms) { t.AwayCommands, t.Sandbox = []string{"make"}, sandbox.Auto }), "", "without network"},
-		"a command, unsandboxed agent":  {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make"} }), "gemini", "gemini"},
-		"a composed command":            {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make && make install"} }), "", "whole command"},
-		"a command with a second line":  {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make\nrm -rf x"} }), "", "whole command"},
-		"a command with outer space":    {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{" make"} }), "", "whole command"},
-		"a declared command is allowed": {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make"} }), "claude-code", ""},
+		"away without a check":                    {away(func(t *orchestrator.Terms) { t.Checks = nil }), "", "--check"},
+		"away with signed decisions":              {away(func(t *orchestrator.Terms) { t.RequireSignedApprovals = true }), "", "signed"},
+		"on evidence without evidence":            {orchestrator.Terms{Agreed: agreed, ApproveOnEvidence: true}, "", "evidence to decide on"},
+		"in scope with no agreed task":            {orchestrator.Terms{ApproveInScope: true}, "", "nobody agreed"},
+		"on evidence, no agreed task":             {orchestrator.Terms{ApproveOnEvidence: true, Checks: checks}, "", "nobody agreed"},
+		"an unknown sandbox":                      {orchestrator.Terms{Sandbox: "vm"}, "", "--sandbox"},
+		"a tool without away":                     {orchestrator.Terms{AwayTools: []string{"mcp__a__b"}}, "", "add --away"},
+		"a tool by pattern":                       {away(func(t *orchestrator.Terms) { t.AwayTools = []string{"mcp__a__*"} }), "", "exactly"},
+		"a command without away":                  {orchestrator.Terms{AwayCommands: []string{"make"}, AllowShellExec: true, Sandbox: sandbox.Required}, "", "add --away"},
+		"a command, commands off":                 {away(func(t *orchestrator.Terms) { t.AwayCommands, t.AllowShellExec = []string{"make"}, false }), "", "--allow-shell-exec"},
+		"a command, network":                      {away(func(t *orchestrator.Terms) { t.AwayCommands, t.Sandbox = []string{"make"}, sandbox.Auto }), "", "without network"},
+		"a command, unsandboxed agent":            {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make"} }), "gemini", "gemini"},
+		"a composed command":                      {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make && make install"} }), "", "whole command"},
+		"a command with a second line":            {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make\nrm -rf x"} }), "", "whole command"},
+		"a command with outer space":              {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{" make"} }), "", "whole command"},
+		"a protected path outside the repository": {orchestrator.Terms{ProtectedPaths: []string{"../x"}}, "", "--protect"},
+		"an absolute protected path":              {orchestrator.Terms{ProtectedPaths: []string{"/etc/x"}}, "", "--protect"},
+		"an empty protected path":                 {orchestrator.Terms{ProtectedPaths: []string{""}}, "", "--protect"},
+		"a declared command is allowed":           {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make"} }), "claude-code", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := orchestrator.NewTerms(tc.terms, tc.harness)

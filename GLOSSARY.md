@@ -66,7 +66,7 @@ no run can have written has no history. It is refused with the entry that breaks
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
 - how changes are approved;
-- where commands and checks run, and the checks;
+- where commands and checks run, the checks, and the paths where they are defined (protected);
 - what signs;
 - what an away run may do without asking.
 
