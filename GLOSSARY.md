@@ -39,6 +39,11 @@ in the approval journal. Only bytes derived from approvals reach the branch.
 by proposal in chain order, each checked against the digest the chain recorded for it. What is on disk has no say in it. Recovery,
 resume, Prototype and Adopt get it the same way: they open the run (`openRun`) and derive.
 
+**Consumed**: describes an approval whose decision is on the audit chain. Only then does the agent hear of it and may its bytes
+reach the branch. It is kept in the journal first, and once the run has ended nothing more is consumed: the decision is recorded as a
+rejection (`unconsumed` when its journal line was already written). The live run and an owner's adoption consume the same way
+(`consume`, ADR 0005).
+
 **Approval journal**: the requests of a run's approvals, written before their decision is audited
 (`journal/run-N.approved.jsonl`). Recovery pairs it with the chain.
 

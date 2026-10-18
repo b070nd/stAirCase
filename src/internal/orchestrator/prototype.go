@@ -3,8 +3,6 @@ package orchestrator
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -233,32 +231,14 @@ func (r *Runner) recordAdoption(runID int64, st *approvedNow, parked domain.Yiel
 		return err
 	}
 	n := st.hist.LastDecided + 1
-	if err := r.journalOnce(runID, req, n); err != nil {
-		return err
-	}
-	decided := yieldDecided(n, "operator", req, domain.Decide(true, "adopted by the owner after a prototype"), st.hist.Bound.BaseSHA, next, "")
-	decided.RequestEntry, decided.Paths, decided.Adopts = entry, slices.Sorted(maps.Keys(next)), seq
-	if err := r.audit(runID, "yield_decided", decided); err != nil {
+	rl := ruling{resp: domain.Decide(true, "adopted by the owner after a prototype"), source: "operator", next: next}
+	// as a live approval is consumed; no run is live, so nothing ends it
+	if err := r.consume(context.Background(), runID, n, req, &rl, func(bool) history.Decided {
+		decided := yieldDecided(n, "operator", req, rl.resp, st.hist.Bound.BaseSHA, next, "")
+		decided.RequestEntry, decided.Paths, decided.Adopts = entry, slices.Sorted(maps.Keys(next)), seq
+		return decided
+	}); err != nil {
 		return fmt.Errorf("record the owner's approval: %w", err)
 	}
 	return nil
-}
-
-// journalOnce appends the journal line of approval n, unless an adoption interrupted before its decision already wrote exactly it; a
-// different line with that number refuses (two lines with one number would make the journal unreadable for recovery).
-func (r *Runner) journalOnce(runID int64, req domain.YieldRequest, n int) error {
-	j, err := readJournalFile(r.wsDir, runID)
-	if err != nil {
-		return err
-	}
-	want, _ := json.Marshal(req)
-	for _, e := range j.Entries {
-		if e.Seq == n {
-			if bytes.Equal(e.Request, want) {
-				return nil
-			}
-			return errors.New("the approval journal already holds another proposal under the number this adoption would take")
-		}
-	}
-	return appendJournal(r.wsDir, runID, req, n, "operator")
 }
