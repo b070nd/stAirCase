@@ -44,7 +44,12 @@ is committed until you decide:
            then decide on the new review
 
 Without a terminal, decide one run with --accept or --reject. A decision is made on the review entry you were shown; if the
-run's review is no longer that one (--shown), it is refused.`,
+run's review is no longer that one (--shown), it is refused.
+
+Each run is shown with its status, read from its verified audit chain: its outcome (running, awaiting review, blocked or
+partial, failed, delivered, or delivered with incomplete evidence) and why, how many times its agent was started, and the
+time, tokens and estimated cost it used against what is left. Your other away runs that are still running, or blocked, are
+listed below the tree; staircase decide <run-id> on a run that does not await review shows its status.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: decideHandler,
 }
@@ -126,7 +131,7 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		fmt.Printf("✅ Adopted parked proposal %d into run #%d's change. The new review:\n", decideAdopt, ids[0])
-		fmt.Print(inboxTree([]orchestrator.Review{rv}))
+		fmt.Print(inboxTree([]orchestrator.Review{rv}, nil))
 		return nil
 	}
 	if flagged {
@@ -134,14 +139,35 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 	}
 
 	var reviews []orchestrator.Review
+	status := map[int64]orchestrator.Status{}
 	for _, id := range ids {
 		rv, err := runner.ReviewOf(id)
+		if len(args) == 1 && errors.Is(err, orchestrator.ErrNotAwaiting) { // nothing to decide: how the run stands
+			st, err := runner.StatusOf(id)
+			if err != nil {
+				return err
+			}
+			printStatus(st)
+			return nil
+		}
 		if err != nil {
 			return err
 		}
 		reviews = append(reviews, rv)
+		if st, err := runner.StatusOf(id); err == nil {
+			status[id] = st
+		}
 	}
-	fmt.Print(inboxTree(reviews))
+	fmt.Print(inboxTree(reviews, status))
+	if len(args) == 0 {
+		if also := alsoAway(store, runner); len(also) > 0 {
+			fmt.Printf("\nYour other away runs\n")
+			for _, l := range also {
+				fmt.Printf("   %s\n", l)
+			}
+			fmt.Printf("   (staircase decide <run-id> shows one's status)\n")
+		}
+	}
 	if len(reviews) == 0 {
 		return nil
 	}
@@ -185,8 +211,8 @@ func runPlace(store *persistence.Store, runID int64) (repo, task string) {
 	return repo, c.PrdJSON
 }
 
-// inboxTree is what waits for the owner, as a tree: run, change, checks, parked proposals.
-func inboxTree(reviews []orchestrator.Review) string {
+// inboxTree is what waits for the owner, as a tree: run, its status (when status has it), change, checks, parked proposals.
+func inboxTree(reviews []orchestrator.Review, status map[int64]orchestrator.Status) string {
 	if len(reviews) == 0 {
 		return "Nothing waits for your review.\n"
 	}
@@ -198,6 +224,11 @@ func inboxTree(reviews []orchestrator.Review) string {
 			branch, indent = "└─", "   "
 		}
 		fmt.Fprintf(&b, "%s run #%d   review %.12s   from %.12s\n", branch, rv.RunID, rv.Entry, rv.Base)
+		if st, ok := status[rv.RunID]; ok {
+			for _, l := range statusLines(st) {
+				fmt.Fprintf(&b, "%s├─ %s\n", indent, l)
+			}
+		}
 		files := slices.Sorted(maps.Keys(rv.Files))
 		fmt.Fprintf(&b, "%s├─ change   %d file(s): %s\n", indent, len(files), strings.Join(files, ", "))
 		var checks []string
@@ -265,7 +296,7 @@ func ask(in io.Reader, out io.Writer, rv orchestrator.Review, box inbox) error {
 		case "P":
 			if next, ok := prototypeStep(r, out, rv, box); ok {
 				rv = next
-				fmt.Fprint(out, inboxTree([]orchestrator.Review{rv}))
+				fmt.Fprint(out, inboxTree([]orchestrator.Review{rv}, nil))
 			}
 		case "D":
 			fmt.Fprint(out, alternatives(rv))
@@ -367,7 +398,7 @@ func clarify(rv orchestrator.Review, repo, task string) error {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Review of run #%d\n\nTask: %s\n\nFrom commit %s to tree %s (review entry %s).\n\n%s", rv.RunID, task, rv.Base, rv.Tree, rv.Entry, inboxTree([]orchestrator.Review{rv}))
+	fmt.Fprintf(&b, "# Review of run #%d\n\nTask: %s\n\nFrom commit %s to tree %s (review entry %s).\n\n%s", rv.RunID, task, rv.Base, rv.Tree, rv.Entry, inboxTree([]orchestrator.Review{rv}, nil))
 	if err := os.WriteFile(filepath.Join(dir, "REVIEW.md"), []byte(b.String()), 0o600); err != nil {
 		return err
 	}
