@@ -403,7 +403,10 @@ func (s *runState) startAgent() error {
 	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs, signers: s.signers}
 	// askHuman puts a proposal to a person (personFor) while the run's display waits. The wait ends with the run's limit, a final
 	// review's (after the agent) only with cancellation; an answer that arrives after that counts for nothing.
-	who := personFor(s.approvalSrv, s.project.WebhookURL, s.webhookSecret)
+	who := opts.Person
+	if who == nil {
+		who = personFor(s.approvalSrv, s.project.WebhookURL, s.webhookSecret)
+	}
 	askHuman := func(req domain.YieldRequest, signText string) domain.YieldResponse {
 		s.display.Pause()
 		defer s.display.Resume()
@@ -411,7 +414,7 @@ func (s *runState) startAgent() error {
 		if req.ActionType == domain.ActionFinalReview {
 			wait = s.ctx
 		}
-		resp := who.ask(wait, req, signText)
+		resp := who.Ask(wait, req, signText)
 		if wait.Err() != nil {
 			return domain.Decide(false, "the run ended while this waited for a decision")
 		}

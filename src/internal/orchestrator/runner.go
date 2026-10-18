@@ -128,9 +128,10 @@ type RunOptions struct {
 	// without it such a case does not run again.
 	AckDrift bool
 	// ValidatorChat and SignalEval, when set, stand in for the reviewer models and the decision model the terms name
-	// (nil: called with the project's secrets).
+	// (nil: called with the project's secrets), and Person for the approval API, the project's webhook or the terminal.
 	ValidatorChat llm.Model
 	SignalEval    signal.Evaluator
+	Person        Person
 }
 
 // Runner orchestrates a single stAirCase run.
