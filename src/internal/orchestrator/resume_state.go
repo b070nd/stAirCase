@@ -60,6 +60,7 @@ type continuation struct {
 	// segment that died before their decision was on the chain, so never consumed. Kept, they would collide with the
 	// continuation's own approvals, which take the same numbers.
 	journalDropped int
+	withdrawn      string // the awaiting_review entry this continuation withdraws (a resumed hosted session, ADR 0008)
 
 	autoApproved int
 	taskApproved bool
@@ -114,7 +115,7 @@ func notContinuable(format string, a ...any) error {
 
 // loadContinuation checks everything about a run that can be checked without touching its repository, and derives
 // the state it continues from. It reads, and changes nothing.
-func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
+func (r *Runner) loadContinuation(runID int64, withdrawReview bool) (*continuation, error) {
 	run, err := r.store.GetRun(runID)
 	if err != nil || run == nil {
 		return nil, fmt.Errorf("run #%d not found", runID)
@@ -122,10 +123,10 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	if run.GitCommitHash != "" {
 		return nil, notContinuable("run #%d already has a commit (%.12s): there is nothing to continue", runID, run.GitCommitHash)
 	}
-	if run.Status == persistence.RunStatusAwaitingReview {
+	if run.Status == persistence.RunStatusAwaitingReview && !withdrawReview {
 		return nil, notContinuable("run #%d has ended and awaits your review: decide it with staircase decide %d", runID, runID)
 	}
-	if run.Status != persistence.RunStatusRunning && run.Status != persistence.RunStatusKilled {
+	if run.Status != persistence.RunStatusRunning && run.Status != persistence.RunStatusKilled && run.Status != persistence.RunStatusAwaitingReview {
 		return nil, notContinuable("run #%d is %s: only a run that was interrupted (or stopped) before it committed is continued", runID, run.Status)
 	}
 	if op, err := loadOp(r.wsDir, runID); err != nil {
@@ -137,14 +138,20 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	if err != nil {
 		return nil, err
 	}
-	hist := opened.hist
+	hist, withdrawn := opened.hist, ""
+	if run.Status == persistence.RunStatusAwaitingReview { // continued by a resumed hosted session: its review is withdrawn
+		if hist.Review == nil || hist.Review.Decided != "" {
+			return nil, notContinuable("run #%d was decided (%s) and its delivery is not finished: finish it with staircase decide %d --accept", runID, reviewState(hist.Review), runID)
+		}
+		withdrawn = hist.Review.Entry
+	}
 	if hist.Sealed != "" {
 		return nil, notContinuable("run #%d already made its commit (%s is on its chain): recover it with `staircase recover %d`", runID, hist.Sealed, runID)
 	}
 	if hist.Bound.BaseSHA == "" || hist.Bound.Branch == "" || hist.Bound.Worktree == "" {
 		return nil, notContinuable("run #%d never got as far as a run branch and worktree", runID)
 	}
-	c := &continuation{run: run, opened: opened, history: hist, kept: opened.kept, lastSeq: hist.LastDecided} // no journal: nothing was approved yet
+	c := &continuation{run: run, opened: opened, history: hist, kept: opened.kept, lastSeq: hist.LastDecided, withdrawn: withdrawn} // no journal: nothing was approved yet
 	c.journalDropped = staleJournal(opened.journal, hist.LastDecided)
 	if err := continueFrom(hist, c); err != nil {
 		return nil, err
@@ -270,4 +277,12 @@ func contBrief(c *continuation) string {
 		return ""
 	}
 	return c.continuationBrief()
+}
+
+// reviewState is how an offered review stands, for a refusal.
+func reviewState(rv *history.Review) string {
+	if rv == nil {
+		return "no review on its chain"
+	}
+	return rv.Decided
 }

@@ -24,6 +24,9 @@ type Bound struct {
 	AwayCommands    *DeclaredCommands `json:"away_commands,omitempty"`
 	AwayTools       *DeclaredTools    `json:"away_tools,omitempty"`
 	TermsSHA256     string            `json:"terms_sha256,omitempty"` // the saved options' digest; absent before ADR 0010
+	// A hosted session resumed after its earlier run was decided (ADR 0008): the session, and the run it follows.
+	ResumesSession string `json:"resumes_session,omitempty"`
+	ResumesRun     int64  `json:"resumes_run,omitempty"`
 }
 
 // AwayBrief is the brief an away run's agent was given (ADR 0008).

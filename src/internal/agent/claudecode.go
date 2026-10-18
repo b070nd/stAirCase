@@ -57,6 +57,7 @@ type HostIO struct {
 	Settings     map[string]any
 	SystemPrompt string
 	SessionID    string
+	Resume       bool // the runner resumes its session (--resume): Claude Code resumes its conversation, under the same governance
 	Stdin        io.Reader
 	Stdout       io.Writer
 }
@@ -150,9 +151,13 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	// conversation (`claude --resume <id>`); the governed settings apply to a resumed session as to a new one.
 	var args []string
 	if c.Host != nil { // the runner's session: its arguments and id, its instructions with the Away brief after them
-		env.RecordSession("claude-code", c.Host.SessionID, "started")
+		mode, flag := "started", "--session-id"
+		if c.Host.Resume || env.Session != nil && env.Session.Resume {
+			mode, flag = "resumed", "--resume"
+		}
+		env.RecordSession("claude-code", c.Host.SessionID, mode)
 		args = append(slices.Clone(c.Host.Args), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
-			"--session-id", c.Host.SessionID)
+			flag, c.Host.SessionID)
 		if sp := strings.TrimSpace(c.Host.SystemPrompt + "\n\n" + env.Brief); sp != "" {
 			args = append(args, "--append-system-prompt", sp)
 		}

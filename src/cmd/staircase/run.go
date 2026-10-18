@@ -167,16 +167,18 @@ func runCase(l launch, caseID int64) error {
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
-		DryRun:        l.dryRun,
-		SkipGates:     l.skipGates,
-		Debug:         l.debug,
-		Reconcile:     l.reconcile,
-		ApprovalPort:  l.approvalPort,
-		ApprovalToken: l.approvalToken,
-		AckDrift:      l.ackDrift,
-		Agent:         ag,
-		Plan:          &pl,
-		Terms:         l.runTerms(),
+		DryRun:         l.dryRun,
+		SkipGates:      l.skipGates,
+		Debug:          l.debug,
+		Reconcile:      l.reconcile,
+		ApprovalPort:   l.approvalPort,
+		ApprovalToken:  l.approvalToken,
+		AckDrift:       l.ackDrift,
+		Agent:          ag,
+		Plan:           &pl,
+		Terms:          l.runTerms(),
+		ResumesRun:     l.resumesRun,
+		ResumesSession: l.resumesSession,
 	})
 }
 

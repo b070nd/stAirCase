@@ -21,7 +21,7 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 		"run_bound": {`{"base_sha":"b","branch":"refs/heads/staircase/run-1","worktree":"/w","topology_version":2,"plan_digest":"p",
 			"blueprint_hash":"bp","harness":"claude-code","ack_drift":4,"away_brief":{"version":1,"sha256":"ab"},
 			"away_commands":{"commands":["go generate ./..."],"sha256":"cd"},"away_tools":{"tools":["mcp__probe__note"],"sha256":"ef"},
-			"terms_sha256":"t"}`, &Bound{}},
+			"terms_sha256":"t","resumes_session":"s","resumes_run":1}`, &Bound{}},
 		"yield_request": {`{"type":"yield_request","agent_name":"staircase","action_type":"file_edit",
 			"proposed_edits":[{"file":"a.txt","search_block":"","replace_block":"x"}],"reasoning_trace":"the owner adopted parked proposal 1 after a prototype",
 			"confidence_score":0,"adopts":1}`, &Request{}},

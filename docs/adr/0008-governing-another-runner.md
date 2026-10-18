@@ -2,7 +2,8 @@
 
 - Status: accepted (2026-10-14), owner's request: "Cloudroom beside stAirCase, ONLY IF this is not weakening the stAirCase project
   position; take the best from all four options". The owner chose the first slice with the runner's MCP tools off. The thin slice is built (`staircase host claude`, the pinned Away
-  brief); section 2's resumed sessions and the gated MCP tools are not.
+  brief), and so are the gated MCP tools and section 2's resumed sessions (2026-10-18: `--resume <id>` continues the run the session was
+  governed as, or follows a decided one with a new run; see [hosting](../hosting.md#when-the-runner-resumes-a-session)).
 - Related: ADR 0003 (hook bridge), ADR 0006 (Away mode), ADR 0007 (prototype bridging), the Cloudroom reuse assessment.
 
 ## Context

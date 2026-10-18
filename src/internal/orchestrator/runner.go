@@ -132,6 +132,9 @@ type RunOptions struct {
 	ValidatorChat llm.Model
 	SignalEval    signal.Evaluator
 	Person        Person
+	// ResumesSession and ResumesRun, for a hosted session resumed after its earlier run was decided, are bound on run_bound.
+	ResumesSession string
+	ResumesRun     int64
 }
 
 // Runner orchestrates a single stAirCase run.

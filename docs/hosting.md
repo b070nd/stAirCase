@@ -31,9 +31,27 @@ it).
 - **Not its working copy.** The agent works in stAirCase's run worktree; what reaches `staircase/run-N` is only what stAirCase derived from
   recorded decisions, with its certificate.
 
+## When the runner resumes a session
+
+A runner resumes a session it started by passing `--resume <id>` instead of `--session-id <id>`. The session's id leads to the run it
+was governed as: the latest run whose audit chain names it as its agent's session. A session no run names was never governed, so it is
+refused. What happens next depends on where that run stands:
+
+- **It was interrupted** (its process was killed): the session continues it, as `staircase resume` would, with every check that makes.
+- **It awaits your review**: the session continues the same run. The review it offered is withdrawn (`run_resumed` names it), so a
+  decision on it is refused as stale. When the session ends, the checks run again on the exact tree, and one new review covers the
+  whole change.
+- **You decided it** (accepted or rejected): the session goes on as a new away run from today's HEAD, under fresh governance. Its
+  `run_bound` names the session and the run it follows.
+
+In each case Claude Code resumes its own conversation, so the agent remembers what was said. `--fork-session`, `--continue` and
+`--resume-session-at` stay refused: a forked session, or one found other than by its id, is not hosted.
+
 ## What it guarantees, and what not yet
 
 - Claude Code's hooks still decide when a runner switches its permission prompts off: probed on 2.1.236
   ([record](release-evidence/claude-code-2.1.236-hooks-under-skip-permissions.md)). A session in which stAirCase's hooks never ran keeps nothing.
-- Seen with a real agent through Cloudroom 0.1.57's own argument list ([record](release-evidence/host-cloudroom-args-claude-code-2.1.236.md)).
-- Not yet: a resumed or forked runner session (refused, naming the reason), other agents than Claude Code, and a run inside Cloudroom itself.
+- Seen with a real agent through Cloudroom 0.1.57's own argument list ([record](release-evidence/host-cloudroom-args-claude-code-2.1.236.md)),
+  and a session of it resumed with `--resume`: the same run went on, and the agent remembered a word it had said only in the first
+  session ([record](release-evidence/hosted-resume-claude-code-2.1.236.md)).
+- Not yet: a forked runner session (refused, naming the reason), other agents than Claude Code, and a run inside Cloudroom itself.

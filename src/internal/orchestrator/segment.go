@@ -144,7 +144,8 @@ func (firstSegment) checkout(s *runState) error {
 	}
 	// Provenance: what this run started from, before the agent runs.
 	bound := history.Bound{BaseSHA: s.baseSHA, Branch: s.runBranch, Worktree: s.worktree, TopologyVersion: s.topoVersion,
-		Harness: s.harness, AckDrift: s.haltedRun, TermsSHA256: sha256Hex(terms)} // the saved options are the terms a continuation keeps
+		Harness: s.harness, AckDrift: s.haltedRun, TermsSHA256: sha256Hex(terms), // the saved options are the terms a continuation keeps
+		ResumesSession: opts.ResumesSession, ResumesRun: opts.ResumesRun}
 	if opts.Plan != nil {
 		bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
 	}
@@ -205,6 +206,9 @@ func (g continuedSegment) checkout(s *runState) error {
 	}
 	if cont.journalDropped > 0 {
 		resumed["journal_dropped"] = cont.journalDropped
+	}
+	if cont.withdrawn != "" {
+		resumed["withdrew_review"] = cont.withdrawn
 	}
 	if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
 		return fmt.Errorf("audit run_resumed: %w", err)

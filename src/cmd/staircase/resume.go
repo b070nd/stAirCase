@@ -76,7 +76,7 @@ func resumeRun(runID int64) error {
 	runner := orchestrator.NewRunner(persistence.NewStore(db), wsDir)
 
 	// Everything about the run that is read is read before the agent is built; the continuation checks it all again.
-	pl, err := runner.PlanOf(runID)
+	pl, err := runner.PlanOf(runID, false)
 	if err != nil {
 		return err
 	}

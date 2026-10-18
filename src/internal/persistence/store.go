@@ -1127,6 +1127,19 @@ func (s *Store) ListRunsByCase(caseID int64) ([]domain.Run, error) {
 	return scanRuns(rows)
 }
 
+// ListRuns is every run of the workspace, newest first.
+func (s *Store) ListRuns() ([]domain.Run, error) {
+	rows, err := s.db.Query(
+		`SELECT id, case_id, topology_version, status, start_time, end_time, git_branch, COALESCE(git_commit_hash,'')
+		 FROM runs ORDER BY id DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanRuns(rows)
+}
+
 func (s *Store) ListRunsByStatus(status string) ([]domain.Run, error) {
 	rows, err := s.db.Query(
 		`SELECT id, case_id, topology_version, status, start_time, end_time, git_branch, COALESCE(git_commit_hash,'')
@@ -1369,8 +1382,9 @@ func (s *Store) ListVerifiedEventLogs(runID int64) ([]domain.RunEventLog, error)
 // ReopenRun puts a run that was interrupted (RUNNING, or KILLED by a cancellation) and has no commit back to RUNNING,
 // for a continuation: its end time is cleared. It refuses any other run, so a finished run cannot be reopened.
 func (s *Store) ReopenRun(runID int64) error {
+	// An away run that awaits review is reopened when a resumed hosted session continues it (ADR 0008): its review is withdrawn.
 	res, err := s.db.Exec(`UPDATE runs SET status = 'RUNNING', end_time = NULL
-		WHERE id = ? AND status IN ('RUNNING', 'KILLED') AND COALESCE(git_commit_hash, '') = ''`, runID)
+		WHERE id = ? AND status IN ('RUNNING', 'KILLED', 'AWAITING_REVIEW') AND COALESCE(git_commit_hash, '') = ''`, runID)
 	if err != nil {
 		return fmt.Errorf("reopen run: %w", err)
 	}
