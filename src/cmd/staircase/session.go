@@ -222,7 +222,7 @@ func session(l launch, harness, name, command string, args []string) error {
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 		if l.terms.Agreed, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: l.allow, checks: l.terms.Checks, inScope: l.terms.ApproveInScope, onEvidence: l.terms.ApproveOnEvidence, away: l.terms.Away, validators: len(l.terms.ValidatorModels), signed: l.terms.SignKey != "", requireSigned: l.terms.RequireSignedApprovals, model: l.model,
+			base: strings.TrimSpace(string(base)), allow: l.allow, checks: l.terms.Checks, protected: t.ProtectedPaths, inScope: l.terms.ApproveInScope, onEvidence: l.terms.ApproveOnEvidence, away: l.terms.Away, validators: len(l.terms.ValidatorModels), signed: l.terms.SignKey != "", requireSigned: l.terms.RequireSignedApprovals, model: l.model,
 			shell: l.terms.AllowShellExec, yes: l.yes, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
@@ -346,7 +346,7 @@ func samePath(a, b string) bool {
 // sessionSetup is what a session is about to do, for the person to agree to.
 type sessionSetup struct {
 	harness, name, task, root, base, model string
-	allow, checks                          []string
+	allow, checks, protected               []string
 	inScope, onEvidence, away              bool
 	validators                             int
 	signed, requireSigned                  bool
@@ -406,6 +406,10 @@ func agreement(s sessionSetup) string {
 	}
 	if len(s.checks) > 0 {
 		fmt.Fprintf(&b, "  checks:      %s (must pass before the agent may finish; results in the certificate)\n", strings.Join(s.checks, "; "))
+	}
+	if len(s.protected) > 0 {
+		fmt.Fprintf(&b, "  protected:   %s (where your checks are defined: a change to them always comes to you, parked while away)\n",
+			strings.Join(s.protected, ", "))
 	}
 	switch {
 	case s.requireSigned:
