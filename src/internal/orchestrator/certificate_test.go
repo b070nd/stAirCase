@@ -107,7 +107,7 @@ func TestRun_certificate_level_drops_with_unsandboxed_commands(t *testing.T) {
 		}
 		return writeFile("x.txt", "x\n")(ctx, env)
 	}
-	_, _, s := certified(t, agent, orchestrator.RunOptions{AllowShellExec: true}, &operator{approve: true})
+	_, _, s := certified(t, agent, orchestrator.RunOptions{Terms: orchestrator.Terms{AllowShellExec: true}}, &operator{approve: true})
 	assert.Equal(t, 2, s.Predicate.CAL)
 	assert.True(t, strings.Contains(strings.Join(s.Predicate.Notes, " "), "sandbox"), s.Predicate.Notes)
 }
@@ -127,7 +127,7 @@ func TestRun_certificate_level_with_sandboxed_commands(t *testing.T) {
 			env.ShellRan(ctx, "coder", "make gen", sandboxed)
 			return nil
 		}
-		r, _, s := certified(t, agent, orchestrator.RunOptions{AllowShellExec: true}, &operator{approve: true})
+		r, _, s := certified(t, agent, orchestrator.RunOptions{Terms: orchestrator.Terms{AllowShellExec: true}}, &operator{approve: true})
 		got, err := r.OnBranch("gen.txt")
 		require.NoError(t, err, got)
 		assert.Equal(t, "gen\n", got)
@@ -145,9 +145,7 @@ func TestRun_certificate_level_with_sandboxed_commands(t *testing.T) {
 // and its result is in the certificate; a failing check is recorded, not
 // hidden, and its checkout is removed.
 func TestRun_checks_the_commit_it_made(t *testing.T) {
-	r, _, s := certified(t, writeFile("health.txt", "ok\n"), orchestrator.RunOptions{
-		Plan:   &plan.Plan{Harness: "claude-code"},
-		Checks: []string{"grep -q ok health.txt && test -z \"$(git status --porcelain)\"", "echo broken; exit 3"}}, nil)
+	r, _, s := certified(t, writeFile("health.txt", "ok\n"), orchestrator.RunOptions{Plan: &plan.Plan{Harness: "claude-code"}, Terms: orchestrator.Terms{Checks: []string{"grep -q ok health.txt && test -z \"$(git status --porcelain)\"", "echo broken; exit 3"}}}, nil)
 
 	c := s.Predicate.Checks
 	require.Len(t, c, 2)

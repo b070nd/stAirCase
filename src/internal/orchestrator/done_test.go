@@ -17,7 +17,7 @@ import (
 // there is nothing to wait for.
 func TestDone_gives_up_after_a_few_attempts(t *testing.T) {
 	var answers []string
-	r := runtest.Run(t, runtest.Options{Run: orchestrator.RunOptions{Checks: []string{"echo nope; exit 1"}},
+	r := runtest.Run(t, runtest.Options{Run: orchestrator.RunOptions{Terms: orchestrator.Terms{Checks: []string{"echo nope; exit 1"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			for range orchestrator.MaxDoneAttempts + 1 {
 				answers = append(answers, env.Done(ctx))

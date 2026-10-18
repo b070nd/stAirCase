@@ -138,7 +138,7 @@ func TestTools_run_shell(t *testing.T) {
 		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
 	}))
 	defer approver.Close()
-	r, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true, Sandbox: sandbox.Off}, // TestShellSandbox covers the sandbox
+	r, out := runTools(t, nil, orchestrator.RunOptions{Terms: orchestrator.Terms{AllowShellExec: true, Sandbox: sandbox.Off}}, // TestShellSandbox covers the sandbox
 		func(s *persistence.Store, _ string, projectID int64) {
 			require.NoError(t, s.UpdateProjectWebhook(projectID, approver.URL))
 		}, func(ctx context.Context, env *orchestrator.AgentEnv) []string {
@@ -176,7 +176,7 @@ func TestTools_run_shell_cannot_read_the_workspace(t *testing.T) {
 		_, _ = w.Write([]byte(`{"type":"yield_response","approved":true}`))
 	}))
 	defer approver.Close()
-	_, out := runTools(t, nil, orchestrator.RunOptions{AllowShellExec: true},
+	_, out := runTools(t, nil, orchestrator.RunOptions{Terms: orchestrator.Terms{AllowShellExec: true}},
 		func(s *persistence.Store, _ string, projectID int64) {
 			require.NoError(t, s.UpdateProjectWebhook(projectID, approver.URL))
 		}, func(ctx context.Context, env *orchestrator.AgentEnv) []string {

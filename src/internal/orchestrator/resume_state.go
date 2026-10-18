@@ -20,58 +20,6 @@ import (
 // audit chain and its approval journal, the same history recovery reads, never restored from a snapshot, and the run
 // continues under the exact policy, plan and options it started with (saved when it started).
 
-// savedOptions are the options a run started with that decide how it decides: what a continuation must not change.
-// Where it listens, how it is shown and the agent that carries it out are not terms of the run.
-type savedOptions struct {
-	Version                int      `json:"version"`
-	Agreed                 string   `json:"agreed,omitempty"`
-	ApproveInScope         bool     `json:"approve_in_scope,omitempty"`
-	ApproveOnEvidence      bool     `json:"approve_on_evidence,omitempty"`
-	AllowShellExec         bool     `json:"allow_shell_exec,omitempty"`
-	Sandbox                string   `json:"sandbox,omitempty"`
-	RequireSignedApprovals bool     `json:"require_signed_approvals,omitempty"`
-	SignKey                string   `json:"sign_key,omitempty"` // a path, never a key
-	SignAs                 string   `json:"sign_as,omitempty"`
-	RequireEvidence        bool     `json:"require_evidence,omitempty"`
-	Checks                 []string `json:"checks,omitempty"`
-	CheckTimeoutNS         int64    `json:"check_timeout_ns,omitempty"`
-	SignalModel            string   `json:"signal_model,omitempty"`
-	SignalURL              string   `json:"signal_url,omitempty"`
-	ValidatorModels        []string `json:"validator_models,omitempty"`
-	Away                   bool     `json:"away,omitempty"`
-	AwayCommands           []string `json:"away_commands,omitempty"`
-	AwayTools              []string `json:"away_tools,omitempty"`
-}
-
-const savedOptionsVersion = 1
-
-func optionsToSave(o RunOptions) savedOptions {
-	s := savedOptions{Version: savedOptionsVersion, Agreed: o.Agreed, ApproveInScope: o.ApproveInScope, ApproveOnEvidence: o.ApproveOnEvidence,
-		AllowShellExec: o.AllowShellExec, Sandbox: o.Sandbox, RequireSignedApprovals: o.RequireSignedApprovals, SignKey: o.SignKey,
-		SignAs: o.SignAs, RequireEvidence: o.RequireEvidence, Checks: o.Checks, CheckTimeoutNS: int64(o.CheckTimeout), Away: o.Away, AwayCommands: o.AwayCommands, AwayTools: o.AwayTools}
-	if o.Signal != nil {
-		s.SignalModel, s.SignalURL = o.Signal.Model, o.Signal.URL
-	}
-	if o.Validator != nil {
-		s.ValidatorModels = o.Validator.Models
-	}
-	return s
-}
-
-// apply returns the run options a continuation runs with: the saved terms, and nothing else of the first segment.
-func (s savedOptions) apply(base RunOptions) RunOptions {
-	base.Agreed, base.ApproveInScope, base.ApproveOnEvidence, base.AllowShellExec, base.Sandbox = s.Agreed, s.ApproveInScope, s.ApproveOnEvidence, s.AllowShellExec, s.Sandbox
-	base.RequireSignedApprovals, base.SignKey, base.SignAs, base.RequireEvidence = s.RequireSignedApprovals, s.SignKey, s.SignAs, s.RequireEvidence
-	base.Checks, base.CheckTimeout, base.Away, base.AwayCommands, base.AwayTools = s.Checks, time.Duration(s.CheckTimeoutNS), s.Away, s.AwayCommands, s.AwayTools
-	if s.SignalModel != "" {
-		base.Signal = &Signal{Model: s.SignalModel, URL: s.SignalURL}
-	}
-	if len(s.ValidatorModels) > 0 {
-		base.Validator = &Validator{Models: s.ValidatorModels}
-	}
-	return base
-}
-
 // Files a run saves when it starts, next to its journal.
 func savedPolicyPath(wsDir string, runID int64) string  { return runFile(wsDir, runID, "policy.json") }
 func savedPlanPath(wsDir string, runID int64) string    { return runFile(wsDir, runID, "plan.json") }
@@ -119,7 +67,7 @@ type continuation struct {
 
 	policy *policy.Snapshot
 	plan   plan.Plan
-	opts   savedOptions
+	terms  Terms
 
 	// What Resume prepared before any change was made (see resume.go).
 	release     func() // the run's owner lock, held since before the first check
@@ -208,12 +156,10 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	c.segment++ // this is the next segment
 
 	// The terms the run started under, saved when it started.
-	if b, err := os.ReadFile(savedOptionsPath(r.wsDir, runID)); err != nil {
+	if c.terms, err = loadTerms(r.wsDir, runID, hist, hist.Bound.Harness); errors.Is(err, os.ErrNotExist) {
 		return nil, notContinuable("run #%d saved no options when it started (it began before runs could be continued): recover it instead", runID)
-	} else if !termsBound(hist, b) {
-		return nil, notContinuable("the options saved for run #%d are not the ones the audit chain names", runID)
-	} else if json.Unmarshal(b, &c.opts) != nil || c.opts.Version != savedOptionsVersion {
-		return nil, notContinuable("the options saved for run #%d are unreadable", runID)
+	} else if err != nil {
+		return nil, notContinuable("run #%d: %v", runID, err)
 	}
 	rawPlan, err := os.ReadFile(savedPlanPath(r.wsDir, runID))
 	if hist.Bound.PlanDigest != "" {

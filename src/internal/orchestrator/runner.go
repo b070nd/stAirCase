@@ -115,8 +115,10 @@ func (r *Runner) enter(p RunPhase) error {
 	return nil
 }
 
-// RunOptions carries all user-supplied flags for a run.
+// RunOptions are a run's Terms and how this run, or this segment of it, is carried out: where it listens, how it is shown, the
+// agent, the plan, and what a test puts in place of a model.
 type RunOptions struct {
+	Terms
 	DryRun        bool
 	SkipGates     bool
 	Debug         bool
@@ -129,61 +131,13 @@ type RunOptions struct {
 	// Plan is the compiled plan the agent executes, when there is one: the run
 	// records its topology version, digest and blueprint as provenance.
 	Plan *plan.Plan
-	// Validator, when set, decides in-scope file edits the policy leaves open
-	// (see Validator); a human approves the run's final change once.
-	Validator *Validator
-	// Agreed says who agreed to the task before the run (a session's
-	// confirmation); it is recorded after run_bound.
-	Agreed string
 	// AckDrift acknowledges that the case's previous run was halted for drift;
 	// without it such a case does not run again.
 	AckDrift bool
-	// AllowShellExec, when true, includes run_shell in the agent tool list.
-	// Defaults to false - operators must explicitly pass --allow-shell-exec.
-	AllowShellExec bool
-	// Sandbox is where approved commands run: "auto" (default: in the
-	// sandbox when this machine has one), "required" or "off".
-	Sandbox string
-	// ApproveInScope approves changes inside the agreed task's scope as part
-	// of the task (source "task"), with a checkpoint every few changes and a
-	// person's final review of the whole change. It needs Agreed.
-	ApproveInScope bool
-	// ApproveOnEvidence approves in-scope changes on evidence instead of on the
-	// agreed task alone: the Checks must pass on the state each change would
-	// produce, and the Validator's models, if any, must agree; otherwise a
-	// person decides. It replaces the sampled checkpoint of ApproveInScope, and
-	// the whole change is still reviewed once before it is committed. It needs
-	// Checks or a Validator.
-	ApproveOnEvidence bool
-	// Signal, when set, is a decision model asked about every change
-	// approved without a person; it can only send it to a person.
-	Signal *Signal
-	// RequireSignedApprovals refuses a person's decision unless it carries an
-	// SSH signature of a signer listed in the workspace's allowed_signers.
-	RequireSignedApprovals bool
-	// RequireEvidence makes a commit without its ledger and signed change
-	// certificate a failure: the run ends with ErrEvidenceIncomplete (the commit
-	// stays on its branch, reported as delivered).
-	RequireEvidence bool
-	// SignKey, when set, makes stAirCase sign each human decision with this
-	// SSH key, as SignAs (a key that needs a touch makes it a presence check).
-	SignKey, SignAs string
-	// Checks are commands run on the commit the run made (--check), such as
-	// its tests; their results are evidence in the change certificate.
-	Checks []string
-	// CheckTimeout is how long one check may run, wherever checks run (approving on
-	// evidence, the definition of done, after the commit): 0 means 15 minutes.
-	CheckTimeout time.Duration
-	// Away (ADR 0006): nobody is asked during the run. Changes are approved on evidence (it implies ApproveOnEvidence
-	// and needs Checks) or by policy; what would need a person is parked and the agent goes on. When the agent stops,
-	// the checks run on the exact approved tree, and a run whose tree passes ends AWAITING_REVIEW: nothing is
-	// committed until the owner decides (staircase decide).
-	Away bool
-	// AwayCommands (ADR 0009) are the exact commands an away run may run without asking: the owner's decision made in advance.
-	// They need Away, AllowShellExec and a sandbox without network; each is a whole command, run in the worktree's root.
-	AwayCommands []string
-	// AwayTools are the exact MCP tool names (mcp__server__tool) an away run may call without asking; any other tool call is parked.
-	AwayTools []string
+	// ValidatorChat and SignalEval, when set, stand in for the reviewer models and the decision model the terms name
+	// (nil: called with the project's secrets).
+	ValidatorChat llm.Model
+	SignalEval    signal.Evaluator
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -230,6 +184,23 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	r.phase, r.path = PhasePreFlight, []RunPhase{PhasePreFlight}
 	if cont != nil {
 		r.phase, r.path = PhaseResume, []RunPhase{PhaseResume}
+	}
+	// The terms are judged before anything exists: a run no one can decide under leaves no record, branch or worktree.
+	harness := ""
+	if opts.Plan != nil {
+		harness = opts.Plan.Harness
+	}
+	terms, err := NewTerms(opts.Terms, harness)
+	if err != nil {
+		return err
+	}
+	opts.Terms = terms
+	signers := filepath.Join(r.wsDir, governance.AllowedSigners)
+	if _, err := os.Stat(signers); err != nil {
+		signers = ""
+	}
+	if opts.RequireSignedApprovals && signers == "" {
+		return errors.New("--require-signed-approvals needs the trusted signers: an allowed_signers file in the workspace (staircase governance use, or copy git's allowed_signers there)")
 	}
 
 	// ── Load case + project ───────────────────────────────────────────────────
@@ -290,10 +261,6 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	topology, err := r.store.GetLatestTopology(project.ID)
 	if err != nil {
 		return fmt.Errorf("load topology: %w", err)
-	}
-	harness := ""
-	if opts.Plan != nil {
-		harness = opts.Plan.Harness
 	}
 	if topology == nil && harness == "" { // a harness brings its own agent: version 0, no topology
 		return fmt.Errorf("no swarm topology registered for project %q - run 'staircase topology register' first", project.Name)
@@ -496,7 +463,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	} else {
 		// The terms this run starts under, saved for a continuation (ADR 0005): its options and its plan now, its policy
 		// when it is read (below). A run that cannot save them still runs; it simply cannot be continued, only recovered.
-		terms, _ := json.Marshal(optionsToSave(opts))
+		terms, _ := json.Marshal(savedTerms{termsVersion, opts.Terms})
 		if err := saveRunFile(savedOptionsPath(r.wsDir, run.ID), terms); err != nil {
 			obs.Log.Warn("save run options: the run cannot be continued", "err", err)
 		}
@@ -690,8 +657,9 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	defer cancelAgent()
 	stopped := make(chan struct{})
 	env := &AgentEnv{Session: agentSession(cont), Continuation: contBrief(cont), Brief: awayBrief(opts.Away), Worktree: worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: proposals, usage: usage, host: host}
-	val := opts.Validator
-	if val != nil {
+	var val *Validator
+	if len(opts.ValidatorModels) > 0 {
+		val = &Validator{Models: opts.ValidatorModels, Chat: opts.ValidatorChat}
 		if val.Chat == nil {
 			val.Chat = &llm.Router{Secret: host.secret}
 		}
@@ -700,34 +668,13 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		}
 	}
 	var evGate *evidenceGate
-	if opts.Away { // checked with the other options of a recorded run, like --approve-on-evidence below
-		if len(opts.Checks) == 0 {
-			return errors.New("--away needs at least one --check: while you are away, a change is approved only on evidence")
-		}
-		if opts.RequireSignedApprovals { // the review in staircase decide is not signed yet: refused rather than weaker
-			return errors.New("--away cannot be combined with signed decisions yet: the review of an away run is not signed")
-		}
-		opts.ApproveOnEvidence = true
-	}
-	if err := checkAwayCommands(opts); err != nil {
-		return err
-	}
 	if opts.ApproveOnEvidence {
-		if len(opts.Checks) == 0 && val == nil {
-			return errors.New("--approve-on-evidence needs evidence to decide on: name a --check and/or a --validator")
-		}
 		if val != nil {
 			val.noSampling = true // the evidence replaces the validator's own sampling
 		}
 		evGate = &evidenceGate{approvals: appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir, timeout: opts.CheckTimeout}
 	}
-	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs}
-	if _, err := os.Stat(filepath.Join(r.wsDir, governance.AllowedSigners)); err == nil {
-		signing.signers = filepath.Join(r.wsDir, governance.AllowedSigners)
-	}
-	if opts.RequireSignedApprovals && signing.signers == "" {
-		return errors.New("--require-signed-approvals needs the trusted signers: an allowed_signers file in the workspace (staircase governance use, or copy git's allowed_signers there)")
-	}
+	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs, signers: signers}
 	// askHuman shows a proposal to the operator: approval API, webhook or TUI.
 	askHuman := func(req domain.YieldRequest, signText string) domain.YieldResponse {
 		display.Pause()
@@ -789,24 +736,26 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		return fmt.Errorf("mark case running: %w", err)
 	}
 
-	if opts.Signal != nil {
-		if opts.Signal.Eval == nil {
-			if opts.Signal.URL != "" { // a local Laya or TypeSafe: its own shape, a key only if it has one
+	var sig *Signal
+	if opts.SignalModel != "" {
+		sig = &Signal{Model: opts.SignalModel, URL: opts.SignalURL, Eval: opts.SignalEval}
+		if sig.Eval == nil {
+			if sig.URL != "" { // a local Laya or TypeSafe: its own shape, a key only if it has one
 				key, _ := host.secret("SIGNAL_API_KEY")
-				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: opts.Signal.URL, API: signal.SystemOne}
+				sig.Eval = &signal.Client{Model: sig.Model, Key: key, BaseURL: sig.URL, API: signal.SystemOne}
 			} else if key, err := host.secret("LLM_GATEWAY_API_KEY"); err == nil && key != "" {
 				base, _ := host.secret("LLM_GATEWAY_URL") // as for the gateway's models (llm.New)
-				opts.Signal.Eval = &signal.Client{Model: opts.Signal.Model, Key: key, BaseURL: strings.TrimSuffix(strings.TrimSuffix(base, "/"), "/v1")}
+				sig.Eval = &signal.Client{Model: sig.Model, Key: key, BaseURL: strings.TrimSuffix(strings.TrimSuffix(base, "/"), "/v1")}
 			}
 		}
 		if opts.Plan != nil {
-			opts.Signal.brief = opts.Plan.Brief()
+			sig.brief = opts.Plan.Brief()
 		}
 	}
 	if cont != nil { // the validator and the deciders continue from the counts the chain recorded
 		val.restore(cont.validator)
 	}
-	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: opts.Signal, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), declaredTools: declaredSet(opts.AwayTools), approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
+	dec := &deciders{sign: signing, redact: func(s string) string { return redact(s, delivered()) }, signal: sig, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), declaredTools: declaredSet(opts.AwayTools), approvals: appr, drift: sup, policy: policyEngine, validator: val, askHuman: askHuman, waitCtx: waitCtx, ctx: ctx,
 		display: display, tracker: tracker,
 		audit: func(event string, fields any) error { return r.audit(run.ID, event, fields) }}
 	if cont != nil {

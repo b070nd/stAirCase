@@ -125,8 +125,8 @@ func sandboxFlag(cmd *cobra.Command) {
 
 // runCase runs a compiled case with the run flags.
 func runCase(caseID int64) error {
-	if err := sandbox.ParseMode(runSandbox); err != nil {
-		return fmt.Errorf("--sandbox: %w", err)
+	if _, err := orchestrator.NewTerms(flagTerms(), ""); err != nil { // the run judges them again, with its plan's harness
+		return err
 	}
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
@@ -191,49 +191,48 @@ func runCase(caseID int64) error {
 		return err
 	}
 
-	var validator *orchestrator.Validator
 	for _, m := range runValidator {
 		if llm.SecretFor(m) == "" {
 			return fmt.Errorf("--validator %q: no provider serves this model", m)
 		}
 	}
-	if len(runValidator) > 0 {
-		validator = &orchestrator.Validator{Models: runValidator}
-	}
-	var sig *orchestrator.Signal
-	if runSignal != "" {
-		sig = &orchestrator.Signal{Model: runSignal, URL: runSignalURL}
-	}
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
-		DryRun:            runDryRun,
-		SkipGates:         runSkipGate,
-		Debug:             runDebug,
-		Reconcile:         runReconcile,
-		ApprovalPort:      runApprovalPort,
-		ApprovalToken:     runApprovalToken,
-		AllowShellExec:    runAllowShellExec,
-		Sandbox:           runSandbox,
-		ApproveInScope:    sessionInScope,
-		ApproveOnEvidence: sessionOnEvidence,
-		Away:              sessionAway,
-		AwayCommands:      sessionAwayCommands,
-		AwayTools:         sessionAwayTools,
-		Signal:            sig,
-		SignKey:           runSignKey,
-		SignAs:            orDefaultStr(runSignAs, gitConfig("user.email")),
+		DryRun:        runDryRun,
+		SkipGates:     runSkipGate,
+		Debug:         runDebug,
+		Reconcile:     runReconcile,
+		ApprovalPort:  runApprovalPort,
+		ApprovalToken: runApprovalToken,
+		AckDrift:      runAckDrift,
+		Agent:         ag,
+		Plan:          &pl,
+		Terms:         flagTerms(),
+	})
+}
 
+// flagTerms are the run's terms as its flags give them; NewTerms judges them.
+func flagTerms() orchestrator.Terms {
+	return orchestrator.Terms{
+		Agreed:                 runAgreedBy,
+		AllowShellExec:         runAllowShellExec,
+		Sandbox:                runSandbox,
+		ApproveInScope:         sessionInScope,
+		ApproveOnEvidence:      sessionOnEvidence,
+		Away:                   sessionAway,
+		AwayCommands:           sessionAwayCommands,
+		AwayTools:              sessionAwayTools,
+		SignalModel:            runSignal,
+		SignalURL:              runSignalURL,
+		ValidatorModels:        runValidator,
+		SignKey:                runSignKey,
+		SignAs:                 orDefaultStr(runSignAs, gitConfig("user.email")),
 		RequireSignedApprovals: runRequireSigned,
 		RequireEvidence:        runRequireEvidence,
 		Checks:                 runChecks,
 		CheckTimeout:           runCheckTimeout,
-		AckDrift:               runAckDrift,
-		Validator:              validator,
-		Agreed:                 runAgreedBy,
-		Agent:                  ag,
-		Plan:                   &pl,
-	})
+	}
 }
 
 // checkFlag adds --check to cmd.

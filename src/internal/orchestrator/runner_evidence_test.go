@@ -67,7 +67,7 @@ func TestRun_require_evidence(t *testing.T) {
 		"no signing key":                {noKey: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			r, s := evidenceRun(t, orchestrator.RunOptions{RequireEvidence: true}, tc.blockAudit, tc.noKey)
+			r, s := evidenceRun(t, orchestrator.RunOptions{Terms: orchestrator.Terms{RequireEvidence: true}}, tc.blockAudit, tc.noKey)
 			require.ErrorIs(t, r.Err, orchestrator.ErrEvidenceIncomplete)
 			assert.Equal(t, persistence.RunStatusSuccess, r.Run.Status, "the commit was made")
 			assert.NotEmpty(t, r.Run.GitCommitHash)
@@ -79,7 +79,7 @@ func TestRun_require_evidence(t *testing.T) {
 		})
 	}
 
-	r, s := evidenceRun(t, orchestrator.RunOptions{RequireEvidence: true}, false, false)
+	r, s := evidenceRun(t, orchestrator.RunOptions{Terms: orchestrator.Terms{RequireEvidence: true}}, false, false)
 	require.NoError(t, r.Err)
 	assert.Equal(t, orchestrator.OutcomeCertified, s.Outcome)
 }

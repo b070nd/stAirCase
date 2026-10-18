@@ -56,7 +56,7 @@ func TestRecover_adopts_the_commit_the_run_itself_made(t *testing.T) {
 	}{
 		"evidence published, record not completed": {orchestrator.RunOptions{}, false},
 		"commit made, no evidence yet":             {orchestrator.RunOptions{}, true},
-		"task approvals and a final review":        {orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"}, true},
+		"task approvals and a final review":        {orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}}, true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, commit := diedAfterTheCommit(t, f.opts, f.dropEvidence)

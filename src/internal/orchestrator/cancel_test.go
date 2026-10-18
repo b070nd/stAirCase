@@ -33,8 +33,7 @@ func TestRun_an_automatic_decision_ends_with_the_run_limit(t *testing.T) {
 	start := time.Now()
 	r := runtest.Run(t, runtest.Options{
 		Setup: setup,
-		Run: orchestrator.RunOptions{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com",
-			Checks: []string{"sleep 25"}},
+		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, ApproveOnEvidence: true, Agreed: "dev@example.com", Checks: []string{"sleep 25"}}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
 			write(ctx, env, "src/a.txt", "x\n")
 			return nil
@@ -61,7 +60,7 @@ func TestRecover_cancellation(t *testing.T) {
 		branchUntouched(t, r)
 	})
 	review := func(t *testing.T) runtest.Result {
-		return interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
+		return interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}})
 	}
 	t.Run("while a person is being asked", func(t *testing.T) {
 		r := review(t)

@@ -24,8 +24,7 @@ import (
 
 // awayOpts: away, approving in-scope changes on a check that refuses the word FORBIDDEN anywhere in src.
 func awayOpts() orchestrator.RunOptions {
-	return orchestrator.RunOptions{Away: true, ApproveOnEvidence: true, Agreed: "dev@example.com",
-		Checks: []string{`! grep -rq FORBIDDEN src || { echo "FORBIDDEN found"; exit 1; }`}}
+	return orchestrator.RunOptions{Terms: orchestrator.Terms{Away: true, ApproveOnEvidence: true, Agreed: "dev@example.com", Checks: []string{`! grep -rq FORBIDDEN src || { echo "FORBIDDEN found"; exit 1; }`}}}
 }
 
 // payload is the decoded payload of the first event of that type, or nil.

@@ -33,7 +33,7 @@ func TestRecover_a_commit_that_looks_like_its_own_but_is_not(t *testing.T) {
 		"an extra parent":                   func(base, other string) []string { return []string{"-p", base, "-p", other} },
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
+			r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}})
 			base := strings.TrimSpace(git(t, r.Repo, "rev-parse", "staircase/run-1"))
 			// the tree the approvals produce, built the long way round in a scratch clone
 			scratch := t.TempDir()
@@ -70,7 +70,7 @@ func TestRecover_a_commit_that_looks_like_its_own_but_is_not(t *testing.T) {
 // TestRecover_review_that_cannot_be_recorded_commits_nothing: the final review is
 // on the audit chain before any commit is made.
 func TestRecover_review_that_cannot_be_recorded_commits_nothing(t *testing.T) {
-	r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{ApproveInScope: true, Agreed: "dev@example.com"})
+	r := interrupted(t, inSrc(&operator{approve: true}), orchestrator.RunOptions{Terms: orchestrator.Terms{ApproveInScope: true, Agreed: "dev@example.com"}})
 	_, err := r.DB.Exec(`CREATE TRIGGER no_review BEFORE INSERT ON run_event_logs WHEN NEW.event_type = 'yield_decided' AND NEW.payload LIKE '%"action_type":"final_review"%' BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
 	require.NoError(t, err)
 	_, err = orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{Confirm: approveAll})
