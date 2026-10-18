@@ -56,3 +56,8 @@ func (o *openedRun) repo() (*GitRepo, error) { return OpenGitRepo(o.project.Sour
 func (o *openedRun) derive(repo *GitRepo) (*approvals, func(), error) {
 	return deriveApproved(repo, o.hist.Bound.BaseSHA, o.kept, o.hist.Approvals())
 }
+
+// terms are the terms the run saved when it started, bound by its chain (loadTerms); a run of an older version saved none.
+func (o *openedRun) terms(wsDir string) (Terms, error) {
+	return loadTerms(wsDir, o.run.ID, o.hist, o.hist.Bound.Harness)
+}
