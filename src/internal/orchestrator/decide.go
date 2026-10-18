@@ -51,6 +51,14 @@ type deciders struct {
 	taskApproved        bool // something was approved as part of the task: a person reviews the result
 }
 
+// under sets what the terms decide about who decides: the agreed task (approving in scope or on evidence needs someone to have
+// agreed to it), away, and what an away run may run or call without asking.
+func (d *deciders) under(t Terms) *deciders {
+	d.task = (t.ApproveInScope || t.ApproveOnEvidence) && t.Agreed != ""
+	d.away, d.declared, d.declaredTools = t.Away, declaredSet(t.AwayCommands), declaredSet(t.AwayTools)
+	return d
+}
+
 // orBackground is ctx, or a context nothing ends when there is none.
 func orBackground(ctx context.Context) context.Context {
 	if ctx == nil {

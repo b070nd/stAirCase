@@ -628,9 +628,9 @@ func (s *runState) startAgent() error {
 		s.val.restore(cont.validator)
 	}
 	delivered := s.host.deliveredSecrets
-	s.dec = &deciders{sign: signing, redact: func(str string) string { return redact(str, delivered()) }, signal: sig, task: (opts.ApproveInScope || opts.ApproveOnEvidence) && opts.Agreed != "", evidence: s.evGate, away: opts.Away, declared: declaredSet(opts.AwayCommands), declaredTools: declaredSet(opts.AwayTools), approvals: s.appr, drift: s.sup, policy: s.snap.Engine, validator: s.val, askHuman: askHuman, waitCtx: s.waitCtx, ctx: s.ctx,
+	s.dec = (&deciders{sign: signing, redact: func(str string) string { return redact(str, delivered()) }, signal: sig, evidence: s.evGate, approvals: s.appr, drift: s.sup, policy: s.snap.Engine, validator: s.val, askHuman: askHuman, waitCtx: s.waitCtx, ctx: s.ctx,
 		display: s.display, tracker: s.tracker,
-		audit: func(event string, fields any) error { return r.audit(run.ID, event, fields) }}
+		audit: func(event string, fields any) error { return r.audit(run.ID, event, fields) }}).under(opts.Terms)
 	if cont != nil {
 		s.dec.total, s.dec.autoApproved, s.dec.taskApproved = cont.lastSeq, cont.autoApproved, cont.taskApproved
 	}
