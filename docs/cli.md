@@ -190,6 +190,7 @@ Flags:
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Claude Code (default: its own)
       --pass-env stringArray       Name of an environment variable Claude Code may inherit, to give it its own credential (for example CLAUDE_CODE_OAUTH_TOKEN); it, and any command it runs, can read the value. Repeat for more
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
@@ -265,6 +266,7 @@ Flags:
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Codex (default: its own)
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
@@ -479,6 +481,7 @@ Flags:
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for Gemini CLI (default: its own)
       --pass-env stringArray       Name of an environment variable Gemini may inherit, to give it its own credential (for example GEMINI_API_KEY); it, and any command it runs, can read the value. Repeat for more
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
@@ -662,6 +665,7 @@ Flags:
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --model string               Model for OpenCode (default: its own)
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sandbox string             Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] (a container that sees only the worktree, without network; the image is never pulled for you) (default "auto")
@@ -1034,6 +1038,7 @@ Flags:
       --by string                  Who made the changes, for the Assisted-by trailer and the certificate (default: an external agent)
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check
@@ -1067,6 +1072,7 @@ Flags:
       --metrics-addr string        Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.
       --model string               Model for an agent harness (claude-code, codex); default: the harness's own
       --otel-endpoint string       OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --reconcile                  Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records
       --record-llm string          Record every model exchange of this run to this file (JSON lines) for offline replay.
       --replay-llm string          File path to replay recorded LLM exchanges instead of calling the real API.
@@ -1111,6 +1117,7 @@ Flags:
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
   -m, --message string             The commit message (default: Changes by <agent>)
+      --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
       --require-signed-approvals   Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers
       --sign-approvals string      Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); a key that needs a touch makes it a presence check

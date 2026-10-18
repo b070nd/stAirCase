@@ -17,7 +17,8 @@ func TestTerms_read_as_runs_saved_them(t *testing.T) {
 	saved := `{"version":1,"agreed":"dev@example.com","approve_in_scope":true,"approve_on_evidence":true,"allow_shell_exec":true,
 "sandbox":"required","require_signed_approvals":false,"sign_key":"/k","sign_as":"dev@example.com","require_evidence":true,
 "checks":["go test ./..."],"check_timeout_ns":180000000000,"signal_model":"m","signal_url":"http://127.0.0.1:1",
-"validator_models":["x","y"],"away":true,"away_commands":["make"],"away_tools":["mcp__a__b"]}`
+"validator_models":["x","y"],"away":true,"away_commands":["make"],"away_tools":["mcp__a__b"],
+"protected_paths":["tests/**"]}`
 	ws := t.TempDir()
 	write := func(b string) {
 		t.Helper()
@@ -36,7 +37,7 @@ func TestTerms_read_as_runs_saved_them(t *testing.T) {
 	want := Terms{Agreed: "dev@example.com", ApproveInScope: true, ApproveOnEvidence: true, AllowShellExec: true, Sandbox: "required",
 		SignKey: "/k", SignAs: "dev@example.com", RequireEvidence: true, Checks: []string{"go test ./..."}, CheckTimeout: 3 * time.Minute,
 		SignalModel: "m", SignalURL: "http://127.0.0.1:1", ValidatorModels: []string{"x", "y"}, Away: true, AwayCommands: []string{"make"},
-		AwayTools: []string{"mcp__a__b"}}
+		AwayTools: []string{"mcp__a__b"}, ProtectedPaths: []string{"tests/**"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("read %+v\nwant %+v", got, want)
 	}

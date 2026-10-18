@@ -15,9 +15,13 @@ staircase decide
 - **Approved on evidence only.** A change inside `--allow` is approved when every `--check` passes on the exact state it would
   produce, as with [`--approve-on-evidence`](approvals.md#approving-on-evidence). Your policy rules still apply. `--away` needs at
   least one `--check`.
-- **What needs you is parked, not asked.** A change without evidence, one outside the scope, a sensitive file, a guard hit or a shell
-  command would come to you; while you are away it is parked: the agent is told at once that it is kept for you and to go on with what
+- **What needs you is parked, not asked.** A change without evidence, one outside the scope, a sensitive file, a guard hit, a change
+  to where your checks are defined or a shell command would come to you; while you are away it is parked: the agent is told at once that it is kept for you and to go on with what
   it can do without it. The parked proposal is on the audit chain with why it needed you. It is never applied by itself.
+- **The checks cannot be weakened.** The script a check runs, the tests a test runner is given and `make`'s `Makefile` are protected
+  with the run's terms, and so is what you name with `--protect` (for `go test ./...`, `--protect "**/*_test.go"`). A change to them
+  is parked whatever your policy says, so the agent cannot make a failing check pass by editing or deleting the test it runs
+  ([checks the agent cannot weaken](approvals.md#checks-the-agent-cannot-weaken)).
 - **The end is checked, not announced.** When the agent stops, your checks run once more on the whole approved change. A change that
   does not pass ends the run failed. One that passes ends it **awaiting review**, with nothing committed and the run branch where it
   started. The process exits; nothing has to keep running.
