@@ -120,6 +120,8 @@ type Resumed struct {
 	AckDrift   bool            `json:"ack_drift"`
 	Elapsed    int             `json:"elapsed_secs"`
 	Context    string          `json:"context"`
+	// JournalDropped is how many journal lines the continuation dropped: never consumed, past the chain's last decision.
+	JournalDropped int `json:"journal_dropped,omitempty"`
 }
 
 // PolicySnapshot is the policy a run decided under.

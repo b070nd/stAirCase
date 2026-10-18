@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -348,4 +349,44 @@ func TestResume_applies_an_approval_the_agent_died_before_writing(t *testing.T) 
 	require.NoError(t, resume(t, r, orchestrator.ResumeOptions{}))
 	assert.Equal(t, "one", trim(git(t, r.Repo, "show", "staircase/run-1:src/a.txt")))
 	assert.Empty(t, eventsOf(t, r, "unapproved_worktree_change"))
+}
+
+// TestResume_after_a_kill_between_the_journal_and_the_chain: a run killed after an approval's journal line was written, and before
+// its decision was on the chain, left a line that was never consumed (and a kill during the write leaves a torn one). A continuation
+// drops it, saying so on the chain, so that its own approvals are kept under their own numbers: when it is interrupted too, recovery
+// commits what both segments approved and nothing else.
+func TestResume_after_a_kill_between_the_journal_and_the_chain(t *testing.T) {
+	for name, tail := range map[string]string{
+		"a whole line": `{"seq":2,"source":"policy","request":{"type":"yield_request","agent_name":"coder","action_type":"file_edit",` +
+			`"proposed_edits":[{"file":"src/lost.txt","search_block":"(new file)","replace_block":"lost\n"}],"reasoning_trace":"","confidence_score":0}}` + "\n",
+		"a torn line": `{"seq":2,"source":"poli`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := interruptedWith(t, [][2]string{{"src/a.txt", "one\n"}})
+			path, lines := journalLines(t, r)
+			require.NoError(t, os.WriteFile(path, []byte(lines[0]+"\n"+tail), 0o600))
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			err := orchestrator.NewRunner(r.Store, r.WsDir).Resume(ctx, r.Run.ID, orchestrator.ResumeOptions{Agent: orchestrator.AgentFunc(
+				func(c context.Context, env *orchestrator.AgentEnv) error {
+					write(c, env, "src/b.txt", "two\n")
+					cancel()
+					<-c.Done()
+					return c.Err()
+				})})
+			require.Error(t, err, "the continuation is interrupted too")
+			resumed := eventsOf(t, r, "run_resumed")
+			require.Len(t, resumed, 1)
+			assert.Contains(t, resumed[0].Payload, `"journal_dropped":1`)
+
+			res, err := recoverRun(t, r)
+			require.NoError(t, err)
+			assert.Equal(t, 2, res.Proposals)
+			assert.Equal(t, "one", trim(git(t, r.Repo, "show", "staircase/run-1:src/a.txt")))
+			assert.Equal(t, "two", trim(git(t, r.Repo, "show", "staircase/run-1:src/b.txt")))
+			assert.Error(t, exec.Command("git", "-C", r.Repo, "cat-file", "-e", "staircase/run-1:src/lost.txt").Run(),
+				"what was never consumed is never committed")
+		})
+	}
 }

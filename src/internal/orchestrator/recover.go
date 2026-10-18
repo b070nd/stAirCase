@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,6 +62,50 @@ func appendJournal(wsDir string, runID int64, req domain.YieldRequest, seq int, 
 		return err
 	}
 	return f.Close()
+}
+
+// staleJournal is how many of j's lines follow the chain's last decision, a torn one included: written by a segment that died
+// before their decision was on the chain, so never consumed.
+func staleJournal(j journalRead, lastDecided int) int {
+	n := 0
+	for _, e := range j.Entries {
+		if e.Seq > lastDecided {
+			n++
+		}
+	}
+	if j.TornTail {
+		n++
+	}
+	return n
+}
+
+// trimJournal rewrites the run's journal without the lines staleJournal counts, atomically: what a continuation keeps is the
+// journal of what its chain decided.
+func trimJournal(wsDir string, runID int64, lastDecided int) error {
+	j, err := readJournalFile(wsDir, runID)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if staleJournal(j, lastDecided) == 0 {
+		return nil
+	}
+	return rewriteJournal(wsDir, runID, slices.DeleteFunc(j.Entries, func(e journalEntry) bool { return e.Seq > lastDecided }))
+}
+
+// rewriteJournal replaces the run's journal with entries, atomically, each line as appendJournal wrote it.
+func rewriteJournal(wsDir string, runID int64, entries []journalEntry) error {
+	var b []byte
+	for _, e := range entries {
+		line, err := json.Marshal(e) // the request is kept byte for byte
+		if err != nil {
+			return err
+		}
+		b = append(append(b, line...), '\n')
+	}
+	return saveRunFile(journalPath(wsDir, runID), b)
 }
 
 // RecoverOptions are for [Runner.Recover].

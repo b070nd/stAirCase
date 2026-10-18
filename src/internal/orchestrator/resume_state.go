@@ -56,6 +56,10 @@ type continuation struct {
 	segment   int // this segment's number: 2 for the first continuation
 	chainHead string
 	undecided int // requests of earlier segments that were never decided
+	// journalDropped is how many journal lines the continuation drops: written after the chain's last decision (or torn) by a
+	// segment that died before their decision was on the chain, so never consumed. Kept, they would collide with the
+	// continuation's own approvals, which take the same numbers.
+	journalDropped int
 
 	autoApproved int
 	taskApproved bool
@@ -141,6 +145,7 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 		return nil, notContinuable("run #%d never got as far as a run branch and worktree", runID)
 	}
 	c := &continuation{run: run, opened: opened, history: hist, kept: opened.kept, lastSeq: hist.LastDecided} // no journal: nothing was approved yet
+	c.journalDropped = staleJournal(opened.journal, hist.LastDecided)
 	if err := continueFrom(hist, c); err != nil {
 		return nil, err
 	}

@@ -452,12 +452,20 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 			return err
 		}
 		initiator = initiatorOf(cont.history) // the signed request of whoever started the run is kept, never signed again
-		if err := r.audit(run.ID, "run_resumed", map[string]any{
+		resumed := map[string]any{
 			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals()),
 			"next_seq": cont.lastSeq + 1, "policy": policyDigest(cont.history), "plan_digest": cont.history.Bound.PlanDigest,
 			"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
-		}); err != nil {
+		}
+		if cont.journalDropped > 0 {
+			resumed["journal_dropped"] = cont.journalDropped
+		}
+		if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
 			return fmt.Errorf("audit run_resumed: %w", err)
+		}
+		// Only now, with the chain saying so, are the never-consumed lines dropped; a crash in between drops them next time.
+		if err := trimJournal(r.wsDir, run.ID, cont.lastSeq); err != nil {
+			return fmt.Errorf("drop the journal lines that were never consumed: %w", err)
 		}
 		barrier.Hit(barrier.ResumeStarted)
 	} else {
@@ -823,46 +831,9 @@ runLoop:
 					attribute.String("staircase.action_type", req.ActionType)))
 			rl := dec.decide(waitCtx, &req) // checks, models, signals and signing end with the run's limit too
 			barrier.Hit(barrier.DecisionMade)
-			// An approval is consumed when it is on the audit chain (journal first, then the chain,
-			// then the answer to the agent): the last expiry check is immediately before that append,
-			// and once the run is over nothing is consumed, however it was decided.
-			expire := func() {
-				rl.resp, rl.next, rl.evidence = domain.Decide(false, "the run ended before this was decided"), nil, nil
-				rl.source, rl.signed = "orchestrator", history.Signed{}
-			}
-			if rl.resp.Approved && waitCtx.Err() != nil {
-				expire()
-			}
-			journaled := false
-			if rl.resp.Approved && rl.next != nil {
-				// The approval is kept before anything else: a run that dies after
-				// this point can still be recovered with exactly what it approved.
-				if err := appendJournal(r.wsDir, run.ID, req, dec.total, rl.source); err != nil {
-					yieldSpan.End()
-					p.reply <- decision{resp: domain.Decide(false, "the orchestrator could not keep this approval; the run is stopping")}
-					stopAgent()
-					agentFinished = true
-					finalStatus = persistence.RunStatusFailed
-					runErr = fmt.Errorf("journal approval: %w", err)
-					break runLoop
-				}
-				journaled = true
-				barrier.Hit(barrier.JournalSynced)
-				if waitCtx.Err() != nil { // it ended between the journal and the chain: not consumed
-					expire()
-				}
-			}
-			yieldSpan.SetAttributes(
-				attribute.Bool("staircase.approved", rl.resp.Approved),
-				attribute.String("staircase.decision_source", rl.source))
-			yieldSpan.End()
-			// Record the decision, with the exact approved content, before the
-			// runtime can act on it: an approval that is not on the audit chain
-			// is never released (CHECK 7.3.1). An approval is CONSUMED when this entry is on the
-			// chain: the run's limit and cancellation are checked under the chain's append lock,
-			// immediately before the insert (there is no wait for another writer in between), and an
-			// insert that has begun is written, which is the last moment the run's end can matter.
-			decidedFor := func() history.Decided {
+			// Record the decision, with the exact approved content, before the runtime can act on it: an approval that is not on
+			// the audit chain is never released (CHECK 7.3.1). consume says when it is consumed.
+			decidedFor := func(journaled bool) history.Decided {
 				decided := yieldDecided(dec.total, rl.source, req, rl.resp, baseSHA, rl.next, rl.drift)
 				decided.RequestEntry = p.entry
 				if st := val.state(); st != nil {
@@ -880,33 +851,23 @@ runLoop:
 				}
 				return decided
 			}
-			var auditErr error
-			if rl.resp.Approved {
-				expired := false
-				auditErr = r.auditIf(run.ID, "yield_decided", decidedFor(), func() error {
-					barrier.Hit(barrier.AuditAppend)
-					if err := waitCtx.Err(); err != nil {
-						expired = true
-						return err
-					}
-					return nil
-				})
-				if expired { // the run ended while this waited for the chain: not consumed, recorded as a rejection
-					expire()
-					auditErr = r.audit(run.ID, "yield_decided", decidedFor())
+			err := r.consume(waitCtx, run.ID, dec.total, req, &rl, decidedFor)
+			yieldSpan.SetAttributes(
+				attribute.Bool("staircase.approved", rl.resp.Approved),
+				attribute.String("staircase.decision_source", rl.source))
+			yieldSpan.End()
+			if err != nil {
+				why := "the orchestrator could not record this decision; the run is stopping"
+				if ce, ok := err.(*consumeError); ok && ce.journal {
+					why = "the orchestrator could not keep this approval; the run is stopping"
 				}
-			} else {
-				auditErr = r.audit(run.ID, "yield_decided", decidedFor())
-			}
-			if auditErr != nil {
-				p.reply <- decision{resp: domain.Decide(false, "the orchestrator could not record this decision; the run is stopping")}
+				p.reply <- decision{resp: domain.Decide(false, why)}
 				stopAgent()
 				agentFinished = true
 				finalStatus = persistence.RunStatusFailed
-				runErr = fmt.Errorf("audit yield_decided: %w", auditErr)
+				runErr = err
 				break runLoop
 			}
-			barrier.Hit(barrier.AuditCommitted)
 			d := decision{resp: rl.resp}
 			if rl.resp.Approved && rl.next != nil {
 				appr.record(rl.next)
