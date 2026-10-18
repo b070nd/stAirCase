@@ -128,9 +128,10 @@ type RunOptions struct {
 	// without it such a case does not run again.
 	AckDrift bool
 	// ValidatorChat and SignalEval, when set, stand in for the reviewer models and the decision model the terms name
-	// (nil: called with the project's secrets).
+	// (nil: called with the project's secrets), and Person for the approval API, the project's webhook or the terminal.
 	ValidatorChat llm.Model
 	SignalEval    signal.Evaluator
+	Person        Person
 }
 
 // Runner orchestrates a single stAirCase run.
@@ -174,10 +175,6 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		obs.ActiveRuns.Dec()
 		obs.RunDuration.Observe(time.Since(t0Run).Seconds())
 	}()
-	r.phase, r.path = PhasePreFlight, []RunPhase{PhasePreFlight}
-	if cont != nil {
-		r.phase, r.path = PhaseResume, []RunPhase{PhaseResume}
-	}
 	s := r.newRunState(ctx, caseID, opts, cont)
 	// The terms are judged before anything exists: a run no one can decide under leaves no record, branch or worktree.
 	terms, err := NewTerms(opts.Terms, s.harness)
