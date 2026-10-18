@@ -98,9 +98,6 @@ type hostProfile struct {
 	AwayTools []string `json:"away_tools,omitempty"`
 }
 
-// hostIO, when set, is the runner's session the next Claude Code agent stands in for (agentFor).
-var hostIO *agent.HostIO
-
 // hostedArgs is what of a runner's Claude Code arguments may pass, and what is taken out to be applied by stAirCase.
 type hostedArgs struct {
 	pass         []string
@@ -205,13 +202,15 @@ func hostClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 	os.Stdout = logFile // stAirCase's own output must not reach the runner's stream
 	defer func() { os.Stdout = realStdout }()
 
-	hostIO = &agent.HostIO{Args: h.pass, Settings: h.settings, SystemPrompt: h.systemPrompt, SessionID: h.session, Stdin: stdin, Stdout: stdout}
-	sessionAway, sessionAllow, runChecks, runPassEnv, sessionYes = true, p.Allow, p.Checks, p.PassEnv, true
-	runSandbox = orDefaultStr(p.Sandbox, sandbox.Auto)
-	sessionAwayCommands, runAllowShellExec, sessionAwayTools = p.AwayCommands, len(p.AwayCommands) > 0, p.AwayTools
-	defer func() { hostIO = nil }()
+	// A hosted session is launched from its profile alone: nothing of this process's own flags carries into it.
+	l := launch{
+		terms: orchestrator.Terms{Away: true, Checks: p.Checks, Sandbox: orDefaultStr(p.Sandbox, sandbox.Auto),
+			AllowShellExec: len(p.AwayCommands) > 0, AwayCommands: p.AwayCommands, AwayTools: p.AwayTools},
+		allow: p.Allow, passEnv: p.PassEnv, yes: true, agent: "built-in",
+		host: &agent.HostIO{Args: h.pass, Settings: h.settings, SystemPrompt: h.systemPrompt, SessionID: h.session, Stdin: stdin, Stdout: stdout},
+	}
 	task := fmt.Sprintf("A session started by another program (session %s); its requests reach the agent through that program.", h.session)
-	return session("claude-code", "Claude Code", "host", []string{task})
+	return session(l, "claude-code", "Claude Code", "host", []string{task})
 }
 
 // sanitizeName keeps a session id usable as a file name.

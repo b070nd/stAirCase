@@ -50,15 +50,15 @@ pre-commit hook of your own is never overwritten.`,
 func init() {
 	sealCmd.Flags().StringVar(&sealBy, "by", "", "Which agent made the changes, for the Assisted-by trailer and the certificate (default: an agent)")
 	sealCmd.Flags().StringVarP(&sealMessage, "message", "m", "", "The commit message (default: Changes by <agent>)")
-	sealCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
+	sealCmd.Flags().StringArrayVar(&cli.allow, "allow", nil, "A path (glob) the changes may touch; a file elsewhere comes to you as drift")
 	checkFlag(sealCmd)
 	signFlags(sealCmd)
 	validatorFlag(sealCmd)
 	inScopeFlag(sealCmd)
-	sealCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")
-	sealCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+	sealCmd.Flags().BoolVarP(&cli.yes, "yes", "y", false, "Start without asking to confirm (needed without a terminal)")
+	sealCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0,
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
-	sealCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	sealCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	attachCmd.Flags().BoolVar(&attachOff, "off", false, "Remove the hook")
 	rootCmd.AddCommand(sealCmd, attachCmd)
 }
@@ -103,10 +103,9 @@ func sealHandler(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("git commit-tree: %w", err)
 	}
 
-	sessionReview = &plan.Review{Ref: "staged changes", Commit: commit, By: by, Message: msg}
-	finish := sessionFinish
-	defer func() { sessionReview, sessionFinish = nil, finish }()
-	sessionFinish = func(_, runBranch string, _ int64) error {
+	l := cli
+	l.review = &plan.Review{Ref: "staged changes", Commit: commit, By: by, Message: msg}
+	l.finish = func(_, runBranch string, _ int64) error {
 		run, err := git("rev-parse", runBranch)
 		if err != nil {
 			return err
@@ -137,7 +136,7 @@ func sealHandler(_ *cobra.Command, _ []string) error {
 		}
 		return nil
 	}
-	return session("review", by, "seal", []string{fmt.Sprintf("staged changes by %s: %s", by, msg)})
+	return session(l, "review", by, "seal", []string{fmt.Sprintf("staged changes by %s: %s", by, msg)})
 }
 
 // attachMarker names the hook staircase attach installs.

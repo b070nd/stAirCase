@@ -14,21 +14,9 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
-	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
-)
-
-var (
-	sessionAllow        []string
-	sessionYes          bool
-	sessionInScope      bool         // --approve-in-scope
-	sessionOnEvidence   bool         // --approve-on-evidence
-	sessionAway         bool         // --away (ADR 0006)
-	sessionAwayCommands []string     // --away-command (ADR 0009)
-	sessionAwayTools    []string     // --away-tool (ADR 0008)
-	sessionReview       *plan.Review // set by staircase review
 )
 
 var claudeCmd = &cobra.Command{
@@ -107,14 +95,14 @@ be told to ignore them); a run fails if OpenCode never calls stAirCase's plugin.
 func init() {
 	sessionFlags(opencodeCmd, "OpenCode", true)
 	sessionFlags(geminiCmd, "Gemini CLI", true)
-	claudeCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
-	claudeCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
+	claudeCmd.Flags().StringArrayVar(&cli.allow, "allow", nil, "A path (glob) the task may change; repeat for more")
+	claudeCmd.Flags().BoolVar(&cli.terms.AllowShellExec, "allow-shell-exec", false,
 		"Let Claude Code propose shell commands (each still needs your approval)")
-	claudeCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+	claudeCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0,
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
-	claudeCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
-	claudeCmd.Flags().StringVar(&runModel, "model", "", "Model for Claude Code (default: its own)")
-	claudeCmd.Flags().StringArrayVar(&runPassEnv, "pass-env", nil,
+	claudeCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	claudeCmd.Flags().StringVar(&cli.model, "model", "", "Model for Claude Code (default: its own)")
+	claudeCmd.Flags().StringArrayVar(&cli.passEnv, "pass-env", nil,
 		"Name of an environment variable Claude Code may inherit, to give it its own credential (for example CLAUDE_CODE_OAUTH_TOKEN); it, and any command it runs, can read the value. Repeat for more")
 	checkFlag(claudeCmd)
 	checkFlag(codexCmd)
@@ -128,55 +116,55 @@ func init() {
 	awayFlag(codexCmd)
 	sandboxFlag(claudeCmd)
 	sandboxFlag(codexCmd)
-	claudeCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
+	claudeCmd.Flags().BoolVarP(&cli.yes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	rootCmd.AddCommand(claudeCmd)
-	codexCmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
-	codexCmd.Flags().StringVar(&runModel, "model", "", "Model for Codex (default: its own)")
-	codexCmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
-	codexCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+	codexCmd.Flags().BoolVarP(&cli.yes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
+	codexCmd.Flags().StringVar(&cli.model, "model", "", "Model for Codex (default: its own)")
+	codexCmd.Flags().StringArrayVar(&cli.allow, "allow", nil, "A path (glob) the task may change; repeat for more")
+	codexCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0,
 		"Decide from another terminal or a script through the local approval API on this port (0 = in this terminal)")
-	codexCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	codexCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
 	rootCmd.AddCommand(codexCmd)
 }
 
 // claudeSession is `staircase claude <task>`.
 func claudeSession(_ *cobra.Command, args []string) error {
-	return session("claude-code", "Claude Code", "claude", args)
+	return session(cli, "claude-code", "Claude Code", "claude", args)
 }
 
 // codexSession is `staircase codex <task>`.
 func codexSession(_ *cobra.Command, args []string) error {
-	return session("codex", "Codex", "codex", args)
+	return session(cli, "codex", "Codex", "codex", args)
 }
 
 // geminiSession is `staircase gemini <task>`.
 func geminiSession(_ *cobra.Command, args []string) error {
-	return session("gemini", "Gemini CLI", "gemini", args)
+	return session(cli, "gemini", "Gemini CLI", "gemini", args)
 }
 
 // opencodeSession is `staircase opencode <task>`.
 func opencodeSession(_ *cobra.Command, args []string) error {
-	return session("opencode", "OpenCode", "opencode", args)
+	return session(cli, "opencode", "OpenCode", "opencode", args)
 }
 
 // sessionFlags are the flags of a session command for an agent: what it may
 // change, whether it may ask for commands, how to decide, checks, signing,
 // reviewers.
 func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
-	cmd.Flags().StringArrayVar(&sessionAllow, "allow", nil, "A path (glob) the task may change; repeat for more")
+	cmd.Flags().StringArrayVar(&cli.allow, "allow", nil, "A path (glob) the task may change; repeat for more")
 	if shell {
-		cmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
+		cmd.Flags().BoolVar(&cli.terms.AllowShellExec, "allow-shell-exec", false,
 			"Let "+agentName+" propose shell commands (each still needs your approval)")
 	}
-	cmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+	cmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0,
 		"Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
-	cmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
-	cmd.Flags().StringVar(&runModel, "model", "", "Model for "+agentName+" (default: its own)")
+	cmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	cmd.Flags().StringVar(&cli.model, "model", "", "Model for "+agentName+" (default: its own)")
 	if agentName == "Gemini CLI" {
-		cmd.Flags().StringArrayVar(&runPassEnv, "pass-env", nil,
+		cmd.Flags().StringArrayVar(&cli.passEnv, "pass-env", nil,
 			"Name of an environment variable Gemini may inherit, to give it its own credential (for example GEMINI_API_KEY); it, and any command it runs, can read the value. Repeat for more")
 	}
-	cmd.Flags().BoolVarP(&sessionYes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
+	cmd.Flags().BoolVarP(&cli.yes, "yes", "y", false, "Start without asking to confirm the task (needed without a terminal)")
 	checkFlag(cmd)
 	signFlags(cmd)
 	validatorFlag(cmd)
@@ -188,20 +176,20 @@ func sessionFlags(cmd *cobra.Command, agentName string, shell bool) {
 
 // session is a governed run of harness in the current repository, with
 // nothing to set up first.
-func session(harness, name, command string, args []string) error {
+func session(l launch, harness, name, command string, args []string) error {
 	task := strings.TrimSpace(strings.Join(args, " "))
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
 	}
 	// The terms are judged before anything is asked or made. Who agrees to the task is asked below, so it stands in here.
-	t := flagTerms()
+	t := l.runTerms()
 	t.Agreed = "the person asked below"
 	t, err := orchestrator.NewTerms(t, harness)
 	if err != nil {
 		return err
 	}
-	sessionInScope, sessionOnEvidence = t.ApproveInScope, t.ApproveOnEvidence
-	if sessionInScope && len(sessionAllow) == 0 {
+	l.terms.ApproveInScope, l.terms.ApproveOnEvidence = t.ApproveInScope, t.ApproveOnEvidence
+	if l.terms.ApproveInScope && len(l.allow) == 0 {
 		return fmt.Errorf("--approve-in-scope and --approve-on-evidence need the task's scope: name the paths it may change with --allow")
 	}
 	root, err := gitTopLevel()
@@ -233,9 +221,9 @@ func session(harness, name, command string, args []string) error {
 		}
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
-		if runAgreedBy, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
-			base: strings.TrimSpace(string(base)), allow: sessionAllow, checks: runChecks, inScope: sessionInScope, onEvidence: sessionOnEvidence, away: sessionAway, validators: len(runValidator), signed: runSignKey != "", requireSigned: runRequireSigned, model: runModel,
-			shell: runAllowShellExec, budget: budget, projectID: project.ID}); err != nil {
+		if l.terms.Agreed, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
+			base: strings.TrimSpace(string(base)), allow: l.allow, checks: l.terms.Checks, inScope: l.terms.ApproveInScope, onEvidence: l.terms.ApproveOnEvidence, away: l.terms.Away, validators: len(l.terms.ValidatorModels), signed: l.terms.SignKey != "", requireSigned: l.terms.RequireSignedApprovals, model: l.model,
+			shell: l.terms.AllowShellExec, yes: l.yes, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
 		}
 		c, err := store.CreateCase(project.ID)
@@ -250,14 +238,14 @@ func session(harness, name, command string, args []string) error {
 			return 0, err
 		}
 		storyID = story.ID
-		if len(sessionAllow) > 0 {
-			scope, _ := json.Marshal(map[string]any{"allow": sessionAllow})
+		if len(l.allow) > 0 {
+			scope, _ := json.Marshal(map[string]any{"allow": l.allow})
 			if err := store.SetUserStoryScope(story.ID, string(scope)); err != nil {
 				return 0, err
 			}
 		}
 		fmt.Printf("🧭 Project %q (#%d), case #%d, story #%d\n", project.Name, project.ID, c.ID, story.ID)
-		if _, err := compileCase(store, wsDir, c.ID, harness, sessionReview, true); err != nil {
+		if _, err := compileCase(store, wsDir, c.ID, harness, l.review, true); err != nil {
 			return 0, err
 		}
 		return c.ID, nil
@@ -265,7 +253,7 @@ func session(harness, name, command string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := runCase(caseID); err != nil {
+	if err := runCase(l, caseID); err != nil {
 		return err
 	}
 	branch := "staircase/run-<id>"
@@ -281,12 +269,15 @@ func session(harness, name, command string, args []string) error {
 		}
 		_ = db.Close()
 	}
-	return sessionFinish(root, branch, storyID)
+	if l.finish == nil {
+		return defaultFinish(root, branch, storyID)
+	}
+	return l.finish(root, branch, storyID)
 }
 
-// sessionFinish tells what to do with a session's result; staircase seal
-// replaces it.
-var sessionFinish = func(root, branch string, storyID int64) error {
+// defaultFinish tells what to do with a session's result; staircase seal
+// gives its own.
+func defaultFinish(root, branch string, storyID int64) error {
 	fmt.Printf("\nThe approved changes are on %s. Review them, then accept the story when the task is done:\n"+
 		"  git -C %s diff HEAD...%s\n  staircase story accept %d\n", branch, root, branch, storyID)
 	return nil
@@ -360,6 +351,7 @@ type sessionSetup struct {
 	validators                             int
 	signed, requireSigned                  bool
 	shell                                  bool
+	yes                                    bool // start without asking
 	budget                                 float64
 	projectID                              int64
 }
@@ -438,7 +430,7 @@ func agreement(s sessionSetup) string {
 // returns who agreed, for the audit chain.
 func agree(s sessionSetup) (string, error) {
 	fmt.Print(agreement(s))
-	if sessionYes {
+	if s.yes {
 		return "--yes", nil
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -466,22 +458,22 @@ func evidenceSources(s sessionSetup) string {
 
 // awayFlag adds --away to cmd (ADR 0006).
 func awayFlag(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&sessionAway, "away", false,
+	cmd.Flags().BoolVar(&cli.terms.Away, "away", false,
 		"Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that "+
 			"needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow")
-	cmd.Flags().StringArrayVar(&sessionAwayTools, "away-tool", nil,
+	cmd.Flags().StringArrayVar(&cli.terms.AwayTools, "away-tool", nil,
 		"An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked")
-	cmd.Flags().StringArrayVar(&sessionAwayCommands, "away-command", nil,
+	cmd.Flags().StringArrayVar(&cli.terms.AwayCommands, "away-command", nil,
 		"An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, "+
 			"--allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root")
 }
 
 // inScopeFlag adds --approve-in-scope and --approve-on-evidence to cmd.
 func inScopeFlag(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&sessionOnEvidence, "approve-on-evidence", false,
+	cmd.Flags().BoolVar(&cli.terms.ApproveOnEvidence, "approve-on-evidence", false,
 		"Approve changes inside the --allow scope only when the evidence is there: your --check commands pass on the state the change produces, "+
 			"and the --validator models agree. Otherwise the change comes to you with what was missing. Replaces the 1-in-5 sampling; needs --check and/or --validator")
-	cmd.Flags().BoolVar(&sessionInScope, "approve-in-scope", false,
+	cmd.Flags().BoolVar(&cli.terms.ApproveInScope, "approve-in-scope", false,
 		"Approve changes inside the --allow scope as part of the agreed task instead of one by one: "+
 			"1 in 5, sensitive files and anything outside still come to you, and you approve the whole change at the end")
 }

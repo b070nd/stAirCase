@@ -88,8 +88,7 @@ func TestVerify_refuses_a_claimed_level_4(t *testing.T) {
 // not pass verify, whatever its level.
 func TestVerify_fails_a_failed_check(t *testing.T) {
 	sessionRepo(t)
-	runChecks = []string{"true", "exit 1"}
-	t.Cleanup(func() { runChecks = nil })
+	cli.terms.Checks = []string{"true", "exit 1"}
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
 
 	verifyMinCAL, verifyKey, verifyFile = 0, "", ""

@@ -81,9 +81,6 @@ func hostRepo(t *testing.T) (repo, ws string, git func(args ...string) string) {
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "claude"),
 		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE_STREAM=1 exec %q \"$@\"\n", os.Args[0]), 0o755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Cleanup(func() {
-		sessionAway, sessionOnEvidence, sessionInScope, sessionAllow, runChecks, runPassEnv = false, false, false, nil, nil, nil
-	})
 	return repo, ws, git
 }
 
@@ -137,6 +134,16 @@ func TestHost_governs_a_session_a_runner_starts(t *testing.T) {
 	t.Cleanup(func() { decideAccept = false })
 	require.NoError(t, decideHandler(nil, []string{"1"}))
 	assert.Equal(t, "ok\n", git("show", "staircase/run-1:HEALTH.md"))
+}
+
+// TestHost_leaves_the_flags_as_they_were: a hosted session is launched from its profile alone. It neither takes this process's
+// flags nor leaves its own behind for the next command.
+func TestHost_leaves_the_flags_as_they_were(t *testing.T) {
+	hostRepo(t)
+	before := fmt.Sprintf("%+v", cli.terms) + fmt.Sprint(cli.allow, cli.passEnv, cli.host == nil)
+	var out bytes.Buffer
+	require.NoError(t, hostClaude(cloudroomArgs("22222222-2222-3333-4444-555555555555"), strings.NewReader(""), &out))
+	assert.Equal(t, before, fmt.Sprintf("%+v", cli.terms)+fmt.Sprint(cli.allow, cli.passEnv, cli.host == nil))
 }
 
 // TestHost_refuses_what_it_does_not_know: an argument the stand-in does not know could widen what the agent may do, so it is refused;

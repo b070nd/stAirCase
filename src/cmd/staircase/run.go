@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/llm"
 	"github.com/b070nd/stAirCase/src/internal/obs"
@@ -22,37 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-)
-
-var (
-	runDryRun          bool
-	runForce           bool
-	runSkipGate        bool
-	runAutoStash       bool
-	runDebug           bool
-	runReconcile       bool
-	runApprovalPort    int
-	runApprovalToken   string
-	runMetricsAddr     string
-	runOTelEndpoint    string
-	runRecordLLM       string
-	runReplayLLM       string
-	runAllowShellExec  bool
-	runSandbox         string
-	runChecks          []string
-	runAgent           string
-	runModel           string
-	runPassEnv         []string
-	runAgreedBy        string // who agreed to the task before a session started
-	runAckDrift        bool
-	runValidator       []string
-	runSignal          string
-	runSignalURL       string
-	runSignKey         string
-	runSignAs          string
-	runRequireSigned   bool
-	runRequireEvidence bool
-	runCheckTimeout    time.Duration
 )
 
 var runCmd = &cobra.Command{
@@ -68,41 +36,41 @@ var runCmd = &cobra.Command{
 }
 
 func init() {
-	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Validate and print the execution plan without running")
-	runCmd.Flags().BoolVar(&runForce, "force", false, "No effect: runs use a separate worktree")
-	runCmd.Flags().BoolVar(&runSkipGate, "skip-gates", false, "Bypass quality gate pre-flight (use with care)")
-	runCmd.Flags().BoolVar(&runAutoStash, "auto-stash", false, "No effect: runs use a separate worktree")
+	runCmd.Flags().BoolVar(&cli.dryRun, "dry-run", false, "Validate and print the execution plan without running")
+	runCmd.Flags().BoolVar(&cli.force, "force", false, "No effect: runs use a separate worktree")
+	runCmd.Flags().BoolVar(&cli.skipGates, "skip-gates", false, "Bypass quality gate pre-flight (use with care)")
+	runCmd.Flags().BoolVar(&cli.autoStash, "auto-stash", false, "No effect: runs use a separate worktree")
 	for _, f := range []string{"force", "auto-stash"} {
 		_ = runCmd.Flags().MarkDeprecated(f, "runs execute in a separate git worktree; your checkout is never modified")
 	}
-	runCmd.Flags().BoolVar(&runDebug, "debug", false, "Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/")
-	runCmd.Flags().BoolVar(&runReconcile, "reconcile", false,
+	runCmd.Flags().BoolVar(&cli.debug, "debug", false, "Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/")
+	runCmd.Flags().BoolVar(&cli.reconcile, "reconcile", false,
 		"Inspect orphan staircase/run-* branches (never delete them) and reconcile stale RUNNING records")
-	runCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0,
+	runCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0,
 		"Start an inbound HTTP approval server on this port (0 = disabled). "+
 			"Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.")
-	runCmd.Flags().StringVar(&runApprovalToken, "approval-token", "",
+	runCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "",
 		"Bearer token required by the approval HTTP server. "+
 			"If empty and --approval-port is set, a random token is generated and printed at startup.")
-	runCmd.Flags().StringVar(&runMetricsAddr, "metrics-addr", "",
+	runCmd.Flags().StringVar(&cli.metricsAddr, "metrics-addr", "",
 		"Expose Prometheus metrics on this address (e.g. 127.0.0.1:9090). Empty = disabled.")
-	runCmd.Flags().StringVar(&runOTelEndpoint, "otel-endpoint", "",
+	runCmd.Flags().StringVar(&cli.otelEndpoint, "otel-endpoint", "",
 		"OTLP/gRPC endpoint for OpenTelemetry traces (e.g. localhost:4317). Empty = disabled.")
-	runCmd.Flags().StringVar(&runRecordLLM, "record-llm", "",
+	runCmd.Flags().StringVar(&cli.recordLLM, "record-llm", "",
 		"Record every model exchange of this run to this file (JSON lines) for offline replay.")
-	runCmd.Flags().StringVar(&runReplayLLM, "replay-llm", "",
+	runCmd.Flags().StringVar(&cli.replayLLM, "replay-llm", "",
 		"File path to replay recorded LLM exchanges instead of calling the real API.")
-	runCmd.Flags().BoolVar(&runAllowShellExec, "allow-shell-exec", false,
+	runCmd.Flags().BoolVar(&cli.terms.AllowShellExec, "allow-shell-exec", false,
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	sandboxFlag(runCmd)
 	checkFlag(runCmd)
 	signFlags(runCmd)
-	runCmd.Flags().BoolVar(&runAckDrift, "ack-drift", false,
+	runCmd.Flags().BoolVar(&cli.ackDrift, "ack-drift", false,
 		"Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)")
 	validatorFlag(runCmd)
-	runCmd.Flags().StringVar(&runModel, "model", "", "Model for an agent harness (claude-code, codex); default: the harness's own")
-	runCmd.Flags().StringVar(&runAgent, "agent", "built-in",
+	runCmd.Flags().StringVar(&cli.model, "model", "", "Model for an agent harness (claude-code, codex); default: the harness's own")
+	runCmd.Flags().StringVar(&cli.agent, "agent", "built-in",
 		"Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental)")
 	rootCmd.AddCommand(runCmd)
 }
@@ -112,20 +80,20 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return runCase(caseID)
+	return runCase(cli, caseID)
 }
 
 // sandboxFlag adds --sandbox to cmd: where approved commands and checks run.
 func sandboxFlag(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&runSandbox, "sandbox", sandbox.Auto,
+	cmd.Flags().StringVar(&cli.terms.Sandbox, "sandbox", sandbox.Auto,
 		"Where approved commands and checks run: auto (in the sandbox when this machine has one: macOS sandbox-exec, Linux bwrap or Landlock), "+
 			"required (refuse commands that cannot be sandboxed), off, or docker:image=<image>[,memory=<n>m|g][,cpus=<n>] "+
 			"(a container that sees only the worktree, without network; the image is never pulled for you)")
 }
 
 // runCase runs a compiled case with the run flags.
-func runCase(caseID int64) error {
-	if _, err := orchestrator.NewTerms(flagTerms(), ""); err != nil { // the run judges them again, with its plan's harness
+func runCase(l launch, caseID int64) error {
+	if _, err := orchestrator.NewTerms(l.runTerms(), ""); err != nil { // the run judges them again, with its plan's harness
 		return err
 	}
 	wsDir := viper.GetString("STAIRCASE_DIR")
@@ -155,14 +123,14 @@ func runCase(caseID int64) error {
 		}
 	}()
 
-	if runMetricsAddr != "" {
+	if l.metricsAddr != "" {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
-		go func() { _ = http.ListenAndServe(runMetricsAddr, mux) }() // #nosec G114 -- metrics addr is operator-controlled, not user input
+		go func() { _ = http.ListenAndServe(l.metricsAddr, mux) }() // #nosec G114 -- metrics addr is operator-controlled, not user input
 	}
 
 	// Configure OpenTelemetry when --otel-endpoint is provided (CHECK 10.3.1).
-	otelShutdown := obs.InitOTel(runOTelEndpoint)
+	otelShutdown := obs.InitOTel(l.otelEndpoint)
 	defer otelShutdown()
 
 	// The case runs exactly as compiled: its plan, checked against its checksum.
@@ -178,20 +146,20 @@ func runCase(caseID int64) error {
 
 	// The plan says who runs the case; --agent can only choose a harness for a
 	// plan compiled for the built-in agents.
-	who := runAgent
+	who := l.agent
 	if pl.Harness != "" {
-		if runAgent != "built-in" && runAgent != pl.Harness {
+		if l.agent != "built-in" && l.agent != pl.Harness {
 			return fmt.Errorf("case #%d is compiled to run %s, not %s - recompile with 'staircase compile %d --force --agent %s'",
-				caseID, pl.Harness, runAgent, caseID, runAgent)
+				caseID, pl.Harness, l.agent, caseID, l.agent)
 		}
 		who = pl.Harness
 	}
-	ag, err := agentFor(who, pl)
+	ag, err := agentFor(l, who, pl)
 	if err != nil {
 		return err
 	}
 
-	for _, m := range runValidator {
+	for _, m := range l.terms.ValidatorModels {
 		if llm.SecretFor(m) == "" {
 			return fmt.Errorf("--validator %q: no provider serves this model", m)
 		}
@@ -199,74 +167,58 @@ func runCase(caseID int64) error {
 
 	runner := orchestrator.NewRunner(store, wsDir)
 	return runner.Run(ctx, caseID, orchestrator.RunOptions{
-		DryRun:        runDryRun,
-		SkipGates:     runSkipGate,
-		Debug:         runDebug,
-		Reconcile:     runReconcile,
-		ApprovalPort:  runApprovalPort,
-		ApprovalToken: runApprovalToken,
-		AckDrift:      runAckDrift,
+		DryRun:        l.dryRun,
+		SkipGates:     l.skipGates,
+		Debug:         l.debug,
+		Reconcile:     l.reconcile,
+		ApprovalPort:  l.approvalPort,
+		ApprovalToken: l.approvalToken,
+		AckDrift:      l.ackDrift,
 		Agent:         ag,
 		Plan:          &pl,
-		Terms:         flagTerms(),
+		Terms:         l.runTerms(),
 	})
 }
 
-// flagTerms are the run's terms as its flags give them; NewTerms judges them.
-func flagTerms() orchestrator.Terms {
-	return orchestrator.Terms{
-		Agreed:                 runAgreedBy,
-		AllowShellExec:         runAllowShellExec,
-		Sandbox:                runSandbox,
-		ApproveInScope:         sessionInScope,
-		ApproveOnEvidence:      sessionOnEvidence,
-		Away:                   sessionAway,
-		AwayCommands:           sessionAwayCommands,
-		AwayTools:              sessionAwayTools,
-		SignalModel:            runSignal,
-		SignalURL:              runSignalURL,
-		ValidatorModels:        runValidator,
-		SignKey:                runSignKey,
-		SignAs:                 orDefaultStr(runSignAs, gitConfig("user.email")),
-		RequireSignedApprovals: runRequireSigned,
-		RequireEvidence:        runRequireEvidence,
-		Checks:                 runChecks,
-		CheckTimeout:           runCheckTimeout,
-	}
+// runTerms are the run's terms as l gives them, signing as the git user unless told otherwise; NewTerms judges them.
+func (l launch) runTerms() orchestrator.Terms {
+	t := l.terms
+	t.SignAs = orDefaultStr(t.SignAs, gitConfig("user.email"))
+	return t
 }
 
 // checkFlag adds --check to cmd.
 func checkFlag(cmd *cobra.Command) {
-	cmd.Flags().DurationVar(&runCheckTimeout, "check-timeout", 0,
+	cmd.Flags().DurationVar(&cli.terms.CheckTimeout, "check-timeout", 0,
 		"How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); "+
 			"a check that takes longer counts as not passed. Default 15m")
-	cmd.Flags().StringArrayVar(&runChecks, "check", nil,
+	cmd.Flags().StringArrayVar(&cli.terms.Checks, "check", nil,
 		"A command (such as your tests) to run on the commit once it is made, in the sandbox; "+
 			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")
 }
 
 // validatorFlag adds --validator and --signal to cmd.
 func validatorFlag(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&runSignalURL, "signal-url", "",
+	cmd.Flags().StringVar(&cli.terms.SignalURL, "signal-url", "",
 		"Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; "+
 			"the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)")
-	cmd.Flags().StringVar(&runSignal, "signal", "",
+	cmd.Flags().StringVar(&cli.terms.SignalModel, "signal", "",
 		"Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; "+
 			"it can only send a change to you (risky, off the stories, or no answer), never approve one")
-	cmd.Flags().StringArrayVar(&runValidator, "validator", nil,
+	cmd.Flags().StringArrayVar(&cli.terms.ValidatorModels, "validator", nil,
 		"Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); "+
 			"a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides")
 }
 
 // signFlags adds the flags for signed decisions to cmd.
 func signFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&runSignKey, "sign-approvals", "",
+	cmd.Flags().StringVar(&cli.terms.SignKey, "sign-approvals", "",
 		"Sign each decision you make with this SSH key (a private key file, or a public key file for ssh-agent); "+
 			"a key that needs a touch makes it a presence check")
-	cmd.Flags().StringVar(&runSignAs, "sign-as", "", "The name you sign decisions as (default: git user.email)")
-	cmd.Flags().BoolVar(&runRequireSigned, "require-signed-approvals", false,
+	cmd.Flags().StringVar(&cli.terms.SignAs, "sign-as", "", "The name you sign decisions as (default: git user.email)")
+	cmd.Flags().BoolVar(&cli.terms.RequireSignedApprovals, "require-signed-approvals", false,
 		"Refuse a person's decision unless it carries an SSH signature of a signer in the workspace's allowed_signers")
-	cmd.Flags().BoolVar(&runRequireEvidence, "require-evidence", false,
+	cmd.Flags().BoolVar(&cli.terms.RequireEvidence, "require-evidence", false,
 		"Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; "+
 			"the commit stays on its branch and is reported as delivered without evidence")
 }
@@ -279,18 +231,18 @@ func orDefaultStr(s, def string) string {
 }
 
 // agentFor is the agent that carries out a plan: the compiled topology, or a harness governed through its hooks.
-func agentFor(who string, pl plan.Plan) (orchestrator.Agent, error) {
-	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: runRecordLLM, Replay: runReplayLLM}
+func agentFor(l launch, who string, pl plan.Plan) (orchestrator.Agent, error) {
+	var ag orchestrator.Agent = &agent.Graph{Plan: pl, Record: l.recordLLM, Replay: l.replayLLM}
 	switch who {
 	case "built-in":
 	case "claude-code":
-		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv, Host: hostIO}
+		ag = &agent.ClaudeCode{Prompt: pl.Brief(), Model: l.model, PassEnv: l.passEnv, Host: l.host}
 	case "codex":
-		ag = &agent.Codex{Prompt: pl.Brief(), Model: runModel}
+		ag = &agent.Codex{Prompt: pl.Brief(), Model: l.model}
 	case "gemini":
-		ag = &agent.Gemini{Prompt: pl.Brief(), Model: runModel, PassEnv: runPassEnv}
+		ag = &agent.Gemini{Prompt: pl.Brief(), Model: l.model, PassEnv: l.passEnv}
 	case "opencode":
-		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: runModel}
+		ag = &agent.OpenCode{Prompt: pl.Brief(), Model: l.model}
 	case "review":
 		ag = &agent.Review{Commit: pl.Review.Commit, By: pl.Review.By}
 	default:

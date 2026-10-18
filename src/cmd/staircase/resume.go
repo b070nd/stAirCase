@@ -58,11 +58,11 @@ func init() {
 	resumeCmd.Flags().BoolVar(&resumeDiscard, "discard-unapproved", false, "Put the worktree back to the approved state when it holds changes nobody approved")
 	resumeCmd.Flags().BoolVar(&resumeAckDrift, "ack-drift", false, "Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)")
 	resumeCmd.Flags().BoolVar(&resumeFresh, "fresh-context", false, "Continue an agent-harness run in a new session grounded by the audit chain, instead of resuming its own session (the only way to continue one whose session cannot be resumed)")
-	resumeCmd.Flags().IntVar(&runApprovalPort, "approval-port", 0, "Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
-	resumeCmd.Flags().StringVar(&runApprovalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
-	resumeCmd.Flags().StringVar(&runModel, "model", "", "Model for an agent harness (default: its own)")
-	resumeCmd.Flags().StringArrayVar(&runPassEnv, "pass-env", nil, "Name of an environment variable an agent harness may inherit, to give it its own credential; it, and any command it runs, can read the value")
-	resumeCmd.Flags().BoolVar(&runDebug, "debug", false, "Write every audited message of this segment, scrubbed, to the run's debug log")
+	resumeCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0, "Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
+	resumeCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
+	resumeCmd.Flags().StringVar(&cli.model, "model", "", "Model for an agent harness (default: its own)")
+	resumeCmd.Flags().StringArrayVar(&cli.passEnv, "pass-env", nil, "Name of an environment variable an agent harness may inherit, to give it its own credential; it, and any command it runs, can read the value")
+	resumeCmd.Flags().BoolVar(&cli.debug, "debug", false, "Write every audited message of this segment, scrubbed, to the run's debug log")
 	rootCmd.AddCommand(resumeCmd)
 }
 
@@ -89,7 +89,7 @@ func resumeRun(runID int64) error {
 	}
 	var ag orchestrator.Agent
 	if pl != nil {
-		if ag, err = agentFor(who, *pl); err != nil {
+		if ag, err = agentFor(cli, who, *pl); err != nil {
 			return err
 		}
 	} else {
@@ -110,8 +110,8 @@ func resumeRun(runID int64) error {
 		}
 	}()
 
-	opts := orchestrator.ResumeOptions{Agent: ag, ApprovalPort: runApprovalPort, ApprovalToken: runApprovalToken,
-		Debug: runDebug, AckDrift: resumeAckDrift, DiscardUnapproved: resumeDiscard}
+	opts := orchestrator.ResumeOptions{Agent: ag, ApprovalPort: cli.approvalPort, ApprovalToken: cli.approvalToken,
+		Debug: cli.debug, AckDrift: resumeAckDrift, DiscardUnapproved: resumeDiscard}
 	if resumeFresh {
 		opts.Context = "fresh_grounded"
 	}

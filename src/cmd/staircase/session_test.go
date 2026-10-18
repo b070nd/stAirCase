@@ -133,8 +133,8 @@ func sessionRepo(t *testing.T) (repo, ws string, git func(args ...string) string
 		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE=1 exec %q \"$@\"\n", os.Args[0]), 0o755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Chdir(repo)
-	sessionYes = true // no terminal in tests: agree up front
-	t.Cleanup(func() { sessionYes = false })
+	keepCLI(t)
+	cli.yes = true // no terminal in tests: agree up front
 	return repo, ws, git
 }
 
@@ -186,18 +186,18 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 // evidence with nothing to base it on, or no scope, is refused before anything
 // starts.
 func TestSession_approve_on_evidence_needs_evidence_and_a_scope(t *testing.T) {
-	t.Cleanup(func() { sessionOnEvidence, sessionInScope, sessionAllow, runChecks = false, false, nil, nil })
-	sessionOnEvidence, sessionAllow, runChecks = true, []string{"src/**"}, nil
+	keepCLI(t)
+	cli.terms.ApproveOnEvidence, cli.allow, cli.terms.Checks = true, []string{"src/**"}, nil
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--check")
-	runChecks, sessionAllow = []string{"true"}, nil
+	cli.terms.Checks, cli.allow = []string{"true"}, nil
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow")
 }
 
 // TestSession_approve_in_scope_needs_a_scope: approving the task instead of
 // every step needs the paths it may change.
 func TestSession_approve_in_scope_needs_a_scope(t *testing.T) {
-	sessionInScope, sessionAllow = true, nil
-	t.Cleanup(func() { sessionInScope = false })
+	keepCLI(t)
+	cli.terms.ApproveInScope, cli.allow = true, nil
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow")
 }
 
@@ -205,9 +205,9 @@ func TestSession_approve_in_scope_needs_a_scope(t *testing.T) {
 // starts only with --yes, and the chain records who agreed to which plan.
 func TestClaudeSession_needs_agreement(t *testing.T) {
 	_, ws, _ := sessionRepo(t)
-	sessionYes = false
+	cli.yes = false
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--yes")
-	sessionYes = true
+	cli.yes = true
 	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
 	db, err := persistence.InitDB(ws)
 	require.NoError(t, err)
@@ -223,4 +223,10 @@ func TestClaudeSession_needs_agreement(t *testing.T) {
 	require.NotNil(t, agreed, "task_agreed recorded")
 	assert.Equal(t, "--yes", agreed["by"])
 	assert.NotEmpty(t, agreed["plan_digest"])
+}
+
+// keepCLI lets a test set what the flags give: all of it is put back when the test ends.
+func keepCLI(t *testing.T) {
+	saved := cli
+	t.Cleanup(func() { cli = saved })
 }
