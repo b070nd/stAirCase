@@ -63,6 +63,47 @@ func appendJournal(wsDir string, runID int64, req domain.YieldRequest, seq int, 
 	return f.Close()
 }
 
+// staleJournal is how many of j's lines follow the chain's last decision, a torn one included: written by a segment that died
+// before their decision was on the chain, so never consumed.
+func staleJournal(j journalRead, lastDecided int) int {
+	n := 0
+	for _, e := range j.Entries {
+		if e.Seq > lastDecided {
+			n++
+		}
+	}
+	if j.TornTail {
+		n++
+	}
+	return n
+}
+
+// trimJournal rewrites the run's journal without the lines staleJournal counts, atomically: what a continuation keeps is the
+// journal of what its chain decided.
+func trimJournal(wsDir string, runID int64, lastDecided int) error {
+	j, err := readJournalFile(wsDir, runID)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if staleJournal(j, lastDecided) == 0 {
+		return nil
+	}
+	var kept []byte
+	for _, e := range j.Entries {
+		if e.Seq <= lastDecided {
+			line, err := json.Marshal(e) // the bytes appendJournal wrote: the request is kept as it was
+			if err != nil {
+				return err
+			}
+			kept = append(append(kept, line...), '\n')
+		}
+	}
+	return saveRunFile(journalPath(wsDir, runID), kept)
+}
+
 // RecoverOptions are for [Runner.Recover].
 type RecoverOptions struct {
 	// Force recovers a run whose record still says RUNNING: only when its

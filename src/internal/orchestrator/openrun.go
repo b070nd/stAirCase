@@ -17,7 +17,8 @@ type openedRun struct {
 	cs        *domain.Case
 	project   *domain.Project
 	hist      history.History
-	journaled bool             // the run has an approval journal; without one, nothing was approved
+	journaled bool // the run has an approval journal; without one, nothing was approved
+	journal   journalRead
 	kept      []LedgerProposal // the approvals, in chain order, with their requests
 }
 
@@ -35,6 +36,7 @@ func (r *Runner) openRun(run *domain.Run) (*openedRun, error) {
 		return nil, err
 	}
 	journal, err := readJournalFile(r.wsDir, run.ID)
+	o.journal = journal
 	switch {
 	case errors.Is(err, os.ErrNotExist): // nothing was approved: a run that only asked, or never got that far
 	case err != nil:

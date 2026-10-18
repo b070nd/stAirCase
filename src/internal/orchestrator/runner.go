@@ -452,12 +452,20 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 			return err
 		}
 		initiator = initiatorOf(cont.history) // the signed request of whoever started the run is kept, never signed again
-		if err := r.audit(run.ID, "run_resumed", map[string]any{
+		resumed := map[string]any{
 			"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals()),
 			"next_seq": cont.lastSeq + 1, "policy": policyDigest(cont.history), "plan_digest": cont.history.Bound.PlanDigest,
 			"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
-		}); err != nil {
+		}
+		if cont.journalDropped > 0 {
+			resumed["journal_dropped"] = cont.journalDropped
+		}
+		if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
 			return fmt.Errorf("audit run_resumed: %w", err)
+		}
+		// Only now, with the chain saying so, are the never-consumed lines dropped; a crash in between drops them next time.
+		if err := trimJournal(r.wsDir, run.ID, cont.lastSeq); err != nil {
+			return fmt.Errorf("drop the journal lines that were never consumed: %w", err)
 		}
 		barrier.Hit(barrier.ResumeStarted)
 	} else {

@@ -70,6 +70,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A run killed between an approval's journal line and its decision could be continued, but its continuation could not be
+  recovered.** The killed segment left a journal line that was never consumed, or a torn one if the kill came during the write. The
+  continuation's own approvals then took the same numbers. When the continuation was interrupted too, recovery and a further resume
+  refused the journal ("journal line 3 repeats proposal 2"). A continuation now drops such lines before it goes on, and says how many
+  on its `run_resumed` entry (`journal_dropped`). They were never on the chain, never released to the agent, and recovery already
+  ignored them. Present since 1.0.0.
+
 - **Options no run can decide under are refused before the run exists.** For example, `--away` without a check, or a declared
   command that is not a whole command.
   - Before: the refusal came after the run record, run branch and worktree were made, and left them behind.
