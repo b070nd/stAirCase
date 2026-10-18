@@ -683,34 +683,19 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		evGate = &evidenceGate{approvals: appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir, timeout: opts.CheckTimeout}
 	}
 	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs, signers: signers}
-	// askHuman shows a proposal to the operator: approval API, webhook or TUI.
+	// askHuman puts a proposal to a person (personFor) while the run's display waits. The wait ends with the run's limit, a final
+	// review's (after the agent) only with cancellation; an answer that arrives after that counts for nothing.
+	who := personFor(approvalSrv, project.WebhookURL, webhookSecret)
 	askHuman := func(req domain.YieldRequest, signText string) domain.YieldResponse {
 		display.Pause()
 		defer display.Resume()
 		wait := waitCtx
-		if req.ActionType == domain.ActionFinalReview { // after the agent: only cancellation ends this wait
+		if req.ActionType == domain.ActionFinalReview {
 			wait = ctx
 		}
-		ended := func() domain.YieldResponse {
+		resp := who.ask(wait, req, signText)
+		if wait.Err() != nil {
 			return domain.Decide(false, "the run ended while this waited for a decision")
-		}
-		var resp domain.YieldResponse
-		switch {
-		case approvalSrv != nil:
-			id, ch := approvalSrv.PendSigned(req, signText)
-			select {
-			case resp = <-ch:
-			case <-wait.Done():
-				approvalSrv.Withdraw(id)
-				return ended()
-			}
-		case project.WebhookURL != "":
-			resp = sendWebhookYield(wait, project.WebhookURL, webhookSecret, req)
-		default:
-			resp = tui.RunYieldTUI(wait, req) // ends with the run, or on Ctrl-C
-		}
-		if wait.Err() != nil { // an answer that arrives after the run ended counts for nothing
-			return ended()
 		}
 		return resp
 	}
