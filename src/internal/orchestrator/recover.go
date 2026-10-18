@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,17 +92,20 @@ func trimJournal(wsDir string, runID int64, lastDecided int) error {
 	if staleJournal(j, lastDecided) == 0 {
 		return nil
 	}
-	var kept []byte
-	for _, e := range j.Entries {
-		if e.Seq <= lastDecided {
-			line, err := json.Marshal(e) // the bytes appendJournal wrote: the request is kept as it was
-			if err != nil {
-				return err
-			}
-			kept = append(append(kept, line...), '\n')
+	return rewriteJournal(wsDir, runID, slices.DeleteFunc(j.Entries, func(e journalEntry) bool { return e.Seq > lastDecided }))
+}
+
+// rewriteJournal replaces the run's journal with entries, atomically, each line as appendJournal wrote it.
+func rewriteJournal(wsDir string, runID int64, entries []journalEntry) error {
+	var b []byte
+	for _, e := range entries {
+		line, err := json.Marshal(e) // the request is kept byte for byte
+		if err != nil {
+			return err
 		}
+		b = append(append(b, line...), '\n')
 	}
-	return saveRunFile(journalPath(wsDir, runID), kept)
+	return saveRunFile(journalPath(wsDir, runID), b)
 }
 
 // RecoverOptions are for [Runner.Recover].
