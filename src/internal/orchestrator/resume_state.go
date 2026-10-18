@@ -49,6 +49,7 @@ type usageRecord struct {
 // continuation is everything a run needs to continue from where its chain says it stood.
 type continuation struct {
 	run       *domain.Run
+	opened    *openedRun
 	history   history.History
 	kept      []LedgerProposal // the approvals, in chain order, with their requests
 	lastSeq   int
@@ -128,35 +129,25 @@ func (r *Runner) loadContinuation(runID int64) (*continuation, error) {
 	} else if op != nil {
 		return nil, notContinuable("a recovery of run #%d has begun: it is recovered, not continued", runID)
 	}
-	hist, err := history.Read(r.store, runID)
+	opened, err := r.openRun(run)
 	if err != nil {
 		return nil, err
 	}
+	hist := opened.hist
 	if hist.Sealed != "" {
 		return nil, notContinuable("run #%d already made its commit (%s is on its chain): recover it with `staircase recover %d`", runID, hist.Sealed, runID)
 	}
 	if hist.Bound.BaseSHA == "" || hist.Bound.Branch == "" || hist.Bound.Worktree == "" {
 		return nil, notContinuable("run #%d never got as far as a run branch and worktree", runID)
 	}
-	journal, err := readJournalFile(r.wsDir, runID)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		journal = journalRead{} // nothing was approved yet: a run that only asked
-	case err != nil:
-		return nil, fmt.Errorf("the approval journal of run #%d cannot be trusted: %w", runID, err)
-	}
-	kept, err := reconcile(hist, journal)
-	if err != nil {
-		return nil, fmt.Errorf("run #%d cannot be continued: %w", runID, err)
-	}
-	c := &continuation{run: run, history: hist, kept: kept, lastSeq: hist.LastDecided}
+	c := &continuation{run: run, opened: opened, history: hist, kept: opened.kept, lastSeq: hist.LastDecided} // no journal: nothing was approved yet
 	if err := continueFrom(hist, c); err != nil {
 		return nil, err
 	}
 	c.segment++ // this is the next segment
 
 	// The terms the run started under, saved when it started.
-	if c.terms, err = loadTerms(r.wsDir, runID, hist, hist.Bound.Harness); errors.Is(err, os.ErrNotExist) {
+	if c.terms, err = opened.terms(r.wsDir); errors.Is(err, os.ErrNotExist) {
 		return nil, notContinuable("run #%d saved no options when it started (it began before runs could be continued): recover it instead", runID)
 	} else if err != nil {
 		return nil, notContinuable("run #%d: %v", runID, err)

@@ -35,6 +35,10 @@ it.
 **Approval**: an approved `file_edit` decision. It carries the digest of exactly the files it approved, and its request is kept
 in the approval journal. Only bytes derived from approvals reach the branch.
 
+**Approved state**: the bytes a run's approvals derive. They are derived again from the base commit, in an empty directory, proposal
+by proposal in chain order, each checked against the digest the chain recorded for it. What is on disk has no say in it. Recovery,
+resume, Prototype and Adopt get it the same way: they open the run (`openRun`) and derive.
+
 **Approval journal**: the requests of a run's approvals, written before their decision is audited
 (`journal/run-N.approved.jsonl`). Recovery pairs it with the chain.
 
