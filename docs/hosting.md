@@ -51,5 +51,7 @@ In each case Claude Code resumes its own conversation, so the agent remembers wh
 
 - Claude Code's hooks still decide when a runner switches its permission prompts off: probed on 2.1.236
   ([record](release-evidence/claude-code-2.1.236-hooks-under-skip-permissions.md)). A session in which stAirCase's hooks never ran keeps nothing.
-- Seen with a real agent through Cloudroom 0.1.57's own argument list ([record](release-evidence/host-cloudroom-args-claude-code-2.1.236.md)).
+- Seen with a real agent through Cloudroom 0.1.57's own argument list ([record](release-evidence/host-cloudroom-args-claude-code-2.1.236.md)),
+  and a session of it resumed with `--resume`: the same run went on, and the agent remembered a word it had said only in the first
+  session ([record](release-evidence/hosted-resume-claude-code-2.1.236.md)).
 - Not yet: a forked runner session (refused, naming the reason), other agents than Claude Code, and a run inside Cloudroom itself.
