@@ -14,8 +14,8 @@ import (
 )
 
 // TestDeciders_rule_order: who decides a proposal, in the order the deciders ask (decide.go): the orchestrator refuses what cannot
-// be applied as shown; drift supervision and the guards send a change to a person even when a rule would approve it, and so does a
-// policy limit; then the policy's rules; then the agreed task, except on a sensitive path; while away, what would go to a person is
+// be applied as shown; drift supervision, the guards and a change to a check's definition (a protected path) send a change to a
+// person even when a rule would approve it, and so does a policy limit; then the policy's rules; then the agreed task, except on a sensitive path; while away, what would go to a person is
 // parked, and a declared command or tool is the owner's decision made in advance; a tool call is never a policy rule's. Each case is
 // one proposal put to deciders built from its terms, with a person who would approve anything.
 func TestDeciders_rule_order(t *testing.T) {
@@ -59,6 +59,15 @@ func TestDeciders_rule_order(t *testing.T) {
 		"away, a declared tool": {terms: Terms{Away: true, Agreed: agreed, AwayTools: []string{"mcp__a__b"}}, want: "declared", approved: true,
 			req: domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionToolCall,
 				ProposedEdits: []domain.ProposedEdit{{File: "mcp__a__b", SearchBlock: MarkerToolCall, ReplaceBlock: "{}"}}}},
+		"a check's definition before the policy": {terms: Terms{ProtectedPaths: []string{"src/check.t"}}, policy: approveEdits,
+			req: edit("src/check.t", "exit 0\n"), want: "operator", asked: true, approved: true},
+		"a check's definition inside the task": {terms: Terms{ApproveInScope: true, Agreed: agreed, ProtectedPaths: []string{"src/**/*.t"}},
+			req: edit("src/x/check.t", "exit 0\n"), want: "operator", asked: true, approved: true},
+		"deleting a check's definition": {terms: Terms{ProtectedPaths: []string{"src/a.txt"}}, policy: approveEdits, want: "operator", asked: true, approved: true,
+			req: domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionFileEdit,
+				ProposedEdits: []domain.ProposedEdit{{File: "src/a.txt", SearchBlock: MarkerDeleteFile}}}},
+		"away, a check's definition is parked whatever the policy says": {terms: Terms{Away: true, Agreed: agreed, ProtectedPaths: []string{"src/check.t"}},
+			policy: approveEdits, req: edit("src/check.t", "exit 0\n"), want: "parked"},
 		"a tool call is never a rule's": {policy: `{"rules":[{"action_types":["tool_call"],"effect":"approve"}]}`, want: "operator", asked: true, approved: true,
 			req: domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionToolCall,
 				ProposedEdits: []domain.ProposedEdit{{File: "mcp__a__b", SearchBlock: MarkerToolCall, ReplaceBlock: "{}"}}}},
