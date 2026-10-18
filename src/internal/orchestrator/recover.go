@@ -140,23 +140,17 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	}
 	// The audit chain must verify before any row of it is believed: it is read once,
 	// and what is replayed is the very slice that was verified.
-	hist, err := history.Read(r.store, runID)
+	opened, err := r.openRun(run)
 	if err != nil {
 		return res, err
 	}
+	hist, kept := opened.hist, opened.kept
 	bound := hist.Bound
 	if bound.BaseSHA == "" || bound.Branch == "" {
 		return res, fmt.Errorf("run #%d never got as far as a run branch: there is nothing to recover", runID)
 	}
-	journal, err := readJournalFile(r.wsDir, runID)
-	if errors.Is(err, os.ErrNotExist) {
+	if !opened.journaled {
 		return res, fmt.Errorf("run #%d has no journal of approvals: there is nothing to recover", runID)
-	} else if err != nil {
-		return res, fmt.Errorf("the approval journal of run #%d cannot be trusted: %w", runID, err)
-	}
-	kept, err := reconcile(hist, journal)
-	if err != nil {
-		return res, fmt.Errorf("run #%d cannot be recovered: %w", runID, err)
 	}
 	if len(kept) == 0 {
 		return res, fmt.Errorf("run #%d had nothing approved: there is nothing to recover", runID)
@@ -168,19 +162,11 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		needReview = needReview || (p.Source != "operator" && p.Source != "policy")
 	}
 
-	c, err := r.store.GetCase(run.CaseID)
-	if err != nil || c == nil {
-		return res, fmt.Errorf("case of run #%d: %w", runID, err)
-	}
-	project, err := r.store.GetProject(c.ProjectID)
-	if err != nil || project == nil {
-		return res, fmt.Errorf("project of run #%d: %w", runID, err)
-	}
-	repo, err := OpenGitRepo(project.SourcePath)
+	repo, err := opened.repo()
 	if err != nil {
 		return res, err
 	}
-	a, cleanup, err := deriveApproved(repo, bound.BaseSHA, kept, hist.Approvals())
+	a, cleanup, err := opened.derive(repo)
 	if err != nil {
 		return res, err
 	}

@@ -130,15 +130,7 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 		return nil, notContinuable("run #%d was halted for drift: review it (`staircase inspect log %d`), then continue with --ack-drift", runID, runID)
 	}
 
-	cs, err := r.store.GetCase(c.run.CaseID)
-	if err != nil || cs == nil {
-		return nil, fmt.Errorf("case of run #%d: %w", runID, err)
-	}
-	project, err := r.store.GetProject(cs.ProjectID)
-	if err != nil || project == nil {
-		return nil, fmt.Errorf("project of run #%d: %w", runID, err)
-	}
-	repo, err := OpenGitRepo(project.SourcePath)
+	repo, err := c.opened.repo()
 	if err != nil {
 		return nil, err
 	}
@@ -163,26 +155,11 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 
 	// The approved state, derived from the chain's approvals and their journaled requests against an empty directory
 	// (what is on disk has no say in what was approved), each checked against the digest the chain recorded.
-	scratch, err := os.MkdirTemp("", "staircase-resume-")
+	a, cleanup, err := c.opened.derive(wgr)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = os.RemoveAll(scratch) }()
-	a, err := newApprovals(&GitRepo{r: wgr.r, w: wgr.w, path: scratch}, b.BaseSHA)
-	if err != nil {
-		return nil, err
-	}
-	recorded := c.history.Approvals()
-	for i, p := range c.kept {
-		next, derr := a.derive(p.Edits)
-		if derr != nil {
-			return nil, fmt.Errorf("proposal %d no longer applies: %w", p.Seq, derr)
-		}
-		if !matchesDigest(recorded[i].Files, next) {
-			return nil, fmt.Errorf("proposal %d derives other bytes than the audit chain recorded as approved", p.Seq)
-		}
-		a.record(next)
-	}
+	defer cleanup()
 	a.repo = wgr
 	c.worktree, c.wgr, c.appr = b.Worktree, wgr, a
 

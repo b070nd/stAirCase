@@ -46,43 +46,30 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 	if err != nil || run == nil {
 		return nil, fmt.Errorf("run #%d not found", runID)
 	}
-	c, err := r.store.GetCase(run.CaseID)
-	if err != nil || c == nil {
-		return nil, fmt.Errorf("case of run #%d: %w", runID, err)
-	}
-	project, err := r.store.GetProject(c.ProjectID)
-	if err != nil || project == nil {
-		return nil, fmt.Errorf("project of run #%d: %w", runID, err)
-	}
-	repo, err := OpenGitRepo(project.SourcePath)
+	opened, err := r.openRun(run)
 	if err != nil {
 		return nil, err
 	}
-	hist, err := history.Read(r.store, runID)
-	if err != nil {
-		return nil, err
+	if !opened.journaled {
+		return nil, fmt.Errorf("run #%d has no approval journal: an away run that offers a review has one", runID)
 	}
-	journal, err := readJournalFile(r.wsDir, runID)
-	if err != nil {
-		return nil, fmt.Errorf("the approval journal of run #%d: %w", runID, err)
-	}
-	kept, err := reconcile(hist, journal)
-	if err != nil {
-		return nil, err
-	}
-	terms, err := loadTerms(r.wsDir, runID, hist, hist.Bound.Harness)
+	terms, err := opened.terms(r.wsDir)
 	if err != nil {
 		return nil, fmt.Errorf("the terms run #%d was started with: %w", runID, err)
 	}
 	if len(terms.Checks) == 0 {
 		return nil, fmt.Errorf("run #%d was started with no checks to run", runID)
 	}
-	a, cleanup, err := deriveApproved(repo, hist.Bound.BaseSHA, kept, hist.Approvals())
+	repo, err := opened.repo()
+	if err != nil {
+		return nil, err
+	}
+	a, cleanup, err := opened.derive(repo)
 	if err != nil {
 		return nil, err
 	}
 	a.repo = repo // checkouts for the checks are made from the run's repository
-	return &approvedNow{a: a, repo: repo, hist: hist, terms: terms, cleanup: cleanup}, nil
+	return &approvedNow{a: a, repo: repo, hist: opened.hist, terms: terms, cleanup: cleanup}, nil
 }
 
 func (s *approvedNow) gate(wsDir string) *evidenceGate {
