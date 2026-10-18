@@ -22,6 +22,9 @@ type launch struct {
 	review *plan.Review // what staircase review and seal bring in
 	finish func(root, branch string, storyID int64) error
 	host   *agent.HostIO // a runner's session the Claude Code agent stands in for (staircase host)
+	// resumesSession and resumesRun are the hosted session a new run resumes and the decided run it follows (ADR 0008).
+	resumesSession string
+	resumesRun     int64
 }
 
 // cli is what the flags give.

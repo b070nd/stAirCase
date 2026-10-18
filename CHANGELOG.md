@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **A runner can resume a session it started (`staircase host claude --resume <id>`).** The session's id leads to the run it was
+  governed as, through the audit chain. If that run was interrupted, the session continues it. If it awaits review, the session
+  continues it too: the review is withdrawn on the chain and a new one covers the whole change. If you already decided it, the session
+  goes on as a new run that names the one it follows. Claude Code resumes its own conversation in each case. A session no run names is
+  refused, and forks stay refused ([hosting](docs/hosting.md#when-the-runner-resumes-a-session)).
+
 ## [1.1.0] - 2026-10-18
 
 New:

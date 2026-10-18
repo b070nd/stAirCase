@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -104,6 +106,7 @@ type hostedArgs struct {
 	settings     map[string]any
 	systemPrompt string
 	session      string
+	resume       bool // the runner resumes the session (--resume) rather than starting it (--session-id)
 }
 
 // The runner's arguments the stand-in knows: those that pass as they are (with or without a value), those it takes over, and those
@@ -160,20 +163,23 @@ func parseHostedArgs(args []string) (hostedArgs, error) {
 				return h, err
 			}
 			h.systemPrompt = v
-		case a == "--session-id":
+		case a == "--session-id" || a == "--resume":
 			v, err := value()
 			if err != nil {
 				return h, err
 			}
-			h.session = v
-		case a == "--resume" || a == "--fork-session" || a == "--resume-session-at" || a == "--continue":
-			return h, fmt.Errorf("%s: a resumed or forked session is not hosted yet: start a new session (ADR 0008, first slice)", a)
+			if h.session != "" {
+				return h, errors.New("the runner named its session both to start it (--session-id) and to resume it (--resume)")
+			}
+			h.session, h.resume = v, a == "--resume"
+		case a == "--fork-session" || a == "--resume-session-at" || a == "--continue":
+			return h, fmt.Errorf("%s: a forked session, or one found other than by its id, is not hosted (ADR 0008): start or resume a session by its id", a)
 		default:
 			return h, fmt.Errorf("%s: an argument staircase host does not know, so it is not passed on (it could widen what the agent may do)", a)
 		}
 	}
 	if h.session == "" {
-		return h, errors.New("the runner gave no --session-id: a hosted session needs one")
+		return h, errors.New("the runner gave no --session-id or --resume: a hosted session needs its id")
 	}
 	return h, nil
 }
@@ -209,8 +215,59 @@ func hostClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 		allow: p.Allow, passEnv: p.PassEnv, yes: true, agent: "built-in",
 		host: &agent.HostIO{Args: h.pass, Settings: h.settings, SystemPrompt: h.systemPrompt, SessionID: h.session, Stdin: stdin, Stdout: stdout},
 	}
-	task := fmt.Sprintf("A session started by another program (session %s); its requests reach the agent through that program.", h.session)
+	if h.resume {
+		return hostResume(l, h.session)
+	}
+	return hostSession(l, h.session)
+}
+
+func hostSession(l launch, id string) error {
+	task := fmt.Sprintf("A session started by another program (session %s); its requests reach the agent through that program.", id)
 	return session(l, "claude-code", "Claude Code", "host", []string{task})
+}
+
+// hostResume goes on with the run a resumed session was governed as (ADR 0008, 2.1): an interrupted run, or one that awaits
+// review, is continued, the review withdrawn; a run already decided is followed by a new run under fresh governance. Claude Code
+// resumes its own conversation either way.
+func hostResume(l launch, id string) error {
+	wsDir := viper.GetString("STAIRCASE_DIR")
+	db, err := persistence.InitDB(wsDir)
+	if err != nil {
+		return fmt.Errorf("workspace: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	store := persistence.NewStore(db)
+	run, err := orchestrator.HostedRun(store, id)
+	if err != nil {
+		return err
+	}
+	if run == nil {
+		return fmt.Errorf("session %s was not started through staircase host, so it cannot be resumed under governance: start a new session", id)
+	}
+	l.host.Resume = true
+	switch run.Status {
+	case persistence.RunStatusRunning, persistence.RunStatusKilled, persistence.RunStatusAwaitingReview:
+		withdraw := run.Status == persistence.RunStatusAwaitingReview
+		runner := orchestrator.NewRunner(store, wsDir)
+		pl, err := runner.PlanOf(run.ID, withdraw)
+		if err != nil {
+			return err
+		}
+		if pl == nil {
+			return fmt.Errorf("run #%d of session %s saved no plan: it cannot be continued", run.ID, id)
+		}
+		ag, err := agentFor(l, "claude-code", *pl)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Session %s continues run #%d\n", id, run.ID)
+		return runner.Resume(context.Background(), run.ID, orchestrator.ResumeOptions{Agent: ag, WithdrawReview: withdraw})
+	default: // decided (delivered or rejected), or failed: the session goes on as a new run
+		_ = db.Close()
+		fmt.Printf("Session %s follows run #%d (%s) as a new run\n", id, run.ID, run.Status)
+		l.resumesSession, l.resumesRun = id, run.ID
+		return hostSession(l, id)
+	}
 }
 
 // sanitizeName keeps a session id usable as a file name.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/viper"
@@ -172,4 +173,127 @@ func TestHost_setup_refuses_terms_no_session_can_run_under(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exactly")
 	assert.NoFileExists(t, filepath.Join(ws, "host.json"))
+}
+
+// resumeArgs are Cloudroom's arguments for resuming a session it started: --resume in place of --session-id.
+func resumeArgs(session string) []string {
+	args := cloudroomArgs(session)
+	args[len(args)-2] = "--resume"
+	return args
+}
+
+// hostedRun runs one hosted session and returns what the stand-in Claude Code was given.
+func hostedRun(t *testing.T, args []string) []string {
+	t.Helper()
+	var out bytes.Buffer
+	require.NoError(t, hostClaude(args, strings.NewReader(`{"type":"user"}`+"\n"), &out))
+	var report struct {
+		Args []string `json:"args"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(strings.SplitN(out.String(), "\n", 2)[0]), &report))
+	return report.Args
+}
+
+func hostEvents(t *testing.T, ws string, runID int64, typ string) []string {
+	t.Helper()
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	defer db.Close()
+	events, err := persistence.NewStore(db).ListVerifiedEventLogs(runID)
+	require.NoError(t, err)
+	var out []string
+	for _, e := range events {
+		if e.EventType == typ {
+			out = append(out, e.Payload)
+		}
+	}
+	return out
+}
+
+func hostRun(t *testing.T, ws string, id int64) *domain.Run {
+	t.Helper()
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	defer db.Close()
+	run, err := persistence.NewStore(db).GetRun(id)
+	require.NoError(t, err)
+	return run
+}
+
+// TestHost_resume_continues_a_run_awaiting_review (ADR 0008, 2.1): a runner that resumes its session continues the same away
+// run. The review it offered is withdrawn on the chain, Claude Code resumes its own conversation, and when the session ends the
+// checks run again and one new review covers the change; a decision on the old review is stale.
+func TestHost_resume_continues_a_run_awaiting_review(t *testing.T) {
+	_, ws, git := hostRepo(t)
+	const id = "33333333-2222-3333-4444-555555555555"
+	hostedRun(t, cloudroomArgs(id))
+	first := hostEvents(t, ws, 1, "awaiting_review")
+	require.Len(t, first, 1)
+
+	args := strings.Join(hostedRun(t, resumeArgs(id)), " ")
+	assert.Contains(t, args, "--resume "+id, "Claude Code resumes its own conversation")
+	assert.NotContains(t, args, "--session-id")
+	assert.Equal(t, persistence.RunStatusAwaitingReview, hostRun(t, ws, 1).Status)
+	assert.Nil(t, hostRun(t, ws, 2), "the same run, not a new one")
+	resumed := hostEvents(t, ws, 1, "run_resumed")
+	require.Len(t, resumed, 1)
+	assert.Contains(t, resumed[0], `"withdrew_review"`)
+	assert.Len(t, hostEvents(t, ws, 1, "awaiting_review"), 2, "a new review covers the change")
+
+	decideAccept = true
+	t.Cleanup(func() { decideAccept = false })
+	require.NoError(t, decideHandler(nil, []string{"1"}))
+	assert.Equal(t, "ok\n", git("show", "staircase/run-1:HEALTH.md"))
+}
+
+// TestHost_resume_after_a_decision_starts_a_new_run: once the owner decided the run, a resumed session is a new away run under
+// fresh governance; Claude Code still resumes its conversation, and the new run names the session and the run it follows.
+func TestHost_resume_after_a_decision_starts_a_new_run(t *testing.T) {
+	_, ws, _ := hostRepo(t)
+	const id = "44444444-2222-3333-4444-555555555555"
+	hostedRun(t, cloudroomArgs(id))
+	decideAccept = true
+	t.Cleanup(func() { decideAccept = false })
+	require.NoError(t, decideHandler(nil, []string{"1"}))
+	decideAccept = false
+
+	args := strings.Join(hostedRun(t, resumeArgs(id)), " ")
+	assert.Contains(t, args, "--resume "+id)
+	require.NotNil(t, hostRun(t, ws, 2), "a new run")
+	assert.Equal(t, persistence.RunStatusAwaitingReview, hostRun(t, ws, 2).Status)
+	bound := hostEvents(t, ws, 2, "run_bound")
+	require.Len(t, bound, 1)
+	assert.Contains(t, bound[0], `"resumes_session":"`+id+`"`)
+	assert.Contains(t, bound[0], `"resumes_run":1`)
+}
+
+// TestHost_resume_continues_an_interrupted_run: a session whose process was killed left its run interrupted; resuming the session
+// continues that run as staircase resume would.
+func TestHost_resume_continues_an_interrupted_run(t *testing.T) {
+	_, ws, _ := hostRepo(t)
+	const id = "55555555-2222-3333-4444-555555555555"
+	hostedRun(t, cloudroomArgs(id))
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE runs SET status = 'KILLED' WHERE id = 1`) // what a killed process leaves
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	assert.Contains(t, strings.Join(hostedRun(t, resumeArgs(id)), " "), "--resume "+id)
+	assert.Len(t, hostEvents(t, ws, 1, "run_resumed"), 1)
+	assert.Nil(t, hostRun(t, ws, 2))
+}
+
+// TestHost_resume_refuses_what_it_cannot_govern: a session no hosted run names was never governed, so it is not resumed; a fork,
+// --continue and --resume-session-at stay refused, and so do both --session-id and --resume at once.
+func TestHost_resume_refuses_what_it_cannot_govern(t *testing.T) {
+	hostRepo(t)
+	var out bytes.Buffer
+	assert.ErrorContains(t, hostClaude(resumeArgs("66666666-2222-3333-4444-555555555555"), strings.NewReader(""), &out), "not started through staircase host")
+	both := append(cloudroomArgs("a"), "--resume", "a")
+	assert.ErrorContains(t, hostClaude(both, strings.NewReader(""), &out), "both")
+	for _, flag := range []string{"--fork-session", "--continue", "--resume-session-at"} {
+		assert.ErrorContains(t, hostClaude(append(resumeArgs("a"), flag), strings.NewReader(""), &out), flag)
+	}
+	assert.Empty(t, out.String())
 }

@@ -30,6 +30,9 @@ type ResumeOptions struct {
 	// grounded by Go; an agent harness: resuming its own session, refused when that is not possible), "native_resume" to
 	// require a resume, "fresh_grounded" when a person chose a new session grounded by the audit chain over a resume.
 	Context string
+	// WithdrawReview continues an away run that awaits review, withdrawing the review it offered: a resumed hosted session goes
+	// on with the same run (ADR 0008). A review already decided is not withdrawn.
+	WithdrawReview bool
 }
 
 // Resume continues an interrupted run: the same run, branch and worktree, under the policy, plan and options it
@@ -54,8 +57,8 @@ func (r *Runner) Resume(ctx context.Context, runID int64, opts ResumeOptions) er
 // PlanOf is the plan a run executed, from the copy it saved when it started (nil when it ran without one), for a caller
 // that must build the agent before continuing. It reads and changes nothing, and refuses what Resume would refuse about
 // the run's record.
-func (r *Runner) PlanOf(runID int64) (*plan.Plan, error) {
-	c, err := r.loadContinuation(runID)
+func (r *Runner) PlanOf(runID int64, withdrawReview bool) (*plan.Plan, error) {
+	c, err := r.loadContinuation(runID, withdrawReview)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +111,7 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 			release()
 		}
 	}()
-	if c, err = r.loadContinuation(runID); err != nil {
+	if c, err = r.loadContinuation(runID, opts.WithdrawReview); err != nil {
 		return nil, err
 	}
 	c.release = release
