@@ -11,9 +11,12 @@ func (c *chain) ended(status string) *chain {
 	return c.add("run_path", map[string]any{"phases": []string{"PRE_FLIGHT", "BRANCH_RESTORE"}, "status": status})
 }
 
-func (c *chain) offered() *chain {
+func (c *chain) offered() *chain { return c.offeredFiles(map[string]string{"a": "x"}) }
+
+// offeredFiles offers a review of those approved files; none: an empty change.
+func (c *chain) offeredFiles(files map[string]string) *chain {
 	c.add("phase_checked", map[string]any{"tree": "t", "passed": true})
-	return c.add("awaiting_review", map[string]any{"tree": "t", "phase_checked": fmt.Sprintf("e%d", len(c.events))})
+	return c.add("awaiting_review", map[string]any{"tree": "t", "files": files, "phase_checked": fmt.Sprintf("e%d", len(c.events))})
 }
 
 // TestOutcome_maps_each_history_to_one_outcome (V11-C01 scope 6): one outcome per run, read from its history alone, with the
@@ -33,6 +36,8 @@ func TestOutcome_maps_each_history_to_one_outcome(t *testing.T) {
 		"a review a resumed session withdrew":       {approved().offered().ended("AWAITING_REVIEW").add("run_resumed", map[string]any{"segment": 2}), OutcomeRunning, ""},
 		"a review offered":                          {approved().offered().ended("AWAITING_REVIEW"), OutcomeAwaitingReview, "staircase decide"},
 		"accepted, its delivery not finished":       {approved().offered().ended("AWAITING_REVIEW").add("review_accepted", nil), OutcomeAwaitingReview, "accept it again"},
+		"an empty change offered":                   {bound().edit("a").decided(1, "parked", false).offeredFiles(map[string]string{}).ended("AWAITING_REVIEW"), OutcomeAwaitingReview, "its change is empty"},
+		"an empty change accepted":                  {bound().edit("a").decided(1, "parked", false).offeredFiles(map[string]string{}).ended("AWAITING_REVIEW").add("review_accepted", nil), OutcomeFailed, "nothing was delivered"},
 		"a review the owner rejected":               {approved().offered().ended("AWAITING_REVIEW").add("review_rejected", map[string]any{"feedback": "no"}), OutcomeFailed, "rejected"},
 		"checks that failed on the approved tree":   {approved().add("phase_checked", map[string]any{"tree": "t", "passed": false, "failed": "go test: exit 1"}).ended("FAILED"), OutcomeFailed, "go test: exit 1"},
 		"a final review a person rejected":          {approved().final(2, false, nil).ended("FAILED"), OutcomeFailed, "final review"},
@@ -41,6 +46,14 @@ func TestOutcome_maps_each_history_to_one_outcome(t *testing.T) {
 		"stopped before it finished":                {approved().ended("KILLED"), OutcomeBlocked, "stopped"},
 		"everything parked":                         {bound().edit("a").decided(1, "parked", false).ended("SUCCESS"), OutcomeBlocked, "1 proposal(s) parked"},
 		"nothing approved, nothing parked":          {bound().edit("a").decided(1, "operator", false).ended("SUCCESS"), OutcomeFailed, "without a change"},
+		"an open claim: the process was lost":       {approved().claim(1, "g1"), OutcomeBlocked, "staircase resume <run> --ack-unknown"},
+		"a lost launch a restart recorded":          {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ended("KILLED"), OutcomeBlocked, "staircase recover <run>"},
+		"an agent that did not stop":                {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnresponsive).ended("KILLED"), OutcomeBlocked, "--ack-unknown"},
+		"a lost launch, acknowledged":               {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}), OutcomeRunning, ""},
+		"a lost launch, acknowledged, then stopped": {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).claim(2, "g2").launchEnded(2, "g2", LaunchStopped).ended("KILLED"), OutcomeBlocked, "stopped"},
+		"three lost launches": {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).
+			claim(2, "g2").launchEnded(2, "g2", LaunchUnknown).add("run_resumed", map[string]any{"segment": 3, "ack_unknown": 2}).
+			claim(3, "g3").launchEnded(3, "g3", LaunchUnknown), OutcomeBlocked, "refused"},
 		"a commit named, never delivered":           {approved().add("commit_prepared", map[string]any{"commit": "c"}).ended("KILLED"), OutcomeBlocked, "staircase recover"},
 		"delivered with its evidence":               {delivered().ended("SUCCESS"), OutcomeDelivered, "c"},
 		"delivered, evidence failed":                {delivered().add("evidence_failed", map[string]any{"commit": "c", "errors": []string{"ledger: disk full"}}).ended("SUCCESS"), OutcomeDeliveredIncomplete, "ledger: disk full"},

@@ -13,9 +13,12 @@ import (
 // estimated cost it used against what is left.
 func statusLines(st orchestrator.Status) []string {
 	out := []string{fmt.Sprintf("outcome    %s: %s", st.Outcome, st.Why)}
-	attempts := fmt.Sprintf("attempts   %d (times the agent was started: the run, then each continuation)", st.Attempts)
+	attempts := fmt.Sprintf("attempts   %d (times the agent was launched: the run, then each continuation)", st.Attempts)
 	if st.Parked > 0 {
 		attempts += fmt.Sprintf("; %d proposal(s) parked for you", st.Parked)
+	}
+	if st.LostLaunches > 0 {
+		attempts += fmt.Sprintf("; %d launch(es) ended without an established end", st.LostLaunches)
 	}
 	out = append(out, attempts)
 	elapsed := st.Elapsed.Round(time.Second)

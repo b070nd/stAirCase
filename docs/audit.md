@@ -122,6 +122,10 @@ A run whose launches ended this way **3 times** is not launched again, acknowled
 and `staircase recover <run>` still commits what the run had approved. The time a run was down is not counted
 against its time limit.
 
+The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or
+partial, with the exact `staircase resume <run> --ack-unknown` command and the `staircase recover <run>` one, or refused when it
+has lost 3 launches. Its attempts are the launches claimed, lost ones included.
+
 ## Logs are diagnostics, not evidence
 
 Two logs help a person find out why a run went wrong, and neither is part of the evidence:

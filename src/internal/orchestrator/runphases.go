@@ -708,6 +708,16 @@ func (s *runState) decide(p proposal) bool {
 	return !s.overBudget() // the validator's model use counts too
 }
 
+// parkedTotal is how many proposals the run has parked for the owner: this segment's, and those the earlier segments left that
+// the owner has not adopted.
+func (s *runState) parkedTotal() int {
+	n := s.dec.parked
+	if s.cont != nil {
+		n += len(s.cont.history.Parked())
+	}
+	return n
+}
+
 // finalize checks the worktree, offers an away run for review or puts the final review to a person, and delivers the approved
 // change with its evidence: the commit named on the chain before the branch moves to it.
 func (s *runState) finalize() error {
@@ -732,9 +742,12 @@ func (s *runState) finalize() error {
 		}
 	}
 	stillGoing()
-	if opts.Away && s.finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
+	// An away run that proposed something is offered for review, whether or not anything was approved: a run whose every proposal was
+	// parked offers an empty change with its parked proposals, never a SUCCESS with nothing offered (V11-C01 acceptance 4).
+	parked := s.parkedTotal()
+	if opts.Away && s.finalStatus == persistence.RunStatusSuccess && appr != nil && (len(appr.files) > 0 || parked > 0) {
 		var err error
-		if s.finalStatus, err = r.awaitReview(ctx, run.ID, appr, s.evGate, s.dec.parked); err != nil {
+		if s.finalStatus, err = r.awaitReview(ctx, run.ID, appr, s.evGate, parked); err != nil {
 			return err
 		}
 	}

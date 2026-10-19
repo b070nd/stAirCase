@@ -53,6 +53,10 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	if err := r.audit(runID, "awaiting_review", map[string]any{"tree": tree, "files": digest(appr.files), "phase_checked": checked, "parked": parked}); err != nil {
 		return persistence.RunStatusFailed, fmt.Errorf("audit awaiting_review: %w", err)
 	}
+	if len(appr.files) == 0 {
+		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved, %d proposal(s) parked for you (an empty change). Decide with: staircase decide %d\n", parked, runID)
+		return persistence.RunStatusAwaitingReview, nil
+	}
 	fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: %d file(s) approved on evidence, %d proposal(s) parked. Decide with: staircase decide %d\n",
 		len(appr.files), parked, runID)
 	return persistence.RunStatusAwaitingReview, nil
@@ -152,6 +156,14 @@ func (r *Runner) Decide(ctx context.Context, runID int64, o DecideOptions) (Reco
 		return RecoverResult{}, fmt.Errorf("run #%d was rejected: %w", runID, ErrNotAwaiting)
 	case rv.Decided == "accepted" && !o.Accept:
 		return RecoverResult{}, fmt.Errorf("run #%d was accepted and its delivery is not finished: accept it again to finish it", runID)
+	}
+	if o.Accept && len(rv.Files) == 0 { // an empty change: accepting it delivers nothing, and says so
+		if rv.Decided == "" {
+			if err := r.audit(runID, "review_accepted", map[string]any{"awaiting_review": rv.Entry, "tree": rv.Tree, "feedback": o.Feedback, "empty": true}); err != nil {
+				return RecoverResult{}, fmt.Errorf("record the acceptance: %w", err)
+			}
+		}
+		return RecoverResult{}, r.store.FinishRun(runID, persistence.RunStatusFailed, time.Now(), "")
 	}
 	if !o.Accept {
 		if err := r.audit(runID, "review_rejected", map[string]any{"awaiting_review": rv.Entry, "feedback": o.Feedback}); err != nil {

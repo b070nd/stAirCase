@@ -88,6 +88,18 @@ func TestDecide_the_inbox_is_a_tree_of_what_waits(t *testing.T) {
 	assert.Contains(t, inboxTree([]orchestrator.Review{numbered}, nil), "#2 src/bad.txt", "the number --adopt takes")
 }
 
+// TestDecide_the_inbox_shows_an_empty_change_as_empty: a run that parked everything offers nothing yet; the tree says so and still lists
+// what was parked, with its number for --adopt.
+func TestDecide_the_inbox_shows_an_empty_change_as_empty(t *testing.T) {
+	rv := sampleReview()
+	rv.Files = nil
+	rv.ParkedProposals[0].Seq = 2
+	text := inboxTree([]orchestrator.Review{rv}, nil)
+	assert.Contains(t, text, "change   empty")
+	assert.NotContains(t, text, "0 file(s)")
+	assert.Contains(t, text, "#2 src/bad.txt")
+}
+
 // TestDecide_keys: Y and I accept, N and O reject, D defers and shows what was parked, Z opens the clarifying session; anything
 // else asks again. A decision names the review entry that was on the screen.
 func TestDecide_keys(t *testing.T) {
