@@ -52,6 +52,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
+  run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
+  of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
+  [compatibility](docs/compatibility.md#the-six-contracts)).
+
 - **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
   shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
   silently missing.
