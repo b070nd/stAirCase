@@ -90,6 +90,7 @@ type runState struct {
 	agentFinished bool
 	launch        *history.LaunchClaimed // this segment's launch, once it is on the chain
 	agentOutcome  string                 // how the agent ended, once that is known
+	agentClass    string                 // the class its own error named (Rejected), "" when it named none
 	launchEnded   bool                   // its outcome is recorded (or its recording was tried)
 	val           *Validator
 	evGate        *evidenceGate
@@ -504,9 +505,21 @@ func (s *runState) endLaunch() {
 	s.endedAs(history.LaunchStopped) // stopped by the run, when nothing said otherwise
 	barrier.Hit(barrier.AgentEnded)
 	if err := s.r.audit(s.run.ID, "launch_ended", history.LaunchEnded{Attempt: s.launch.Attempt, Generation: s.launch.Generation,
-		Outcome: s.agentOutcome}); err != nil {
+		Outcome: s.agentOutcome, Class: s.launchClass()}); err != nil {
 		obs.Log.Warn("audit launch_ended: a restart will find the launch with no outcome", "run_id", s.run.ID, "err", err)
 	}
+}
+
+// launchClass is why the launch did not end well, apart from its checks: the class the agent's own error named, else records of
+// the launch that could not be written (the launch ended in a way the run established), else the class its outcome implies.
+func (s *runState) launchClass() string {
+	switch {
+	case s.agentClass != "":
+		return s.agentClass
+	case s.host.storageFailed.Load() && (s.agentOutcome == history.LaunchExited || s.agentOutcome == history.LaunchFailed || s.agentOutcome == history.LaunchStopped):
+		return history.ClassStorage
+	}
+	return history.ClassOf(s.agentOutcome)
 }
 
 // endedAs is how the agent ended, unless that is known already.
@@ -534,6 +547,10 @@ func (s *runState) processExited(procErr error) {
 	s.agentFinished = true
 	if procErr != nil {
 		s.endedAs(history.LaunchFailed)
+		var le *LaunchError
+		if errors.As(procErr, &le) {
+			s.agentClass = le.Class
+		}
 	}
 	s.endedAs(history.LaunchExited)
 	if procErr != nil {

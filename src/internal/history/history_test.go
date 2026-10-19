@@ -330,6 +330,10 @@ func (c *chain) launchEnded(attempt int, generation, outcome string) *chain {
 	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome})
 }
 
+func (c *chain) launchClassed(attempt int, generation, outcome, class string) *chain {
+	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome, "class": class})
+}
+
 // TestReplay_what_a_restart_reads_of_the_launches: every launch with its outcome, the one still open, the ones whose end was never
 // established, and whether the last of those parks the run until a resume acknowledges it. A lost launch's outcome, written by the
 // restart, adds nothing to the dead segment's active time.
@@ -367,4 +371,56 @@ func TestReplay_what_a_restart_reads_of_the_launches(t *testing.T) {
 	h = bound().claim(1, "g1").launchEnded(1, "g1", LaunchStopped).add("run_resumed", map[string]any{"segment": 2}).claim(2, "g2").launchEnded(2, "g2", LaunchFailed).replay(t)
 	assert.Equal(t, 0, h.Lost(), "a known failure is not a lost launch")
 	assert.Equal(t, 0, h.LaunchParked())
+}
+
+// TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks (V11-C01 scope 8): a launch that did not end well has a
+// class, on its launch_ended or derived from its outcome for a chain written before classes; a launch that ended by itself or
+// was stopped by the run has none. The class never touches the run's checks or its acceptance.
+func TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks(t *testing.T) {
+	for name, tc := range map[string]struct {
+		c    *chain
+		want string
+	}{
+		"exited":                      {bound().claim(1, "g").launchEnded(1, "g", LaunchExited), ""},
+		"stopped":                     {bound().claim(1, "g").launchEnded(1, "g", LaunchStopped), ""},
+		"failed, an older chain":      {bound().claim(1, "g").launchEnded(1, "g", LaunchFailed), ClassHostExit},
+		"failed, rejected":            {bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassRejected), ClassRejected},
+		"failed, storage trouble":     {bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassStorage), ClassStorage},
+		"exited, storage trouble":     {bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassStorage), ClassStorage},
+		"unresponsive":                {bound().claim(1, "g").launchEnded(1, "g", LaunchUnresponsive), ClassCleanup},
+		"lost, an older chain":        {bound().claim(1, "g").launchEnded(1, "g", LaunchUnknown), ClassUncertainDispatch},
+		"lost, classed":               {bound().claim(1, "g").launchClassed(1, "g", LaunchUnknown, ClassUncertainDispatch), ClassUncertainDispatch},
+		"a claim with no outcome yet": {bound().claim(1, "g"), ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := tc.c.replay(t)
+			require.Len(t, h.Launches, 1)
+			assert.Equal(t, tc.want, h.Launches[0].Class)
+		})
+	}
+	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).add("run_resumed", map[string]any{"segment": 2}).
+		claim(2, "g2").launchClassed(2, "g2", LaunchFailed, ClassHostExit).replay(t)
+	require.Len(t, h.Failures(), 1)
+	assert.Equal(t, 2, h.Failures()[0].Attempt)
+}
+
+// TestLaunchClass_refuses_a_class_the_outcome_cannot_have: a chain that names a class its outcome does not fit, or one nobody
+// defined, is not a chain this version reads.
+func TestLaunchClass_refuses_a_class_the_outcome_cannot_have(t *testing.T) {
+	for name, tc := range map[string]*chain{
+		"a class nobody defined":            bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, "oops"),
+		"a rejection that exited":           bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassRejected),
+		"a host exit that was stopped":      bound().claim(1, "g").launchClassed(1, "g", LaunchStopped, ClassHostExit),
+		"an uncertain dispatch that failed": bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassUncertainDispatch),
+		"a cleanup failure that exited":     bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassCleanup),
+		"storage trouble that was lost":     bound().claim(1, "g").launchClassed(1, "g", LaunchUnknown, ClassStorage),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := replay(tc.events)
+			var g *GrammarError
+			require.True(t, errors.As(err, &g), "%v", err)
+			assert.Equal(t, 3, g.Index)
+			assert.Contains(t, g.Error(), "class")
+		})
+	}
 }

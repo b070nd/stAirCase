@@ -72,12 +72,19 @@ func (h History) Outcome() (Outcome, string) {
 		case rejected:
 			return OutcomeFailed, "its final review was rejected: nothing was committed"
 		}
+		if note := h.launchNote(); note != "" { // a lifecycle failure, said in its own class: never as a check result or a review
+			return OutcomeFailed, "the run failed, and " + note + ": nothing was delivered"
+		}
 		return OutcomeFailed, "the run failed: nothing was delivered"
 	case domain.RunStatusKilled:
 		if h.Halted {
 			return OutcomeBlocked, halted
 		}
-		return OutcomeBlocked, "it was stopped before it finished (cancelled, or over its time or budget): continue it with staircase resume, or recover what it approved with staircase recover"
+		why := "it was stopped before it finished (cancelled, or over its time or budget): continue it with staircase resume, or recover what it approved with staircase recover"
+		if note := h.launchNote(); note != "" {
+			why = "it was stopped before it finished, and " + note + ": continue it with staircase resume (check what the agent may have done first), or recover what it approved with staircase recover"
+		}
+		return OutcomeBlocked, why
 	case domain.RunStatusSuccess:
 		if parked > 0 {
 			return OutcomeBlocked, fmt.Sprintf("%d proposal(s) parked for you, and nothing approved to review", parked)

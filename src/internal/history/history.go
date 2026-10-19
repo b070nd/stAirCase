@@ -83,6 +83,9 @@ type Launch struct {
 	Index   int
 	Entry   string
 	Outcome string
+	// Class is why the launch did not end well (see ClassOf): "" while it has no outcome, and when it ended by itself or the run
+	// stopped it.
+	Class string
 }
 
 // lost reports whether the launch's end was never established: no outcome, one a restart recorded, or an agent that did not stop.
@@ -210,7 +213,14 @@ func replay(events []domain.RunEventLog) (History, error) {
 			default:
 				return h, fail("an unknown outcome %q", p.Outcome)
 			}
-			o.Outcome = p.Outcome
+			class := p.Class
+			switch {
+			case class == "":
+				class = ClassOf(p.Outcome)
+			case !classFits(class, p.Outcome):
+				return h, fail("the class %q does not fit the outcome %q", class, p.Outcome)
+			}
+			o.Outcome, o.Class = p.Outcome, class
 			if p.Outcome == LaunchUnknown {
 				continue // written by a restart, after the run was down: not time the segment used
 			}
@@ -390,6 +400,25 @@ func (h History) OpenLaunch() *Launch {
 		return &h.Launches[n-1]
 	}
 	return nil
+}
+
+// Failures are the launches that did not end well, each with its class, in chain order.
+func (h History) Failures() []Launch {
+	var out []Launch
+	for _, l := range h.Launches {
+		if l.Class != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// launchNote is the last launch's class in words, for an outcome's reason: "" when it ended well.
+func (h History) launchNote() string {
+	if n := len(h.Launches); n > 0 && h.Launches[n-1].Class != "" {
+		return fmt.Sprintf("its agent's launch %d ended in %s", h.Launches[n-1].Attempt, ClassPhrase(h.Launches[n-1].Class))
+	}
+	return ""
 }
 
 // Lost is how many of the run's launches have no established end (an open claim included).

@@ -143,7 +143,7 @@ func TestResume_a_launch_with_no_outcome_parks_the_run(t *testing.T) {
 	assert.Contains(t, err.Error(), "--ack-unknown")
 	assert.Equal(t, 0, launched, "the agent is not launched again blindly")
 	_, ends = launches(t, eventsOf(t, r, "launch_ended"))
-	assert.Equal(t, []history.LaunchEnded{{Attempt: 1, Generation: claims[0].Generation, Outcome: history.LaunchUnknown}}, ends)
+	assert.Equal(t, []history.LaunchEnded{{Attempt: 1, Generation: claims[0].Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}}, ends)
 	assert.Empty(t, eventsOf(t, r, "run_resumed"))
 
 	err = resume(t, r, orchestrator.ResumeOptions{Agent: agent})

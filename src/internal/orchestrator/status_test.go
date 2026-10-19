@@ -106,5 +106,5 @@ func TestRun_records_how_each_segment_ended(t *testing.T) {
 	require.NoError(t, err)
 	out, why := h.Outcome()
 	assert.Equal(t, history.OutcomeFailed, out, why)
-	assert.Equal(t, "the run failed: nothing was delivered", why)
+	assert.Equal(t, "the run failed, and its agent's launch 1 ended in "+history.ClassPhrase(history.ClassHostExit)+": nothing was delivered", why)
 }

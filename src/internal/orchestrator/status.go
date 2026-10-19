@@ -22,6 +22,9 @@ type Status struct {
 	// Attempts is how many times the run's agent was started: its segments, the first run and each continuation.
 	Attempts int
 	Parked   int // proposals parked for the owner and not adopted
+	// Failures are the launches that did not end well, each with its lifecycle class (rejected, host exit, storage trouble, cleanup
+	// failure, uncertain dispatch). They are about the agent's process, never about its checks or an acceptance.
+	Failures []history.Launch
 
 	Elapsed   time.Duration // the active time its segments used
 	TimeLimit time.Duration // 0: none, or none that can be read (TimeUnknown)
@@ -52,6 +55,7 @@ func (r *Runner) StatusOf(runID int64) (Status, error) {
 			st.Commit = h.Delivered[len(h.Delivered)-1].Commit
 		}
 	}
+	st.Failures = h.Failures()
 	st.Attempts, st.Parked, st.Elapsed = h.Segment, len(h.Parked()), h.Elapsed
 	for _, u := range h.Usage {
 		st.InputTokens += u.State.In

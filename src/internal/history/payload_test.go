@@ -40,6 +40,7 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 			"plan_digest":"d","undecided_requests":1,"ack_drift":true,"elapsed_secs":30,"context":"native_resume","journal_dropped":1,"ack_unknown":1}`, &Resumed{}},
 		"launch_claimed":   {`{"attempt":2,"generation":"0f1e","segment":2}`, &LaunchClaimed{}},
 		"launch_ended":     {`{"attempt":2,"generation":"0f1e","outcome":"unknown_after_restart"}`, &LaunchEnded{}},
+		"launch_ended classed": {`{"attempt":2,"generation":"0f1e","outcome":"failed","class":"rejected"}`, &LaunchEnded{}},
 		"policy_snapshot":  {`{"digest":"d","signed":true}`, &PolicySnapshot{}},
 		"initiator_signed": {`{"principal":"dev@example.com","signature":"c2ln"}`, &InitiatorSigned{}},
 		"agent_session":    {`{"agent":"claude-code","id":"s","mode":"started"}`, &AgentSession{}},
