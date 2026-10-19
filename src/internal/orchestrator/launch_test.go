@@ -139,6 +139,7 @@ func TestResume_a_launch_with_no_outcome_parks_the_run(t *testing.T) {
 	})
 	err := resume(t, r, orchestrator.ResumeOptions{Agent: agent})
 	require.ErrorIs(t, err, orchestrator.ErrNotContinuable)
+	assert.ErrorIs(t, err, orchestrator.ErrLaunchRecorded, "this refusal wrote the lost launch's outcome")
 	assert.Contains(t, err.Error(), "launch 1")
 	assert.Contains(t, err.Error(), "--ack-unknown")
 	assert.Equal(t, 0, launched, "the agent is not launched again blindly")
@@ -148,6 +149,7 @@ func TestResume_a_launch_with_no_outcome_parks_the_run(t *testing.T) {
 
 	err = resume(t, r, orchestrator.ResumeOptions{Agent: agent})
 	require.ErrorIs(t, err, orchestrator.ErrNotContinuable, "still parked")
+	assert.NotErrorIs(t, err, orchestrator.ErrLaunchRecorded, "the outcome was recorded before: this refusal changed nothing")
 	assert.Len(t, eventsOf(t, r, "launch_ended"), 1, "the outcome is recorded once")
 	assert.Equal(t, 0, launched)
 
@@ -178,10 +180,11 @@ func TestResume_a_run_whose_launches_were_lost_three_times_is_not_launched_again
 	err := resume(t, r, orchestrator.ResumeOptions{AckUnknown: true,
 		Agent: orchestrator.AgentFunc(func(context.Context, *orchestrator.AgentEnv) error { launched = true; return nil })})
 	require.ErrorIs(t, err, orchestrator.ErrNotContinuable)
-	assert.Contains(t, err.Error(), fmt.Sprintf("%d times", orchestrator.MaxLostLaunches))
+	assert.ErrorIs(t, err, orchestrator.ErrLaunchRecorded, "the third launch's lost outcome was recorded by this refusal")
+	assert.Contains(t, err.Error(), fmt.Sprintf("%d times", history.MaxLostLaunches))
 	assert.Contains(t, err.Error(), "staircase recover 1")
 	assert.False(t, launched)
-	assert.Equal(t, 3, orchestrator.MaxLostLaunches, "the bound the documentation states")
+	assert.Equal(t, 3, history.MaxLostLaunches, "the bound the documentation states")
 	_, ends := launches(t, eventsOf(t, r, "launch_ended"))
 	require.Len(t, ends, 3)
 	for _, e := range ends {

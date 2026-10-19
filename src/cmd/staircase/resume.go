@@ -123,12 +123,18 @@ func resumeRun(runID int64) error {
 	if resumeFresh {
 		opts.Context = "fresh_grounded"
 	}
-	err = runner.Resume(ctx, runID, opts)
-	if errors.Is(err, orchestrator.ErrLaunchLost) {
-		return fmt.Errorf("%w\n   Only the lost launch's outcome was recorded, as unknown_after_restart. If its approvals matter: staircase recover %d", err, runID)
+	return resumeRefusal(runner.Resume(ctx, runID, opts), runID)
+}
+
+// resumeRefusal says what a refused continuation changed: nothing, or only the outcome of a lost launch, when this very
+// attempt recorded it (a run that was parked before has it on its chain already, and this attempt wrote nothing).
+func resumeRefusal(err error, runID int64) error {
+	if !errors.Is(err, orchestrator.ErrNotContinuable) {
+		return err
 	}
-	if errors.Is(err, orchestrator.ErrNotContinuable) {
-		return fmt.Errorf("%w\n   Nothing was changed. If its approvals matter: staircase recover %d", err, runID)
+	changed := "Nothing was changed."
+	if errors.Is(err, orchestrator.ErrLaunchRecorded) {
+		changed = "Only the lost launch's outcome was recorded, as unknown_after_restart, and nothing else was changed."
 	}
-	return err
+	return fmt.Errorf("%w\n   %s If its approvals matter: staircase recover %d", err, changed, runID)
 }

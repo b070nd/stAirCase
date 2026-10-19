@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **`staircase resume` no longer says "Nothing was changed" after it recorded a lost launch.** A refused continuation that wrote the
+  outcome of a lost launch (`unknown_after_restart`) says so, and that nothing else was changed, whatever check refused it; one that
+  wrote nothing, including a second attempt on a run already parked, says "Nothing was changed".
+
 - **The agreement says when nothing of the checks is protected.** When a run's checks name no file of their own (for example `go test
   ./...`) and no `--protect` was given, the agreement now says `protected:   nothing`, that the agent may edit the tests the checks run,
   and names `--protect`. A command declared for an away run that writes a protected path is parked like any other change to it.

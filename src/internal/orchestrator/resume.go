@@ -41,9 +41,15 @@ type ResumeOptions struct {
 	AckUnknown bool
 }
 
-// MaxLostLaunches is how many launches of one run may end without an established end (lost, or unresponsive) before the run is
-// not launched again: what it approved can still be recovered, but its agent is not started a fourth time.
-const MaxLostLaunches = history.MaxLostLaunches
+// ErrLaunchRecorded is part of a refusal that came after the continuation recorded something: the outcome of a lost launch,
+// as unknown_after_restart. A refusal without it changed nothing.
+var ErrLaunchRecorded = errors.New("the lost launch's outcome was recorded")
+
+// launchRecorded is a refusal that matches ErrLaunchRecorded and keeps its own message.
+type launchRecorded struct{ error }
+
+func (e launchRecorded) Unwrap() error      { return e.error }
+func (launchRecorded) Is(target error) bool { return target == ErrLaunchRecorded }
 
 // ErrLaunchLost is part of the refusal of a run parked for a launch with no established end. Unlike other refusals, the
 // continuation recorded something first: the lost launch's outcome, as unknown_after_restart.
@@ -58,6 +64,7 @@ func (r *Runner) settleLostLaunch(c *continuation, ack bool) error {
 		if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}); err != nil {
 			return fmt.Errorf("record the outcome of launch %d as unknown: %w", o.Attempt, err)
 		}
+		c.lostEnded = true
 		h, err := history.Read(r.store, runID)
 		if err != nil {
 			return err
@@ -65,9 +72,9 @@ func (r *Runner) settleLostLaunch(c *continuation, ack bool) error {
 		c.history, c.chainHead = h, h.Head
 	}
 	h := c.history
-	if lost := h.Lost(); lost >= MaxLostLaunches {
+	if lost := h.Lost(); lost >= history.MaxLostLaunches {
 		return fmt.Errorf("%w: %w: the end of run #%d's agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again. Recover what it approved with `staircase recover %d`",
-			ErrNotContinuable, ErrLaunchLost, runID, lost, MaxLostLaunches, runID)
+			ErrNotContinuable, ErrLaunchLost, runID, lost, history.MaxLostLaunches, runID)
 	}
 	parked := h.LaunchParked()
 	if parked == 0 {
@@ -153,9 +160,13 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 	if err != nil {
 		return nil, fmt.Errorf("run #%d is still running: its process holds the run's lock, so it cannot be continued: %w", runID, err)
 	}
+	recorded := false // the lost launch's outcome was written: a refusal from here on did not change nothing
 	defer func() {
 		if err != nil {
 			release()
+			if recorded {
+				err = launchRecorded{err}
+			}
 		}
 	}()
 	if c, err = r.loadContinuation(runID, opts.WithdrawReview); err != nil {
@@ -163,7 +174,9 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 	}
 	c.release = release
 	c.ackDrift = opts.AckDrift
-	if err = r.settleLostLaunch(c, opts.AckUnknown); err != nil {
+	err = r.settleLostLaunch(c, opts.AckUnknown)
+	recorded = c.lostEnded
+	if err != nil {
 		return nil, err
 	}
 	if c.contextKind, c.sessionID, err = chooseContext(c, opts); err != nil {
