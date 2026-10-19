@@ -1,4 +1,4 @@
-.PHONY: evidence check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
+.PHONY: evidence site-check checktest test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
@@ -12,6 +12,14 @@ check: lint
 	go test -tags barriers ./src/internal/barrier ./src/internal/orchestrator -run 'TestHit|TestConsumption' -count=1 -timeout=180s
 	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats tests/kill_drill.bats tests/pty_ctrl_c.bats tests/test_report.bats tests/verify_action_acquire.bats tests/verify_action_release.bats tests/barrier_drill.bats tests/spec_vectors.bats tests/evidence.bats tests/verify_release.bats tests/ruleset_fixture.bats tests/historical.bats tests/coordinator.bats tests/resume_drill.bats tests/ci_evidence_check.bats tests/release_notes.bats tests/homebrew_formula.bats tests/action_exec.bats
 	$(MAKE) demo
+
+# ─── The website (site/) ──────────────────────────────────────────────────────
+# Plain HTML and CSS, built by nothing and served by nothing: open site/index.html.
+# The page check (site/site_test.go) runs offline as part of `go test ./...` in
+# check: every page has a lang, one h1, headings in order, alt text on images, a
+# title and a viewport; internal links resolve; no file has an em dash.
+site-check:
+	go test ./site -count=1
 
 # ─── Release evidence ─────────────────────────────────────────────────────────
 # The canonical release checks (make check, a count of every Go test, the kill
