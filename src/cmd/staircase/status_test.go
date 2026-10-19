@@ -7,6 +7,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,6 +78,25 @@ func TestDecide_a_run_that_does_not_wait_shows_its_status(t *testing.T) {
 	assert.Contains(t, out, "Run #1")
 	assert.Contains(t, out, "failed")
 	assert.Contains(t, out, "you rejected its review")
+}
+
+// TestDecide_a_run_whose_chain_cannot_be_read_is_listed_not_dropped: the other-away-runs list names a run whose status cannot be read
+// (its chain does not verify) instead of leaving it out, as if it had nothing to say.
+func TestDecide_a_run_whose_chain_cannot_be_read_is_listed_not_dropped(t *testing.T) {
+	awaySession(t)
+	decideReject = true
+	require.NoError(t, decideHandler(nil, []string{"1"})) // the run ends FAILED
+	decideReject = false
+
+	store, db, err := openStore()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	_, err = db.Exec(`UPDATE run_event_logs SET payload = payload || ' ' WHERE run_id = 1 AND id = (SELECT MIN(id) FROM run_event_logs WHERE run_id = 1)`)
+	require.NoError(t, err)
+
+	also := alsoAway(store, orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR")))
+	require.Len(t, also, 1, "the run is listed, not dropped")
+	assert.Contains(t, also[0], "could not read run #1: ")
 }
 
 // TestInspect_shows_each_runs_outcome: inspect runs has an outcome column for every run, a run awaiting review included, and

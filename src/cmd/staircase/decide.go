@@ -159,6 +159,8 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 		reviews = append(reviews, rv)
 		if st, err := runner.StatusOf(id); err == nil {
 			status[id] = st
+		} else {
+			fmt.Println(unreadable(id, err)) // never leave the run's status out as if it had none
 		}
 	}
 	fmt.Print(inboxTree(reviews, status))

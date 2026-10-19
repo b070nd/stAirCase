@@ -8,6 +8,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/tui"
 )
 
 // statusLines are a run's morning status (V11-C01 scope 6): its outcome and why, its attempts, and the time, tokens and
@@ -69,22 +70,39 @@ func printStatus(st orchestrator.Status) {
 
 // alsoAway are the away runs, besides those awaiting review, that are still running or wait for their owner (blocked or partial):
 // one line each, for the inbox.
+//
+// A run whose status cannot be read (its chain does not verify, say) is listed as unreadable, never left out: it may be one of them.
 func alsoAway(store *persistence.Store, runner *orchestrator.Runner) []string {
 	var out []string
-	for _, status := range []string{persistence.RunStatusRunning, persistence.RunStatusKilled, persistence.RunStatusSuccess, persistence.RunStatusFailed} {
+	for _, status := range runStatuses {
+		if status == persistence.RunStatusAwaitingReview { // the inbox lists those
+			continue
+		}
 		runs, err := store.ListRunsByStatus(status)
 		if err != nil {
 			continue
 		}
 		for _, r := range runs {
 			st, err := runner.StatusOf(r.ID)
-			if err != nil || !st.Away || (st.Outcome != history.OutcomeRunning && st.Outcome != history.OutcomeBlocked) {
+			if err != nil {
+				out = append(out, unreadable(r.ID, err))
+				continue
+			}
+			if !st.Away || (st.Outcome != history.OutcomeRunning && st.Outcome != history.OutcomeBlocked) {
 				continue
 			}
 			out = append(out, fmt.Sprintf("run #%d   %s: %s", r.ID, st.Outcome, st.Why))
 		}
 	}
 	return out
+}
+
+// runStatuses are the statuses a run is listed under, in the order the tables show them.
+var runStatuses = []string{persistence.RunStatusRunning, persistence.RunStatusAwaitingReview, persistence.RunStatusSuccess, persistence.RunStatusFailed, persistence.RunStatusKilled}
+
+// unreadable is the line for a run whose status could not be read.
+func unreadable(runID int64, err error) string {
+	return tui.Safe(fmt.Sprintf("could not read run #%d: %v", runID, err))
 }
 
 // outcomeOf is a run's outcome for a table: what its history says, or that it cannot be read.

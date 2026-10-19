@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
+  shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
+  silently missing.
+
 - **`staircase resume` no longer says "Nothing was changed" after it recorded a lost launch.** A refused continuation that wrote the
   outcome of a lost launch (`unknown_after_restart`) says so, and that nothing else was changed, whatever check refused it; one that
   wrote nothing, including a second attempt on a run already parked, says "Nothing was changed".
