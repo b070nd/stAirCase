@@ -197,6 +197,9 @@ func checkFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&cli.terms.Checks, "check", nil,
 		"A command (such as your tests) to run on the commit once it is made, in the sandbox; "+
 			"its result goes into the change certificate, and verify fails a failed check. Repeat for more")
+	cmd.Flags().StringArrayVar(&cli.terms.ProtectedPaths, "protect", nil,
+		"A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, "+
+			"whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more")
 }
 
 // validatorFlag adds --validator and --signal to cmd.

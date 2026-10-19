@@ -20,7 +20,8 @@ import (
 
 // deciders are who may decide a run's proposals, asked in a fixed order: the
 // orchestrator refuses what cannot be applied as shown; drift supervision
-// halts the run or sends the proposal to a human; the policy's limits send it
+// halts the run or sends the proposal to a human; so does a change to a
+// check's definition (a protected path); the policy's limits send it
 // to a human, its rules decide it; the validator decides in-scope edits; a
 // human decides the rest.
 type deciders struct {
@@ -33,6 +34,7 @@ type deciders struct {
 	away          bool            // nobody is asked: what would go to a person is parked (ADR 0006)
 	declared      map[string]bool // the exact commands an away run may run without asking (ADR 0009)
 	declaredTools map[string]bool // the exact MCP tools an away run may call without asking (ADR 0008)
+	protected     []string        // the paths that hold the checks' definitions: a change to one needs a person
 	signal        *Signal
 	redact        func(string) string                                                 // removes delivered secret values from what a person is shown
 	sign          *decisionSigning                                                    // checks and adds signatures on human decisions
@@ -52,9 +54,10 @@ type deciders struct {
 }
 
 // under sets what the terms decide about who decides: the agreed task (approving in scope or on evidence needs someone to have
-// agreed to it), away, and what an away run may run or call without asking.
+// agreed to it), away, what an away run may run or call without asking, and the paths only a person may change.
 func (d *deciders) under(t Terms) *deciders {
 	d.task = (t.ApproveInScope || t.ApproveOnEvidence) && t.Agreed != ""
+	d.protected = t.ProtectedPaths
 	d.away, d.declared, d.declaredTools = t.Away, declaredSet(t.AwayCommands), declaredSet(t.AwayTools)
 	return d
 }
@@ -169,6 +172,15 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 	if rl.halt {
 		rl.resp, rl.source = domain.Decide(false, "refused: the run has drifted too far from its stories' scope and is halting"), "drift"
 		return rl
+	}
+	// A change to a check's definition would let the agent make a failing check pass: a person decides it, whatever the policy
+	// says, and while away it is parked.
+	for _, f := range rl.files {
+		if matchesFold(d.protected, f) {
+			req.Review = "it changes " + f + ", which holds the definition of a check: a person decides, whatever the policy says"
+			d.display.AddActivity(fmt.Sprintf("%-14s CHECKS %s → HITL (%s)", req.AgentName, req.ActionType, f))
+			return d.human(req, rl)
+		}
 	}
 	// CHECK 7.2.1/7.2.2: once a session limit is hit, every proposal goes to a
 	// human regardless of the policy's rules.

@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Checks the agent cannot weaken (`--protect`).** The paths where a run's checks are defined are part of its terms, saved and bound
+  by their digest: what the checks name (the script a check runs, the tests given to `bats` or `pytest`, `make`'s `Makefile`) and what
+  you add with `--protect <path or pattern>`. A change to one always goes to a person, whatever the policy, the agreed task or a
+  validator would say, and is parked while away, so an agent cannot make a failing check pass by editing or deleting the test it runs.
+  The agreement shows them (`protected:`) ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken)).
+
 - **A runner can resume a session it started (`staircase host claude --resume <id>`).** The session's id leads to the run it was
   governed as, through the audit chain. If that run was interrupted, the session continues it. If it awaits review, the session
   continues it too: the review is withdrawn on the chain and a new one covers the whole change. If you already decided it, the session

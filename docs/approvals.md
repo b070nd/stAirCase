@@ -33,14 +33,17 @@ screen does not show line by line.
    `package.json`, lock files and the like), or what looks like a secret (private
    keys, cloud and API keys, tokens). Only what the change adds counts. The reason
    is shown as `CHECK:` and recorded with the decision.
-4. **Your policy** rules (`policy.json`) can approve or reject it automatically.
-5. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
+4. **Where your checks are defined.** A change to a protected path (see
+   [below](#checks-the-agent-cannot-weaken)) goes to a person, whatever the rules say, and is
+   parked while you are away.
+5. **Your policy** rules (`policy.json`) can approve or reject it automatically.
+6. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
    that are not sensitive (see [below](#approving-the-task-not-every-step)); with
    `--approve-on-evidence` it approves them only when the evidence is there (see
    [below](#approving-on-evidence)).
-6. **A validator model** or a panel of them, if you turned one on, can decide
+7. **A validator model** or a panel of them, if you turned one on, can decide
    in-scope file changes.
-7. **A person** decides everything else.
+8. **A person** decides everything else.
 
 Shell commands always go to a person.
 
@@ -359,6 +362,23 @@ least one check or validator. Nothing is sampled for you either: you still see a
 outside the scope, sensitive files, guard hits and shell commands, and **you approve the
 whole change once at the end**.
 
+### Checks the agent cannot weaken
+
+A check is only evidence while the agent cannot change what it runs. The paths where your checks are
+defined are protected: a change to one (an edit, a new file, a deletion) goes to a person whatever
+your policy, the agreed task or a validator would say, and while you are away it is parked.
+
+- **What the checks name is protected by itself:** the script a check runs (`sh tests/run`,
+  `./scripts/check.sh`, `python3 ci/check.py`), the files and directories a test runner is given
+  (`bats tests/unit`, `pytest tests/test_api.py`), and `Makefile`, `justfile` or `package.json`
+  for `make`, `just` and `npm`, `yarn` or `pnpm`.
+- **What cannot be known, you name:** `go test ./...` finds its tests by itself, so add
+  `--protect "**/*_test.go"` (repeatable; a path or `**` pattern from the repository's root).
+
+The protected paths are part of the run's terms: shown when you agree to the task (`protected:`),
+saved with them and bound by their digest on `run_bound`, so a continuation keeps them and nothing in
+the run can change them. A proposal sent to you for this says which path it changes.
+
 To leave the agent working without being asked at all, see [working while you are away](away.md): `--away` parks what
 would come to you and ends the run waiting for your review.
 
@@ -366,8 +386,9 @@ Two things to know. A check must be able to pass on each intermediate state, or 
 be asked about every change: a build, a linter, a type check and fast tests work; a test
 suite that fails until three files exist does not. And the evidence is as good as your
 checks: with weak tests, evidence-based approval is weak approval. A check reads the files
-the agent changes, so an agent that may edit a test (or the script a check runs) can make
-the check pass; keep the files your checks read out of the story's scope. The certificate
+the agent changes, so an agent that could edit a test (or the script a check runs) could make
+the check pass: protect where your checks are defined (see
+[above](#checks-the-agent-cannot-weaken)). The certificate
 says how many decisions were made on evidence and how many by people (`staircase verify`
 prints them), so a reviewer can see which it was.
 
