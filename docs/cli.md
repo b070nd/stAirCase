@@ -357,6 +357,11 @@ is committed until you decide:
 Without a terminal, decide one run with --accept or --reject. A decision is made on the review entry you were shown; if the
 run's review is no longer that one (--shown), it is refused.
 
+Each run is shown with its status, read from its verified audit chain: its outcome (running, awaiting review, blocked or
+partial, failed, delivered, or delivered with incomplete evidence) and why, how many times its agent was started, and the
+time, tokens and estimated cost it used against what is left. Your other away runs that are still running, or blocked, are
+listed below the tree; staircase decide <run-id> on a run that does not await review shows its status.
+
 Flags:
 
 ```

@@ -240,7 +240,11 @@ func (s *runState) finish(runErr error) error {
 	if err := r.enter(PhaseBranchRestore); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
-	if err := r.audit(run.ID, "run_path", map[string]any{"phases": r.path}); err != nil {
+	phases := make([]string, len(r.path))
+	for i, p := range r.path {
+		phases[i] = string(p)
+	}
+	if err := r.audit(run.ID, "run_path", history.Ended{Phases: phases, Status: s.finalStatus}); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
 	if s.worktree != "" {

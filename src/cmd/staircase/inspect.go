@@ -4,9 +4,11 @@ import (
 	"fmt"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var inspectCmd = &cobra.Command{
@@ -35,7 +37,7 @@ var inspectRunsCmd = &cobra.Command{
 				return err
 			}
 		} else {
-			for _, status := range []string{persistence.RunStatusRunning, persistence.RunStatusSuccess, persistence.RunStatusFailed, persistence.RunStatusKilled} {
+			for _, status := range []string{persistence.RunStatusRunning, persistence.RunStatusAwaitingReview, persistence.RunStatusSuccess, persistence.RunStatusFailed, persistence.RunStatusKilled} {
 				batch, _ := store.ListRunsByStatus(status)
 				runs = append(runs, batch...)
 			}
@@ -46,6 +48,7 @@ var inspectRunsCmd = &cobra.Command{
 			return nil
 		}
 
+		runner := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR"))
 		rows := make([][]string, len(runs))
 		for i, r := range runs {
 			dur := "-"
@@ -56,13 +59,14 @@ var inspectRunsCmd = &cobra.Command{
 				fmt.Sprint(r.ID),
 				fmt.Sprint(r.CaseID),
 				r.Status,
+				outcomeOf(runner, r.ID),
 				r.GitBranch,
 				fmt.Sprint(r.TopologyVersion),
 				r.StartTime.Format("2006-01-02 15:04"),
 				dur,
 			}
 		}
-		table([]string{"ID", "Case", "Status", "Branch", "Topo", "Started", "Duration"}, rows)
+		table([]string{"ID", "Case", "Status", "Outcome", "Branch", "Topo", "Started", "Duration"}, rows)
 		return nil
 	},
 }
@@ -98,6 +102,14 @@ var inspectLogCmd = &cobra.Command{
 			run.ID, run.CaseID, run.Status, run.GitBranch)
 		if run.GitCommitHash != "" {
 			fmt.Printf("         commit=%s\n", run.GitCommitHash)
+		}
+		// How the run stands, from its verified history; the events below are shown as stored, verified or not.
+		if st, err := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR")).StatusOf(runID); err != nil {
+			fmt.Printf("         outcome    unknown: %s\n", tui.Safe(err.Error()))
+		} else {
+			for _, l := range statusLines(st) {
+				fmt.Printf("         %s\n", tui.Safe(l))
+			}
 		}
 		fmt.Println()
 
