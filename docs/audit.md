@@ -126,6 +126,28 @@ The status of such a run (`staircase decide <run>`, `staircase inspect log <run>
 partial, with the exact `staircase resume <run> --ack-unknown` command and the `staircase recover <run>` one, or refused when it
 has lost 3 launches. Its attempts are the launches claimed, lost ones included.
 
+## Logs are diagnostics, not evidence
+
+Two logs help a person find out why a run went wrong, and neither is part of the evidence:
+
+- the **debug log** (`--debug`: `log/staircase-debug-run<N>.log` in the workspace), and
+- the **host log** of a hosted session (`host/<session>.log`; see [hosting](hosting.md#what-the-runner-keeps-and-what-it-does-not)).
+
+Both are held to the same rules:
+
+- **A bound.** A log stops growing at **8 MiB**, markers included. Where it stops it says so
+  (`[staircase: this log reached its bound of 8388608 bytes; output after this point is dropped]`) and, when the process ends, how much
+  it dropped (`[staircase: dropped N bytes in all]`). Opened again by a resumed session, it counts what it already holds. A full
+  log loses nothing that matters to the run: the audit chain, the certificate and the ledger are written elsewhere and are never short
+  of a record because a log is full.
+- **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the
+  environment variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret is
+  shown as `<REDACTED>`.
+- **No stderr text in the record.** When an agent program fails, the last 4 KiB of its stderr (with a line saying so if its
+  start was dropped) is kept in the debug log, or in the host log of a hosted session, and shown at the terminal, scrubbed. It is not
+  in the error the run ends with, which a caller may log or a runner may keep, and it is never on the audit chain, in the certificate
+  or in the ledger. The reason is a lesson from Cloudroom, which kept stderr tails in records its prose said stderr never reached.
+
 ## The change certificate on every commit
 
 Each run that commits leaves a **change certificate** about exactly that commit: a
