@@ -56,7 +56,12 @@ acknowledges it.
 **Launch**: one start of a run's agent: by a new run, a continuation or a resumed hosted session. It is claimed on the chain
 (`launch_claimed`, its attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is
 written once the agent stopped. A **lost** launch has no established end: no outcome, `unknown_after_restart` (a restart found the
-claim open) or `unresponsive`. A run with 3 lost launches is not launched again.
+claim open) or `unresponsive`. A run with 3 lost launches is not launched again. A launch that did not end well has a **class**
+(`rejected`, `host_exit`, `storage`, `cleanup`, `uncertain_dispatch`) beside its outcome: about the agent's process, never a check
+result or an acceptance.
+
+**Capabilities**: what an adapter declares it supports (native resume, its own sandbox, an MCP gate, hooks, host mode). A
+description shown by `staircase doctor`, never a grant.
 
 **Adopted**: a parked proposal the owner took into the change after a prototype (ADR 0007). It is recorded as an ordinary
 `operator` approval that names the proposal (`adopts`).

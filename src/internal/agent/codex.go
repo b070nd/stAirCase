@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -159,9 +158,9 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	env.Emit(ctx, orchestrator.Usage{Agent: "codex", Model: orDefault(c.Model, "codex"), Content: preview(preview_.String())})
 	switch {
 	case runErr != nil:
-		return fmt.Errorf("codex: %w: %s%s", runErr, preview(preview_.String()), stderr)
+		return classifyRun(runErr, fmt.Errorf("codex: %w: %s%s", runErr, preview(preview_.String()), stderr))
 	case !h.started.Load():
-		return errors.New("codex never ran staircase's hooks, so the session was not governed; nothing it did is kept")
+		return ungoverned("codex")
 	}
 	return nil
 }
@@ -171,7 +170,7 @@ const codexResumeWait = 3 * time.Minute
 
 // NativeResume says a continued run can resume Codex's own thread (`codex exec resume <id>`), whose id the first
 // segment learns from the `thread.started` event of its --json stream.
-func (c *Codex) NativeResume() bool { return true }
+func (c *Codex) NativeResume() bool { return nativeResume("codex") }
 
 // codexRules tell the model how the governed session works.
 const codexRules = `Make file changes with apply_patch: each one is reviewed before it is applied. ` +

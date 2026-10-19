@@ -41,6 +41,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   whose launches ended without an established end 3 times is not launched again; `staircase recover` still commits what it approved
   ([audit](docs/audit.md#lost-launches)).
 
+- **Adapter capabilities, and a launch that failed says how.** Each agent adapter declares in one place what it supports (native
+  resume, its own sandbox, an MCP gate, hooks, host mode), and `staircase doctor` lists it for all four, installed or not. A
+  capability describes an adapter and grants nothing: a run is governed by its terms whatever its agent supports. A launch that did
+  not end well now has a lifecycle class on `launch_ended` (`class`): `rejected` (the agent could not start or never ran governed),
+  `host_exit` (its process ended with an error), `storage` (a record of the launch could not be written), `cleanup` (it did not stop
+  when asked) or `uncertain_dispatch` (the launch has no known end). The class is never a check result and never acceptance: the run's
+  outcome says it in its own words, and `staircase decide` / `inspect` show a `launches` line. Chains written before read as before,
+  the class derived from the outcome ([audit](docs/audit.md#lost-launches), [compatibility](docs/compatibility.md#what-each-adapter-supports)).
+
 ### Changed
 
 - `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains

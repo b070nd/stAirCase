@@ -128,3 +128,18 @@ func TestDoctor_legal_hold(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "legal hold")
 }
+
+// TestDoctor_shows_what_each_adapter_supports (V11-C01 scope 8): the capabilities each adapter declares are listed whether or not
+// the agent is installed, as descriptions of the adapter and not grants, and the list is the declared table, not a second copy.
+func TestDoctor_shows_what_each_adapter_supports(t *testing.T) {
+	doctorWorkspace(t, nil)
+	out, err := captureStdout(t, func() error { return doctorHandler(nil, nil) })
+	require.NoError(t, err)
+	assert.Contains(t, out, "Adapter capabilities")
+	assert.Contains(t, out, "descriptions, not grants")
+	assert.Contains(t, out, "claude-code  supports: native resume, agent sandbox, MCP gate, hooks, host mode")
+	assert.Contains(t, out, "codex        supports: native resume, agent sandbox, hooks; not: MCP gate, host mode")
+	assert.Contains(t, out, "gemini       supports: native resume, hooks; not: agent sandbox, MCP gate, host mode")
+	assert.Contains(t, out, "opencode     supports: none; not: native resume, agent sandbox, MCP gate, hooks, host mode")
+	assert.Contains(t, out, "governed by a plugin generated for the run", "what the flags leave out is said")
+}

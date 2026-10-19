@@ -28,6 +28,20 @@ versions, and Gemini CLI and OpenCode are experimental (see below for what has b
 Everything else, including the command-line output, the workspace layout, the
 database and the agents' prompts, can change in any version.
 
+## What each adapter supports
+
+Each adapter declares what it supports in one place (`src/internal/agent/capabilities.go`), and `staircase doctor` lists it. These
+describe the adapter; they grant nothing, and a run is governed by its terms whatever its agent supports. A launch that fails
+records [why](audit.md#launch-failure-classes), apart from its checks.
+
+| | Claude Code | Codex CLI | Gemini CLI | OpenCode |
+|---|---|---|---|---|
+| Native resume (`staircase resume`) | yes | yes | yes | no (`--fresh-context` only) |
+| Its own sandbox confines its commands | yes (counted as sandboxed on the chain) | yes (Codex's workspace-write; not counted as sandboxed) | no | no |
+| MCP gate (an MCP tool call is decided like a command) | yes | no (refused) | no (refused) | no (refused) |
+| Hooks call staircase for every tool call | yes | yes | yes | no: a plugin generated for the run |
+| Host mode (runs for a runner that started it) | yes | no | no | no |
+
 ## Which agents have actually been run
 
 A stand-in agent that speaks an agent's hook protocol proves stAirCase's side of the

@@ -28,7 +28,7 @@ Events you will see:
 | `state_emit` | model usage of an agent step (tokens, cost) |
 | `agent_unresponsive` | an agent did not stop when asked |
 | `launch_claimed` | the agent is about to be launched (a new run, a continuation, a resumed hosted session), written before its process starts: the attempt number among the run's launches, a generation that names this launch alone, and the segment |
-| `launch_ended` | how a claimed launch ended, naming its attempt and generation: `exited`, `failed` (the agent ended with an error), `stopped` (the run stopped it), `unresponsive` (it did not stop when asked), or `unknown_after_restart` (no outcome was recorded: its process was lost, and a restart wrote this). See [lost launches](#lost-launches) |
+| `launch_ended` | how a claimed launch ended, naming its attempt and generation: `exited`, `failed` (the agent ended with an error), `stopped` (the run stopped it), `unresponsive` (it did not stop when asked), or `unknown_after_restart` (no outcome was recorded: its process was lost, and a restart wrote this). A launch that did not end well also names its `class` (see [launch failure classes](#launch-failure-classes)). See [lost launches](#lost-launches) |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
 | `policy_snapshot` | the digest of the `policy.json` the run decided under, and whether its signature was valid (written before the first proposal) |
@@ -121,6 +121,26 @@ on `run_resumed` (`ack_unknown`, the attempt it acknowledged). An agent that did
 A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
 and `staircase recover <run>` still commits what the run had approved. The time a run was down is not counted
 against its time limit.
+
+### Launch failure classes
+
+A launch that did not end well says why on its `launch_ended` (`class`), apart from anything the checks or a reviewer decided:
+
+| Class | Outcome it goes with | Meaning |
+|---|---|---|
+| `rejected` | `failed` | The agent was refused or never ran governed: its program could not be started, or its hooks (or plugin) never reached the run, so nothing it did is kept |
+| `host_exit` | `failed` | The agent's process started and ended with an error |
+| `storage` | `exited`, `failed` or `stopped` | The launch ended in a way the run established, but a record of it could not be written to the chain while the agent ran |
+| `cleanup` | `unresponsive` | The agent did not stop when asked, so its end is not established |
+| `uncertain_dispatch` | `unknown_after_restart` | The launch was claimed and no outcome was recorded: nobody knows what the agent did |
+
+A launch that ended by itself (`exited`) or that the run stopped (`stopped`) has no class, unless a record could not be written. A
+class is about the agent's process and the records of it: it is never a check result and never acceptance, and it never makes a
+change approved. A run that fails this way says so in its outcome (`the run failed, and its agent's launch 1 ended in a host exit`),
+and `staircase decide <run>` and `staircase inspect` list the launches with their class. A chain from before classes has no `class`;
+it is read as the class its outcome implies (`failed` as a host exit, `unresponsive` as a cleanup failure, `unknown_after_restart` as
+an uncertain dispatch). If the class itself cannot be written because storage is failing, the launch has no outcome on the chain and
+a restart records it as an uncertain dispatch.
 
 ## The change certificate on every commit
 

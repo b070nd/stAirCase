@@ -33,6 +33,21 @@ func TestStatusLines_say_the_outcome_attempts_and_what_is_left(t *testing.T) {
 	assert.Contains(t, text, "$6.00 of $5.00 (the project's cap per run), nothing left")
 }
 
+// TestStatusLines_show_a_lifecycle_failure_apart_from_the_outcome (V11-C01 scope 8): a launch that did not end well is listed with
+// its class, and the line says it is about the agent and not about the checks or an acceptance. A run with none has no such line.
+func TestStatusLines_show_a_lifecycle_failure_apart_from_the_outcome(t *testing.T) {
+	st := orchestrator.Status{Outcome: history.OutcomeFailed, Why: "the run failed", Attempts: 2, Failures: []history.Launch{
+		{LaunchClaimed: history.LaunchClaimed{Attempt: 1}, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch},
+		{LaunchClaimed: history.LaunchClaimed{Attempt: 2}, Outcome: history.LaunchFailed, Class: history.ClassHostExit}}}
+	text := strings.Join(statusLines(st), "\n")
+	assert.Contains(t, text, "launches   attempt 1: an uncertain dispatch")
+	assert.Contains(t, text, "attempt 2: a host exit")
+	assert.Contains(t, text, "about the agent, not its checks or any acceptance")
+
+	st.Failures = nil
+	assert.NotContains(t, strings.Join(statusLines(st), "\n"), "launches ")
+}
+
 // TestDecide_a_run_that_does_not_wait_shows_its_status: `staircase decide <run>` on a run that is not awaiting review says how it
 // stands instead of refusing; the inbox shows the status of each run that waits.
 func TestDecide_a_run_that_does_not_wait_shows_its_status(t *testing.T) {
