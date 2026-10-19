@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 290" width="420" height="290" role="img" aria-labelledby="t d">
+  <title id="t">How a run works</title>
+  <desc id="d">You describe the work, stAirCase plans it, agents work while you approve, and you get a branch with only the approved bytes.</desc>
+  <style>
+    .box { fill: #f1f2ee; stroke: #1f5f8b; stroke-width: 2; }
+    .head { font: 700 14px system-ui, sans-serif; fill: #1d1f21; }
+    .body { font: 13px system-ui, sans-serif; fill: #55595e; }
+    .arrow { stroke: #1f5f8b; stroke-width: 2; fill: none; }
+    .tip { fill: #1f5f8b; }
+    @media (prefers-color-scheme: dark) {
+      .box { fill: #1c1f22; stroke: #7fb7e0; }
+      .head { fill: #e7e8e6; }
+      .body { fill: #a9adb1; }
+      .arrow { stroke: #7fb7e0; }
+      .tip { fill: #7fb7e0; }
+    }
+  </style>
+  <rect class="box" x="10" y="10" width="180" height="110" rx="8"/>
+  <text class="head" x="100" y="40" text-anchor="middle">1. You describe the work</text>
+  <text class="body" x="100" y="68" text-anchor="middle">a case with stories</text>
+  <text class="body" x="100" y="88" text-anchor="middle">and a PRD, or a blueprint</text>
+
+  <rect class="box" x="230" y="10" width="180" height="110" rx="8"/>
+  <text class="head" x="320" y="40" text-anchor="middle">2. stAirCase plans it</text>
+  <text class="body" x="320" y="68" text-anchor="middle">compile writes a plan,</text>
+  <text class="body" x="320" y="88" text-anchor="middle">gates check it</text>
+
+  <rect class="box" x="230" y="170" width="180" height="110" rx="8"/>
+  <text class="head" x="320" y="200" text-anchor="middle">3. Agents work,</text>
+  <text class="head" x="320" y="220" text-anchor="middle">you approve</text>
+  <text class="body" x="320" y="246" text-anchor="middle">proposals and decisions,</text>
+  <text class="body" x="320" y="264" text-anchor="middle">recorded and signed</text>
+
+  <rect class="box" x="10" y="170" width="180" height="110" rx="8"/>
+  <text class="head" x="100" y="200" text-anchor="middle">4. You get a branch</text>
+  <text class="body" x="100" y="228" text-anchor="middle">with only the</text>
+  <text class="body" x="100" y="248" text-anchor="middle">approved bytes</text>
+
+  <path class="arrow" d="M192 65 H218"/>
+  <path class="tip" d="M227 65 L217 59 V71 Z"/>
+  <path class="arrow" d="M320 122 V156"/>
+  <path class="tip" d="M320 166 L314 156 H326 Z"/>
+  <path class="arrow" d="M228 225 H202"/>
+  <path class="tip" d="M193 225 L203 219 V231 Z"/>
+</svg>

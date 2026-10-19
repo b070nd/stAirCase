@@ -180,6 +180,18 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 	assert.Contains(t, onEvidence, "when the evidence is there: your 1 check(s) pass on the change and the reviewer model(s) agree")
 	assert.Contains(t, onEvidence, "nothing is sampled for you")
 	assert.NotContains(t, onEvidence, "1 in 5")
+	protected := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc",
+		checks: []string{"sh tests/run"}, protected: []string{"tests/run", "tests/unit/**"}})
+	assert.Contains(t, protected, "protected:   tests/run, tests/unit/** (where your checks are defined: a change to them always comes to you")
+	assert.NotContains(t, claude, "protected:")
+	// checks that name no file of their own (go test ./...) and no --protect: the agreement says nothing of the checks is protected
+	bare := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc",
+		checks: []string{"go test ./..."}})
+	assert.Contains(t, bare, "protected:   nothing")
+	assert.Contains(t, bare, "no file of your checks is protected")
+	assert.Contains(t, bare, "--protect")
+	assert.NotContains(t, claude, "no file of your checks is protected", "no checks, nothing to say")
+	assert.NotContains(t, protected, "no file of your checks is protected")
 }
 
 // TestSession_approve_on_evidence_needs_evidence_and_a_scope: approving on
@@ -191,6 +203,16 @@ func TestSession_approve_on_evidence_needs_evidence_and_a_scope(t *testing.T) {
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--check")
 	cli.terms.Checks, cli.allow = []string{"true"}, nil
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--allow")
+}
+
+// TestSession_protect_names_paths_inside_the_repository: --protect declares where checks are defined, and a path outside the
+// repository is refused before anything starts.
+func TestSession_protect_names_paths_inside_the_repository(t *testing.T) {
+	keepCLI(t)
+	f := claudeCmd.Flags().Lookup("protect")
+	require.NotNil(t, f, "staircase claude --protect")
+	require.NoError(t, claudeCmd.Flags().Set("protect", "../tests"))
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), `--protect "../tests"`)
 }
 
 // TestSession_approve_in_scope_needs_a_scope: approving the task instead of

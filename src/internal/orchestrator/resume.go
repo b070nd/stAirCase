@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/barrier"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
@@ -33,6 +35,58 @@ type ResumeOptions struct {
 	// WithdrawReview continues an away run that awaits review, withdrawing the review it offered: a resumed hosted session goes
 	// on with the same run (ADR 0008). A review already decided is not withdrawn.
 	WithdrawReview bool
+	// AckUnknown continues a run parked because its last launch has no established end (its process was lost, or its agent did
+	// not stop when asked), after a person looked at what that agent may have done. Recorded on run_resumed. It never lifts the
+	// bound of MaxLostLaunches.
+	AckUnknown bool
+}
+
+// ErrLaunchRecorded is part of a refusal that came after the continuation recorded something: the outcome of a lost launch,
+// as unknown_after_restart. A refusal without it changed nothing.
+var ErrLaunchRecorded = errors.New("the lost launch's outcome was recorded")
+
+// launchRecorded is a refusal that matches ErrLaunchRecorded and keeps its own message.
+type launchRecorded struct{ error }
+
+func (e launchRecorded) Unwrap() error      { return e.error }
+func (launchRecorded) Is(target error) bool { return target == ErrLaunchRecorded }
+
+// ErrLaunchLost is part of the refusal of a run parked for a launch with no established end. Unlike other refusals, the
+// continuation recorded something first: the lost launch's outcome, as unknown_after_restart.
+var ErrLaunchLost = errors.New("its agent's last launch has no established end")
+
+// settleLostLaunch records the outcome of a launch the chain has no outcome for: its process was lost (killed, crashed, its
+// machine gone) before it could write one, so the outcome is unknown. Then it decides whether the agent may be launched again:
+// not past MaxLostLaunches, and not while a lost launch is unacknowledged. The caller holds the run's owner lock.
+func (r *Runner) settleLostLaunch(c *continuation, ack bool) error {
+	runID := c.run.ID
+	if o := c.history.OpenLaunch(); o != nil {
+		if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}); err != nil {
+			return fmt.Errorf("record the outcome of launch %d as unknown: %w", o.Attempt, err)
+		}
+		c.lostEnded = true
+		h, err := history.Read(r.store, runID)
+		if err != nil {
+			return err
+		}
+		c.history, c.chainHead = h, h.Head
+	}
+	h := c.history
+	if lost := h.Lost(); lost >= history.MaxLostLaunches {
+		return fmt.Errorf("%w: %w: the end of run #%d's agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again. Recover what it approved with `staircase recover %d`",
+			ErrNotContinuable, ErrLaunchLost, runID, lost, history.MaxLostLaunches, runID)
+	}
+	parked := h.LaunchParked()
+	if parked == 0 {
+		return nil
+	}
+	if !ack {
+		l := h.Launches[len(h.Launches)-1]
+		return fmt.Errorf("%w: %w: launch %d of run #%d ended %s, so nobody knows what its agent did, outside the worktree included; the run is parked rather than launched again. Check what the agent could have done, then continue with --ack-unknown, or recover what it approved with `staircase recover %d`",
+			ErrNotContinuable, ErrLaunchLost, parked, runID, l.Outcome, runID)
+	}
+	c.ackUnknown = parked
+	return nil
 }
 
 // Resume continues an interrupted run: the same run, branch and worktree, under the policy, plan and options it
@@ -106,9 +160,13 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 	if err != nil {
 		return nil, fmt.Errorf("run #%d is still running: its process holds the run's lock, so it cannot be continued: %w", runID, err)
 	}
+	recorded := false // the lost launch's outcome was written: a refusal from here on did not change nothing
 	defer func() {
 		if err != nil {
 			release()
+			if recorded {
+				err = launchRecorded{err}
+			}
 		}
 	}()
 	if c, err = r.loadContinuation(runID, opts.WithdrawReview); err != nil {
@@ -116,6 +174,11 @@ func (r *Runner) prepareContinuation(runID int64, opts ResumeOptions) (c *contin
 	}
 	c.release = release
 	c.ackDrift = opts.AckDrift
+	err = r.settleLostLaunch(c, opts.AckUnknown)
+	recorded = c.lostEnded
+	if err != nil {
+		return nil, err
+	}
 	if c.contextKind, c.sessionID, err = chooseContext(c, opts); err != nil {
 		return nil, err
 	}

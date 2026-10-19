@@ -9,6 +9,8 @@ package barrier
 
 // Points, in the order a run reaches them. A drill kills at one and checks what a fresh process finds.
 const (
+	LaunchClaimed     = "launch-claimed"      // the agent's launch is on the audit chain; its process has not started
+	AgentEnded        = "agent-ended"         // the agent has stopped; how it ended is not on the audit chain yet
 	DecisionMade      = "decision-made"       // a proposal has been decided; nothing of it is journaled or audited yet
 	JournalSynced     = "journal-synced"      // an approval is in the journal, flushed; not yet on the audit chain
 	AuditAppend       = "audit-append"        // the decision's append holds the chain lock and has not yet checked the run is still going

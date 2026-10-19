@@ -125,6 +125,94 @@ type Resumed struct {
 	Context    string          `json:"context"`
 	// JournalDropped is how many journal lines the continuation dropped: never consumed, past the chain's last decision.
 	JournalDropped int `json:"journal_dropped,omitempty"`
+	// AckUnknown is the launch whose end was never established that a person acknowledged before this continuation.
+	AckUnknown int `json:"ack_unknown,omitempty"`
+	// WithdrewReview is the awaiting_review entry a resumed hosted session withdrew (ADR 0008).
+	WithdrewReview string `json:"withdrew_review,omitempty"`
+}
+
+// LaunchClaimed is launch_claimed: an agent launch, put on the chain before the agent's process starts. Attempt counts the
+// run's launches from 1; Generation names this launch alone, so its outcome can name it.
+type LaunchClaimed struct {
+	Attempt    int    `json:"attempt"`
+	Generation string `json:"generation"`
+	Segment    int    `json:"segment"`
+}
+
+// LaunchEnded is launch_ended: how a claimed launch ended, written once its agent stopped, or by a restart that found none.
+type LaunchEnded struct {
+	Attempt    int    `json:"attempt"`
+	Generation string `json:"generation"`
+	Outcome    string `json:"outcome"`
+	// Class is the lifecycle failure class of a launch that did not end well (see ClassOf), "" when it ended by itself or the run
+	// stopped it. A chain from before classes has none; Launch.Class derives it from the outcome.
+	Class string `json:"class,omitempty"`
+}
+
+// The outcomes of a launch. The first three are established ends; the last two are not.
+const (
+	LaunchExited       = "exited"                // the agent ended by itself
+	LaunchFailed       = "failed"                // the agent ended with an error
+	LaunchStopped      = "stopped"               // the run stopped the agent (cancelled, halted, over its budget or its time)
+	LaunchUnresponsive = "unresponsive"          // the run asked the agent to stop and it did not, in time
+	LaunchUnknown      = "unknown_after_restart" // no outcome was recorded: a restart found the claim open
+)
+
+// The lifecycle failure classes of a launch (V11-C01 scope 8, after Cloudroom's error envelope): why an agent's launch did not end
+// well, apart from anything its checks or its reviewer decided. A class is about the agent's process and the records of it; it is
+// never a check result and never acceptance. Each belongs to the outcomes that can carry it (see classFits).
+const (
+	ClassRejected          = "rejected"           // the agent was refused or never ran governed: it did not start, or its hooks never arrived
+	ClassHostExit          = "host_exit"          // the agent's process ended with an error
+	ClassStorage           = "storage"            // a record of the launch could not be written while the agent ran
+	ClassCleanup           = "cleanup"            // the agent did not stop when asked, so its end is not established
+	ClassUncertainDispatch = "uncertain_dispatch" // the launch was claimed and no outcome was recorded: nobody knows what the agent did
+)
+
+// ClassOf is the class a launch's outcome implies when its launch_ended names none (a chain from before classes, or a restart's
+// record): "" for an outcome that is not a lifecycle failure.
+func ClassOf(outcome string) string {
+	switch outcome {
+	case LaunchFailed:
+		return ClassHostExit
+	case LaunchUnresponsive:
+		return ClassCleanup
+	case LaunchUnknown:
+		return ClassUncertainDispatch
+	}
+	return ""
+}
+
+// classFits says whether a launch that ended with outcome can have class.
+func classFits(class, outcome string) bool {
+	switch class {
+	case ClassRejected, ClassHostExit:
+		return outcome == LaunchFailed
+	case ClassCleanup:
+		return outcome == LaunchUnresponsive
+	case ClassUncertainDispatch:
+		return outcome == LaunchUnknown
+	case ClassStorage: // the launch ended in some way the run established, and a record of it was lost
+		return outcome == LaunchExited || outcome == LaunchFailed || outcome == LaunchStopped
+	}
+	return false
+}
+
+// ClassPhrase is a class in the words a person reads.
+func ClassPhrase(class string) string {
+	switch class {
+	case ClassRejected:
+		return "rejected (the agent was refused or never ran governed)"
+	case ClassHostExit:
+		return "a host exit (the agent's process ended with an error)"
+	case ClassStorage:
+		return "storage trouble (a record of the launch could not be written)"
+	case ClassCleanup:
+		return "a cleanup failure (the agent did not stop when asked)"
+	case ClassUncertainDispatch:
+		return "an uncertain dispatch (the launch has no known end: nobody knows what the agent did)"
+	}
+	return class
 }
 
 // PolicySnapshot is the policy a run decided under.
@@ -190,7 +278,10 @@ type AwaitingReview struct {
 // ReviewDecided is review_accepted or review_rejected: the owner's decision on an offered review.
 type ReviewDecided struct {
 	AwaitingReview string `json:"awaiting_review"`
-	Feedback       string `json:"feedback,omitempty"`
+	Tree           string `json:"tree,omitempty"` // the tree an acceptance accepted
+	Feedback       string `json:"feedback"`
+	// Empty marks an acceptance of a change that approved nothing: it delivers nothing and the run ends FAILED.
+	Empty bool `json:"empty,omitempty"`
 }
 
 // Delivered is commit_prepared, certificate_issued, run_recovered or review_delivered: what a commit-naming event names.
@@ -205,4 +296,28 @@ type Delivered struct {
 	FinalReview    bool     `json:"final_review,omitempty"`
 	Forced         bool     `json:"forced,omitempty"`
 	EvidenceErrors []string `json:"evidence_errors,omitempty"`
+}
+
+// Ended is run_path: the phases a segment of the run went through, written when its process ends the segment, and the status it
+// ended with (absent on chains written before the status was recorded).
+type Ended struct {
+	Phases []string `json:"phases"`
+	Status string   `json:"status,omitempty"`
+}
+
+// DriftHalt is drift_halt: drift supervision stopped the run, and why.
+type DriftHalt struct {
+	Reason string `json:"reason"`
+}
+
+// EvidenceFailed is evidence_failed: the run's commit is delivered, and what of its evidence could not be written.
+type EvidenceFailed struct {
+	Commit string   `json:"commit"`
+	Errors []string `json:"errors"`
+}
+
+// CertificateFailed is certificate_failed: the run's commit is delivered, and its certificate could not be written.
+type CertificateFailed struct {
+	Commit string `json:"commit"`
+	Error  string `json:"error"`
 }

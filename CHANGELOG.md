@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
+  (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
+  level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.
+  `make check` runs an offline page check (`make site-check`): a lang attribute, one h1, headings in order, alt text, internal links
+  that resolve, no em dash.
+
+- **Checks the agent cannot weaken (`--protect`).** The paths where a run's checks are defined are part of its terms, saved and bound
+  by their digest: what the checks name (the script a check runs, the tests given to `bats` or `pytest`, `make`'s `Makefile`) and what
+  you add with `--protect <path or pattern>`. A change to one always goes to a person, whatever the policy, the agreed task or a
+  validator would say, and is parked while away, so an agent cannot make a failing check pass by editing or deleting the test it runs.
+  The agreement shows them (`protected:`) ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken)).
+
 - **A runner can resume a session it started (`staircase host claude --resume <id>`).** The session's id leads to the run it was
   governed as, through the audit chain. If that run was interrupted, the session continues it. If it awaits review, the session
   continues it too: the review is withdrawn on the chain and a new one covers the whole change. If you already decided it, the session
@@ -15,6 +27,78 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   refused, and forks stay refused ([hosting](docs/hosting.md#when-the-runner-resumes-a-session)). Run with Claude Code 2.1.236 and
   Cloudroom's argument list: the resumed session continued the run awaiting review, and the agent remembered a word it had said only in
   the first session ([record](docs/release-evidence/hosted-resume-claude-code-2.1.236.md)).
+- **One outcome per run, and a morning status.** `staircase decide` and `staircase inspect` show each run's outcome, read from its
+  verified audit chain alone: running, awaiting review, blocked or partial, failed, delivered, or delivered with incomplete evidence,
+  with the chain's reason. With it come the run's attempts (how many times its agent was started) and what it used of its bounds: the
+  active time against the time limit of its saved policy and plan, the tokens its agents reported, and the cost estimated from them
+  against the project's budget cap. `staircase decide` also lists your other away runs that are running or blocked, and `staircase
+  decide <run>` on a run that does not await review shows its status instead of refusing. `staircase inspect runs` gains an outcome
+  column and lists runs awaiting review ([away](docs/away.md#how-each-run-stands)).
+- **Every agent launch is claimed before it starts.** A new run, a continuation and a resumed hosted session put `launch_claimed`
+  on the audit chain (an attempt number and a generation) before the agent's process starts, and `launch_ended` (how it ended) once
+  it stopped. A run killed in between is not launched again blindly: `staircase resume` records the outcome as
+  `unknown_after_restart`, parks the run and says why; `--ack-unknown` continues it after you looked, and says so on the chain. A run
+  whose launches ended without an established end 3 times is not launched again; `staircase recover` still commits what it approved
+  ([audit](docs/audit.md#lost-launches)).
+
+- **Adapter capabilities, and a launch that failed says how.** Each agent adapter declares in one place what it supports (native
+  resume, its own sandbox, an MCP gate, hooks, host mode), and `staircase doctor` lists it for all four, installed or not. A
+  capability describes an adapter and grants nothing: a run is governed by its terms whatever its agent supports. A launch that did
+  not end well now has a lifecycle class on `launch_ended` (`class`): `rejected` (the agent could not start or never ran governed),
+  `host_exit` (its process ended with an error), `storage` (a record of the launch could not be written), `cleanup` (it did not stop
+  when asked) or `uncertain_dispatch` (the launch has no known end). The class is never a check result and never acceptance: the run's
+  outcome says it in its own words, and `staircase decide` / `inspect` show a `launches` line. Chains written before read as before,
+  the class derived from the outcome ([audit](docs/audit.md#lost-launches), [compatibility](docs/compatibility.md#what-each-adapter-supports)).
+
+### Changed
+
+- **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
+  run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
+  of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
+  [compatibility](docs/compatibility.md#the-six-contracts)).
+
+- **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
+  shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
+  silently missing.
+
+- **`staircase resume` no longer says "Nothing was changed" after it recorded a lost launch.** A refused continuation that wrote the
+  outcome of a lost launch (`unknown_after_restart`) says so, and that nothing else was changed, whatever check refused it; one that
+  wrote nothing, including a second attempt on a run already parked, says "Nothing was changed".
+
+- **The agreement says when nothing of the checks is protected.** When a run's checks name no file of their own (for example `go test
+  ./...`) and no `--protect` was given, the agreement now says `protected:   nothing`, that the agent may edit the tests the checks run,
+  and names `--protect`. A command declared for an away run that writes a protected path is parked like any other change to it.
+
+- **Parked proposals are offered even when the checks fail on the unchanged tree.** An away run that approved nothing and parked what
+  it proposed used to end FAILED, with the parked proposals lost, when the project's checks failed on the unchanged tree (a project
+  that is broken at its base, where only a parked proposal fixes the checks). It now awaits your review of an empty change that says
+  its checks failed (`checks   FAILED on this unchanged tree`), with the parked proposals to prototype and adopt; accepting that empty
+  change still delivers nothing. A change with files is still offered only when its checks pass.
+
+- **The status counts launches and shows a parked run.** A run's attempts are the launches claimed on its chain (a launch whose agent
+  never started counts), no longer its segments; the two agree for a run without a lost launch. A run whose agent's last launch has
+  no established end shows as blocked or partial in `staircase decide` and `staircase inspect`, with the exact command to continue it
+  (`staircase resume <run> --ack-unknown`) and the one to recover what it approved; a run with 3 lost launches shows as refused and
+  points to `staircase recover <run>`. A run whose process still holds its lock shows as running ([away](docs/away.md#a-run-whose-agent-was-lost)).
+
+- **An away run that approved nothing is offered for review, not ended as a success.** A run whose every proposal was parked used to
+  end SUCCESS with nothing committed and nothing offered. It now awaits your review of an empty change, with its parked proposals
+  listed so you can prototype or adopt them; accepting the empty change delivers nothing and says so, and its outcome reads failed
+  with that reason ([away](docs/away.md#a-run-that-parked-everything)). The audit chain keeps every event key; the review events add
+  `empty` on `review_accepted`.
+
+- **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** The debug log (`--debug`) and a hosted session's
+  log (`host/<session>.log`) stop growing at 8 MiB, say where they stopped and, at the end, how much they dropped. Both are scrubbed of
+  every secret handed to an agent, including the environment variables named with `--pass-env`, which were not scrubbed before. The
+  stderr tail of a failed agent (Claude Code, Codex, Gemini, OpenCode) is no longer part of the error the run ends with, which a
+  runner may keep (Cloudroom keeps stderr tails in its records); it is shown at the terminal or in the host log, and in the debug log,
+  scrubbed, and a tail whose start was cut says so. It is never on the audit chain, in the certificate or in the ledger
+  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
+
+- `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
+  written before read as before; their outcome is inferred from their other events.
+- **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
+  run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
 
 ## [1.1.0] - 2026-10-18
 

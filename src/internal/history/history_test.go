@@ -90,6 +90,15 @@ func TestReplay_refuses_what_no_run_can_have_written(t *testing.T) {
 		"a decision after an away delivery":         {bound().req("file_edit").add("review_delivered", nil).decided(1, "policy", true), 4, "follows review_delivered"},
 		"a final review after the certificate":      {bound().add("certificate_issued", nil).final(1, true, nil), 3, "follows certificate_issued"},
 		"a resume after a recovery":                 {bound().add("run_recovered", nil).add("run_resumed", nil), 3, "resumed after run_recovered"},
+		"an outcome with no launch":                 {bound().launchEnded(1, "g1", LaunchExited), 2, "names no open launch"},
+		"an outcome of another launch":              {bound().claim(1, "g1").launchEnded(1, "g0", LaunchExited), 3, "names no open launch"},
+		"two outcomes of one launch":                {bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).launchEnded(1, "g1", LaunchExited), 4, "names no open launch"},
+		"an outcome nobody defined":                 {bound().claim(1, "g1").launchEnded(1, "g1", "fine"), 3, "unknown outcome"},
+		"a launch while one is open":                {bound().claim(1, "g1").claim(2, "g2"), 3, "launch 1 has no outcome"},
+		"a launch that skips an attempt":            {bound().claim(2, "g2"), 2, "attempt 2"},
+		"a resume while a launch is open":           {bound().claim(1, "g1").add("run_resumed", map[string]any{"segment": 2}), 3, "launch 1 has no outcome"},
+		"a launch after commit_prepared":            {bound().add("commit_prepared", nil).claim(1, "g1"), 3, "follows commit_prepared"},
+		"an outcome after the certificate":          {bound().claim(1, "g1").add("certificate_issued", nil).launchEnded(1, "g1", LaunchExited), 4, "follows certificate_issued"},
 		"an unreadable decision":                    {&chain{events: append(bound().events, domain.RunEventLog{EventType: "yield_decided", Payload: "not json"})}, 2, "unreadable"},
 		"an unreadable binding":                     {&chain{events: []domain.RunEventLog{{EventType: "run_bound", Payload: "{"}}}, 1, "unreadable"},
 		"an unreadable offered review":              {&chain{events: append(bound().events, domain.RunEventLog{EventType: "awaiting_review", Payload: "["})}, 2, "unreadable"},
@@ -118,6 +127,10 @@ func TestReplay_accepts_what_runs_write(t *testing.T) {
 		"a truncated request":           bound().add("yield_request", map[string]any{"truncated": true, "action_type": "file_edit", "bytes": 9, "sha256": "s"}).decided(1, "policy", true),
 		"an adoption after the review":  bound().edit("a").decided(1, "parked", false).add("awaiting_review", nil).edit("a").decided(2, "operator", true, "adopts", 1),
 		"the old recovery final review": bound().req("file_edit").decided(1, "task", true).add("recovery_final_review", map[string]any{"approved": true}).add("run_recovered", nil),
+		"a lost launch's outcome after commit_prepared, before the recovery": bound().claim(1, "g1").add("commit_prepared", nil).
+			launchEnded(1, "g1", LaunchUnknown).add("run_recovered", nil),
+		"a launch per segment": bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).
+			claim(2, "g2").launchEnded(2, "g2", LaunchExited),
 	} {
 		t.Run(name, func(t *testing.T) { c.replay(t) })
 	}
@@ -307,4 +320,117 @@ func TestReplay_delivery(t *testing.T) {
 	assert.False(t, h.Delivers("run_recovered", "c1"))
 	assert.Equal(t, "env", h.Delivered[1].EnvelopeSHA256)
 	assert.Equal(t, "", bound().replay(t).Sealed)
+}
+
+func (c *chain) claim(attempt int, generation string) *chain {
+	return c.add("launch_claimed", map[string]any{"attempt": attempt, "generation": generation, "segment": 1})
+}
+
+func (c *chain) launchEnded(attempt int, generation, outcome string) *chain {
+	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome})
+}
+
+func (c *chain) launchClassed(attempt int, generation, outcome, class string) *chain {
+	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome, "class": class})
+}
+
+// TestReplay_what_a_restart_reads_of_the_launches: every launch with its outcome, the one still open, the ones whose end was never
+// established, and whether the last of those parks the run until a resume acknowledges it. A lost launch's outcome, written by the
+// restart, adds nothing to the dead segment's active time.
+func TestReplay_what_a_restart_reads_of_the_launches(t *testing.T) {
+	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).replay(t)
+	require.Len(t, h.Launches, 1)
+	assert.Equal(t, LaunchClaimed{Attempt: 1, Generation: "g1", Segment: 1}, h.Launches[0].LaunchClaimed)
+	assert.Equal(t, LaunchExited, h.Launches[0].Outcome)
+	assert.Nil(t, h.OpenLaunch())
+	assert.Equal(t, 0, h.Lost())
+	assert.Equal(t, 0, h.LaunchParked())
+
+	c := bound().claim(1, "g1")
+	h = c.replay(t)
+	require.NotNil(t, h.OpenLaunch(), "a claim with no outcome: the process that launched it was lost")
+	assert.Equal(t, "g1", h.OpenLaunch().Generation)
+	assert.Equal(t, 1, h.Lost(), "an open claim counts as lost")
+	assert.Equal(t, 1, h.LaunchParked())
+	before := h.Elapsed
+
+	c.sec += 3600 // the restart came an hour later
+	h = c.launchEnded(1, "g1", LaunchUnknown).replay(t)
+	assert.Nil(t, h.OpenLaunch())
+	assert.Equal(t, 1, h.Lost())
+	assert.Equal(t, 1, h.LaunchParked(), "still parked: nobody acknowledged it")
+	assert.Equal(t, before, h.Elapsed, "the time the run was down is not time it used")
+
+	c.add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1})
+	h = c.replay(t)
+	assert.Equal(t, 0, h.LaunchParked(), "a resume acknowledged it")
+	h = c.claim(2, "g2").launchEnded(2, "g2", LaunchUnresponsive).replay(t)
+	assert.Equal(t, 2, h.Lost(), "an agent that did not stop is not an established end either")
+	assert.Equal(t, 2, h.LaunchParked())
+
+	h = bound().claim(1, "g1").launchEnded(1, "g1", LaunchStopped).add("run_resumed", map[string]any{"segment": 2}).claim(2, "g2").launchEnded(2, "g2", LaunchFailed).replay(t)
+	assert.Equal(t, 0, h.Lost(), "a known failure is not a lost launch")
+	assert.Equal(t, 0, h.LaunchParked())
+}
+
+// TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks (V11-C01 scope 8): a launch that did not end well has a
+// class, on its launch_ended or derived from its outcome for a chain written before classes; a launch that ended by itself or
+// was stopped by the run has none. The class never touches the run's checks or its acceptance.
+func TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks(t *testing.T) {
+	for name, tc := range map[string]struct {
+		c    *chain
+		want string
+	}{
+		"exited":                      {bound().claim(1, "g").launchEnded(1, "g", LaunchExited), ""},
+		"stopped":                     {bound().claim(1, "g").launchEnded(1, "g", LaunchStopped), ""},
+		"failed, an older chain":      {bound().claim(1, "g").launchEnded(1, "g", LaunchFailed), ClassHostExit},
+		"failed, rejected":            {bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassRejected), ClassRejected},
+		"failed, storage trouble":     {bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassStorage), ClassStorage},
+		"exited, storage trouble":     {bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassStorage), ClassStorage},
+		"unresponsive":                {bound().claim(1, "g").launchEnded(1, "g", LaunchUnresponsive), ClassCleanup},
+		"lost, an older chain":        {bound().claim(1, "g").launchEnded(1, "g", LaunchUnknown), ClassUncertainDispatch},
+		"lost, classed":               {bound().claim(1, "g").launchClassed(1, "g", LaunchUnknown, ClassUncertainDispatch), ClassUncertainDispatch},
+		"a claim with no outcome yet": {bound().claim(1, "g"), ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := tc.c.replay(t)
+			require.Len(t, h.Launches, 1)
+			assert.Equal(t, tc.want, h.Launches[0].Class)
+		})
+	}
+	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).add("run_resumed", map[string]any{"segment": 2}).
+		claim(2, "g2").launchClassed(2, "g2", LaunchFailed, ClassHostExit).replay(t)
+	require.Len(t, h.Failures(), 1)
+	assert.Equal(t, 2, h.Failures()[0].Attempt)
+}
+
+// TestLaunchClass_refuses_a_class_the_outcome_cannot_have: a chain that names a class its outcome does not fit, or one nobody
+// defined, is not a chain this version reads.
+func TestLaunchClass_refuses_a_class_the_outcome_cannot_have(t *testing.T) {
+	for name, tc := range map[string]*chain{
+		"a class nobody defined":            bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, "oops"),
+		"a rejection that exited":           bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassRejected),
+		"a host exit that was stopped":      bound().claim(1, "g").launchClassed(1, "g", LaunchStopped, ClassHostExit),
+		"an uncertain dispatch that failed": bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassUncertainDispatch),
+		"a cleanup failure that exited":     bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassCleanup),
+		"storage trouble that was lost":     bound().claim(1, "g").launchClassed(1, "g", LaunchUnknown, ClassStorage),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := replay(tc.events)
+			var g *GrammarError
+			require.True(t, errors.As(err, &g), "%v", err)
+			assert.Equal(t, 3, g.Index)
+			assert.Contains(t, g.Error(), "class")
+		})
+	}
+}
+
+// TestAttempts_are_the_claimed_launches: a launch counts once claimed, whether or not its agent ever started or ended; a chain from
+// before launches were claimed has its segments.
+func TestAttempts_are_the_claimed_launches(t *testing.T) {
+	assert.Equal(t, 1, bound().claim(1, "g1").replay(t).Attempts(), "a claim whose agent never started")
+	assert.Equal(t, 2, bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).claim(2, "g2").replay(t).Attempts())
+	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).add("run_resumed", map[string]any{"segment": 2}).replay(t)
+	assert.Equal(t, 1, h.Attempts(), "a resumed segment whose agent was never claimed was not started")
+	assert.Equal(t, 2, bound().add("run_resumed", map[string]any{"segment": 2}).replay(t).Attempts(), "no launch was ever claimed on this chain: its segments")
 }

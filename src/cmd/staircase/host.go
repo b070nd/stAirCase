@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
+	"github.com/b070nd/stAirCase/src/internal/diag"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
@@ -199,14 +200,14 @@ func hostClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err := os.MkdirAll(filepath.Join(ws, "host"), 0o700); err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(filepath.Join(ws, "host", sanitizeName(h.session)+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	// stAirCase's own output must not reach the runner's stream: it goes to the session's log, which stops at diag.MaxLogBytes (and
+	// says so) and holds no secret the session was handed.
+	logFile, err := diag.Open(filepath.Join(ws, "host", sanitizeName(h.session)+".log"), diag.MaxLogBytes, diag.Delivered)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = logFile.Close() }()
-	realStdout := os.Stdout
-	os.Stdout = logFile // stAirCase's own output must not reach the runner's stream
-	defer func() { os.Stdout = realStdout }()
+	defer logFile.Redirect()()
 
 	// A hosted session is launched from its profile alone: nothing of this process's own flags carries into it.
 	l := launch{

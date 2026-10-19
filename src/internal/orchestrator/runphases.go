@@ -88,6 +88,10 @@ type runState struct {
 	stopped       chan struct{}
 	cancelAgent   context.CancelFunc
 	agentFinished bool
+	launch        *history.LaunchClaimed // this segment's launch, once it is on the chain
+	agentOutcome  string                 // how the agent ended, once that is known
+	agentClass    string                 // the class its own error named (Rejected), "" when it named none
+	launchEnded   bool                   // its outcome is recorded (or its recording was tried)
 	val           *Validator
 	evGate        *evidenceGate
 	dec           *deciders
@@ -240,7 +244,11 @@ func (s *runState) finish(runErr error) error {
 	if err := r.enter(PhaseBranchRestore); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
-	if err := r.audit(run.ID, "run_path", map[string]any{"phases": r.path}); err != nil {
+	phases := make([]string, len(r.path))
+	for i, p := range r.path {
+		phases[i] = string(p)
+	}
+	if err := r.audit(run.ID, "run_path", history.Ended{Phases: phases, Status: s.finalStatus}); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
 	if s.worktree != "" {
@@ -420,6 +428,10 @@ func (s *runState) startAgent() error {
 		}
 		return resp
 	}
+	if err := s.claimLaunch(); err != nil {
+		return err
+	}
+	s.deferred(s.endLaunch) // after the agent is stopped (below): how it ended, whatever ends the run
 	go func() {
 		defer close(s.stopped)
 		done <- runAgent(agentCtx, opts.Agent, env)
@@ -462,13 +474,70 @@ func (s *runState) startAgent() error {
 	return nil
 }
 
+// claimLaunch puts the agent's launch on the chain before its process starts (Cloudroom's claim before launch): its attempt
+// number among the run's launches and a generation of its own, which its outcome names. A launch that cannot be claimed does not
+// happen. A process lost after this leaves the claim open, and a restart then records the outcome as unknown and parks the run.
+func (s *runState) claimLaunch() error {
+	h, err := history.Read(s.r.store, s.run.ID)
+	if err != nil {
+		return err
+	}
+	gen, err := newOpID()
+	if err != nil {
+		return fmt.Errorf("a generation for the agent's launch: %w", err)
+	}
+	claim := history.LaunchClaimed{Attempt: len(h.Launches) + 1, Generation: gen, Segment: h.Segment}
+	if err := s.r.audit(s.run.ID, "launch_claimed", claim); err != nil {
+		return fmt.Errorf("audit launch_claimed: %w", err)
+	}
+	s.launch = &claim
+	barrier.Hit(barrier.LaunchClaimed)
+	return nil
+}
+
+// endLaunch records how the claimed launch ended, once. Its agent has stopped, or did not stop when asked (unresponsive). An
+// outcome that cannot be written leaves the claim open, which a restart treats as a lost launch: the safe side.
+func (s *runState) endLaunch() {
+	if s.launch == nil || s.launchEnded {
+		return
+	}
+	s.launchEnded = true
+	s.endedAs(history.LaunchStopped) // stopped by the run, when nothing said otherwise
+	barrier.Hit(barrier.AgentEnded)
+	if err := s.r.audit(s.run.ID, "launch_ended", history.LaunchEnded{Attempt: s.launch.Attempt, Generation: s.launch.Generation,
+		Outcome: s.agentOutcome, Class: s.launchClass()}); err != nil {
+		obs.Log.Warn("audit launch_ended: a restart will find the launch with no outcome", "run_id", s.run.ID, "err", err)
+	}
+}
+
+// launchClass is why the launch did not end well, apart from its checks: the class the agent's own error named, else records of
+// the launch that could not be written (the launch ended in a way the run established), else the class its outcome implies.
+func (s *runState) launchClass() string {
+	switch {
+	case s.agentClass != "":
+		return s.agentClass
+	case s.host.storageFailed.Load() && (s.agentOutcome == history.LaunchExited || s.agentOutcome == history.LaunchFailed || s.agentOutcome == history.LaunchStopped):
+		return history.ClassStorage
+	}
+	return history.ClassOf(s.agentOutcome)
+}
+
+// endedAs is how the agent ended, unless that is known already.
+func (s *runState) endedAs(outcome string) {
+	if s.agentOutcome == "" {
+		s.agentOutcome = outcome
+	}
+}
+
 // stopAgent ends the agent and returns once it has stopped (bounded).
 func (s *runState) stopAgent() {
 	s.cancelAgent()
 	select {
 	case <-s.stopped:
+		s.endedAs(history.LaunchStopped)
 	case <-time.After(lostGrace):
 		// Nothing more can be done in-process; the run ends without it.
+		s.endedAs(history.LaunchUnresponsive)
 		obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", s.run.ID)
 		_ = s.r.audit(s.run.ID, "agent_unresponsive", map[string]any{"grace_seconds": lostGrace.Seconds()})
 	}
@@ -477,10 +546,35 @@ func (s *runState) stopAgent() {
 func (s *runState) processExited(procErr error) {
 	s.agentFinished = true
 	if procErr != nil {
+		s.endedAs(history.LaunchFailed)
+		var le *LaunchError
+		if errors.As(procErr, &le) {
+			s.agentClass = le.Class
+		}
+	}
+	s.endedAs(history.LaunchExited)
+	if procErr != nil {
+		s.keepStderr(procErr)
 		s.runErr = fmt.Errorf("agent: %w", procErr)
 		s.finalStatus = persistence.RunStatusFailed
 	} else {
 		s.finalStatus = persistence.RunStatusSuccess
+	}
+}
+
+// keepStderr says where the stderr tail of a failed agent goes. The tail is a local diagnostic: it is not in the error the run ends
+// with (a caller logs that, a runner may keep it: Cloudroom persisted such tails into its records), and not on the audit chain, in
+// the certificate or in the ledger. It goes to the person at the terminal (for a hosted session, to the session's log) and to the
+// debug log, with the delivered secrets scrubbed.
+func (s *runState) keepStderr(err error) {
+	var t interface{ StderrTail() string }
+	if !errors.As(err, &t) || t.StderrTail() == "" {
+		return
+	}
+	tail := redact(t.StderrTail(), s.host.deliveredSecrets())
+	fmt.Fprintf(os.Stdout, "   agent stderr (kept out of the run's records):\n%s\n", tail)
+	if s.debugLog != nil {
+		_, _ = fmt.Fprintf(s.debugLog, "%s agent_stderr %q\n", time.Now().UTC().Format(time.RFC3339Nano), tail)
 	}
 }
 
@@ -631,6 +725,16 @@ func (s *runState) decide(p proposal) bool {
 	return !s.overBudget() // the validator's model use counts too
 }
 
+// parkedTotal is how many proposals the run has parked for the owner: this segment's, and those the earlier segments left that
+// the owner has not adopted.
+func (s *runState) parkedTotal() int {
+	n := s.dec.parked
+	if s.cont != nil {
+		n += len(s.cont.history.Parked())
+	}
+	return n
+}
+
 // finalize checks the worktree, offers an away run for review or puts the final review to a person, and delivers the approved
 // change with its evidence: the commit named on the chain before the branch moves to it.
 func (s *runState) finalize() error {
@@ -655,9 +759,12 @@ func (s *runState) finalize() error {
 		}
 	}
 	stillGoing()
-	if opts.Away && s.finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) > 0 {
+	// An away run that proposed something is offered for review, whether or not anything was approved: a run whose every proposal was
+	// parked offers an empty change with its parked proposals, never a SUCCESS with nothing offered (V11-C01 acceptance 4).
+	parked := s.parkedTotal()
+	if opts.Away && s.finalStatus == persistence.RunStatusSuccess && appr != nil && (len(appr.files) > 0 || parked > 0) {
 		var err error
-		if s.finalStatus, err = r.awaitReview(ctx, run.ID, appr, s.evGate, s.dec.parked); err != nil {
+		if s.finalStatus, err = r.awaitReview(ctx, run.ID, appr, s.evGate, parked); err != nil {
 			return err
 		}
 	}

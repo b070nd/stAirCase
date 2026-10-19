@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CI verification - stAirCase</title>
+  <meta name="description" content="Require change certificates, and a minimum assurance level, on pull requests.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../index.html#use-cases" aria-current="true">Use cases</a></li>
+      <li><a href="../assurance.html">Assurance levels</a></li>
+      <li><a href="../guides/index.html">Setup guides</a></li>
+      <li><a href="../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>CI verification</h1>
+<p class="lead">A CI check can refuse pull requests with a change that is not properly certified, and require a minimum assurance level.</p>
+<p>The check requires a level; it does not raise one. <a href="../assurance.html">About assurance levels</a>.</p>
+
+<h2 id="set-up">Set up the check</h2>
+<p>Commit your workspace's public key to the repository's protected branch (it is public; copy <code>~/.staircase-workspace/.signing.pub</code>, for example to <code>.github/staircase.pub</code>), and add a workflow:</p>
+<pre tabindex="0"><code>name: stAirCase
+on: pull_request
+permissions:
+  contents: read
+  attestations: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: b070nd/stAirCase@v1.1.0
+        with:
+          version: v1.1.0                            # the verifier that runs, pinned
+          key: .github/staircase.pub
+          all: true                                  # every commit needs a certificate (the default)
+          allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4
+          min-cal: 3
+          rebuild: true                              # also replay each commit from its ledger</code></pre>
+<p>Push the certificates together with the branch:</p>
+<pre tabindex="0"><code>git push origin staircase/run-7 refs/notes/staircase refs/notes/staircase-ledger</code></pre>
+<p>The same check runs locally:</p>
+<pre tabindex="0"><code>staircase verify main..HEAD --all --min-cal 3</code></pre>
+
+<h2 id="verifier">Which verifier runs</h2>
+<p>The check installs the release of <code>staircase</code> named by the <code>version</code> input, or the release tag the action is used at, after verifying how it was built: the build attestation must come from the repository's release workflow for that exact tag, and a binary that was not verified is never run. When the action is used at a ref that is not a release tag and no <code>version</code> is set, the latest release is installed and the step warns that the verifier is not pinned. For a reproducible check, pin the verifier.</p>
+
+<h2 id="trust">Where the trust comes from</h2>
+<p>The key and the allowed signers are read from the pull request's base branch (or <code>trust-ref</code>), never from the pull request's own files: a pull request that replaced the key would otherwise vouch for itself. Outside a pull request, set <code>range</code> and <code>trust-ref</code> to a protected branch or tag; without <code>trust-ref</code> the check refuses to run.</p>
+<p>Protect the key and signers paths with CODEOWNERS and a ruleset that requires review, and make this check a required status check. A check that can be skipped or edited by the change it judges is not a gate.</p>
+<p>If your bases differ in what they require (another trusted key, another <code>min-cal</code>), give each its own check name and require only that base's name in that base's ruleset. GitHub attaches a check run to a commit, so with one shared name a pull request that passes into a laxer base unlocks the same commit for a stricter one.</p>
+
+<h2 id="every-commit">Every commit, and rebuild</h2>
+<ul>
+  <li>By default every commit of the pull request needs a certificate. <code>all: false</code> checks only commits that name an agent in an <code>Assisted-by:</code> trailer, which is advisory: a commit an agent made without the trailer looks like a person's.</li>
+  <li>With <code>rebuild: true</code>, each commit is also replayed from its ledger and must have exactly the tree the ledger produces: a validly signed certificate on a commit that holds other bytes fails. A commit with no ledger fails.</li>
+  <li>A failed check recorded in a certificate makes <code>staircase verify</code> fail, so a CI check that requires certificates also requires passing checks.</li>
+</ul>
+
+<h2 id="limits">Limits, stated plainly</h2>
+<ul>
+  <li>A certificate is about one commit id. Squash-merge and rebase-merge make new commits that carry no certificate: check the pull request's own commits before merging, and merge with a merge commit, or certify the merged result with <code>staircase seal</code>.</li>
+  <li>A pull request from a fork has no notes in your repository and fails closed.</li>
+  <li>Notes are ordinary refs: anyone who can push to them can overwrite a note, so restrict who may push <code>refs/notes/staircase*</code>.</li>
+  <li>A pull request that edits the check's own workflow runs its own version of it under <code>on: pull_request</code>: protect <code>.github/</code> with required review, or run the check on <code>pull_request_target</code>.</li>
+  <li>None of this has been exercised against a real organization ruleset; do that once with a test repository before relying on it (<code>demo/ruleset-fixture.sh</code> builds one).</li>
+</ul>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/audit.md#require-certificates-on-pull-requests">Require certificates on pull requests</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

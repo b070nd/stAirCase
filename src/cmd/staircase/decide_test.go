@@ -77,15 +77,38 @@ func sampleReview() orchestrator.Review {
 // TestDecide_the_inbox_is_a_tree_of_what_waits: each run with its change, the checks of its tree and what was parked, and the
 // review entry a decision names.
 func TestDecide_the_inbox_is_a_tree_of_what_waits(t *testing.T) {
-	text := inboxTree([]orchestrator.Review{sampleReview()})
+	text := inboxTree([]orchestrator.Review{sampleReview()}, nil)
 	for _, want := range []string{"run #12", "1a2b3c4d5e6f", "src/one.txt", "src/two.txt", "go test ./...", "passed", "parked",
 		"src/bad.txt", "exit 1", "shell_exec", "Y", "N", "D", "Z"} {
 		assert.Contains(t, text, want)
 	}
-	assert.Contains(t, inboxTree(nil), "Nothing waits")
+	assert.Contains(t, inboxTree(nil, nil), "Nothing waits")
 	numbered := sampleReview()
 	numbered.ParkedProposals[0].Seq = 2
-	assert.Contains(t, inboxTree([]orchestrator.Review{numbered}), "#2 src/bad.txt", "the number --adopt takes")
+	assert.Contains(t, inboxTree([]orchestrator.Review{numbered}, nil), "#2 src/bad.txt", "the number --adopt takes")
+}
+
+// TestDecide_the_inbox_shows_an_empty_change_as_empty: a run that parked everything offers nothing yet; the tree says so and still lists
+// what was parked, with its number for --adopt.
+func TestDecide_the_inbox_shows_an_empty_change_as_empty(t *testing.T) {
+	rv := sampleReview()
+	rv.Files = nil
+	rv.ParkedProposals[0].Seq = 2
+	text := inboxTree([]orchestrator.Review{rv}, nil)
+	assert.Contains(t, text, "change   empty")
+	assert.NotContains(t, text, "0 file(s)")
+	assert.Contains(t, text, "#2 src/bad.txt")
+}
+
+// An empty change whose checks failed on the unchanged tree is shown as failed, never as "passed".
+func TestDecide_the_inbox_shows_failing_checks_of_an_empty_change(t *testing.T) {
+	rv := sampleReview()
+	rv.Files = nil
+	rv.ChecksFailed = `check "go test ./..." failed (exit 1)`
+	text := inboxTree([]orchestrator.Review{rv}, nil)
+	assert.Contains(t, text, "FAILED on this unchanged tree")
+	assert.Contains(t, text, `check "go test ./..." failed`)
+	assert.NotContains(t, text, "passed on exactly this change")
 }
 
 // TestDecide_keys: Y and I accept, N and O reject, D defers and shows what was parked, Z opens the clarifying session; anything

@@ -19,7 +19,10 @@ it).
 ## What the runner keeps, and what it does not
 
 - **Its protocol.** The runner's stdin and stdout reach Claude Code untouched (stream-json in and out); stAirCase's own output goes to
-  `host/<session>.log` in the workspace, never into the runner's stream.
+  `host/<session>.log` in the workspace, never into the runner's stream. That log stops at 8 MiB and says where it did and how much
+  it dropped, holds no secret the session was handed, and is where the stderr tail of a failed Claude Code is kept. The error the
+  runner receives names the cause only, no stderr text, because a runner may keep what the program it starts prints
+  ([logs are diagnostics, not evidence](audit.md#logs-are-diagnostics-not-evidence)).
 - **Its session id**, on the audit chain as the agent's session.
 - **Its instructions**, with stAirCase's Away brief after them (versioned; its digest is on the chain).
 - **Its harmless settings** (`fastMode`, `enableWorkflows`, `attribution`), under stAirCase's own.
@@ -38,6 +41,8 @@ was governed as: the latest run whose audit chain names it as its agent's sessio
 refused. What happens next depends on where that run stands:
 
 - **It was interrupted** (its process was killed): the session continues it, as `staircase resume` would, with every check that makes.
+  A run killed while its agent ran has a launch with no outcome: the session is refused and the run parked, as
+  [audit](audit.md#lost-launches) explains. Continue it yourself with `staircase resume <run> --ack-unknown` once you have looked.
 - **It awaits your review**: the session continues the same run. The review it offered is withdrawn (`run_resumed` names it), so a
   decision on it is refused as stale. When the session ends, the checks run again on the exact tree, and one new review covers the
   whole change.

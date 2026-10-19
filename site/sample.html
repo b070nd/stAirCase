@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sample demonstration - stAirCase</title>
+  <meta name="description" content="A sample: the offline demo with a stand-in model. Not a governed run.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html#use-cases">Use cases</a></li>
+      <li><a href="assurance.html">Assurance levels</a></li>
+      <li><a href="guides/index.html">Setup guides</a></li>
+      <li><a href="sample.html" aria-current="page">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Sample demonstration</h1>
+<div class="sample" role="note" aria-label="Sample, not a governed run">
+  <p><span class="sample-label">Sample</span>: everything on this page is a demonstration with a stand-in model. It is not a governed run of your code, it is not a record of anyone's run, and it is no evidence that stAirCase governed a real agent. Example output below is copied from the project's documentation and uses example values.</p>
+</div>
+<p class="lead">See the whole flow once, offline, in about a minute: no API key and no network.</p>
+
+<h2 id="run-it">Run it yourself</h2>
+<p>The demo needs Go, git and curl. Nothing is installed globally: it builds the binaries and works in a disposable temporary workspace that is deleted on exit.</p>
+<pre tabindex="0"><code>git clone https://github.com/b070nd/stAirCase.git
+cd stAirCase
+./demo/run-demo.sh          # interactive: you approve each proposal yourself
+./demo/run-demo.sh --tamper # a command changes an approved file: you decide, it is put back
+./demo/run-demo.sh --drift  # the agent works outside its task: the run is stopped</code></pre>
+
+<h2 id="what-it-does">What it does</h2>
+<ol>
+  <li>Builds <code>staircase</code> and creates a product repository with a README, an obsolete notes file and some uncommitted work of the developer's.</li>
+  <li>Puts the <code>hello</code> blueprint in its own git repository, imports it and binds it to the project: a topology, one case, two stories, each with the paths it may change.</li>
+  <li>Compiles the case and starts a run with the HTTP approval server. The run works in its own git worktree.</li>
+  <li>The supervisor hands the work to the coder, who creates <code>GREETING.md</code>, edits <code>README.md</code> and deletes <code>OLD_NOTES.md</code>. Each call waits for your approval and shows exactly what would be applied: press <kbd>Enter</kbd> to approve.</li>
+  <li>Finalize checks the worktree against the approvals and commits exactly the approved bytes. The demo checks that the run branch holds exactly those three changes, and that your checkout (HEAD, branch, index, status, every file) is byte for byte as before.</li>
+  <li>You accept both stories; the case is completed. The signed audit chain is exported and verified.</li>
+</ol>
+
+<h2 id="stand-in">The model is a stand-in, on purpose</h2>
+<p>A tiny OpenAI-compatible gateway plays the two agents deterministically. Everything else is the real product: the agent runtime and its tools, the model client, encrypted workspace secrets, the approval server, the worktree, finalize and the audit chain. That is why the demo shows the mechanics, and why it says nothing about how well a model does real work.</p>
+
+<h2 id="tamper">The tamper mode</h2>
+<p>With <code>--tamper</code>, after its file is approved the coder asks to run a shell command that appends to the file. You approve the command. It runs, and the file it changed comes back to you as its own decision, marked as already changed. The demo rejects it: the file is put back to the bytes you approved, and only those are committed. Approval is bound to content, not to a preview or a command.</p>
+
+<h2 id="drift">The drift mode</h2>
+<p>With <code>--drift</code>, after its stories' work the coder keeps proposing files outside both stories' scope. Each goes to you marked as drift; the blueprint allows 2 such proposals, so the 3rd halts the run. Example output, from the demo's documentation:</p>
+<div class="sample">
+<p><span class="sample-label">Sample output</span></p>
+<pre tabindex="0"><code>🧭 Drift: more than 2 proposals reached outside the stories' scope - halting run #1
+✓ run halted (KILLED) and exited 1
+✓ the case does not run again until 'staircase run 1 --ack-drift'</code></pre>
+</div>
+
+<h2 id="verify-example">What a certificate check looks like</h2>
+<p>After a real run, <code>staircase verify</code> checks the commit's certificate. Example output, from the project's README, with example values:</p>
+<div class="sample">
+<p><span class="sample-label">Sample output</span></p>
+<pre tabindex="0"><code>✅ Commit 33279b77f9ba: valid change certificate, CAL 3
+   requested by dev@example.com (the git email of the checkout: unauthenticated)
+   run #1 from 188a7dda520e, assisted by Claude Code
+   1 decision(s) by operator</code></pre>
+</div>
+
+<h2 id="next">From the sample to a real run</h2>
+<p>A sample does not count as a governed run. For a real one, on your own repository with a real agent: <a href="guides/v1.1.0/install.html">install</a>, then follow <a href="guides/v1.1.0/first-run.html">your first run</a>. More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/demo/README.md">the demo guide</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

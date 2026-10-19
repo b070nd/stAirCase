@@ -26,6 +26,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/approvalhttp"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/diag"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/b070nd/stAirCase/src/internal/governance"
@@ -208,6 +209,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		}
 	}
 	s.loop()
+	s.endLaunch() // the agent has stopped: how it ended is on the chain before the run is finalized
 	if err := s.finalize(); err != nil {
 		return err
 	}
@@ -546,17 +548,18 @@ func startApprovalServer(ctx context.Context, opts RunOptions) (*approvalhttp.Se
 }
 
 // openDebugLog opens the run's --debug log; nil when it cannot (the run goes on).
-func (r *Runner) openDebugLog(runID int64) *os.File {
+// The log is bounded and scrubbed of the secrets the process has handed to agents (internal/diag).
+func (r *Runner) openDebugLog(runID int64) *diag.Log {
 	logDir := filepath.Join(r.wsDir, "log")
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return nil
 	}
 	logPath := filepath.Join(logDir, fmt.Sprintf("staircase-debug-run%d.log", runID))
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := diag.Open(logPath, diag.MaxLogBytes, diag.Delivered)
 	if err != nil {
 		return nil
 	}
-	fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s\n", logPath)
+	fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s (at most %d bytes)\n", logPath, diag.MaxLogBytes)
 	return f
 }
 

@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	resumeDiscard, resumeAckDrift, resumeFresh bool
+	resumeDiscard, resumeAckDrift, resumeFresh, resumeAckUnknown bool
 )
 
 var resumeCmd = &cobra.Command{
@@ -38,6 +38,13 @@ is ever staged or adopted. A run halted for drift needs --ack-drift. A run whose
 is used up cannot be continued, only recovered ("staircase recover"), and neither can a
 run that began before runs saved their terms.
 
+Every launch of the agent is claimed on the audit chain before its process starts, and
+its outcome is recorded when it stops. A run whose last launch has no outcome (its
+process was killed, crashed or lost its machine) is not launched again blindly: resume
+records the outcome as unknown_after_restart, parks the run and says why. Check what the
+agent may have done, then continue with --ack-unknown. A run whose launches ended this
+way 3 times is not launched again at all; recover what it approved instead.
+
 A run that was started with an agent harness continues the harness's own session when it
 can: Claude Code, Gemini CLI and Codex have their session id on the audit chain and are
 resumed with it, so the agent remembers its conversation. When that cannot be done (the
@@ -57,6 +64,7 @@ session grounded by the audit chain instead, and the chain says so.`,
 func init() {
 	resumeCmd.Flags().BoolVar(&resumeDiscard, "discard-unapproved", false, "Put the worktree back to the approved state when it holds changes nobody approved")
 	resumeCmd.Flags().BoolVar(&resumeAckDrift, "ack-drift", false, "Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)")
+	resumeCmd.Flags().BoolVar(&resumeAckUnknown, "ack-unknown", false, "Continue a run parked because its last launch has no known outcome, after checking what its agent may have done (recorded on the audit chain)")
 	resumeCmd.Flags().BoolVar(&resumeFresh, "fresh-context", false, "Continue an agent-harness run in a new session grounded by the audit chain, instead of resuming its own session (the only way to continue one whose session cannot be resumed)")
 	resumeCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0, "Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
 	resumeCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")
@@ -111,13 +119,22 @@ func resumeRun(runID int64) error {
 	}()
 
 	opts := orchestrator.ResumeOptions{Agent: ag, ApprovalPort: cli.approvalPort, ApprovalToken: cli.approvalToken,
-		Debug: cli.debug, AckDrift: resumeAckDrift, DiscardUnapproved: resumeDiscard}
+		Debug: cli.debug, AckDrift: resumeAckDrift, DiscardUnapproved: resumeDiscard, AckUnknown: resumeAckUnknown}
 	if resumeFresh {
 		opts.Context = "fresh_grounded"
 	}
-	err = runner.Resume(ctx, runID, opts)
-	if errors.Is(err, orchestrator.ErrNotContinuable) {
-		return fmt.Errorf("%w\n   Nothing was changed. If its approvals matter: staircase recover %d", err, runID)
+	return resumeRefusal(runner.Resume(ctx, runID, opts), runID)
+}
+
+// resumeRefusal says what a refused continuation changed: nothing, or only the outcome of a lost launch, when this very
+// attempt recorded it (a run that was parked before has it on its chain already, and this attempt wrote nothing).
+func resumeRefusal(err error, runID int64) error {
+	if !errors.Is(err, orchestrator.ErrNotContinuable) {
+		return err
 	}
-	return err
+	changed := "Nothing was changed."
+	if errors.Is(err, orchestrator.ErrLaunchRecorded) {
+		changed = "Only the lost launch's outcome was recorded, as unknown_after_restart, and nothing else was changed."
+	}
+	return fmt.Errorf("%w\n   %s If its approvals matter: staircase recover %d", err, changed, runID)
 }

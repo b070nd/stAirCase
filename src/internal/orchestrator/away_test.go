@@ -15,6 +15,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
@@ -302,4 +303,158 @@ func TestAway_the_agent_is_told_it_works_unattended(t *testing.T) {
 func briefDigest(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+// allParkedRun is an away run whose every proposal was parked: nothing was approved.
+func allParkedRun(t *testing.T) runtest.Result {
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+			require.NoError(t, crypto.GenerateSigningKey(wsDir))
+			inSrc(&operator{approve: true})(s, wsDir, projectID)
+		},
+		Run: awayOpts(),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			write(ctx, env, "src/bad.txt", "FORBIDDEN\n")      // no evidence: a person would decide
+			write(ctx, env, "elsewhere.txt", "out of scope\n") // drift: a person would decide
+			return nil
+		})})
+	return r
+}
+
+// TestAway_a_run_whose_every_proposal_was_parked_is_offered_for_review (V11-C01 acceptance 4, ticket 37): it does not end SUCCESS with
+// nothing offered. It awaits the owner's review of an empty change, on the checks of the unchanged tree, with its parked proposals
+// listed so the owner can prototype or adopt them.
+func TestAway_a_run_whose_every_proposal_was_parked_is_offered_for_review(t *testing.T) {
+	r := allParkedRun(t)
+	require.NoError(t, r.Err)
+	assert.Equal(t, persistence.RunStatusAwaitingReview, r.Run.Status, "not SUCCESS with nothing offered")
+	assert.Empty(t, r.Run.GitCommitHash)
+	checked := payload(t, r, "phase_checked")
+	require.NotNil(t, checked, "the checks ran on the tree of the empty change")
+	assert.Equal(t, true, checked["passed"])
+	awaiting := payload(t, r, "awaiting_review")
+	require.NotNil(t, awaiting)
+	assert.EqualValues(t, 2, awaiting["parked"])
+	assert.Equal(t, checked["tree"], awaiting["tree"])
+
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	rv, err := runner.ReviewOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Empty(t, rv.Files, "an empty change")
+	require.Len(t, rv.ParkedProposals, 2)
+	st, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeAwaitingReview, st.Outcome, st.Why)
+	assert.Contains(t, st.Why, "empty")
+}
+
+// TestAway_an_empty_review_can_prototype_and_adopt_a_parked_proposal (ADR 0007): adopting works on a review that offers nothing yet;
+// accepting the new review delivers exactly the adopted proposal.
+func TestAway_an_empty_review_can_prototype_and_adopt_a_parked_proposal(t *testing.T) {
+	r := allParkedRun(t)
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	rv, err := runner.ReviewOf(r.Run.ID)
+	require.NoError(t, err)
+	parked := parkedNamed(t, rv, "elsewhere.txt")
+
+	proto, err := runner.Prototype(context.Background(), r.Run.ID, parked.Seq)
+	require.NoError(t, err)
+	assert.True(t, proto.Passed, proto.Failed)
+	assert.Contains(t, proto.Diff, "+out of scope")
+
+	next, err := runner.Adopt(context.Background(), r.Run.ID, parked.Seq, rv.Entry)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"elsewhere.txt"}, slices.Sorted(maps.Keys(next.Files)))
+	res, err := runner.Decide(context.Background(), r.Run.ID, orchestrator.DecideOptions{Accept: true, Shown: next.Entry})
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.Commit)
+	got, err := r.OnBranch("elsewhere.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "out of scope\n", got)
+	_, err = r.OnBranch("src/bad.txt")
+	assert.Error(t, err, "what was not adopted stays out")
+}
+
+// TestAway_accepting_an_empty_review_delivers_nothing_and_says_so: the owner took the empty change; no commit, no certificate, the run
+// does not end SUCCESS, and its outcome says nothing was delivered.
+func TestAway_accepting_an_empty_review_delivers_nothing_and_says_so(t *testing.T) {
+	r := allParkedRun(t)
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	res, err := runner.Decide(context.Background(), r.Run.ID, orchestrator.DecideOptions{Accept: true})
+	require.NoError(t, err)
+	assert.Empty(t, res.Commit)
+	st, commit := status(t, r)
+	assert.NotEqual(t, persistence.RunStatusSuccess, st, "nothing was delivered")
+	assert.Empty(t, commit)
+	_, err = r.OnBranch("elsewhere.txt")
+	assert.Error(t, err)
+	now, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeFailed, now.Outcome, now.Why)
+	assert.Contains(t, now.Why, "empty change")
+	assert.Contains(t, now.Why, "nothing was delivered")
+	_, err = runner.Decide(context.Background(), r.Run.ID, orchestrator.DecideOptions{Accept: true})
+	assert.Error(t, err, "decided once")
+}
+
+// failingBaseRun is an away run whose checks fail on the unchanged tree (they want elsewhere.txt, which the project lacks) and whose
+// only proposal, that very file outside the agreed scope, was parked.
+func failingBaseRun(t *testing.T) runtest.Result {
+	opts := awayOpts()
+	opts.Checks = []string{`test -f elsewhere.txt || { echo "elsewhere.txt is missing"; exit 1; }`}
+	return runtest.Run(t, runtest.Options{
+		Setup: inSrc(&operator{approve: true}),
+		Run:   opts,
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			write(ctx, env, "elsewhere.txt", "out of scope\n") // drift: a person would decide
+			return nil
+		})})
+}
+
+// TestAway_parked_proposals_are_offered_even_when_the_checks_fail_on_the_unchanged_tree: a run that approved nothing and parked what
+// it proposed does not end FAILED with the proposals lost because the project's checks fail without them. The owner is offered an
+// empty review that says its checks failed, with the parked proposals, and can prototype and adopt one that fixes the checks.
+func TestAway_parked_proposals_are_offered_even_when_the_checks_fail_on_the_unchanged_tree(t *testing.T) {
+	r := failingBaseRun(t)
+	require.NoError(t, r.Err)
+	assert.Equal(t, persistence.RunStatusAwaitingReview, r.Run.Status, "not FAILED with the parked proposal lost")
+	checked := payload(t, r, "phase_checked")
+	require.NotNil(t, checked)
+	assert.Equal(t, false, checked["passed"], "the checks failed on the unchanged tree")
+	awaiting := payload(t, r, "awaiting_review")
+	require.NotNil(t, awaiting)
+	assert.EqualValues(t, 1, awaiting["parked"])
+
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	rv, err := runner.ReviewOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Empty(t, rv.Files, "an empty change")
+	assert.Contains(t, rv.ChecksFailed, "elsewhere.txt is missing")
+	require.Len(t, rv.ParkedProposals, 1)
+	st, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeAwaitingReview, st.Outcome, st.Why)
+	assert.Contains(t, st.Why, "checks failed", "an empty review whose checks failed is shown as such")
+
+	proto, err := runner.Prototype(context.Background(), r.Run.ID, rv.ParkedProposals[0].Seq)
+	require.NoError(t, err)
+	assert.True(t, proto.Passed, proto.Failed, "the parked proposal is what fixes the checks")
+	next, err := runner.Adopt(context.Background(), r.Run.ID, rv.ParkedProposals[0].Seq, rv.Entry)
+	require.NoError(t, err)
+	assert.Empty(t, next.ChecksFailed, "with the proposal adopted the checks pass")
+	res, err := runner.Decide(context.Background(), r.Run.ID, orchestrator.DecideOptions{Accept: true, Shown: next.Entry})
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.Commit)
+}
+
+// Accepting the empty review whose checks failed delivers nothing, as for any empty change.
+func TestAway_accepting_an_empty_review_whose_checks_failed_delivers_nothing(t *testing.T) {
+	r := failingBaseRun(t)
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	res, err := runner.Decide(context.Background(), r.Run.ID, orchestrator.DecideOptions{Accept: true})
+	require.NoError(t, err)
+	assert.Empty(t, res.Commit)
+	now, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeFailed, now.Outcome, now.Why)
 }

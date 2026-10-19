@@ -50,11 +50,29 @@ rejection (`unconsumed` when its journal line was already written). The live run
 **Parked**: a proposal that needed a person while the owner was away. It is rejected for the agent and kept for the owner's
 review.
 
+A run can be parked too: its last **launch** has no established end, so its agent is not launched again until a person
+acknowledges it.
+
+**Launch**: one start of a run's agent: by a new run, a continuation or a resumed hosted session. It is claimed on the chain
+(`launch_claimed`, its attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is
+written once the agent stopped. A **lost** launch has no established end: no outcome, `unknown_after_restart` (a restart found the
+claim open) or `unresponsive`. A run with 3 lost launches is not launched again. A launch that did not end well has a **class**
+(`rejected`, `host_exit`, `storage`, `cleanup`, `uncertain_dispatch`) beside its outcome: about the agent's process, never a check
+result or an acceptance.
+
+**Capabilities**: what an adapter declares it supports (native resume, its own sandbox, an MCP gate, hooks, host mode). A
+description shown by `staircase doctor`, never a grant.
+
 **Adopted**: a parked proposal the owner took into the change after a prototype (ADR 0007). It is recorded as an ordinary
 `operator` approval that names the proposal (`adopts`).
 
 **Offered review**: what an away run puts to its owner when it ends. This is the exact tree, its files' digests, and the checks
 that passed on that tree (`awaiting_review`, resting on `phase_checked`). It is decided with `staircase decide`.
+
+**Outcome**: how a run stands, read from its history alone (`History.Outcome`): running, awaiting review, blocked or partial,
+failed, delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
+then the review the last segment offered, then a parked or refused run (its last launch has no established end), then how the last segment ended (`run_path`, which records the status it ended with). A
+run's **status** (`Runner.StatusOf`) adds its attempts (the launches claimed on its chain: `History.Attempts`) and what it used of its time, tokens and estimated cost.
 
 **Sealed**: describes a chain after which nothing more may be decided. `commit_prepared` ends the agent's part.
 `certificate_issued`, `run_recovered` and `review_delivered` end the chain.
@@ -66,7 +84,7 @@ no run can have written has no history. It is refused with the entry that breaks
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
 - how changes are approved;
-- where commands and checks run, and the checks;
+- where commands and checks run, the checks, and the paths where they are defined (protected);
 - what signs;
 - what an away run may do without asking.
 

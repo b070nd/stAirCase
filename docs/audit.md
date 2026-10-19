@@ -27,6 +27,8 @@ Events you will see:
 | `drift_halt`, `drift_report` | [drift supervision](drift.md) stopped the run / its summary |
 | `state_emit` | model usage of an agent step (tokens, cost) |
 | `agent_unresponsive` | an agent did not stop when asked |
+| `launch_claimed` | the agent is about to be launched (a new run, a continuation, a resumed hosted session), written before its process starts: the attempt number among the run's launches, a generation that names this launch alone, and the segment |
+| `launch_ended` | how a claimed launch ended, naming its attempt and generation: `exited`, `failed` (the agent ended with an error), `stopped` (the run stopped it), `unresponsive` (it did not stop when asked), or `unknown_after_restart` (no outcome was recorded: its process was lost, and a restart wrote this). A launch that did not end well also names its `class` (see [launch failure classes](#launch-failure-classes)). See [lost launches](#lost-launches) |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
 | `policy_snapshot` | the digest of the `policy.json` the run decided under, and whether its signature was valid (written before the first proposal) |
@@ -46,7 +48,7 @@ Events you will see:
 | `agent_session` | an agent harness's own session, so a later segment can resume it: the harness, the vendor's session id and whether it was `started` or `resumed` (Claude Code and Gemini CLI get an id staircase chose, Codex's is read from its `thread.started` event) |
 | `commit_prepared` | the run's commit exists and is named here (commit, base, tree, branch) before the run branch moves to it; if this cannot be recorded nothing is delivered, and a recovery after a crash keeps only a commit named here as the run's own |
 | `certificate_issued` | the change certificate was signed for the run's commit |
-| `run_path` | the phases the run went through, in order (see below) |
+| `run_path` | the phases the run, or this segment of it, went through, in order (see below), and the status it ended with (`status`; absent before this was recorded) |
 
 A run moves through fixed phases - checks (`PRE_FLIGHT`), its worktree
 (`BRANCH_CREATE`), starting the agent (`AGENT_START`), deciding (`AGENT_LOOP`), the
@@ -95,11 +97,76 @@ refuses a chain that breaks any of these rules, and names the entry that breaks 
 - Proposal numbers increase.
 - After `commit_prepared` only a final review may be decided. After `certificate_issued`, `run_recovered` or
   `review_delivered`, nothing is decided and the run is not resumed.
+- Launches are numbered from 1, one after the other. A launch's outcome names its attempt and generation. No agent is
+  launched, and the run is not resumed, while an earlier launch has no outcome. No agent is launched after
+  `commit_prepared`, and no outcome is written after the chain ended.
 
 A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
 often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or
 when its reviewer model left something unreviewed. Recovery asks whenever anything was approved by neither a person
 nor a policy rule, reviewer-model approvals included.
+
+### Lost launches
+
+Every launch of an agent is claimed on the chain (`launch_claimed`) before its process starts, and its outcome
+(`launch_ended`) is written once it stopped. A process that is killed, crashes or loses its machine in between
+leaves a claim with no outcome. Nobody can know what that agent did before it died, outside the worktree included.
+
+`staircase resume` (and a resumed hosted session) that finds such a claim first records its outcome as
+`unknown_after_restart`. Then it **parks** the run: it refuses to launch the agent again and says why. Look at what
+the agent may have done, then continue with `staircase resume <run> --ack-unknown`. The acknowledgement is recorded
+on `run_resumed` (`ack_unknown`, the attempt it acknowledged). An agent that did not stop when asked
+(`unresponsive`) parks the run the same way. Its end was not established either.
+
+A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
+and `staircase recover <run>` still commits what the run had approved. The time a run was down is not counted
+against its time limit.
+
+The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or
+partial, with the exact `staircase resume <run> --ack-unknown` command and the `staircase recover <run>` one, or refused when it
+has lost 3 launches. Its attempts are the launches claimed, lost ones included.
+
+### Launch failure classes
+
+A launch that did not end well says why on its `launch_ended` (`class`), apart from anything the checks or a reviewer decided:
+
+| Class | Outcome it goes with | Meaning |
+|---|---|---|
+| `rejected` | `failed` | The agent was refused or never ran governed: its program could not be started, or its hooks (or plugin) never reached the run, so nothing it did is kept |
+| `host_exit` | `failed` | The agent's process started and ended with an error |
+| `storage` | `exited`, `failed` or `stopped` | The launch ended in a way the run established, but a record of it could not be written to the chain while the agent ran |
+| `cleanup` | `unresponsive` | The agent did not stop when asked, so its end is not established |
+| `uncertain_dispatch` | `unknown_after_restart` | The launch was claimed and no outcome was recorded: nobody knows what the agent did |
+
+A launch that ended by itself (`exited`) or that the run stopped (`stopped`) has no class, unless a record could not be written. A
+class is about the agent's process and the records of it: it is never a check result and never acceptance, and it never makes a
+change approved. A run that fails this way says so in its outcome (`the run failed, and its agent's launch 1 ended in a host exit`),
+and `staircase decide <run>` and `staircase inspect` list the launches with their class. A chain from before classes has no `class`;
+it is read as the class its outcome implies (`failed` as a host exit, `unresponsive` as a cleanup failure, `unknown_after_restart` as
+an uncertain dispatch). If the class itself cannot be written because storage is failing, the launch has no outcome on the chain and
+a restart records it as an uncertain dispatch.
+
+## Logs are diagnostics, not evidence
+
+Two logs help a person find out why a run went wrong, and neither is part of the evidence:
+
+- the **debug log** (`--debug`: `log/staircase-debug-run<N>.log` in the workspace), and
+- the **host log** of a hosted session (`host/<session>.log`; see [hosting](hosting.md#what-the-runner-keeps-and-what-it-does-not)).
+
+Both are held to the same rules:
+
+- **A bound.** A log stops growing at **8 MiB**, markers included. Where it stops it says so
+  (`[staircase: this log reached its bound of 8388608 bytes; output after this point is dropped]`) and, when the process ends, how much
+  it dropped (`[staircase: dropped N bytes in all]`). Opened again by a resumed session, it counts what it already holds. A full
+  log loses nothing that matters to the run: the audit chain, the certificate and the ledger are written elsewhere and are never short
+  of a record because a log is full.
+- **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the
+  environment variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret is
+  shown as `<REDACTED>`.
+- **No stderr text in the record.** When an agent program fails, the last 4 KiB of its stderr (with a line saying so if its
+  start was dropped) is kept in the debug log, or in the host log of a hosted session, and shown at the terminal, scrubbed. It is not
+  in the error the run ends with, which a caller may log or a runner may keep, and it is never on the audit chain, in the certificate
+  or in the ledger. The reason is a lesson from Cloudroom, which kept stderr tails in records its prose said stderr never reached.
 
 ## The change certificate on every commit
 

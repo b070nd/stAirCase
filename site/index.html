@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>stAirCase</title>
+  <meta name="description" content="AI agents propose. You approve. Only what you approved is committed, and you can prove it.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="index.html" aria-current="page">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html#use-cases">Use cases</a></li>
+      <li><a href="assurance.html">Assurance levels</a></li>
+      <li><a href="guides/index.html">Setup guides</a></li>
+      <li><a href="sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>stAirCase</h1>
+<p class="lead">AI agents propose. You approve. Only what you approved is committed, and you can prove it.</p>
+
+<p>AI coding agents are fast, but it is hard to know exactly what they changed, who agreed to it, and whether what was committed is what was reviewed. stAirCase sits between AI agents and your repository:</p>
+<ul>
+  <li>the agents work in a <strong>separate copy</strong> of your repository, never in your checkout;</li>
+  <li>every change they want to make is a <strong>proposal</strong> that waits for a decision, by you or by a rule you wrote;</li>
+  <li>at the end, stAirCase commits <strong>exactly the approved bytes</strong> on a new branch, and nothing else;</li>
+  <li>every decision is recorded on a <strong>tamper-evident audit chain</strong>, and the commit carries a signed <strong>change certificate</strong> that anyone can verify and <strong>rebuild</strong>: from the base commit and the approved proposals, anyone can reproduce the commit's exact tree.</li>
+</ul>
+<p>It is one program with no dependencies except git (and <code>ssh-keygen</code>, if you sign decisions or reviews with SSH keys). Your agent setup, plans and evidence live in a workspace outside your repositories.</p>
+
+<figure>
+  <img src="run.svg" width="420" height="290" alt="How a run works: you describe the work as a case with stories, stAirCase compiles it into a plan that gates check, agents work in a separate worktree and every proposal waits for a recorded decision, and you get a branch with only the approved bytes.">
+  <figcaption>How a run works, from <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/concepts.md#how-a-run-works">Concepts</a>.</figcaption>
+</figure>
+
+<h2 id="use-cases">Choose a workflow</h2>
+<p>Each way in reaches a different <a href="assurance.html">change assurance level (CAL)</a>. The level a change actually reached is recorded in its certificate, and a lower level is never shown as a higher one.</p>
+<ul class="cards">
+  <li>
+    <h3><a href="use-cases/governed-runs.html">Governed CLI runs</a></h3>
+    <p>Put <code>staircase</code> in front of Claude Code, Codex or stAirCase's own agents. Every change is decided before it happens.</p>
+    <p><span class="cal">CAL 3</span> when every action was decided before it ran; CAL 2 when an approved shell command ran without a sandbox.</p>
+  </li>
+  <li>
+    <h3><a href="use-cases/away.html">Working while you are away</a></h3>
+    <p>Start a task, leave, and come back to one decision. Also for sessions another program starts.</p>
+    <p>The certificate records the level reached; a change made with a declared command or an approved MCP tool call reaches <span class="cal">CAL 2</span>.</p>
+  </li>
+  <li>
+    <h3><a href="use-cases/review-and-seal.html">Review after, and seal</a></h3>
+    <p>For cloud agents' pull requests and for agents that edit your checkout (Cursor): only the files you approve are committed.</p>
+    <p><span class="cal">CAL 2</span> because the files were changed before anyone decided them.</p>
+  </li>
+  <li>
+    <h3><a href="use-cases/ci.html">CI verification</a></h3>
+    <p>A required check that refuses pull requests whose commits are not properly certified, with a minimum level.</p>
+    <p>Requires a minimum level (<code>min-cal</code>): it checks a level, it does not raise one.</p>
+  </li>
+  <li>
+    <h3><a href="use-cases/teams.html">Team governance</a></h3>
+    <p>Rules, trusted keys and blueprints from one governance repository, pinned in every workspace, and two-person review.</p>
+    <p><span class="cal">CAL 4</span> when a trusted reviewer, who is not the person the run was made for, signs a CAL 3 change.</p>
+  </li>
+  <li>
+    <h3><a href="use-cases/evidence.html">Evidence inspection</a></h3>
+    <p>Verify a certificate, rebuild a commit from its approvals, export and verify the signed audit chain, report across repositories.</p>
+    <p>Shows the level each change reached, and fails a commit that holds bytes nobody approved.</p>
+  </li>
+</ul>
+
+<h2 id="start">Start</h2>
+<ol>
+  <li>See the whole flow once, offline, with no API key: the <a href="sample.html">sample demonstration</a>. It uses a stand-in model, so it is a sample, not a governed run of your code.</li>
+  <li>Install stAirCase: <a href="guides/v1.1.0/install.html">install guide for v1.1.0</a>.</li>
+  <li>Your first real run, and onboarding a project: <a href="guides/v1.1.0/first-run.html">first run guide for v1.1.0</a>, in about 15 minutes.</li>
+</ol>
+
+<h2 id="limits">Know the limits</h2>
+<p>stAirCase controls <strong>what reaches your repository</strong>, and confines what agents do on your machine:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">What</th><th scope="col">Where it runs</th></tr></thead>
+  <tbody>
+    <tr><td>Edits and reads</td><td>only through stAirCase's tools, only inside the run's own worktree</td></tr>
+    <tr><td>Shell commands and checks</td><td>an OS sandbox (macOS <code>sandbox-exec</code>, Linux bubblewrap or Landlock, Claude Code's own sandbox): no network, writes only in the worktree, no access to your credentials or stAirCase's keys; <code>--sandbox required</code> refuses to run without one</td></tr>
+    <tr><td>The agent program itself</td><td>as your user (Claude Code, Codex, or stAirCase's runtime); for stronger isolation, run stAirCase in a container or VM</td></tr>
+    <tr><td>Agents that edit your checkout (Cursor)</td><td>outside stAirCase until you <code>seal</code> their staged changes (CAL 2)</td></tr>
+    <tr><td>What the agent reads, and what the model provider receives</td><td>not confined: a run sends code to your model provider, and a sandboxed command can read files you can; pick a <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/safety.md#confidentiality-pick-a-profile">confidentiality profile</a></td></tr>
+  </tbody>
+</table>
+</div>
+<p>stAirCase is not a code reviewer: it makes sure you reviewed and approved every change, and proves that you did. Whether the change is good is still your judgement. Read the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/safety.md">safety boundary</a> before you use it on a project you care about.</p>
+
+<h2 id="status">Status</h2>
+<p>stAirCase is at 1.0: its six interfaces follow semantic versioning (<a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/compatibility.md">compatibility</a>). The agent adapters are not part of that promise: governing Claude Code and Codex is marked experimental, and Gemini CLI and OpenCode are still experimental. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/compatibility.md#which-agents-have-actually-been-run">compatibility table</a> says which agent versions have actually been run, and how.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

@@ -4,7 +4,9 @@
 # A run killed at a named boundary is continued (staircase resume), and the continuation is killed at its own boundaries and
 # continued or recovered again. Each ends with one owned commit that holds exactly what was approved and that verifies and
 # rebuilds. The binary is built with -tags barriers (see barrier_drill.bats); the agent is a stand-in Claude Code that proposes
-# a.txt and b.txt in a first session and, when its prompt says it is a continuation, c.txt only.
+# a.txt and b.txt in a first session and, when its prompt says it is a continuation, c.txt only. A kill while the agent runs
+# leaves its launch with no outcome, so a continuation after one acknowledges it (--ack-unknown); the drills at the end show the
+# run parked without it.
 
 setup_file() {
   ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -66,7 +68,9 @@ hold() {
 }
 
 first() { hold "$1" "$STAIRCASE_BIN" claude --yes "write two files"; }   # segment 1, killed at a boundary
-resume() { (cd "$WORK/app" && "$STAIRCASE_BIN" resume 1 --fresh-context "$@" 2>&1 3>&-); }
+resume() { (cd "$WORK/app" && "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown "$@" 2>&1 3>&-); }
+parked() { (cd "$WORK/app" && "$STAIRCASE_BIN" resume 1 --fresh-context "$@" 2>&1 3>&-); }   # no acknowledgement
+outcomes() { sc inspect log 1 --full | grep -o '"outcome":"[a-z_]*"' | tr '\n' ' ' || true; }
 on_branch() { git -C "$WORK/app" show "staircase/run-1:$1" 2>/dev/null; }
 sound() {
   run sc verify staircase/run-1 --min-cal 2
@@ -93,7 +97,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
 @test "a continuation killed before it changed anything is continued again" {
   first consumed@1
   cd "$WORK/app"
-  hold resume-checked "$STAIRCASE_BIN" resume 1 --fresh-context
+  hold resume-checked "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown
   [ "$(resumed_events)" = 0 ]                              # it had written nothing to the chain
   run sc inspect log 1
   [[ "$output" == *"status=RUNNING"* || "$output" == *"status=KILLED"* ]]
@@ -107,7 +111,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
 @test "a continuation killed once the run is reopened is continued again, as a third segment" {
   first consumed@1
   cd "$WORK/app"
-  hold resume-started "$STAIRCASE_BIN" resume 1 --fresh-context
+  hold resume-started "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown
   [ "$(resumed_events)" = 1 ]
   run resume
   [ "$status" -eq 0 ] || { echo "$output"; false; }
@@ -122,7 +126,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
 @test "a continuation killed after its own approval is recovered: both segments' approvals, one commit" {
   first consumed@1
   cd "$WORK/app"
-  hold consumed@1 "$STAIRCASE_BIN" resume 1 --fresh-context       # the continuation's first approval (c) is consumed, then it dies
+  hold consumed@1 "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown      # the continuation's first approval (c) is consumed, then it dies
   run sc recover 1
   [ "$status" -eq 0 ] || { echo "$output"; false; }
   [ "$(on_branch src/a.txt)" = "a content" ] && [ "$(on_branch src/c.txt)" = "c content" ]
@@ -133,7 +137,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
 @test "a continuation killed after the branch moved is not continued again: it is recovered, keeping its commit" {
   first consumed@1
   cd "$WORK/app"
-  hold git-cas "$STAIRCASE_BIN" resume 1 --fresh-context
+  hold git-cas "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown
   commit="$(git rev-parse staircase/run-1)"
   run resume
   [ "$status" -ne 0 ]
@@ -149,7 +153,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
 @test "a run that is alive cannot be continued twice; once it is killed it can" {
   first consumed@1
   cd "$WORK/app"
-  (STAIRCASE_BARRIER=resume-started STAIRCASE_BARRIER_DIR="$WORK/mark" exec "$STAIRCASE_BIN" resume 1 --fresh-context >"$WORK/held.log" 2>&1 3>&-) &
+  (STAIRCASE_BARRIER=resume-started STAIRCASE_BARRIER_DIR="$WORK/mark" exec "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown >"$WORK/held.log" 2>&1 3>&-) &
   HELD_PID=$!
   for _ in $(seq 1 300); do [ -f "$WORK/mark/resume-started.reached" ] && break; sleep 0.1; done
   [ -f "$WORK/mark/resume-started.reached" ]
@@ -187,7 +191,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
   cd "$WORK/app"
   id="$(sed -n 's/.*--session-id \([0-9a-f-]*\).*/\1/p' "$ARGS_LOG" | head -1)"
   [ -n "$id" ]                                              # the first segment was started under an id staircase chose
-  run sc resume 1
+  run sc resume 1 --ack-unknown
   [ "$status" -eq 0 ] || { echo "$output"; false; }
   [ "$(grep -c -- "--resume $id" "$ARGS_LOG")" = 1 ]       # and the continuation resumed that session
   [ "$(grep -c -- "--session-id" "$ARGS_LOG")" = 1 ]
@@ -205,4 +209,59 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
   [ "$(grep -c -- "--session-id" "$ARGS_LOG")" = 2 ]
   [ "$(grep -c -- "--resume" "$ARGS_LOG")" = 0 ]
   sc inspect log 1 --full | grep -q "fresh_grounded"
+}
+
+@test "a run killed between the launch's claim and the agent's start is parked, not launched again, until acknowledged" {
+  first launch-claimed
+  cd "$WORK/app"
+  [ "$(outcomes)" = "" ]                                    # claimed, never ended
+  run parked
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"launch 1 of run #1 ended unknown_after_restart"* ]]
+  [[ "$output" == *"--ack-unknown"* ]]
+  [[ "$output" == *"Only the lost launch's outcome was recorded"* ]]
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" ' ]
+  [ "$(resumed_events)" = 0 ]
+  run parked                                                # still parked, and the outcome is not written twice
+  [ "$status" -ne 0 ]
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" ' ]
+  run resume
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  sc inspect log 1 --full | grep -q '"ack_unknown":1'
+  [ -z "$(on_branch src/a.txt)" ]                           # the first launch never ran its agent
+  [ "$(on_branch src/c.txt)" = "c content" ]
+  one_commit
+  sound
+}
+
+@test "a run killed after its agent ended, before its outcome was recorded, is parked the same way" {
+  first agent-ended
+  cd "$WORK/app"
+  [ "$(outcomes)" = "" ]
+  run parked
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ended unknown_after_restart"* ]]
+  run resume
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ] && [ "$(on_branch src/b.txt)" = "b content" ] && [ "$(on_branch src/c.txt)" = "c content" ]
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" "outcome":"exited" ' ]
+  one_commit
+  sound
+}
+
+@test "a run whose launches were lost three times is not launched again; what it approved is recovered" {
+  first consumed@1
+  cd "$WORK/app"
+  hold launch-claimed "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown
+  hold launch-claimed "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown
+  run resume
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not be established 3 times"* ]]
+  [[ "$output" == *"staircase recover 1"* ]]
+  [ "$(grep -c -- "--session-id" "$ARGS_LOG")" = 1 ]        # the agent was started once only: the claims killed before it
+  run sc recover 1
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  one_commit
+  sound
 }

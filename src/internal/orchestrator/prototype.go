@@ -48,7 +48,7 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !opened.journaled {
+	if !opened.journaled && len(opened.hist.Approvals()) > 0 { // an away run that approved nothing has no journal
 		return nil, fmt.Errorf("run #%d has no approval journal: an away run that offers a review has one", runID)
 	}
 	terms, err := opened.terms(r.wsDir)
