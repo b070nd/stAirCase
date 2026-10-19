@@ -345,7 +345,8 @@ Lists the runs that ended while you were away (staircase claude --away ...) and 
 run's change, the checks that ran on exactly that change, and the proposals it parked because they needed you. Nothing of it
 is committed until you decide:
 
-  Y or I   accept: the change is committed on the run's branch, with its certificate, without starting the agent again
+  Y or I   accept: the change is committed on the run's branch, with its certificate, without starting the agent again (an empty change, from a run
+           that parked everything, delivers nothing: adopt a parked proposal first to have one)
   N or O   reject: nothing is committed
   D        defer, and show the alternatives: what was parked and how to see the whole change; the run keeps waiting
   Z        clarify: a read-only session (Claude Code's plan mode) in a separate directory that holds only this change, its

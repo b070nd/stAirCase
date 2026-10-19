@@ -108,3 +108,81 @@ func TestRun_records_how_each_segment_ended(t *testing.T) {
 	assert.Equal(t, history.OutcomeFailed, out, why)
 	assert.Equal(t, "the run failed, and its agent's launch 1 ended in "+history.ClassPhrase(history.ClassHostExit)+": nothing was delivered", why)
 }
+
+// TestStatusOf_attempts_are_the_claimed_launches: a run's attempts are the launches it claimed on its chain, and for a run without a
+// lost launch they are the segments it had.
+func TestStatusOf_attempts_are_the_claimed_launches(t *testing.T) {
+	r := lostLaunch(t, [2]string{"src/a.txt", "one\n"})
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	require.NoError(t, resume(t, r, orchestrator.ResumeOptions{AckUnknown: true}))
+	st, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	h, err := history.Read(r.Store, r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, st.Attempts, "the lost launch counts, and so does the one after it")
+	assert.Equal(t, h.Segment, st.Attempts)
+	assert.Equal(t, 1, st.LostLaunches)
+	assert.NotContains(t, st.Why, "--ack-unknown", "acknowledged and finished: not parked any more")
+
+	clean := runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
+	require.NoError(t, clean.Err)
+	st, err = orchestrator.NewRunner(clean.Store, clean.WsDir).StatusOf(clean.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, st.Attempts)
+	assert.Zero(t, st.LostLaunches)
+}
+
+// TestStatusOf_a_parked_run_is_blocked_and_names_the_command: a run whose last launch has no established end waits for its owner, who
+// is told the exact command to continue it after looking, and the one to recover what it approved; before and after a restart
+// recorded the outcome as unknown.
+func TestStatusOf_a_parked_run_is_blocked_and_names_the_command(t *testing.T) {
+	r := lostLaunch(t, [2]string{"src/a.txt", "one\n"})
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	st, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeBlocked, st.Outcome, st.Why, "an open claim: the process was lost")
+	assert.Equal(t, 1, st.Attempts, "a claimed launch counts")
+	assert.Contains(t, st.Why, "staircase resume 1 --ack-unknown")
+	assert.Contains(t, st.Why, "staircase recover 1")
+
+	err = resume(t, r, orchestrator.ResumeOptions{})
+	require.ErrorIs(t, err, orchestrator.ErrNotContinuable) // the restart records the outcome as unknown
+	st, err = runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeBlocked, st.Outcome, st.Why)
+	assert.Contains(t, st.Why, "staircase resume 1 --ack-unknown")
+}
+
+// TestStatusOf_a_run_with_three_lost_launches_is_refused: no acknowledgement continues it; the status says so and points to recover.
+func TestStatusOf_a_run_with_three_lost_launches_is_refused(t *testing.T) {
+	r := lostLaunch(t, [2]string{"src/a.txt", "one\n"})
+	loseAgain(t, r)
+	loseAgain(t, r)
+	st, err := orchestrator.NewRunner(r.Store, r.WsDir).StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeBlocked, st.Outcome, st.Why)
+	assert.Equal(t, 3, st.Attempts)
+	assert.Equal(t, 3, st.LostLaunches)
+	assert.Contains(t, st.Why, "refused")
+	assert.Contains(t, st.Why, "staircase recover 1")
+	assert.NotContains(t, st.Why, "--ack-unknown", "an acknowledgement does not lift the bound")
+}
+
+// TestStatusOf_a_run_whose_agent_is_running_is_running: an open claim is a lost launch only when no process holds the run; the run's own
+// lock says it is alive.
+func TestStatusOf_a_run_whose_agent_is_running_is_running(t *testing.T) {
+	var store *persistence.Store
+	var ws string
+	var live orchestrator.Status
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, _ int64) { store, ws = s, wsDir },
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			var err error
+			live, err = orchestrator.NewRunner(store, ws).StatusOf(1)
+			require.NoError(t, err)
+			return nil
+		})})
+	require.NoError(t, r.Err)
+	assert.Equal(t, history.OutcomeRunning, live.Outcome, live.Why)
+	assert.Equal(t, 1, live.Attempts)
+}

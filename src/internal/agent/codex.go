@@ -158,7 +158,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	env.Emit(ctx, orchestrator.Usage{Agent: "codex", Model: orDefault(c.Model, "codex"), Content: preview(preview_.String())})
 	switch {
 	case runErr != nil:
-		return classifyRun(runErr, fmt.Errorf("codex: %w: %s%s", runErr, preview(preview_.String()), stderr))
+		return classifyRun(runErr, withStderr(fmt.Errorf("codex: %w: %s", runErr, preview(preview_.String())), stderr))
 	case !h.started.Load():
 		return ungoverned("codex")
 	}

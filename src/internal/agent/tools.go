@@ -249,21 +249,50 @@ func runShell(ctx context.Context, root, dir, command, mode, workspace string) (
 	return out, sandboxed, nil
 }
 
-// tail keeps the last max bytes written to it.
+// tail keeps the last max bytes written to it, and counts the bytes it let go.
 type tail struct {
-	max int
-	b   []byte
+	max     int
+	b       []byte
+	dropped int
 }
 
 func (t *tail) Write(p []byte) (int, error) {
 	t.b = append(t.b, p...)
 	if len(t.b) > t.max {
+		t.dropped += len(t.b) - t.max
 		t.b = t.b[len(t.b)-t.max:]
 	}
 	return len(p), nil
 }
 
-func (t *tail) String() string { return strings.ToValidUTF8(string(t.b), "") }
+// String is the tail, with a first line saying that its start was dropped when it was.
+func (t *tail) String() string {
+	s := strings.ToValidUTF8(string(t.b), "")
+	if t.dropped > 0 {
+		return fmt.Sprintf("[earlier output dropped: %d bytes]\n%s", t.dropped, s)
+	}
+	return s
+}
+
+// withStderr is a failed agent's error with its stderr tail beside it, not in it. Error() is the cause alone: an error is logged,
+// returned to a runner and may be kept by it, and stderr text is a local diagnostic that must reach no record (Cloudroom persisted
+// such tails despite saying it did not). The run keeps the tail where only the person debugging reads it
+// (orchestrator.runState.keepStderr), scrubbed.
+func withStderr(err error, t *tail) error {
+	if err == nil || t.String() == "" {
+		return err
+	}
+	return stderrError{err: err, tail: t.String()}
+}
+
+type stderrError struct {
+	err  error
+	tail string
+}
+
+func (e stderrError) Error() string      { return e.err.Error() }
+func (e stderrError) Unwrap() error      { return e.err }
+func (e stderrError) StderrTail() string { return e.tail }
 
 func orDefault(s, def string) string {
 	if s == "" {

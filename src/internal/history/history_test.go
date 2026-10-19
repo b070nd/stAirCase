@@ -424,3 +424,13 @@ func TestLaunchClass_refuses_a_class_the_outcome_cannot_have(t *testing.T) {
 		})
 	}
 }
+
+// TestAttempts_are_the_claimed_launches: a launch counts once claimed, whether or not its agent ever started or ended; a chain from
+// before launches were claimed has its segments.
+func TestAttempts_are_the_claimed_launches(t *testing.T) {
+	assert.Equal(t, 1, bound().claim(1, "g1").replay(t).Attempts(), "a claim whose agent never started")
+	assert.Equal(t, 2, bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).claim(2, "g2").replay(t).Attempts())
+	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).add("run_resumed", map[string]any{"segment": 2}).replay(t)
+	assert.Equal(t, 1, h.Attempts(), "a resumed segment whose agent was never claimed was not started")
+	assert.Equal(t, 2, bound().add("run_resumed", map[string]any{"segment": 2}).replay(t).Attempts(), "no launch was ever claimed on this chain: its segments")
+}

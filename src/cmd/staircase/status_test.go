@@ -48,6 +48,18 @@ func TestStatusLines_show_a_lifecycle_failure_apart_from_the_outcome(t *testing.
 	assert.NotContains(t, strings.Join(statusLines(st), "\n"), "launches ")
 }
 
+// TestStatusLines_say_how_many_launches_were_lost: the attempts line counts the launches claimed and says how many had no established end,
+// and the outcome line carries the command to continue a parked run.
+func TestStatusLines_say_how_many_launches_were_lost(t *testing.T) {
+	st := orchestrator.Status{RunID: 7, Outcome: history.OutcomeBlocked, Attempts: 3, LostLaunches: 3,
+		Why: "refused: it is not launched again: recover what it approved with staircase recover 7"}
+	text := strings.Join(statusLines(st), "\n")
+	assert.Contains(t, text, "attempts   3")
+	assert.Contains(t, text, "3 launch(es) ended without an established end")
+	assert.Contains(t, text, "staircase recover 7")
+	assert.NotContains(t, strings.Join(statusLines(orchestrator.Status{Attempts: 1}), "\n"), "established end")
+}
+
 // TestDecide_a_run_that_does_not_wait_shows_its_status: `staircase decide <run>` on a run that is not awaiting review says how it
 // stands instead of refusing; the inbox shows the status of each run that waits.
 func TestDecide_a_run_that_does_not_wait_shows_its_status(t *testing.T) {

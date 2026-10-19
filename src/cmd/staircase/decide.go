@@ -34,7 +34,8 @@ var decideCmd = &cobra.Command{
 run's change, the checks that ran on exactly that change, and the proposals it parked because they needed you. Nothing of it
 is committed until you decide:
 
-  Y or I   accept: the change is committed on the run's branch, with its certificate, without starting the agent again
+  Y or I   accept: the change is committed on the run's branch, with its certificate, without starting the agent again (an empty change, from a run
+           that parked everything, delivers nothing: adopt a parked proposal first to have one)
   N or O   reject: nothing is committed
   D        defer, and show the alternatives: what was parked and how to see the whole change; the run keeps waiting
   Z        clarify: a read-only session (Claude Code's plan mode) in a separate directory that holds only this change, its
@@ -89,7 +90,9 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 			if err != nil && res.Commit == "" {
 				return err
 			}
-			if accept {
+			if accept && res.Commit == "" {
+				fmt.Printf("✅ Run #%d accepted: its change was empty, so nothing was delivered and its branch is unchanged. What it parked stays unapplied\n", runID)
+			} else if accept {
 				fmt.Printf("✅ Run #%d accepted: committed %.12s on staircase/run-%d\n", runID, res.Commit, runID)
 			} else {
 				fmt.Printf("✋ Run #%d rejected: nothing committed\n", runID)
@@ -230,7 +233,11 @@ func inboxTree(reviews []orchestrator.Review, status map[int64]orchestrator.Stat
 			}
 		}
 		files := slices.Sorted(maps.Keys(rv.Files))
-		fmt.Fprintf(&b, "%s├─ change   %d file(s): %s\n", indent, len(files), strings.Join(files, ", "))
+		if len(files) == 0 {
+			fmt.Fprintf(&b, "%s├─ change   empty: nothing was approved (accepting it delivers nothing; prototype and adopt a parked proposal to have one)\n", indent)
+		} else {
+			fmt.Fprintf(&b, "%s├─ change   %d file(s): %s\n", indent, len(files), strings.Join(files, ", "))
+		}
 		var checks []string
 		for _, c := range rv.Checks {
 			checks = append(checks, fmt.Sprintf("%s (exit %d)", c.Command, c.ExitCode))

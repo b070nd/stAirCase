@@ -52,6 +52,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **The status counts launches and shows a parked run.** A run's attempts are the launches claimed on its chain (a launch whose agent
+  never started counts), no longer its segments; the two agree for a run without a lost launch. A run whose agent's last launch has
+  no established end shows as blocked or partial in `staircase decide` and `staircase inspect`, with the exact command to continue it
+  (`staircase resume <run> --ack-unknown`) and the one to recover what it approved; a run with 3 lost launches shows as refused and
+  points to `staircase recover <run>`. A run whose process still holds its lock shows as running ([away](docs/away.md#a-run-whose-agent-was-lost)).
+
+- **An away run that approved nothing is offered for review, not ended as a success.** A run whose every proposal was parked used to
+  end SUCCESS with nothing committed and nothing offered. It now awaits your review of an empty change, with its parked proposals
+  listed so you can prototype or adopt them; accepting the empty change delivers nothing and says so, and its outcome reads failed
+  with that reason ([away](docs/away.md#a-run-that-parked-everything)). The audit chain keeps every event key; the review events add
+  `empty` on `review_accepted`.
+
+- **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** The debug log (`--debug`) and a hosted session's
+  log (`host/<session>.log`) stop growing at 8 MiB, say where they stopped and, at the end, how much they dropped. Both are scrubbed of
+  every secret handed to an agent, including the environment variables named with `--pass-env`, which were not scrubbed before. The
+  stderr tail of a failed agent (Claude Code, Codex, Gemini, OpenCode) is no longer part of the error the run ends with, which a
+  runner may keep (Cloudroom keeps stderr tails in its records); it is shown at the terminal or in the host log, and in the debug log,
+  scrubbed, and a tail whose start was cut says so. It is never on the audit chain, in the certificate or in the ledger
+  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
+
 - `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
   written before read as before; their outcome is inferred from their other events.
 - **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A

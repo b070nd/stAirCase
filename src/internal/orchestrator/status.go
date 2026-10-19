@@ -19,9 +19,12 @@ type Status struct {
 	Outcome history.Outcome
 	Why     string
 	Commit  string // the delivered commit, when there is one
-	// Attempts is how many times the run's agent was started: its segments, the first run and each continuation.
+	// Attempts is how many times the run's agent was launched: the launches claimed on its chain, the first run and each
+	// continuation, one whose agent never started included.
 	Attempts int
-	Parked   int // proposals parked for the owner and not adopted
+	// LostLaunches is how many of those launches have no established end: the process was lost, or the agent did not stop when asked.
+	LostLaunches int
+	Parked       int // proposals parked for the owner and not adopted
 	// Failures are the launches that did not end well, each with its lifecycle class (rejected, host exit, storage trouble, cleanup
 	// failure, uncertain dispatch). They are about the agent's process, never about its checks or an acceptance.
 	Failures []history.Launch
@@ -55,8 +58,13 @@ func (r *Runner) StatusOf(runID int64) (Status, error) {
 			st.Commit = h.Delivered[len(h.Delivered)-1].Commit
 		}
 	}
+	if h.OpenLaunch() != nil { // a claim with no end is a lost launch, unless the process that claimed it is alive
+		if held, known := RunOwner(r.wsDir, runID); known && held {
+			st.Outcome, st.Why = history.OutcomeRunning, "its agent is running: its process holds the run's lock"
+		}
+	}
 	st.Failures = h.Failures()
-	st.Attempts, st.Parked, st.Elapsed = h.Segment, len(h.Parked()), h.Elapsed
+	st.Attempts, st.LostLaunches, st.Parked, st.Elapsed = h.Attempts(), h.Lost(), len(h.Parked()), h.Elapsed
 	for _, u := range h.Usage {
 		st.InputTokens += u.State.In
 		st.OutputTokens += u.State.Out

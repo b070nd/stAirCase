@@ -100,6 +100,7 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	if err != nil {
 		return err
 	}
+	deliverPassed(env, passed)
 	cmd.Dir, cmd.Env = root, append(append(sandbox.Env(), HookFileEnv+"="+hookFile, "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settings), passed...)
 	cmd.WaitDelay = 5 * time.Second
 	sandbox.KillGroup(cmd)
@@ -118,7 +119,7 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	env.Emit(ctx, orchestrator.Usage{Agent: "gemini", Model: orDefault(g.Model, "gemini"), Content: preview(res.Response)})
 	switch {
 	case runErr != nil:
-		return classifyRun(runErr, fmt.Errorf("gemini: %w: %s%s", runErr, preview(stdout.String()), stderr))
+		return classifyRun(runErr, withStderr(fmt.Errorf("gemini: %w: %s", runErr, preview(stdout.String())), stderr))
 	case res.Error != nil:
 		return fmt.Errorf("gemini reported an error: %s", preview(res.Error.Message))
 	case !h.started.Load():

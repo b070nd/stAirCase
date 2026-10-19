@@ -95,7 +95,7 @@ func (o *OpenCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	env.Emit(ctx, orchestrator.Usage{Agent: "opencode", Model: orDefault(o.Model, "opencode"), Content: preview(stdout.String())})
 	switch {
 	case runErr != nil:
-		return classifyRun(runErr, fmt.Errorf("opencode: %w: %s%s", runErr, preview(stdout.String()), stderr))
+		return classifyRun(runErr, withStderr(fmt.Errorf("opencode: %w: %s", runErr, preview(stdout.String())), stderr))
 	case !h.started.Load():
 		return ungoverned("opencode")
 	}
