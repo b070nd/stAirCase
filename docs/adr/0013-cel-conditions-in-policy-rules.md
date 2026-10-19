@@ -21,7 +21,8 @@ What the policy file already guarantees:
   bytes, and a continuation decides under them (`SnapshotFromBytes`), never under today's file.
 - **Where the policy sits.** In `deciders.rule` (`orchestrator/decide.go`) the order is: the orchestrator refuses what it cannot apply;
   a command or tool the owner declared for an away run is approved from the run's terms; drift supervision halts or sends to a person;
-  a limit, drift or a guard sends to a person; only then the policy's rules; then the agreed task (where a sensitive path goes to a
+  a change to a path that holds a check's definition (`Terms.ProtectedPaths`) goes to a person, parked while away; a limit, drift or a
+  guard sends to a person; only then the policy's rules; then the agreed task (where a sensitive path goes to a
   person), evidence, the validator, a person. A signal can only turn an automatic approval into a person's decision. The final review
   never reaches the engine.
 - **Commands and tool calls.** `Engine.Evaluate` returns "no match" for `shell_exec` and `tool_call` before it looks at any rule:
@@ -86,7 +87,8 @@ reads them becomes a pattern denylist over text the agent controls.
 - **A boolean only.** The expression cannot set an effect, name an action, call out or change the proposal.
 - **Declared commands and tools are terms, not policy.** What an away run may run or call without asking comes from `--away-command` and
   `--away-tool`, bound on `run_bound`, and is decided before the policy. A policy file cannot add one.
-- **Everything before the policy still wins.** Drift, limits and guards send a proposal to a person whatever a rule says; the final
+- **Everything before the policy still wins.** Drift, a change to a protected check path, limits and guards send a proposal to a
+  person whatever a rule says; the final
   review never reaches the engine; a signal can still escalate a rule's approval.
 
 ### 5. A valid policy file keeps its meaning

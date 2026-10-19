@@ -72,7 +72,8 @@ owner is a normal outcome, never a failure.
 
 **What still reaches a person.** Everything the deciders send to a person is parked while away and so stops delivery by condition 3:
 a guard (dependencies, a file made executable, a file that is not text, hidden Unicode, what looks like a secret), a sensitive path
-under the agreed task, drift, a scope violation, a limit or checkpoint, missing or failing evidence, a signal's escalation, and every
+under the agreed task, drift, a scope violation, a change to a path that holds a check's definition (`Terms.ProtectedPaths`, decided
+after drift and before the limits and the policy, whatever the policy says), a limit or checkpoint, missing or failing evidence, a signal's escalation, and every
 command or tool call that was not declared. The mode answers none of them, and it never applies a parked proposal.
 
 ### 3. What is recorded
