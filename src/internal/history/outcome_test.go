@@ -94,9 +94,9 @@ func TestOutcome_names_the_lifecycle_class_of_a_launch_that_ended_badly(t *testi
 		"storage trouble": {approved().claim(1, "g").launchClassed(1, "g", LaunchFailed, ClassStorage).ended("FAILED"), OutcomeFailed,
 			[]string{"storage"}},
 		"a cleanup failure": {approved().claim(1, "g").launchEnded(1, "g", LaunchUnresponsive).ended("KILLED"), OutcomeBlocked,
-			[]string{"cleanup", "stopped"}},
+			[]string{"a cleanup failure", "no established end"}},
 		"an uncertain dispatch": {approved().claim(1, "g").launchEnded(1, "g", LaunchUnknown).ended("KILLED"), OutcomeBlocked,
-			[]string{"uncertain dispatch"}},
+			[]string{"an uncertain dispatch", "no established end"}},
 		"a clean exit says nothing of it": {approved().claim(1, "g").launchEnded(1, "g", LaunchExited).ended("FAILED"), OutcomeFailed,
 			[]string{"the run failed: nothing was delivered"}},
 		"a check failure outranks a host exit": {approved().claim(1, "g").launchEnded(1, "g", LaunchFailed).

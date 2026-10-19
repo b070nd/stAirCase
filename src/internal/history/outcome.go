@@ -140,9 +140,18 @@ func (h History) lostLaunch() string {
 		return fmt.Sprintf("refused: the end of its agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again: recover what it approved with staircase recover %s", lost, MaxLostLaunches, h.ref())
 	}
 	if p := h.LaunchParked(); p > 0 {
-		return fmt.Sprintf("launch %d of its agent has no established end (%s), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), h.ref(), h.ref())
+		return fmt.Sprintf("launch %d of its agent has no established end (%s: %s), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), ClassPhrase(h.Launches[n-1].lostClass()), h.ref(), h.ref())
 	}
 	return ""
+}
+
+// lostClass is the class of a launch with no established end: the one its outcome names, or an uncertain dispatch for a claim no
+// outcome was recorded for.
+func (l Launch) lostClass() string {
+	if l.Class != "" {
+		return l.Class
+	}
+	return ClassUncertainDispatch
 }
 
 // how says what the chain has of a launch that has no established end.
