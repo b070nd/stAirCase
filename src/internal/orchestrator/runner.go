@@ -208,6 +208,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 		}
 	}
 	s.loop()
+	s.endLaunch() // the agent has stopped: how it ended is on the chain before the run is finalized
 	if err := s.finalize(); err != nil {
 		return err
 	}

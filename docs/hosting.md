@@ -38,6 +38,8 @@ was governed as: the latest run whose audit chain names it as its agent's sessio
 refused. What happens next depends on where that run stands:
 
 - **It was interrupted** (its process was killed): the session continues it, as `staircase resume` would, with every check that makes.
+  A run killed while its agent ran has a launch with no outcome: the session is refused and the run parked, as
+  [audit](audit.md#lost-launches) explains. Continue it yourself with `staircase resume <run> --ack-unknown` once you have looked.
 - **It awaits your review**: the session continues the same run. The review it offered is withdrawn (`run_resumed` names it), so a
   decision on it is refused as stale. When the session ends, the checks run again on the exact tree, and one new review covers the
   whole change.

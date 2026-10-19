@@ -88,6 +88,9 @@ type runState struct {
 	stopped       chan struct{}
 	cancelAgent   context.CancelFunc
 	agentFinished bool
+	launch        *history.LaunchClaimed // this segment's launch, once it is on the chain
+	agentOutcome  string                 // how the agent ended, once that is known
+	launchEnded   bool                   // its outcome is recorded (or its recording was tried)
 	val           *Validator
 	evGate        *evidenceGate
 	dec           *deciders
@@ -424,6 +427,10 @@ func (s *runState) startAgent() error {
 		}
 		return resp
 	}
+	if err := s.claimLaunch(); err != nil {
+		return err
+	}
+	s.deferred(s.endLaunch) // after the agent is stopped (below): how it ended, whatever ends the run
 	go func() {
 		defer close(s.stopped)
 		done <- runAgent(agentCtx, opts.Agent, env)
@@ -466,13 +473,58 @@ func (s *runState) startAgent() error {
 	return nil
 }
 
+// claimLaunch puts the agent's launch on the chain before its process starts (Cloudroom's claim before launch): its attempt
+// number among the run's launches and a generation of its own, which its outcome names. A launch that cannot be claimed does not
+// happen. A process lost after this leaves the claim open, and a restart then records the outcome as unknown and parks the run.
+func (s *runState) claimLaunch() error {
+	h, err := history.Read(s.r.store, s.run.ID)
+	if err != nil {
+		return err
+	}
+	gen, err := newOpID()
+	if err != nil {
+		return fmt.Errorf("a generation for the agent's launch: %w", err)
+	}
+	claim := history.LaunchClaimed{Attempt: len(h.Launches) + 1, Generation: gen, Segment: h.Segment}
+	if err := s.r.audit(s.run.ID, "launch_claimed", claim); err != nil {
+		return fmt.Errorf("audit launch_claimed: %w", err)
+	}
+	s.launch = &claim
+	barrier.Hit(barrier.LaunchClaimed)
+	return nil
+}
+
+// endLaunch records how the claimed launch ended, once. Its agent has stopped, or did not stop when asked (unresponsive). An
+// outcome that cannot be written leaves the claim open, which a restart treats as a lost launch: the safe side.
+func (s *runState) endLaunch() {
+	if s.launch == nil || s.launchEnded {
+		return
+	}
+	s.launchEnded = true
+	s.endedAs(history.LaunchStopped) // stopped by the run, when nothing said otherwise
+	barrier.Hit(barrier.AgentEnded)
+	if err := s.r.audit(s.run.ID, "launch_ended", history.LaunchEnded{Attempt: s.launch.Attempt, Generation: s.launch.Generation,
+		Outcome: s.agentOutcome}); err != nil {
+		obs.Log.Warn("audit launch_ended: a restart will find the launch with no outcome", "run_id", s.run.ID, "err", err)
+	}
+}
+
+// endedAs is how the agent ended, unless that is known already.
+func (s *runState) endedAs(outcome string) {
+	if s.agentOutcome == "" {
+		s.agentOutcome = outcome
+	}
+}
+
 // stopAgent ends the agent and returns once it has stopped (bounded).
 func (s *runState) stopAgent() {
 	s.cancelAgent()
 	select {
 	case <-s.stopped:
+		s.endedAs(history.LaunchStopped)
 	case <-time.After(lostGrace):
 		// Nothing more can be done in-process; the run ends without it.
+		s.endedAs(history.LaunchUnresponsive)
 		obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", s.run.ID)
 		_ = s.r.audit(s.run.ID, "agent_unresponsive", map[string]any{"grace_seconds": lostGrace.Seconds()})
 	}
@@ -480,6 +532,10 @@ func (s *runState) stopAgent() {
 
 func (s *runState) processExited(procErr error) {
 	s.agentFinished = true
+	if procErr != nil {
+		s.endedAs(history.LaunchFailed)
+	}
+	s.endedAs(history.LaunchExited)
 	if procErr != nil {
 		s.runErr = fmt.Errorf("agent: %w", procErr)
 		s.finalStatus = persistence.RunStatusFailed

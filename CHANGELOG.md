@@ -34,11 +34,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   against the project's budget cap. `staircase decide` also lists your other away runs that are running or blocked, and `staircase
   decide <run>` on a run that does not await review shows its status instead of refusing. `staircase inspect runs` gains an outcome
   column and lists runs awaiting review ([away](docs/away.md#how-each-run-stands)).
+- **Every agent launch is claimed before it starts.** A new run, a continuation and a resumed hosted session put `launch_claimed`
+  on the audit chain (an attempt number and a generation) before the agent's process starts, and `launch_ended` (how it ended) once
+  it stopped. A run killed in between is not launched again blindly: `staircase resume` records the outcome as
+  `unknown_after_restart`, parks the run and says why; `--ack-unknown` continues it after you looked, and says so on the chain. A run
+  whose launches ended without an established end 3 times is not launched again; `staircase recover` still commits what it approved
+  ([audit](docs/audit.md#lost-launches)).
 
 ### Changed
 
 - `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
   written before read as before; their outcome is inferred from their other events.
+- **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
+  run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
 
 ## [1.1.0] - 2026-10-18
 

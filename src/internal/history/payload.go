@@ -125,7 +125,33 @@ type Resumed struct {
 	Context    string          `json:"context"`
 	// JournalDropped is how many journal lines the continuation dropped: never consumed, past the chain's last decision.
 	JournalDropped int `json:"journal_dropped,omitempty"`
+	// AckUnknown is the launch whose end was never established that a person acknowledged before this continuation.
+	AckUnknown int `json:"ack_unknown,omitempty"`
 }
+
+// LaunchClaimed is launch_claimed: an agent launch, put on the chain before the agent's process starts. Attempt counts the
+// run's launches from 1; Generation names this launch alone, so its outcome can name it.
+type LaunchClaimed struct {
+	Attempt    int    `json:"attempt"`
+	Generation string `json:"generation"`
+	Segment    int    `json:"segment"`
+}
+
+// LaunchEnded is launch_ended: how a claimed launch ended, written once its agent stopped, or by a restart that found none.
+type LaunchEnded struct {
+	Attempt    int    `json:"attempt"`
+	Generation string `json:"generation"`
+	Outcome    string `json:"outcome"`
+}
+
+// The outcomes of a launch. The first three are established ends; the last two are not.
+const (
+	LaunchExited       = "exited"                // the agent ended by itself
+	LaunchFailed       = "failed"                // the agent ended with an error
+	LaunchStopped      = "stopped"               // the run stopped the agent (cancelled, halted, over its budget or its time)
+	LaunchUnresponsive = "unresponsive"          // the run asked the agent to stop and it did not, in time
+	LaunchUnknown      = "unknown_after_restart" // no outcome was recorded: a restart found the claim open
+)
 
 // PolicySnapshot is the policy a run decided under.
 type PolicySnapshot struct {

@@ -34,6 +34,9 @@ type History struct {
 	Usage     []StateEmit
 	Shells    ShellCount
 
+	Launches    []Launch // every agent launch, in chain order
+	ackedLaunch int      // the lost launch a resume acknowledged last
+
 	Review *Review // the last review an away run offered
 	// Sealed is the first entry that ended the agent's part of the run (commit_prepared) or the chain (certificate_issued,
 	// run_recovered, review_delivered): "" while the run can still be continued.
@@ -74,6 +77,19 @@ type Review struct {
 	Decided string        // "accepted", "rejected", or "" while it waits
 }
 
+// Launch is a claimed agent launch and how it ended: "" while no outcome is on the chain.
+type Launch struct {
+	LaunchClaimed
+	Index   int
+	Entry   string
+	Outcome string
+}
+
+// lost reports whether the launch's end was never established: no outcome, one a restart recorded, or an agent that did not stop.
+func (l Launch) lost() bool {
+	return l.Outcome == "" || l.Outcome == LaunchUnknown || l.Outcome == LaunchUnresponsive
+}
+
 // ShellCount is how many approved commands ran, and how many of them in the sandbox.
 type ShellCount struct{ Ran, Sandboxed int }
 
@@ -109,7 +125,8 @@ func Read(store *persistence.Store, runID int64) (History, error) {
 
 // replay is the fold. The grammar (ADR 0010, section 2): run_bound first and once; every decision but a final review uses up a
 // request of the same segment and kind audited before it (the one it names, when it names one); proposal numbers increase;
-// commit_prepared leaves room only for a final review; certificate_issued, run_recovered and review_delivered end the chain. Event
+// commit_prepared leaves room only for a final review; certificate_issued, run_recovered and review_delivered end the chain; launches
+// are numbered in order, each outcome names the open launch, and nothing launches or resumes while a launch has no outcome. Event
 // types and fields it does not know are ignored.
 func replay(events []domain.RunEventLog) (History, error) {
 	h := History{Segment: 1, entries: map[string]bool{}}
@@ -144,6 +161,9 @@ func replay(events []domain.RunEventLog) (History, error) {
 			if s := firstOf(ended, agentEnded); s != "" {
 				return h, fail("the run was resumed after %s", s)
 			}
+			if o := h.OpenLaunch(); o != nil {
+				return h, fail("the run was resumed while launch %d has no outcome", o.Attempt)
+			}
 			var p Resumed
 			if err := read(&p); err != nil {
 				return h, err
@@ -154,6 +174,45 @@ func replay(events []domain.RunEventLog) (History, error) {
 			pending = nil // a request an earlier segment left is not one this segment can decide
 			if p.AckDrift {
 				h.Halted, h.end.haltReason = false, ""
+			}
+			if p.AckUnknown > 0 {
+				h.ackedLaunch = p.AckUnknown
+			}
+		case "launch_claimed":
+			if s := firstOf(ended, agentEnded); s != "" {
+				return h, fail("an agent launch follows %s", s)
+			}
+			if o := h.OpenLaunch(); o != nil {
+				return h, fail("an agent is launched while launch %d has no outcome", o.Attempt)
+			}
+			l := Launch{Index: n, Entry: e.EventHash}
+			if err := read(&l.LaunchClaimed); err != nil {
+				return h, err
+			}
+			if l.Attempt != len(h.Launches)+1 {
+				return h, fail("the launch claims attempt %d, after %d launches", l.Attempt, len(h.Launches))
+			}
+			h.Launches = append(h.Launches, l)
+		case "launch_ended":
+			if ended != "" {
+				return h, fail("a launch's outcome follows %s", ended)
+			}
+			var p LaunchEnded
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			o := h.OpenLaunch()
+			if o == nil || o.Attempt != p.Attempt || o.Generation != p.Generation {
+				return h, fail("the outcome names no open launch (attempt %d, generation %q)", p.Attempt, p.Generation)
+			}
+			switch p.Outcome {
+			case LaunchExited, LaunchFailed, LaunchStopped, LaunchUnresponsive, LaunchUnknown:
+			default:
+				return h, fail("an unknown outcome %q", p.Outcome)
+			}
+			o.Outcome = p.Outcome
+			if p.Outcome == LaunchUnknown {
+				continue // written by a restart, after the run was down: not time the segment used
 			}
 		case "policy_snapshot":
 			h.Policy = &PolicySnapshot{}
@@ -322,6 +381,35 @@ func firstOf(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// OpenLaunch is the last launch when no outcome of it is on the chain: its process was lost before it could record one. nil
+// otherwise.
+func (h History) OpenLaunch() *Launch {
+	if n := len(h.Launches); n > 0 && h.Launches[n-1].Outcome == "" {
+		return &h.Launches[n-1]
+	}
+	return nil
+}
+
+// Lost is how many of the run's launches have no established end (an open claim included).
+func (h History) Lost() int {
+	n := 0
+	for _, l := range h.Launches {
+		if l.lost() {
+			n++
+		}
+	}
+	return n
+}
+
+// LaunchParked is the attempt number of the run's last launch when its end was never established and no resume has acknowledged
+// it since: the run is not launched again without a person. 0 when the run is not parked for this.
+func (h History) LaunchParked() int {
+	if n := len(h.Launches); n > 0 && h.Launches[n-1].lost() && h.Launches[n-1].Attempt != h.ackedLaunch {
+		return h.Launches[n-1].Attempt
+	}
+	return 0
 }
 
 // Approvals are the approved file changes, in chain order: what reaches the branch.

@@ -50,6 +50,14 @@ rejection (`unconsumed` when its journal line was already written). The live run
 **Parked**: a proposal that needed a person while the owner was away. It is rejected for the agent and kept for the owner's
 review.
 
+A run can be parked too: its last **launch** has no established end, so its agent is not launched again until a person
+acknowledges it.
+
+**Launch**: one start of a run's agent: by a new run, a continuation or a resumed hosted session. It is claimed on the chain
+(`launch_claimed`, its attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is
+written once the agent stopped. A **lost** launch has no established end: no outcome, `unknown_after_restart` (a restart found the
+claim open) or `unresponsive`. A run with 3 lost launches is not launched again.
+
 **Adopted**: a parked proposal the owner took into the change after a prototype (ADR 0007). It is recorded as an ordinary
 `operator` approval that names the proposal (`adopts`).
 
