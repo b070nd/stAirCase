@@ -43,6 +43,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **An away run that approved nothing is offered for review, not ended as a success.** A run whose every proposal was parked used to
+  end SUCCESS with nothing committed and nothing offered. It now awaits your review of an empty change, with its parked proposals
+  listed so you can prototype or adopt them; accepting the empty change delivers nothing and says so, and its outcome reads failed
+  with that reason ([away](docs/away.md#a-run-that-parked-everything)). The audit chain keeps every event key; the review events add
+  `empty` on `review_accepted`.
+
 - `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
   written before read as before; their outcome is inferred from their other events.
 - **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A

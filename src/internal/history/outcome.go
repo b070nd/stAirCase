@@ -18,7 +18,7 @@ const (
 	OutcomeRunning Outcome = "running"
 	// OutcomeAwaitingReview: an away run offered its change, checked on the exact tree, and the owner has not finished deciding.
 	OutcomeAwaitingReview Outcome = "awaiting review"
-	// OutcomeBlocked: the run stopped short and waits for the owner: what it proposed was parked and nothing was approved, drift
+	// OutcomeBlocked: the run stopped short and waits for the owner: what it proposed was parked and nothing was approved (a run of an older stAirCase; now such a run is offered as an empty change), drift
 	// supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named but never delivered.
 	OutcomeBlocked Outcome = "blocked or partial"
 	// OutcomeFailed: the run ended without delivering, and nothing about it waits: its checks failed, its review was rejected,
@@ -48,7 +48,13 @@ func (h History) Outcome() (Outcome, string) {
 		case "rejected":
 			return OutcomeFailed, "you rejected its review: nothing was committed"
 		case "accepted":
+			if len(rv.Files) == 0 { // an empty change: accepting it delivers nothing, and there is nothing to finish
+				return OutcomeFailed, fmt.Sprintf("you accepted a review of an empty change: nothing was delivered, and %d proposal(s) stay parked, not applied", len(h.Parked()))
+			}
 			return OutcomeAwaitingReview, "you accepted it and its delivery did not finish: accept it again (staircase decide --accept)"
+		}
+		if len(rv.Files) == 0 {
+			return OutcomeAwaitingReview, fmt.Sprintf("it approved nothing, so its change is empty (tree %.12s, unchanged, passes its checks), with %d proposal(s) parked: decide it with staircase decide, or prototype and adopt a parked one", rv.Tree, len(h.Parked()))
 		}
 		return OutcomeAwaitingReview, fmt.Sprintf("its change passed its checks on tree %.12s, with %d proposal(s) parked: decide it with staircase decide", rv.Tree, len(h.Parked()))
 	}

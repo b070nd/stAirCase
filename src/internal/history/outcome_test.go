@@ -11,9 +11,12 @@ func (c *chain) ended(status string) *chain {
 	return c.add("run_path", map[string]any{"phases": []string{"PRE_FLIGHT", "BRANCH_RESTORE"}, "status": status})
 }
 
-func (c *chain) offered() *chain {
+func (c *chain) offered() *chain { return c.offeredFiles(map[string]string{"a": "x"}) }
+
+// offeredFiles offers a review of those approved files; none: an empty change.
+func (c *chain) offeredFiles(files map[string]string) *chain {
 	c.add("phase_checked", map[string]any{"tree": "t", "passed": true})
-	return c.add("awaiting_review", map[string]any{"tree": "t", "phase_checked": fmt.Sprintf("e%d", len(c.events))})
+	return c.add("awaiting_review", map[string]any{"tree": "t", "files": files, "phase_checked": fmt.Sprintf("e%d", len(c.events))})
 }
 
 // TestOutcome_maps_each_history_to_one_outcome (V11-C01 scope 6): one outcome per run, read from its history alone, with the
@@ -33,6 +36,8 @@ func TestOutcome_maps_each_history_to_one_outcome(t *testing.T) {
 		"a review a resumed session withdrew":       {approved().offered().ended("AWAITING_REVIEW").add("run_resumed", map[string]any{"segment": 2}), OutcomeRunning, ""},
 		"a review offered":                          {approved().offered().ended("AWAITING_REVIEW"), OutcomeAwaitingReview, "staircase decide"},
 		"accepted, its delivery not finished":       {approved().offered().ended("AWAITING_REVIEW").add("review_accepted", nil), OutcomeAwaitingReview, "accept it again"},
+		"an empty change offered":                   {bound().edit("a").decided(1, "parked", false).offeredFiles(map[string]string{}).ended("AWAITING_REVIEW"), OutcomeAwaitingReview, "its change is empty"},
+		"an empty change accepted":                  {bound().edit("a").decided(1, "parked", false).offeredFiles(map[string]string{}).ended("AWAITING_REVIEW").add("review_accepted", nil), OutcomeFailed, "nothing was delivered"},
 		"a review the owner rejected":               {approved().offered().ended("AWAITING_REVIEW").add("review_rejected", map[string]any{"feedback": "no"}), OutcomeFailed, "rejected"},
 		"checks that failed on the approved tree":   {approved().add("phase_checked", map[string]any{"tree": "t", "passed": false, "failed": "go test: exit 1"}).ended("FAILED"), OutcomeFailed, "go test: exit 1"},
 		"a final review a person rejected":          {approved().final(2, false, nil).ended("FAILED"), OutcomeFailed, "final review"},

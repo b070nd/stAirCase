@@ -80,6 +80,15 @@ Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for 
 parked proposal #4 (as the tree numbers them) if your checks pass with it. A decision is bound to the review you saw:
 `--shown <entry>` (the review entry the list prints) is refused if the run's review is another one.
 
+## A run that parked everything
+
+An away run in which every proposal was parked and nothing was approved does not end as a success. It is offered to you like any
+other run: a review of an **empty change** (`change   empty: nothing was approved`), with the checks run on the unchanged tree and the
+parked proposals listed with their numbers. Prototype (**P**) and adopt (`--adopt <n>`) work as above, and the adopted proposal is then
+the change you decide on. Accepting the empty change itself delivers nothing: no commit, no certificate, the branch stays at its base,
+`decide` says so, and the run's outcome reads failed ("you accepted a review of an empty change: nothing was delivered"). Reject it
+to say you want none of it. A run that proposed nothing at all is not offered; its outcome says it ended without a change.
+
 ## How each run stands
 
 Every run has one **outcome**, read from its verified audit chain alone (never from the status column or a summary file):
@@ -87,9 +96,9 @@ Every run has one **outcome**, read from its verified audit chain alone (never f
 | Outcome | What the chain says |
 |---|---|
 | **running** | its last segment has not ended: it is working, or its process died, which a crash cannot record (`resume` or `recover` it) |
-| **awaiting review** | it offered its change, checked on the exact tree, and you have not finished deciding |
-| **blocked or partial** | it stopped short and waits for you: what it proposed was parked and nothing was approved, drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
-| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree, its review was rejected, or it failed |
+| **awaiting review** | it offered its change, checked on the exact tree, and you have not finished deciding; a run that parked everything and approved nothing offers an empty change |
+| **blocked or partial** | it stopped short and waits for you: drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
+| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree, its review was rejected, you accepted an empty change, or it failed |
 | **delivered** | its commit is on the run branch and its evidence is complete |
 | **delivered with incomplete evidence** | its commit is on the run branch, and some of its ledger, certificate or notes could not be written (the reason is shown) |
 
