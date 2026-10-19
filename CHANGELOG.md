@@ -27,6 +27,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   refused, and forks stay refused ([hosting](docs/hosting.md#when-the-runner-resumes-a-session)). Run with Claude Code 2.1.236 and
   Cloudroom's argument list: the resumed session continued the run awaiting review, and the agent remembered a word it had said only in
   the first session ([record](docs/release-evidence/hosted-resume-claude-code-2.1.236.md)).
+- **One outcome per run, and a morning status.** `staircase decide` and `staircase inspect` show each run's outcome, read from its
+  verified audit chain alone: running, awaiting review, blocked or partial, failed, delivered, or delivered with incomplete evidence,
+  with the chain's reason. With it come the run's attempts (how many times its agent was started) and what it used of its bounds: the
+  active time against the time limit of its saved policy and plan, the tokens its agents reported, and the cost estimated from them
+  against the project's budget cap. `staircase decide` also lists your other away runs that are running or blocked, and `staircase
+  decide <run>` on a run that does not await review shows its status instead of refusing. `staircase inspect runs` gains an outcome
+  column and lists runs awaiting review ([away](docs/away.md#how-each-run-stands)).
+
+### Changed
+
+- `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
+  written before read as before; their outcome is inferred from their other events.
 
 ## [1.1.0] - 2026-10-18
 

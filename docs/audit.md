@@ -46,7 +46,7 @@ Events you will see:
 | `agent_session` | an agent harness's own session, so a later segment can resume it: the harness, the vendor's session id and whether it was `started` or `resumed` (Claude Code and Gemini CLI get an id staircase chose, Codex's is read from its `thread.started` event) |
 | `commit_prepared` | the run's commit exists and is named here (commit, base, tree, branch) before the run branch moves to it; if this cannot be recorded nothing is delivered, and a recovery after a crash keeps only a commit named here as the run's own |
 | `certificate_issued` | the change certificate was signed for the run's commit |
-| `run_path` | the phases the run went through, in order (see below) |
+| `run_path` | the phases the run, or this segment of it, went through, in order (see below), and the status it ended with (`status`; absent before this was recorded) |
 
 A run moves through fixed phases - checks (`PRE_FLIGHT`), its worktree
 (`BRANCH_CREATE`), starting the agent (`AGENT_START`), deciding (`AGENT_LOOP`), the

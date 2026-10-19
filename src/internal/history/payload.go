@@ -206,3 +206,27 @@ type Delivered struct {
 	Forced         bool     `json:"forced,omitempty"`
 	EvidenceErrors []string `json:"evidence_errors,omitempty"`
 }
+
+// Ended is run_path: the phases a segment of the run went through, written when its process ends the segment, and the status it
+// ended with (absent on chains written before the status was recorded).
+type Ended struct {
+	Phases []string `json:"phases"`
+	Status string   `json:"status,omitempty"`
+}
+
+// DriftHalt is drift_halt: drift supervision stopped the run, and why.
+type DriftHalt struct {
+	Reason string `json:"reason"`
+}
+
+// EvidenceFailed is evidence_failed: the run's commit is delivered, and what of its evidence could not be written.
+type EvidenceFailed struct {
+	Commit string   `json:"commit"`
+	Errors []string `json:"errors"`
+}
+
+// CertificateFailed is certificate_failed: the run's commit is delivered, and its certificate could not be written.
+type CertificateFailed struct {
+	Commit string `json:"commit"`
+	Error  string `json:"error"`
+}
