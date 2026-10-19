@@ -43,7 +43,7 @@ type ResumeOptions struct {
 
 // MaxLostLaunches is how many launches of one run may end without an established end (lost, or unresponsive) before the run is
 // not launched again: what it approved can still be recovered, but its agent is not started a fourth time.
-const MaxLostLaunches = 3
+const MaxLostLaunches = history.MaxLostLaunches
 
 // ErrLaunchLost is part of the refusal of a run parked for a launch with no established end. Unlike other refusals, the
 // continuation recorded something first: the lost launch's outcome, as unknown_after_restart.

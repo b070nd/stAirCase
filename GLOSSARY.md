@@ -66,8 +66,8 @@ that passed on that tree (`awaiting_review`, resting on `phase_checked`). It is 
 
 **Outcome**: how a run stands, read from its history alone (`History.Outcome`): running, awaiting review, blocked or partial,
 failed, delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
-then the review the last segment offered, then how the last segment ended (`run_path`, which records the status it ended with). A
-run's **status** (`Runner.StatusOf`) adds its attempts (its segments) and what it used of its time, tokens and estimated cost.
+then the review the last segment offered, then a parked or refused run (its last launch has no established end), then how the last segment ended (`run_path`, which records the status it ended with). A
+run's **status** (`Runner.StatusOf`) adds its attempts (the launches claimed on its chain: `History.Attempts`) and what it used of its time, tokens and estimated cost.
 
 **Sealed**: describes a chain after which nothing more may be decided. `commit_prepared` ends the agent's part.
 `certificate_issued`, `run_recovered` and `review_delivered` end the chain.

@@ -18,6 +18,7 @@ import (
 
 // History is what a run's verified chain says about it.
 type History struct {
+	RunID int64 // the run the chain belongs to, when it was read from a store (Read); 0 for a bare replay
 	Bound Bound
 	// Decisions are every yield_decided, in chain order, final reviews included; each but a final review carries its request.
 	Decisions   []Decision
@@ -120,6 +121,7 @@ func Read(store *persistence.Store, runID int64) (History, error) {
 	if err != nil {
 		return History{}, fmt.Errorf("the audit history of run #%d is not one a run can have written: %w", runID, err)
 	}
+	h.RunID = runID
 	return h, nil
 }
 
@@ -390,6 +392,19 @@ func (h History) OpenLaunch() *Launch {
 		return &h.Launches[n-1]
 	}
 	return nil
+}
+
+// MaxLostLaunches is how many launches of one run may end without an established end (lost, or unresponsive) before the run is
+// not launched again: what it approved can still be recovered, but its agent is not started again.
+const MaxLostLaunches = 3
+
+// Attempts is how many times the run's agent was launched: the launches claimed on its chain, a claim whose agent never started
+// included. A chain from before launches were claimed has none, and counts its segments.
+func (h History) Attempts() int {
+	if len(h.Launches) > 0 {
+		return len(h.Launches)
+	}
+	return h.Segment
 }
 
 // Lost is how many of the run's launches have no established end (an open claim included).

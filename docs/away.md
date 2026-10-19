@@ -56,7 +56,7 @@ with one reaches CAL 2, and the certificate says how many calls were approved.
 Awaiting your review
 └─ run #12   review 1a2b3c4d5e6f   from abc123abc123
    ├─ outcome    awaiting review: its change passed its checks on tree fedcba987654, with 1 proposal(s) parked: decide it with staircase decide
-   ├─ attempts   1 (times the agent was started: the run, then each continuation); 1 proposal(s) parked for you
+   ├─ attempts   1 (times the agent was launched: the run, then each continuation); 1 proposal(s) parked for you
    ├─ time       24m10s of 1h0m0s, 35m50s left
    ├─ tokens     120000 in, 30000 out, as the agents reported them (no token limit)
    ├─ cost       about $0.81 of $5.00 (the project's cap per run), about $4.19 left, estimated from list prices
@@ -80,6 +80,20 @@ Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for 
 parked proposal #4 (as the tree numbers them) if your checks pass with it. A decision is bound to the review you saw:
 `--shown <entry>` (the review entry the list prints) is refused if the run's review is another one.
 
+## A run whose agent was lost
+
+A run whose agent's last launch has no established end (its process was killed or crashed, or the agent did not stop when asked) is
+parked, not launched again blindly, because nobody knows what the agent did, outside the worktree included. It shows as **blocked or
+partial** (not as running, unless its process still holds the run) with the command to continue it after you looked:
+
+```text
+outcome    blocked or partial: launch 1 of its agent has no established end (its process was lost), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume 12 --ack-unknown, or recover what it approved with staircase recover 12
+attempts   1 (times the agent was launched: the run, then each continuation); 1 launch(es) ended without an established end
+```
+
+Once you acknowledge it with `--ack-unknown` the run goes on and counts one more attempt. A run whose launches ended without an
+established end 3 times is **refused**: no acknowledgement continues it, and the status points to `staircase recover 12`.
+
 ## A run that parked everything
 
 An away run in which every proposal was parked and nothing was approved does not end as a success. It is offered to you like any
@@ -97,12 +111,12 @@ Every run has one **outcome**, read from its verified audit chain alone (never f
 |---|---|
 | **running** | its last segment has not ended: it is working, or its process died, which a crash cannot record (`resume` or `recover` it) |
 | **awaiting review** | it offered its change, checked on the exact tree, and you have not finished deciding; a run that parked everything and approved nothing offers an empty change |
-| **blocked or partial** | it stopped short and waits for you: drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
+| **blocked or partial** | it stopped short and waits for you: its agent's last launch has no established end (see below), drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
 | **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree, its review was rejected, you accepted an empty change, or it failed |
 | **delivered** | its commit is on the run branch and its evidence is complete |
 | **delivered with incomplete evidence** | its commit is on the run branch, and some of its ledger, certificate or notes could not be written (the reason is shown) |
 
-With it come the **attempts** (how many times the agent was started: the run, then each continuation), what was parked, and the
+With it come the **attempts** (how many times the agent was launched: the claims on the chain, the run then each continuation, a launch whose agent never started included), what was parked, and the
 budget: the active time used against the time limit of the run's saved policy and plan, the tokens the agents reported (there is no
 token limit), and the cost estimated from those tokens at list prices against the project's budget cap (`staircase project config
 set --budget-cap`, as it is set now). `staircase decide` shows this for each run that waits, then lists your other away runs that are

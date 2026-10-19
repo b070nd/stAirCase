@@ -58,6 +58,9 @@ func (h History) Outcome() (Outcome, string) {
 		}
 		return OutcomeAwaitingReview, fmt.Sprintf("its change passed its checks on tree %.12s, with %d proposal(s) parked: decide it with staircase decide", rv.Tree, len(h.Parked()))
 	}
+	if why := h.lostLaunch(); why != "" {
+		return OutcomeBlocked, why
+	}
 	if e.ended == nil {
 		return OutcomeRunning, "the chain does not say it ended: it is running, or its process died"
 	}
@@ -103,4 +106,45 @@ func (h History) Outcome() (Outcome, string) {
 		return OutcomeFailed, "it ended without a delivery, and its chain (from an older stAirCase) does not say how"
 	}
 	return OutcomeFailed, fmt.Sprintf("it ended %s without a delivery or a review on its chain", e.ended.Status)
+}
+
+// ref names the run in a command the owner is told to type: its number when the history knows it.
+func (h History) ref() string {
+	if h.RunID > 0 {
+		return fmt.Sprint(h.RunID)
+	}
+	return "<run>"
+}
+
+// lostLaunch says why a run whose agent's last launch has no established end waits for its owner, or "" when it does not: it is
+// parked until a person acknowledges the launch (staircase resume --ack-unknown), or, past MaxLostLaunches, refused for good and
+// only recovered. It applies to a run that can be continued: not one that is delivered, being delivered or past its end. An open
+// claim is also what a run working right now looks like; only the run's process lock tells them apart, which the status reads
+// (orchestrator.StatusOf), not the chain.
+func (h History) lostLaunch() string {
+	if h.Sealed != "" || h.end.ended != nil && h.end.ended.Status != domain.RunStatusKilled {
+		return ""
+	}
+	n := len(h.Launches)
+	if n == 0 {
+		return ""
+	}
+	if lost := h.Lost(); lost >= MaxLostLaunches {
+		return fmt.Sprintf("refused: the end of its agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again: recover what it approved with staircase recover %s", lost, MaxLostLaunches, h.ref())
+	}
+	if p := h.LaunchParked(); p > 0 {
+		return fmt.Sprintf("launch %d of its agent has no established end (%s), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), h.ref(), h.ref())
+	}
+	return ""
+}
+
+// how says what the chain has of a launch that has no established end.
+func (l Launch) how() string {
+	switch l.Outcome {
+	case LaunchUnresponsive:
+		return "it did not stop when asked"
+	case LaunchUnknown:
+		return "its process was lost"
+	}
+	return "its process was lost before it recorded how it ended"
 }

@@ -46,6 +46,14 @@ func TestOutcome_maps_each_history_to_one_outcome(t *testing.T) {
 		"stopped before it finished":                {approved().ended("KILLED"), OutcomeBlocked, "stopped"},
 		"everything parked":                         {bound().edit("a").decided(1, "parked", false).ended("SUCCESS"), OutcomeBlocked, "1 proposal(s) parked"},
 		"nothing approved, nothing parked":          {bound().edit("a").decided(1, "operator", false).ended("SUCCESS"), OutcomeFailed, "without a change"},
+		"an open claim: the process was lost":       {approved().claim(1, "g1"), OutcomeBlocked, "staircase resume <run> --ack-unknown"},
+		"a lost launch a restart recorded":          {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ended("KILLED"), OutcomeBlocked, "staircase recover <run>"},
+		"an agent that did not stop":                {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnresponsive).ended("KILLED"), OutcomeBlocked, "--ack-unknown"},
+		"a lost launch, acknowledged":               {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}), OutcomeRunning, ""},
+		"a lost launch, acknowledged, then stopped": {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).claim(2, "g2").launchEnded(2, "g2", LaunchStopped).ended("KILLED"), OutcomeBlocked, "stopped"},
+		"three lost launches": {approved().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).
+			claim(2, "g2").launchEnded(2, "g2", LaunchUnknown).add("run_resumed", map[string]any{"segment": 3, "ack_unknown": 2}).
+			claim(3, "g3").launchEnded(3, "g3", LaunchUnknown), OutcomeBlocked, "refused"},
 		"a commit named, never delivered":           {approved().add("commit_prepared", map[string]any{"commit": "c"}).ended("KILLED"), OutcomeBlocked, "staircase recover"},
 		"delivered with its evidence":               {delivered().ended("SUCCESS"), OutcomeDelivered, "c"},
 		"delivered, evidence failed":                {delivered().add("evidence_failed", map[string]any{"commit": "c", "errors": []string{"ledger: disk full"}}).ended("SUCCESS"), OutcomeDeliveredIncomplete, "ledger: disk full"},
