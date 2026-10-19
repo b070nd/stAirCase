@@ -15,7 +15,7 @@ on a runner can be diagnosed without one.
 | `gofmt -l src tests demo` | formatting |
 | `go mod tidy -diff` | module drift |
 | `GOOS=windows go build ./...` | platform build breaks (Windows is built, not run) |
-| `go test ./... -count=1` | every test, including the run integration tests and the docs tests |
+| `go test ./... -count=1` | every test, including the run integration tests, the docs tests and the website's page check (`site/site_test.go`, also `make site-check`) |
 | `make race` | `go test -race` over `src/internal` |
 | `bats tests/integration.bats` | the built CLI from a shell |
 | `make demo` | the offline end-to-end acceptance run, in three modes |

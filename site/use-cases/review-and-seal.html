@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review after, and seal - stAirCase</title>
+  <meta name="description" content="Certify what you accept from a cloud agent's pull request or an agent in your own checkout.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../index.html#use-cases" aria-current="true">Use cases</a></li>
+      <li><a href="../assurance.html">Assurance levels</a></li>
+      <li><a href="../guides/index.html">Setup guides</a></li>
+      <li><a href="../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Review after, and seal</h1>
+<p class="lead">Some agents work where stAirCase cannot decide their steps before they happen: cloud agents that hand you a pull request, and agents that edit your checkout directly. stAirCase can still make sure only the files you approve are committed, and certify that you did.</p>
+<p><span class="cal">CAL 2</span> The files were changed before anyone decided them. <a href="../assurance.html">About assurance levels</a>.</p>
+
+<h2 id="review">Review a cloud agent's branch: <code>staircase review</code></h2>
+<p>Cloud agents (GitHub's Copilot coding agent, Codex in the cloud and others) work on their own machines and hand you a branch or a pull request.</p>
+<pre tabindex="0"><code>git fetch origin pull/42/head:pr-42
+staircase review pr-42 --by "Copilot coding agent"</code></pre>
+<ol>
+  <li>stAirCase shows you what is about to be reviewed and asks you to confirm (<code>--yes</code> in scripts).</li>
+  <li>It creates a separate worktree of your current branch and brings the branch's changes into it one file at a time. It applies the branch's own diff, so newer work on your branch is kept. A file whose change no longer fits your branch is left out and reported.</li>
+  <li>Each file comes to you (or your rules) to approve or reject. Rejected files are left out.</li>
+  <li>Exactly the approved files are committed on a new branch, <code>staircase/run-N</code>, with <code>Assisted-by: &lt;who made them&gt;</code> and a signed change certificate.</li>
+</ol>
+<p><code>--allow</code> limits where the changes may go: a file elsewhere comes to you as drift. A panel of validator models can review the files too (<code>--validator</code>, repeated); when they disagree, you decide.</p>
+
+<h2 id="seal">Agents in your own checkout: <code>attach</code> and <code>seal</code></h2>
+<p>Cursor, IDE assistants, or any tool stAirCase has no hooks for edit your checkout directly.</p>
+<pre tabindex="0"><code>staircase attach                      # while the agent works: plain git commit is refused
+# ... the agent edits your files ...
+git add -p                            # stage what you want to commit
+staircase seal -m "Add a health check" --by Cursor
+staircase attach --off                # back to normal</code></pre>
+<ol>
+  <li><code>staircase seal</code> takes exactly what is staged, as it is now.</li>
+  <li>Each staged file comes to you (or your rules, guards, validators and signals) to approve or reject.</li>
+  <li>Your current branch moves to one new commit with the approved files, your message, an <code>Assisted-by: &lt;agent&gt;</code> trailer and a change certificate.</li>
+</ol>
+<p>Rejected changes are not committed and not thrown away: they stay in your working files, uncommitted. Edits you did not stage are left alone. If your branch moved while you were deciding, it is not touched, and the certified commit stays on its <code>staircase/run-N</code> branch.</p>
+<p><code>staircase attach</code> installs a pre-commit hook that refuses <code>git commit</code> and shows how to seal. It is not a wall: <code>git commit --no-verify</code> gets through, which is why the <a href="../use-cases/ci.html">CI check</a> is the second line. An existing pre-commit hook of your own is never replaced.</p>
+
+<h2 id="level">Why CAL 2, and not more</h2>
+<p>Every byte that reaches your branch was decided, but nobody governed what the agent did on its own machine or in your checkout. A second person can still sign a reviewed change with <code>staircase sign</code>, but CAL 4 needs CAL 3 first, so a reviewed or sealed change stays at CAL 2. For CAL 3, run the agent through stAirCase (<code>staircase claude</code>, <code>staircase codex</code>): see <a href="../use-cases/governed-runs.html">governed runs</a>.</p>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/review.md">Reviewing changes made elsewhere</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/attach.md">Agents in your own checkout</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

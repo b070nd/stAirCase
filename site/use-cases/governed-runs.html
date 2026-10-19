@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Governed CLI runs - stAirCase</title>
+  <meta name="description" content="Put staircase in front of Claude Code, Codex or its own agents: every change is decided before it happens.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../index.html#use-cases" aria-current="true">Use cases</a></li>
+      <li><a href="../assurance.html">Assurance levels</a></li>
+      <li><a href="../guides/index.html">Setup guides</a></li>
+      <li><a href="../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Governed CLI runs</h1>
+<p class="lead">Put <code>staircase</code> in front of your agent. Every change the agent wants to make comes to you first, and at the end exactly what you approved is on a new branch, with a certificate you can check.</p>
+<p><span class="cal">CAL 3</span> when every action was decided before it ran. <a href="../assurance.html">About assurance levels</a>.</p>
+
+<h2 id="claude-code-and-codex">Claude Code and Codex, in one command</h2>
+<p>If Claude Code is installed and logged in, you need no setup at all. In any git repository with at least one commit:</p>
+<pre tabindex="0"><code>staircase claude "add a /health endpoint that returns 200"   # or: staircase codex "..."</code></pre>
+<ol>
+  <li>stAirCase creates what it needs (workspace, project, case) and first shows you what is about to happen: the task, where it may change files, how edits and commands are handled, the model and the budget. Type <kbd>y</kbd> and press <kbd>Enter</kbd> to start (<code>--yes</code> in scripts).</li>
+  <li>It runs the agent in a separate worktree and shows you every change it wants to make: press <kbd>y</kbd> to approve, <kbd>n</kbd> to reject with a reason.</li>
+  <li>At the end, exactly the approved changes are on a new branch, <code>staircase/run-N</code>, and your checkout is untouched.</li>
+</ol>
+<p>If the run is interrupted (a crash, a killed terminal), <code>staircase resume N</code> carries on with the same task, and <code>staircase recover N</code> commits exactly what it had approved.</p>
+<p>Gemini CLI and OpenCode are there too (<code>staircase gemini</code>, <code>staircase opencode</code>). Governing Claude Code and Codex is marked experimental; Gemini CLI and OpenCode are still experimental. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/compatibility.md#which-agents-have-actually-been-run">compatibility table</a> lists the agent versions that have actually been run.</p>
+
+<h2 id="own-agents">stAirCase's own agents</h2>
+<p>With a model provider of your choice, describe the team of agents (a topology), the work (a case with stories, each with the paths it may change), compile it into a plan, check it with gates, and run it with <code>staircase run</code>. The <a href="../guides/v1.1.0/first-run.html">first run guide</a> walks through each step.</p>
+
+<h2 id="what-an-approval-means">What an approval means</h2>
+<p>stAirCase does not trust what the agent says it will do. For every file proposal it computes itself what the file will contain after the change, starting from the commit the run began on. You approve those exact bytes. When the run ends, stAirCase checks that the worktree holds exactly what was approved and commits only that. Anything else (a file nobody approved, a change after the approval, a commit made by the agent) fails the run, and nothing is committed.</p>
+
+<h2 id="who-decides">Who decides, in order</h2>
+<ol>
+  <li><strong>stAirCase refuses</strong> a proposal it cannot apply as shown: a path outside the repository or inside <code>.git</code>, a symlink, text to replace that is not in the file, or a new file larger than 200 KiB.</li>
+  <li><strong>Drift supervision</strong> can stop the run, or send the proposal to a person, for a change outside the stories' scope, too many files, or a checkpoint.</li>
+  <li><strong>Guards</strong> send a change to a person, whatever the rules say, when it adds something risky: a file that is not text, hidden Unicode characters, a file made executable, a change to dependencies, or what looks like a secret.</li>
+  <li><strong>Your policy</strong> rules (<code>policy.json</code>) can approve or reject it automatically.</li>
+  <li><strong>The agreed task</strong>, with <code>--approve-in-scope</code>, approves in-scope file changes that are not sensitive; with <code>--approve-on-evidence</code> it approves them only when the evidence is there.</li>
+  <li><strong>A validator model</strong> or a panel of them, if you turned one on, can decide in-scope file changes.</li>
+  <li><strong>A person</strong> decides everything else.</li>
+</ol>
+<p>Shell commands always go to a person. Each decision is written to the audit chain <strong>before</strong> the agent learns it. If the record cannot be written, the proposal is rejected and the run stops.</p>
+
+<h2 id="ways-to-decide">Ways to decide as a person</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Way</th><th scope="col">How</th></tr></thead>
+  <tbody>
+    <tr><td>In the terminal (default)</td><td><kbd>y</kbd> approves; <kbd>n</kbd> (or <kbd>q</kbd>, <kbd>Esc</kbd>) rejects: type a reason and press <kbd>Enter</kbd>. The agent receives your reason and can try again.</td></tr>
+    <tr><td>In your browser</td><td><code>--approval-port 8765</code> serves a review page on this machine only and prints its link.</td></tr>
+    <tr><td>One page for every session</td><td><code>staircase serve</code> shows the waiting proposals of every session on this machine on one page.</td></tr>
+    <tr><td>From a script</td><td>the approval API on <code>127.0.0.1</code>, with a bearer token.</td></tr>
+    <tr><td>From a service</td><td>a webhook, signed with a shared secret (HMAC-SHA256).</td></tr>
+  </tbody>
+</table>
+</div>
+<p>With <code>--sign-approvals ~/.ssh/id_ed25519</code>, each decision you make carries your SSH signature, so who decided is provable. With <code>--require-signed-approvals</code>, a decision that is unsigned or not from a trusted signer is refused.</p>
+
+<h2 id="approve-the-task">Approve the task, on evidence</h2>
+<pre tabindex="0"><code>staircase claude "add a /health endpoint" --allow "src/**" --approve-on-evidence \
+  --check "go vet ./..." --check "go test ./..."</code></pre>
+<p>A change inside the scope (not a sensitive file, not flagged by a guard, not stopped by a limit) is approved only when every <code>--check</code> passes, run in the sandbox on the exact state the change would produce, and the <code>--validator</code> models, if you named any, agree. Otherwise the change comes to you with what was missing. You still see anything outside the scope, sensitive files, guard hits and shell commands, and you approve the whole change once at the end.</p>
+<p class="note">The evidence is as good as your checks: with weak tests, evidence-based approval is weak approval. A check reads the files the agent changes, so an agent that may edit a test (or the script a check runs) can make the check pass. In v1.1.0, keep the files your checks read out of the story's scope.</p>
+
+<h2 id="commands">Shell commands</h2>
+<p>Shell commands are off by default: agents can only ask to run commands when you allow it, and a person approves each one. Approved commands and checks run in an OS sandbox with no network, writes only in the worktree, and no access to your credentials or stAirCase's keys. <code>--sandbox required</code> refuses to run without one.</p>
+
+<h2 id="limits">Limits</h2>
+<ul>
+  <li>The agent program itself runs as your user. For stronger isolation, run stAirCase in a container or VM.</li>
+  <li>What the agent reads, and what the model provider receives, is not confined: a run sends code to your model provider.</li>
+  <li>A run drops to CAL 2 when an approved shell command ran without a sandbox.</li>
+</ul>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/approvals.md">Approvals</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/claude-code.md">Governing Claude Code</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/codex.md">Governing Codex</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/safety.md">Safety boundary</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

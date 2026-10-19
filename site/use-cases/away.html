@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Working while you are away - stAirCase</title>
+  <meta name="description" content="Start a task, leave, and come back to one decision.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../index.html#use-cases" aria-current="true">Use cases</a></li>
+      <li><a href="../assurance.html">Assurance levels</a></li>
+      <li><a href="../guides/index.html">Setup guides</a></li>
+      <li><a href="../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Working while you are away</h1>
+<p class="lead">Start a task, leave, and come back to one decision. Nothing is committed before you accept it.</p>
+<p>The certificate records the level a run reached; a change made with a declared command or an approved MCP tool call reaches <span class="cal">CAL 2</span>. <a href="../assurance.html">About assurance levels</a>.</p>
+
+<pre tabindex="0"><code>staircase claude "add a /health endpoint with a test" --allow "src/**" --away --check "go test ./..."
+# ... later
+staircase decide</code></pre>
+
+<h2 id="while-away">While you are away</h2>
+<ul>
+  <li><strong>Approved on evidence only.</strong> A change inside <code>--allow</code> is approved when every <code>--check</code> passes on the exact state it would produce. Your policy rules still apply. <code>--away</code> needs at least one <code>--check</code>.</li>
+  <li><strong>What needs you is parked, not asked.</strong> A change without evidence, one outside the scope, a sensitive file, a guard hit or a shell command would come to you; while you are away it is parked. The agent is told at once that it is kept for you, and to go on with what it can do without it. The parked proposal is on the audit chain with why it needed you. It is never applied by itself.</li>
+  <li><strong>The end is checked, not announced.</strong> When the agent stops, your checks run once more on the whole approved change. A change that does not pass ends the run failed. One that passes ends it <strong>awaiting review</strong>, with nothing committed. The process exits; nothing has to keep running.</li>
+</ul>
+<p class="note">Evidence is as good as your checks. A check reads the files the agent changes, so an agent that may edit a test (or the script a check runs) can make the check pass. In v1.1.0, keep the files your checks read out of the story's scope.</p>
+
+<h2 id="decide">When you are back: <code>staircase decide</code></h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Key</th><th scope="col">What happens</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>Y</kbd> or <kbd>I</kbd></td><td>Accept: exactly the change on offer is committed on <code>staircase/run-N</code> with its certificate. The agent is not started again.</td></tr>
+    <tr><td><kbd>N</kbd> or <kbd>O</kbd></td><td>Reject: nothing is committed.</td></tr>
+    <tr><td><kbd>D</kbd></td><td>Defer: nothing is decided, the run keeps waiting.</td></tr>
+    <tr><td><kbd>Z</kbd></td><td>Clarify: Claude Code starts in plan mode (read-only) in a separate directory that holds only this change, its evidence and what was parked. Nothing said there decides anything.</td></tr>
+    <tr><td><kbd>P</kbd></td><td>Prototype a parked change in a checkout that is thrown away. One that passes your checks can be adopted into the change as your approval; you then decide on the new review.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Without a terminal: <code>staircase decide 12 --accept</code> or <code>--reject</code>, with <code>-m</code> for why. A decision is bound to the review you saw.</p>
+
+<h2 id="declared-commands">Declared commands and tools</h2>
+<p>An away run parks every command, because a command needs a person. A command you can name in advance can be declared:</p>
+<pre tabindex="0"><code>staircase claude "regenerate the API client and fix what breaks" --allow "src/**" --away --check "go test ./..." \
+  --allow-shell-exec --away-command "go generate ./..." --sandbox docker:image=golang:1.26-bookworm</code></pre>
+<p>A declared command runs without asking only if it is exactly what you wrote, in the worktree's root, and only in a sandbox without network; anything else is parked as before. It is recorded as your decision made in advance, and the files it changes are decided like the agent's (on evidence, or parked), so such a change reaches CAL 2. Gemini CLI and OpenCode run their commands without a sandbox, so they cannot be given declared commands.</p>
+<p>An MCP server's tool call is decided like a command: never by a policy rule, and while away it is parked unless you declared that exact tool (<code>--away-tool mcp__&lt;server&gt;__&lt;tool&gt;</code>). An approved tool call runs outside stAirCase's sandbox, so a change made with one reaches CAL 2.</p>
+
+<h2 id="hosted">Sessions another program starts</h2>
+<p>Some tools start Claude Code for you: a runner such as Cloudroom keeps agents working in its own sessions, with Claude Code's approvals switched off. Name <code>staircase host claude</code> as the runner's Claude Code program, and each session it starts is an away run: nobody is asked, a change is approved only when your checks pass on it, anything that needs you is parked, and the change waits for <code>staircase decide</code>.</p>
+<pre tabindex="0"><code>cd your-repository
+staircase host setup --allow "src/**" --check "go test ./..." --pass-env CLAUDE_CODE_OAUTH_TOKEN</code></pre>
+<ul>
+  <li>The runner's stdin and stdout reach Claude Code untouched; stAirCase's own output goes to a log in the workspace.</li>
+  <li>Every call of the runner's MCP tools is a proposal stAirCase decides; a change made with an approved tool call reaches CAL 2.</li>
+  <li>An argument stAirCase does not know is refused, naming it, because it could widen what the agent may do.</li>
+  <li>The agent works in stAirCase's run worktree; what reaches <code>staircase/run-N</code> is only what stAirCase derived from recorded decisions, with its certificate.</li>
+</ul>
+
+<h2 id="not-yet">What it guarantees, and what not yet</h2>
+<ul>
+  <li>The commit holds exactly the files the chain says were approved, derived again from the base commit, and the tree must be the one whose checks passed.</li>
+  <li>The certificate cites the checks that ran on that tree and says the change was made while you were away and accepted afterwards.</li>
+  <li>Not yet in v1.1.0: a run that requires signed decisions cannot be away; delivery by policy without your review; a resumed or forked runner session (refused, naming the reason); hosted sessions of other agents than Claude Code.</li>
+</ul>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/away.md">Working while you are away</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/hosting.md">Governing sessions another program starts</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

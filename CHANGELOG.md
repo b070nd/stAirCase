@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
+  (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
+  level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.
+  `make check` runs an offline page check (`make site-check`): a lang attribute, one h1, headings in order, alt text, internal links
+  that resolve, no em dash.
+
 - **Checks the agent cannot weaken (`--protect`).** The paths where a run's checks are defined are part of its terms, saved and bound
   by their digest: what the checks name (the script a check runs, the tests given to `bats` or `pytest`, `make`'s `Makefile`) and what
   you add with `--protect <path or pattern>`. A change to one always goes to a person, whatever the policy, the agreed task or a

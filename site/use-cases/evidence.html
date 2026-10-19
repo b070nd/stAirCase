@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Evidence inspection - stAirCase</title>
+  <meta name="description" content="Verify certificates, rebuild commits from their approvals, export and verify the signed audit chain.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../index.html#use-cases" aria-current="true">Use cases</a></li>
+      <li><a href="../assurance.html">Assurance levels</a></li>
+      <li><a href="../guides/index.html">Setup guides</a></li>
+      <li><a href="../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Evidence inspection</h1>
+<p class="lead">Every run keeps a record of what the agents proposed, who decided, what was committed, and what went wrong. Check it yourself, or hand it to someone else.</p>
+<p>The certificate shows the level each change reached. <a href="../assurance.html">About assurance levels</a>.</p>
+
+<h2 id="verify">Verify a commit's certificate</h2>
+<p>Each run that commits leaves a change certificate about exactly that commit: a small, signed statement of who helped, what was decided and by whom, and the assurance level the change reached. It holds digests only, never code or prompts. It is attached to the commit as a git note (<code>refs/notes/staircase</code>).</p>
+<pre tabindex="0"><code>staircase verify staircase/run-7
+staircase verify staircase/run-7 --min-cal 3     # fail below CAL 3</code></pre>
+<p>For a reviewer on another machine, push the notes with the branch; the reviewer fetches them and verifies with your public key, the only file they need:</p>
+<pre tabindex="0"><code>git fetch origin refs/notes/staircase:refs/notes/staircase
+staircase verify &lt;commit&gt; --key signing.pub</code></pre>
+
+<h2 id="rebuild">Rebuild a commit from its approvals</h2>
+<pre tabindex="0"><code>staircase rebuild staircase/run-7</code></pre>
+<p><code>verify</code> shows who signed what was decided. <code>rebuild</code> shows that what was decided is what is in the commit, byte for byte: it replays the run's ledger (the base commit and every approved proposal, in order) on the base commit, and the tree it produces must be identical to the commit's tree. A commit that holds anything nobody approved fails, even when its certificate is validly signed. <code>staircase verify --rebuild</code> does both.</p>
+<p>The ledger holds the approved content, so it stays in your workspace; to let a reviewer rebuild, give them the ledger file.</p>
+
+<h2 id="audit-chain">The audit chain</h2>
+<p>Each event of a run is stored with a hash of its content and of the event before it. Changing, removing or reordering any event breaks every hash after it. A decision is written to the chain before the agent learns it, and secrets are removed from every event before it is stored.</p>
+<pre tabindex="0"><code>staircase inspect runs --case 1        # runs of case 1 and their status
+staircase inspect log 7                # the events of run 7; also checks the chain
+staircase replay 7                     # just the decisions, in order, after checking the chain</code></pre>
+
+<h2 id="export">Export signed evidence, and let someone else verify it</h2>
+<pre tabindex="0"><code>staircase audit export 7
+staircase audit verify ~/.staircase-workspace/audit/run-7.checkpoint.json</code></pre>
+<p><code>audit export</code> writes the run's events to a checkpoint file and signs them with the workspace's Ed25519 signing key. Verification needs only two files, and neither is secret: the checkpoint file and your workspace's public signing key. If any character of the evidence was changed, verification fails.</p>
+
+<h2 id="rekor">Add an outside witness: Rekor</h2>
+<p>A signature proves the evidence was not changed after signing, but whoever holds the signing key could create new, different evidence. To prove when the evidence existed, anchor it in Rekor, Sigstore's public, append-only transparency log.</p>
+<pre tabindex="0"><code>staircase audit anchor 7
+staircase verify staircase/run-7 --check-anchor</code></pre>
+<p>Anchoring the change certificate sends only the certificate: commit hashes, digests, decision counts and the level. Anchoring the whole record (<code>staircase audit export 7 --anchor</code>) sends every event of the run, including the agents' reasoning, file paths and the proposed changes, to the Rekor service. If the record must not reach a third party at all, use <code>--rekor-url</code> with a Rekor instance you run yourself.</p>
+
+<h2 id="report">Report across repositories</h2>
+<pre tabindex="0"><code>staircase report ~/src/shop ~/src/billing --since 30.days --key team.pub</code></pre>
+<p>For each repository, <code>report</code> shows how many commits were made by people and how many with an agent, how many of those carry a valid certificate at each assurance level, which agents wrote them, and each agent commit whose certificate is missing, invalid or records a failed check. It never fails; <code>--json</code> prints the same for a dashboard or a spreadsheet.</p>
+
+<h2 id="attention">Review attention</h2>
+<p>A signed approval proves someone clicked approve, not that they read the change. The certificate also records how many decisions people made, their median time, and how many changes of 20 lines or more they approved in under 5 seconds. It is information, not a gate.</p>
+
+<h2 id="missing">When the evidence cannot be written</h2>
+<p>The commit is made first; the ledger and the signed certificate are written after it. If either cannot be written, the commit is still on its run branch and the run says so plainly: its outcome is <code>delivered_without_evidence</code>, and the audit chain has an <code>evidence_failed</code> event. With <code>--require-evidence</code> the run also exits non-zero, so a script or CI job cannot mistake it for a complete result.</p>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/audit.md">Audit evidence</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/spec/certificate-v1.md">the certificate specification</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

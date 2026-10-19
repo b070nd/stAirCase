@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assurance levels - stAirCase</title>
+  <meta name="description" content="The four change assurance levels (CAL 1 to CAL 4), and the level each way in can reach.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html#use-cases">Use cases</a></li>
+      <li><a href="assurance.html" aria-current="page">Assurance levels</a></li>
+      <li><a href="guides/index.html">Setup guides</a></li>
+      <li><a href="sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Change assurance levels</h1>
+<p class="lead">How much a change certificate vouches for, from CAL 1 to CAL 4. Each level includes the ones below it.</p>
+
+<h2 id="core-promise">The core promise</h2>
+<p>A change reaches the target branch only as bytes that stAirCase derived itself and that a recorded decision covers. stAirCase builds the commit from those bytes, and anyone can check this afterwards. No feature may weaken this promise without saying so.</p>
+
+<h2 id="levels">The four levels</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Level</th><th scope="col">What it guarantees</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">CAL 1 Attributed</th><td>The change says which agents and models took part (a certificate and an <code>Assisted-by:</code> trailer). Nothing is enforced.</td></tr>
+    <tr><th scope="row">CAL 2 Reviewed</th><td>Every byte an agent wrote is covered by a recorded decision, and the commit can be rebuilt from the approved proposals. Proposals may have been captured after the agent made them.</td></tr>
+    <tr><th scope="row">CAL 3 Gated</th><td>Every agent action was decided before it ran, in an isolated worktree. No approved command ran outside a sandbox. stAirCase built the commit.</td></tr>
+    <tr><th scope="row">CAL 4 Two-party</th><td>CAL 3, and the decisions, or the final review of the whole change, are signed by an identified person who did not start the run.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>A CAL is not a SLSA level. CAL 4 resembles two-party review in SLSA's source track, but stAirCase never claims compliance on anyone's behalf.</p>
+
+<h2 id="honest-reporting">Honest reporting</h2>
+<p>A run records the level it actually reached. A lower level is never shown as a higher one. <code>staircase verify</code> prints the level of a commit, and <code>--min-cal</code> fails below the level you name.</p>
+<p>Checks (<code>--check</code>) are evidence about the result: they are recorded in the certificate and a failed one makes <code>staircase verify</code> fail, but they do not change the level, which is about how the change was decided.</p>
+
+<h2 id="by-workflow">The level each way in can reach</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Way in</th><th scope="col">Highest level</th><th scope="col">Why</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="use-cases/governed-runs.html">Governed runs</a>: <code>staircase claude</code>, <code>staircase codex</code>, <code>staircase run</code></td>
+      <td>CAL 3</td>
+      <td>Every action was decided before it ran. A run drops to CAL 2 when an approved shell command ran without a sandbox (for example when a company's managed settings exempt Claude Code's commands from its sandbox), or when changes were reviewed only after the agent made them. Files written by a command that ran in the sandbox are decided before they reach the commit, so they keep CAL 3.</td>
+    </tr>
+    <tr>
+      <td><a href="use-cases/away.html">Away runs and hosted sessions</a>: <code>--away</code>, <code>staircase host claude</code></td>
+      <td>As recorded</td>
+      <td>A declared command's file changes are decided like the agent's, so such a change reaches CAL 2. An approved MCP tool call runs outside stAirCase's sandbox, so a change made with one reaches CAL 2.</td>
+    </tr>
+    <tr>
+      <td><a href="use-cases/review-and-seal.html">Review after</a>: <code>staircase review</code></td>
+      <td>CAL 2</td>
+      <td>The files were changed before anyone decided them: every byte that reaches your branch was decided, but nobody governed what the agent did on its own machine.</td>
+    </tr>
+    <tr>
+      <td><a href="use-cases/review-and-seal.html">Seal</a>: <code>staircase seal</code></td>
+      <td>CAL 2</td>
+      <td>The staged files were changed before anyone decided them. For CAL 3, run the agent through stAirCase.</td>
+    </tr>
+    <tr>
+      <td><a href="use-cases/teams.html">Two-person review</a>: <code>staircase sign</code></td>
+      <td>CAL 4</td>
+      <td>Only on a CAL 3 change. CAL 4 needs CAL 3 first, so a reviewed or sealed change stays at CAL 2 even when a second person signs it.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="cal-4">What CAL 4 proves, and what not</h2>
+<p>A CAL 3 change counts as CAL 4 when a trusted reviewer signed it and the reviewer is not the person the run was made for. By default the certificate records the git <code>user.email</code> of the checkout as the requester, and anyone can set that to anything, so two different strings are not proof of two different people.</p>
+<ul>
+  <li>With <code>staircase verify --require-initiator</code>, CAL 4 counts only when the person who started the run signed the request with a trusted key: two different trusted keys were used, one to start the run and one to review it. That is not proof that two humans hold them; back it with branch protection that requires a human approval.</li>
+  <li>Without <code>--require-initiator</code>, and for runs started without a key, read CAL 4 as "a trusted reviewer signed it".</li>
+</ul>
+<p>Signing each decision with <code>--sign-approvals</code> is evidence of who decided each change. It is separate from two-person review, which is what reaches CAL 4.</p>
+
+<h2 id="who-decides">Who may decide</h2>
+<ul>
+  <li>A person can always decide.</li>
+  <li>A policy rule, a verifier's result or a validator model can also decide, within the limits of the level. A model's approvals count only when a person reviews the whole change at the end.</li>
+  <li>Decision models used as signals (<code>--signal</code>) can only send a change to a person. They never approve or reject anything.</li>
+</ul>
+<p>Sources: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/adr/0001-core-promise-and-assurance-levels.md">ADR 0001</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/audit.md#the-change-certificate-on-every-commit">the change certificate</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/audit.md#two-person-review-cal-4">two-person review</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>
