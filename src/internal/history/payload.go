@@ -142,6 +142,9 @@ type LaunchEnded struct {
 	Attempt    int    `json:"attempt"`
 	Generation string `json:"generation"`
 	Outcome    string `json:"outcome"`
+	// Class is the lifecycle failure class of a launch that did not end well (see ClassOf), "" when it ended by itself or the run
+	// stopped it. A chain from before classes has none; Launch.Class derives it from the outcome.
+	Class string `json:"class,omitempty"`
 }
 
 // The outcomes of a launch. The first three are established ends; the last two are not.
@@ -152,6 +155,63 @@ const (
 	LaunchUnresponsive = "unresponsive"          // the run asked the agent to stop and it did not, in time
 	LaunchUnknown      = "unknown_after_restart" // no outcome was recorded: a restart found the claim open
 )
+
+// The lifecycle failure classes of a launch (V11-C01 scope 8, after Cloudroom's error envelope): why an agent's launch did not end
+// well, apart from anything its checks or its reviewer decided. A class is about the agent's process and the records of it; it is
+// never a check result and never acceptance. Each belongs to the outcomes that can carry it (see classFits).
+const (
+	ClassRejected          = "rejected"           // the agent was refused or never ran governed: it did not start, or its hooks never arrived
+	ClassHostExit          = "host_exit"          // the agent's process ended with an error
+	ClassStorage           = "storage"            // a record of the launch could not be written while the agent ran
+	ClassCleanup           = "cleanup"            // the agent did not stop when asked, so its end is not established
+	ClassUncertainDispatch = "uncertain_dispatch" // the launch was claimed and no outcome was recorded: nobody knows what the agent did
+)
+
+// ClassOf is the class a launch's outcome implies when its launch_ended names none (a chain from before classes, or a restart's
+// record): "" for an outcome that is not a lifecycle failure.
+func ClassOf(outcome string) string {
+	switch outcome {
+	case LaunchFailed:
+		return ClassHostExit
+	case LaunchUnresponsive:
+		return ClassCleanup
+	case LaunchUnknown:
+		return ClassUncertainDispatch
+	}
+	return ""
+}
+
+// classFits says whether a launch that ended with outcome can have class.
+func classFits(class, outcome string) bool {
+	switch class {
+	case ClassRejected, ClassHostExit:
+		return outcome == LaunchFailed
+	case ClassCleanup:
+		return outcome == LaunchUnresponsive
+	case ClassUncertainDispatch:
+		return outcome == LaunchUnknown
+	case ClassStorage: // the launch ended in some way the run established, and a record of it was lost
+		return outcome == LaunchExited || outcome == LaunchFailed || outcome == LaunchStopped
+	}
+	return false
+}
+
+// ClassPhrase is a class in the words a person reads.
+func ClassPhrase(class string) string {
+	switch class {
+	case ClassRejected:
+		return "rejected (the agent was refused or never ran governed)"
+	case ClassHostExit:
+		return "a host exit (the agent's process ended with an error)"
+	case ClassStorage:
+		return "storage trouble (a record of the launch could not be written)"
+	case ClassCleanup:
+		return "a cleanup failure (the agent did not stop when asked)"
+	case ClassUncertainDispatch:
+		return "an uncertain dispatch (the launch has no known end: nobody knows what the agent did)"
+	}
+	return class
+}
 
 // PolicySnapshot is the policy a run decided under.
 type PolicySnapshot struct {

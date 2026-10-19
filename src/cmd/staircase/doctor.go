@@ -28,7 +28,8 @@ what stAirCase works without but gains from: ssh-keygen for signed decisions and
 reviews (OpenSSH 8.0 or newer), which OS sandbox works on this machine and why another
 does not, and which of Claude Code, Codex, Gemini CLI and OpenCode are installed, with
 their versions and, where it can be asked without a model call, whether they are logged
-in. It also lists runs that were interrupted before they committed and hold approved
+in. It lists what each of those adapters supports (native resume, its own sandbox, an
+MCP gate, hooks, host mode), as a description and not a grant. It also lists runs that were interrupted before they committed and hold approved
 changes (staircase recover), and says when a legal hold is in effect. A missing optional
 tool is information, not a failed check.`,
 	RunE: doctorHandler,
@@ -215,6 +216,28 @@ func optionalTools() {
 	})
 	agentLine("Gemini CLI", firstPath("gemini"), "--version", func(string) string { return "login not checked" })
 	agentLine("OpenCode", firstPath("opencode"), "--version", func(string) string { return "login not checked" })
+	adapterCapabilities()
+}
+
+// adapterCapabilities lists what each adapter declares it supports (V11-C01 scope 8), installed or not. It describes the adapters;
+// a run is governed by its terms whatever its agent supports.
+func adapterCapabilities() {
+	fmt.Println("\n  Adapter capabilities (descriptions, not grants: a run is governed the same whatever its agent supports)")
+	for _, name := range agent.AdapterNames() {
+		caps, _ := agent.CapabilitiesOf(name)
+		yes, no := caps.Supports()
+		line := "supports: none"
+		if len(yes) > 0 {
+			line = "supports: " + strings.Join(yes, ", ")
+		}
+		if len(no) > 0 {
+			line += "; not: " + strings.Join(no, ", ")
+		}
+		fmt.Printf("    %-13s%s\n", name, line)
+		if caps.Note != "" {
+			fmt.Printf("    %-13s%s\n", "", caps.Note)
+		}
+	}
 }
 
 func firstPath(name string) string {

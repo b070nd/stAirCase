@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/history"
@@ -21,6 +22,13 @@ func statusLines(st orchestrator.Status) []string {
 		attempts += fmt.Sprintf("; %d launch(es) ended without an established end", st.LostLaunches)
 	}
 	out = append(out, attempts)
+	if len(st.Failures) > 0 {
+		var each []string
+		for _, l := range st.Failures {
+			each = append(each, fmt.Sprintf("attempt %d: %s", l.Attempt, history.ClassPhrase(l.Class)))
+		}
+		out = append(out, "launches   "+strings.Join(each, "; ")+" (about the agent, not its checks or any acceptance)")
+	}
 	elapsed := st.Elapsed.Round(time.Second)
 	switch {
 	case st.TimeUnknown != "":

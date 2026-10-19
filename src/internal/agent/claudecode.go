@@ -8,7 +8,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -205,9 +204,9 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	if c.Host != nil {
 		switch {
 		case runErr != nil:
-			return withStderr(fmt.Errorf("claude code: %w", runErr), stderr)
+			return classifyRun(runErr, withStderr(fmt.Errorf("claude code: %w", runErr), stderr))
 		case !h.started.Load():
-			return errors.New("claude code never ran staircase's hooks, so the session was not governed; nothing it did is kept")
+			return ungoverned("claude code")
 		}
 		return nil
 	}
@@ -226,19 +225,19 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	}
 	switch {
 	case runErr != nil:
-		return withStderr(fmt.Errorf("claude code: %w: %s", runErr, preview(res.Result)), stderr)
+		return classifyRun(runErr, withStderr(fmt.Errorf("claude code: %w: %s", runErr, preview(res.Result)), stderr))
 	case res.IsError:
 		return fmt.Errorf("claude code reported an error: %s", preview(res.Result))
 	case !h.started.Load():
 		// Probed on Claude Code 2.1.236 (headless -p, --settings, --setting-sources ""): SessionStart
 		// fires, so a session in which it never arrived did not run staircase's hooks.
-		return errors.New("claude code never ran staircase's hooks, so the session was not governed; nothing it did is kept")
+		return ungoverned("claude code")
 	}
 	return nil
 }
 
 // NativeResume says a continued run can resume Claude Code's own session (`--resume <id>`).
-func (c *ClaudeCode) NativeResume() bool { return true }
+func (c *ClaudeCode) NativeResume() bool { return nativeResume("claude-code") }
 
 // HookCommand is the command a hook runs: `staircase hook`, which passes the
 // call to the run and blocks (exit 2) on every failure. mode is --governed

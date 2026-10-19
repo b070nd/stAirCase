@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -120,17 +119,17 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	env.Emit(ctx, orchestrator.Usage{Agent: "gemini", Model: orDefault(g.Model, "gemini"), Content: preview(res.Response)})
 	switch {
 	case runErr != nil:
-		return withStderr(fmt.Errorf("gemini: %w: %s", runErr, preview(stdout.String())), stderr)
+		return classifyRun(runErr, withStderr(fmt.Errorf("gemini: %w: %s", runErr, preview(stdout.String())), stderr))
 	case res.Error != nil:
 		return fmt.Errorf("gemini reported an error: %s", preview(res.Error.Message))
 	case !h.started.Load():
-		return errors.New("gemini never ran staircase's hooks, so the session was not governed; nothing it did is kept")
+		return ungoverned("gemini")
 	}
 	return nil
 }
 
 // NativeResume says a continued run can resume Gemini CLI's own session (`--resume <id>`).
-func (g *Gemini) NativeResume() bool { return true }
+func (g *Gemini) NativeResume() bool { return nativeResume("gemini") }
 
 // GeminiSettings is the settings file that routes Gemini CLI's tool calls
 // through cmd: SessionStart (the handshake), BeforeTool (every tool) and

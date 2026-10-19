@@ -25,6 +25,9 @@ type Status struct {
 	// LostLaunches is how many of those launches have no established end: the process was lost, or the agent did not stop when asked.
 	LostLaunches int
 	Parked       int // proposals parked for the owner and not adopted
+	// Failures are the launches that did not end well, each with its lifecycle class (rejected, host exit, storage trouble, cleanup
+	// failure, uncertain dispatch). They are about the agent's process, never about its checks or an acceptance.
+	Failures []history.Launch
 
 	Elapsed   time.Duration // the active time its segments used
 	TimeLimit time.Duration // 0: none, or none that can be read (TimeUnknown)
@@ -60,6 +63,7 @@ func (r *Runner) StatusOf(runID int64) (Status, error) {
 			st.Outcome, st.Why = history.OutcomeRunning, "its agent is running: its process holds the run's lock"
 		}
 	}
+	st.Failures = h.Failures()
 	st.Attempts, st.LostLaunches, st.Parked, st.Elapsed = h.Attempts(), h.Lost(), len(h.Parked()), h.Elapsed
 	for _, u := range h.Usage {
 		st.InputTokens += u.State.In

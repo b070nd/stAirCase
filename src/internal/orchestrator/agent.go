@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
@@ -269,6 +270,9 @@ type agentHost struct {
 
 	debug io.Writer // --debug: every audited message, scrubbed, one per line
 
+	// storageFailed is set when a record of the run could not be written to the chain; the launch's class says so.
+	storageFailed atomic.Bool
+
 	mu        sync.Mutex
 	delivered []string // secret values (and JSON-escaped forms) handed to the agent
 }
@@ -308,6 +312,7 @@ func (h *agentHost) auditErr(event string, v any) (string, error) {
 	e, err := h.store.AppendEventLogChained(h.runID, event, payload, "")
 	if err != nil {
 		obs.Log.Warn("append audit event", "event", event, "err", err)
+		h.storageFailed.Store(true)
 		return "", err
 	}
 	obs.AuditChainLength.Inc()
