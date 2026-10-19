@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **The agreement says when nothing of the checks is protected.** When a run's checks name no file of their own (for example `go test
+  ./...`) and no `--protect` was given, the agreement now says `protected:   nothing`, that the agent may edit the tests the checks run,
+  and names `--protect`. A command declared for an away run that writes a protected path is parked like any other change to it.
+
 - **Parked proposals are offered even when the checks fail on the unchanged tree.** An away run that approved nothing and parked what
   it proposed used to end FAILED, with the parked proposals lost, when the project's checks failed on the unchanged tree (a project
   that is broken at its base, where only a parked proposal fixes the checks). It now awaits your review of an empty change that says

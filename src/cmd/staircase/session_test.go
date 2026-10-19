@@ -184,6 +184,14 @@ func TestAgreement_says_what_will_happen(t *testing.T) {
 		checks: []string{"sh tests/run"}, protected: []string{"tests/run", "tests/unit/**"}})
 	assert.Contains(t, protected, "protected:   tests/run, tests/unit/** (where your checks are defined: a change to them always comes to you")
 	assert.NotContains(t, claude, "protected:")
+	// checks that name no file of their own (go test ./...) and no --protect: the agreement says nothing of the checks is protected
+	bare := agreement(sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc",
+		checks: []string{"go test ./..."}})
+	assert.Contains(t, bare, "protected:   nothing")
+	assert.Contains(t, bare, "no file of your checks is protected")
+	assert.Contains(t, bare, "--protect")
+	assert.NotContains(t, claude, "no file of your checks is protected", "no checks, nothing to say")
+	assert.NotContains(t, protected, "no file of your checks is protected")
 }
 
 // TestSession_approve_on_evidence_needs_evidence_and_a_scope: approving on
