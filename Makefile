@@ -1,4 +1,4 @@
-.PHONY: evidence site-check checktest test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
+.PHONY: check evidence site-check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
