@@ -17,7 +17,7 @@ check: lint
 # Plain HTML and CSS, built by nothing and served by nothing: open site/index.html.
 # The page check (site/site_test.go) runs offline as part of `go test ./...` in
 # check: every page has a lang, one h1, headings in order, alt text on images, a
-# title and a viewport; internal links resolve; no file has an em dash.
+# title and a viewport; internal links resolve; no file has an em or en dash.
 site-check:
 	go test ./site -count=1
 
