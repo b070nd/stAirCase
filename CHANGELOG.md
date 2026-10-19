@@ -52,6 +52,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
+  run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
+  of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
+  [compatibility](docs/compatibility.md#the-six-contracts)).
+
+- **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
+  shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
+  silently missing.
+
+- **`staircase resume` no longer says "Nothing was changed" after it recorded a lost launch.** A refused continuation that wrote the
+  outcome of a lost launch (`unknown_after_restart`) says so, and that nothing else was changed, whatever check refused it; one that
+  wrote nothing, including a second attempt on a run already parked, says "Nothing was changed".
+
+- **The agreement says when nothing of the checks is protected.** When a run's checks name no file of their own (for example `go test
+  ./...`) and no `--protect` was given, the agreement now says `protected:   nothing`, that the agent may edit the tests the checks run,
+  and names `--protect`. A command declared for an away run that writes a protected path is parked like any other change to it.
+
+- **Parked proposals are offered even when the checks fail on the unchanged tree.** An away run that approved nothing and parked what
+  it proposed used to end FAILED, with the parked proposals lost, when the project's checks failed on the unchanged tree (a project
+  that is broken at its base, where only a parked proposal fixes the checks). It now awaits your review of an empty change that says
+  its checks failed (`checks   FAILED on this unchanged tree`), with the parked proposals to prototype and adopt; accepting that empty
+  change still delivers nothing. A change with files is still offered only when its checks pass.
+
 - **The status counts launches and shows a parked run.** A run's attempts are the launches claimed on its chain (a launch whose agent
   never started counts), no longer its segments; the two agree for a run without a lost launch. A run whose agent's last launch has
   no established end shows as blocked or partial in `staircase decide` and `staircase inspect`, with the exact command to continue it

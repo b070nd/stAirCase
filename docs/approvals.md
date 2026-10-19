@@ -368,6 +368,11 @@ A check is only evidence while the agent cannot change what it runs. The paths w
 defined are protected: a change to one (an edit, a new file, a deletion) goes to a person whatever
 your policy, the agreed task or a validator would say, and while you are away it is parked.
 
+This applies to every run that has checks, away or not, and it sits above your policy rules. A policy rule that approved an edit
+of such a path before (a rule for `file_edit` on `tests/**`, say) no longer does: that edit now goes to a person, in a run you
+watch too. Nothing else about your policy changes. If you want a path to be editable by the agent again, it must not be where a
+check is defined.
+
 - **What the checks name is protected by itself:** the script a check runs (`sh tests/run`,
   `./scripts/check.sh`, `python3 ci/check.py`), the files and directories a test runner is given
   (`bats tests/unit`, `pytest tests/test_api.py`), and `Makefile`, `justfile` or `package.json`

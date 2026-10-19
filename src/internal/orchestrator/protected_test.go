@@ -65,3 +65,45 @@ func TestAway_an_agent_cannot_make_a_failing_check_pass_by_changing_its_test(t *
 	sum := sha256.Sum256(saved)
 	assert.Equal(t, hex.EncodeToString(sum[:]), payload(t, r, "run_bound")["terms_sha256"], "bound by digest")
 }
+
+// TestDeclared_a_command_that_writes_a_protected_path_is_parked_like_any_change (ADR 0009, V11-C01 scope 5): a declared command is
+// approved in advance, but what it writes is a change like any other. A file it overwrote under a protected path is parked, and
+// the worktree goes back to its approved state, so a declared command cannot weaken the checks either.
+func TestDeclared_a_command_that_writes_a_protected_path_is_parked_like_any_change(t *testing.T) {
+	op := &operator{approve: true}
+	opts := declaredOpts(t, "sh gen.sh")
+	opts.Checks, opts.ProtectedPaths = []string{"sh src/run_tests"}, []string{"src/tests/**"}
+	var cmd, wrote orchestrator.Approval
+	var after string
+	r := runtest.Run(t, runtest.Options{
+		Base: map[string]runtest.File{
+			"src/run_tests": {Content: "for t in src/tests/*; do sh \"$t\" || exit 1; done\n", Mode: 0o644},
+			"src/tests/one": {Content: "true\n", Mode: 0o644},
+		},
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+			scoped(op, "")(s, wsDir, projectID)
+			cases, _ := s.ListCasesByProject(projectID)
+			stories, _ := s.ListUserStoriesByCase(cases[0].ID)
+			for _, st := range stories {
+				_ = s.SetUserStoryScope(st.ID, `{"allow":["src/**"]}`)
+			}
+		},
+		Run: opts,
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			cmd = env.ProposeShell(ctx, "coder", "generate", ".", "sh gen.sh")
+			// the approved command ran and wrote over a protected file
+			if err := os.WriteFile(filepath.Join(env.Worktree, "src", "tests", "one"), []byte("exit 0\n"), 0o644); err != nil {
+				return err
+			}
+			wrote = env.ShellRan(ctx, "coder", "sh gen.sh", true)
+			b, err := os.ReadFile(filepath.Join(env.Worktree, "src", "tests", "one"))
+			after = string(b)
+			return err
+		})})
+	require.NoError(t, r.Err)
+	assert.Empty(t, op.seen, "nobody is asked while away")
+	assert.True(t, cmd.Approved, cmd.Feedback)
+	assert.False(t, wrote.Approved, "what the command wrote under a protected path is not approved")
+	assert.Equal(t, []string{"shell_exec:declared", "file_edit:parked"}, sources(t, r))
+	assert.Equal(t, "true\n", after, "the protected file is back to its approved state")
+}

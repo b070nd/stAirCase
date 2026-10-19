@@ -127,6 +127,8 @@ type Resumed struct {
 	JournalDropped int `json:"journal_dropped,omitempty"`
 	// AckUnknown is the launch whose end was never established that a person acknowledged before this continuation.
 	AckUnknown int `json:"ack_unknown,omitempty"`
+	// WithdrewReview is the awaiting_review entry a resumed hosted session withdrew (ADR 0008).
+	WithdrewReview string `json:"withdrew_review,omitempty"`
 }
 
 // LaunchClaimed is launch_claimed: an agent launch, put on the chain before the agent's process starts. Attempt counts the
@@ -276,7 +278,10 @@ type AwaitingReview struct {
 // ReviewDecided is review_accepted or review_rejected: the owner's decision on an offered review.
 type ReviewDecided struct {
 	AwaitingReview string `json:"awaiting_review"`
-	Feedback       string `json:"feedback,omitempty"`
+	Tree           string `json:"tree,omitempty"` // the tree an acceptance accepted
+	Feedback       string `json:"feedback"`
+	// Empty marks an acceptance of a change that approved nothing: it delivers nothing and the run ends FAILED.
+	Empty bool `json:"empty,omitempty"`
 }
 
 // Delivered is commit_prepared, certificate_issued, run_recovered or review_delivered: what a commit-naming event names.

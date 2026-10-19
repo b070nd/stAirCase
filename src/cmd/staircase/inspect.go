@@ -30,6 +30,7 @@ var inspectRunsCmd = &cobra.Command{
 		}
 		defer func() { _ = db.Close() }()
 
+		runner := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR"))
 		var runs []domain.Run
 		if inspectRunsCaseID != 0 {
 			runs, err = store.ListRunsByCase(inspectRunsCaseID)
@@ -37,7 +38,7 @@ var inspectRunsCmd = &cobra.Command{
 				return err
 			}
 		} else {
-			for _, status := range []string{persistence.RunStatusRunning, persistence.RunStatusAwaitingReview, persistence.RunStatusSuccess, persistence.RunStatusFailed, persistence.RunStatusKilled} {
+			for _, status := range runStatuses {
 				batch, _ := store.ListRunsByStatus(status)
 				runs = append(runs, batch...)
 			}
@@ -48,7 +49,6 @@ var inspectRunsCmd = &cobra.Command{
 			return nil
 		}
 
-		runner := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR"))
 		rows := make([][]string, len(runs))
 		for i, r := range runs {
 			dur := "-"
@@ -104,7 +104,8 @@ var inspectLogCmd = &cobra.Command{
 			fmt.Printf("         commit=%s\n", run.GitCommitHash)
 		}
 		// How the run stands, from its verified history; the events below are shown as stored, verified or not.
-		if st, err := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR")).StatusOf(runID); err != nil {
+		runner := orchestrator.NewRunner(store, viper.GetString("STAIRCASE_DIR"))
+		if st, err := runner.StatusOf(runID); err != nil {
 			fmt.Printf("         outcome    unknown: %s\n", tui.Safe(err.Error()))
 		} else {
 			for _, l := range statusLines(st) {

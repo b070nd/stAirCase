@@ -53,6 +53,9 @@ func (h History) Outcome() (Outcome, string) {
 			}
 			return OutcomeAwaitingReview, "you accepted it and its delivery did not finish: accept it again (staircase decide --accept)"
 		}
+		if len(rv.Files) == 0 && rv.Checked != nil && !rv.Checked.Passed {
+			return OutcomeAwaitingReview, fmt.Sprintf("it approved nothing, so its change is empty, and its checks failed on the unchanged tree (%s); %d proposal(s) parked: decide it with staircase decide, or prototype and adopt a parked one", rv.Checked.Failed, len(h.Parked()))
+		}
 		if len(rv.Files) == 0 {
 			return OutcomeAwaitingReview, fmt.Sprintf("it approved nothing, so its change is empty (tree %.12s, unchanged, passes its checks), with %d proposal(s) parked: decide it with staircase decide, or prototype and adopt a parked one", rv.Tree, len(h.Parked()))
 		}

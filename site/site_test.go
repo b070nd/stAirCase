@@ -17,6 +17,7 @@ var (
 	comment = regexp.MustCompile(`(?s)<!--.*?-->`)
 	tagRe   = regexp.MustCompile(`<(/?)([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>`)
 	emDash  = regexp.MustCompile("(?i)\u2014|&mdash;|&#8212;|&#x2014;")
+	enDash  = regexp.MustCompile("(?i)\u2013|&ndash;|&#8211;|&#x2013;")
 	title   = regexp.MustCompile(`(?is)<title>\s*[^\s<][^<]*</title>`)
 	attrRe  = regexp.MustCompile(`([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+)))?`)
 )
@@ -56,6 +57,9 @@ func checkSite(root string) []string {
 		}
 		if emDash.Match(src) {
 			problems = append(problems, rel+": an em dash: write a hyphen")
+		}
+		if enDash.Match(src) {
+			problems = append(problems, rel+": an en dash: write a hyphen")
 		}
 		if !strings.HasSuffix(path, ".html") {
 			return nil
@@ -213,6 +217,10 @@ func TestCheckFindsEachProblem(t *testing.T) {
 		{"em dash in a page", map[string]string{"index.html": page("<h1>A \u2014 B</h1>")}, "index.html: an em dash"},
 		{"em dash as an entity", map[string]string{"index.html": page("<h1>A &mdash; B</h1>")}, "index.html: an em dash"},
 		{"em dash in the stylesheet", map[string]string{"index.html": page("<h1>A</h1>"), "style.css": "/* a \u2014 b */"}, "style.css: an em dash"},
+		{"en dash in a page", map[string]string{"index.html": page("<h1>A \u2013 B</h1>")}, "index.html: an en dash"},
+		{"en dash as an entity", map[string]string{"index.html": page("<h1>A &ndash; B</h1>")}, "index.html: an en dash"},
+		{"en dash as a numeric entity", map[string]string{"index.html": page("<h1>A &#8211; B</h1>")}, "index.html: an en dash"},
+		{"en dash in the stylesheet", map[string]string{"index.html": page("<h1>A</h1>"), "style.css": "/* a \u2013 b */"}, "style.css: an en dash"},
 		{"link to a missing page", map[string]string{"index.html": page(`<h1>A</h1><a href="missing.html">x</a>`)}, `index.html: link "missing.html": no such file`},
 		{"link to a missing stylesheet", map[string]string{"index.html": strings.Replace(page(`<h1>A</h1>`), "<head>", `<head><link rel="stylesheet" href="style.css">`, 1)}, `index.html: link "style.css": no such file`},
 		{"image that is not there", map[string]string{"index.html": page(`<h1>A</h1><img src="a.svg" alt="A">`)}, `index.html: link "a.svg": no such file`},

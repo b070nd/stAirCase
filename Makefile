@@ -1,4 +1,4 @@
-.PHONY: evidence site-check checktest test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
+.PHONY: check evidence site-check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
@@ -17,7 +17,7 @@ check: lint
 # Plain HTML and CSS, built by nothing and served by nothing: open site/index.html.
 # The page check (site/site_test.go) runs offline as part of `go test ./...` in
 # check: every page has a lang, one h1, headings in order, alt text on images, a
-# title and a viewport; internal links resolve; no file has an em dash.
+# title and a viewport; internal links resolve; no file has an em or en dash.
 site-check:
 	go test ./site -count=1
 

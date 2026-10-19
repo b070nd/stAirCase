@@ -25,6 +25,11 @@ versions, and Gemini CLI and OpenCode are experimental (see below for what has b
 | **Verifier results** | `checks` in the certificate: command, exit code, sandboxed, output digest (`--check`) | Existing fields keep their meaning. Linking full test reports as in-toto test-result attestations is planned, as an addition. |
 | **Policy file** | `policy.json`: rules that approve or reject proposals, and limits ([approvals](approvals.md)) | A valid policy file keeps its meaning. `staircase policy test` shows what a policy decides on your past runs before you rely on a change. |
 
+One change of meaning in the policy file's surroundings, so that you are not surprised: the paths where a run's checks are defined
+are protected for **every** run that has checks, not only away runs ([approvals](approvals.md#checks-the-agent-cannot-weaken)). A
+change to one goes to a person whatever the policy says, so a policy rule that approved an edit of such a path before now sends it
+to a person. The policy file itself is read as before.
+
 Everything else, including the command-line output, the workspace layout, the
 database and the agents' prompts, can change in any version.
 

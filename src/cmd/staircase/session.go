@@ -410,6 +410,9 @@ func agreement(s sessionSetup) string {
 	if len(s.protected) > 0 {
 		fmt.Fprintf(&b, "  protected:   %s (where your checks are defined: a change to them always comes to you, parked while away)\n",
 			strings.Join(s.protected, ", "))
+	} else if len(s.checks) > 0 {
+		fmt.Fprintf(&b, "  protected:   nothing: your checks name no file of their own, so no file of your checks is protected and the agent may edit\n"+
+			"               the tests they run (name them with --protect <path or pattern>)\n")
 	}
 	switch {
 	case s.requireSigned:
