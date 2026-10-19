@@ -96,7 +96,7 @@ func (o *OpenCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	env.Emit(ctx, orchestrator.Usage{Agent: "opencode", Model: orDefault(o.Model, "opencode"), Content: preview(stdout.String())})
 	switch {
 	case runErr != nil:
-		return fmt.Errorf("opencode: %w: %s%s", runErr, preview(stdout.String()), stderr)
+		return withStderr(fmt.Errorf("opencode: %w: %s", runErr, preview(stdout.String())), stderr)
 	case !h.started.Load():
 		return errors.New("opencode never ran staircase's hooks, so the session was not governed; nothing it did is kept")
 	}

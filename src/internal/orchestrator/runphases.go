@@ -537,10 +537,27 @@ func (s *runState) processExited(procErr error) {
 	}
 	s.endedAs(history.LaunchExited)
 	if procErr != nil {
+		s.keepStderr(procErr)
 		s.runErr = fmt.Errorf("agent: %w", procErr)
 		s.finalStatus = persistence.RunStatusFailed
 	} else {
 		s.finalStatus = persistence.RunStatusSuccess
+	}
+}
+
+// keepStderr says where the stderr tail of a failed agent goes. The tail is a local diagnostic: it is not in the error the run ends
+// with (a caller logs that, a runner may keep it: Cloudroom persisted such tails into its records), and not on the audit chain, in
+// the certificate or in the ledger. It goes to the person at the terminal (for a hosted session, to the session's log) and to the
+// debug log, with the delivered secrets scrubbed.
+func (s *runState) keepStderr(err error) {
+	var t interface{ StderrTail() string }
+	if !errors.As(err, &t) || t.StderrTail() == "" {
+		return
+	}
+	tail := redact(t.StderrTail(), s.host.deliveredSecrets())
+	fmt.Fprintf(os.Stdout, "   agent stderr (kept out of the run's records):\n%s\n", tail)
+	if s.debugLog != nil {
+		_, _ = fmt.Fprintf(s.debugLog, "%s agent_stderr %q\n", time.Now().UTC().Format(time.RFC3339Nano), tail)
 	}
 }
 

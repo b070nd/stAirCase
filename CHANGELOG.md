@@ -43,6 +43,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** The debug log (`--debug`) and a hosted session's
+  log (`host/<session>.log`) stop growing at 8 MiB, say where they stopped and, at the end, how much they dropped. Both are scrubbed of
+  every secret handed to an agent, including the environment variables named with `--pass-env`, which were not scrubbed before. The
+  stderr tail of a failed agent (Claude Code, Codex, Gemini, OpenCode) is no longer part of the error the run ends with, which a
+  runner may keep (Cloudroom keeps stderr tails in its records); it is shown at the terminal or in the host log, and in the debug log,
+  scrubbed, and a tail whose start was cut says so. It is never on the audit chain, in the certificate or in the ledger
+  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
+
 - `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
   written before read as before; their outcome is inferred from their other events.
 - **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
