@@ -55,6 +55,11 @@ with one reaches CAL 2, and the certificate says how many calls were approved.
 ```text
 Awaiting your review
 └─ run #12   review 1a2b3c4d5e6f   from abc123abc123
+   ├─ outcome    awaiting review: its change passed its checks on tree fedcba987654, with 1 proposal(s) parked: decide it with staircase decide
+   ├─ attempts   1 (times the agent was started: the run, then each continuation); 1 proposal(s) parked for you
+   ├─ time       24m10s of 1h0m0s, 35m50s left
+   ├─ tokens     120000 in, 30000 out, as the agents reported them (no token limit)
+   ├─ cost       about $0.81 of $5.00 (the project's cap per run), about $4.19 left, estimated from list prices
    ├─ change   2 file(s): src/health.go, src/health_test.go
    ├─ checks   passed on exactly this change (tree fedcba987654): go test ./... (exit 0)
    └─ parked   1 proposal(s) that needed you:
@@ -74,6 +79,26 @@ Keys: Y or I accept, N or O reject, D defer and show the alternatives, Z clarify
 Without a terminal: `staircase decide 12 --accept` or `--reject`, with `-m` for why, and `staircase decide 12 --adopt 4` to adopt
 parked proposal #4 (as the tree numbers them) if your checks pass with it. A decision is bound to the review you saw:
 `--shown <entry>` (the review entry the list prints) is refused if the run's review is another one.
+
+## How each run stands
+
+Every run has one **outcome**, read from its verified audit chain alone (never from the status column or a summary file):
+
+| Outcome | What the chain says |
+|---|---|
+| **running** | its last segment has not ended: it is working, or its process died, which a crash cannot record (`resume` or `recover` it) |
+| **awaiting review** | it offered its change, checked on the exact tree, and you have not finished deciding |
+| **blocked or partial** | it stopped short and waits for you: what it proposed was parked and nothing was approved, drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
+| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree, its review was rejected, or it failed |
+| **delivered** | its commit is on the run branch and its evidence is complete |
+| **delivered with incomplete evidence** | its commit is on the run branch, and some of its ledger, certificate or notes could not be written (the reason is shown) |
+
+With it come the **attempts** (how many times the agent was started: the run, then each continuation), what was parked, and the
+budget: the active time used against the time limit of the run's saved policy and plan, the tokens the agents reported (there is no
+token limit), and the cost estimated from those tokens at list prices against the project's budget cap (`staircase project config
+set --budget-cap`, as it is set now). `staircase decide` shows this for each run that waits, then lists your other away runs that are
+still running or blocked; `staircase decide 12` shows it for a run that does not wait; `staircase inspect runs` has an outcome
+column and `staircase inspect log 12` shows the status above the events.
 
 ## What it guarantees, and what not yet
 

@@ -243,7 +243,11 @@ func (s *runState) finish(runErr error) error {
 	if err := r.enter(PhaseBranchRestore); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
-	if err := r.audit(run.ID, "run_path", map[string]any{"phases": r.path}); err != nil {
+	phases := make([]string, len(r.path))
+	for i, p := range r.path {
+		phases[i] = string(p)
+	}
+	if err := r.audit(run.ID, "run_path", history.Ended{Phases: phases, Status: s.finalStatus}); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
 	if s.worktree != "" {
@@ -497,7 +501,7 @@ func (s *runState) endLaunch() {
 		return
 	}
 	s.launchEnded = true
-	s.endedAs(history.OutcomeStopped) // stopped by the run, when nothing said otherwise
+	s.endedAs(history.LaunchStopped) // stopped by the run, when nothing said otherwise
 	barrier.Hit(barrier.AgentEnded)
 	if err := s.r.audit(s.run.ID, "launch_ended", history.LaunchEnded{Attempt: s.launch.Attempt, Generation: s.launch.Generation,
 		Outcome: s.agentOutcome}); err != nil {
@@ -517,10 +521,10 @@ func (s *runState) stopAgent() {
 	s.cancelAgent()
 	select {
 	case <-s.stopped:
-		s.endedAs(history.OutcomeStopped)
+		s.endedAs(history.LaunchStopped)
 	case <-time.After(lostGrace):
 		// Nothing more can be done in-process; the run ends without it.
-		s.endedAs(history.OutcomeUnresponsive)
+		s.endedAs(history.LaunchUnresponsive)
 		obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", s.run.ID)
 		_ = s.r.audit(s.run.ID, "agent_unresponsive", map[string]any{"grace_seconds": lostGrace.Seconds()})
 	}
@@ -529,9 +533,9 @@ func (s *runState) stopAgent() {
 func (s *runState) processExited(procErr error) {
 	s.agentFinished = true
 	if procErr != nil {
-		s.endedAs(history.OutcomeFailed)
+		s.endedAs(history.LaunchFailed)
 	}
-	s.endedAs(history.OutcomeExited)
+	s.endedAs(history.LaunchExited)
 	if procErr != nil {
 		s.runErr = fmt.Errorf("agent: %w", procErr)
 		s.finalStatus = persistence.RunStatusFailed

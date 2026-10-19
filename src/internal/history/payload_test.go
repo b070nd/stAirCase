@@ -52,6 +52,12 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 		"commit_prepared":    {`{"commit":"c","base":"b","tree":"t","branch":"staircase/run-1"}`, &Delivered{}},
 		"certificate_issued": {`{"commit":"c","cal":3,"envelope_sha256":"e"}`, &Delivered{}},
 		"run_recovered":      {`{"commit":"c","proposals":2,"final_review":true,"forced":true,"evidence_errors":["ledger"]}`, &Delivered{}},
+		"recovery_repaired":  {`{"commit":"c","evidence_errors":["certificate"]}`, &Delivered{}},
+		"run_path":           {`{"phases":["PRE_FLIGHT","BRANCH_CREATE","BRANCH_RESTORE"],"status":"FAILED"}`, &Ended{}},
+		"an older run_path":  {`{"phases":["PRE_FLIGHT"]}`, &Ended{}},
+		"drift_halt":         {`{"reason":"the run exceeded its 60 s limit"}`, &DriftHalt{}},
+		"evidence_failed":    {`{"commit":"c","errors":["ledger: disk full"]}`, &EvidenceFailed{}},
+		"certificate_failed": {`{"commit":"c","error":"no key"}`, &CertificateFailed{}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			v := reflect.New(reflect.TypeOf(tc.into).Elem()).Interface()

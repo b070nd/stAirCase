@@ -90,15 +90,15 @@ func TestReplay_refuses_what_no_run_can_have_written(t *testing.T) {
 		"a decision after an away delivery":         {bound().req("file_edit").add("review_delivered", nil).decided(1, "policy", true), 4, "follows review_delivered"},
 		"a final review after the certificate":      {bound().add("certificate_issued", nil).final(1, true, nil), 3, "follows certificate_issued"},
 		"a resume after a recovery":                 {bound().add("run_recovered", nil).add("run_resumed", nil), 3, "resumed after run_recovered"},
-		"an outcome with no launch":                 {bound().ended(1, "g1", OutcomeExited), 2, "names no open launch"},
-		"an outcome of another launch":              {bound().claim(1, "g1").ended(1, "g0", OutcomeExited), 3, "names no open launch"},
-		"two outcomes of one launch":                {bound().claim(1, "g1").ended(1, "g1", OutcomeExited).ended(1, "g1", OutcomeExited), 4, "names no open launch"},
-		"an outcome nobody defined":                 {bound().claim(1, "g1").ended(1, "g1", "fine"), 3, "unknown outcome"},
+		"an outcome with no launch":                 {bound().launchEnded(1, "g1", LaunchExited), 2, "names no open launch"},
+		"an outcome of another launch":              {bound().claim(1, "g1").launchEnded(1, "g0", LaunchExited), 3, "names no open launch"},
+		"two outcomes of one launch":                {bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).launchEnded(1, "g1", LaunchExited), 4, "names no open launch"},
+		"an outcome nobody defined":                 {bound().claim(1, "g1").launchEnded(1, "g1", "fine"), 3, "unknown outcome"},
 		"a launch while one is open":                {bound().claim(1, "g1").claim(2, "g2"), 3, "launch 1 has no outcome"},
 		"a launch that skips an attempt":            {bound().claim(2, "g2"), 2, "attempt 2"},
 		"a resume while a launch is open":           {bound().claim(1, "g1").add("run_resumed", map[string]any{"segment": 2}), 3, "launch 1 has no outcome"},
 		"a launch after commit_prepared":            {bound().add("commit_prepared", nil).claim(1, "g1"), 3, "follows commit_prepared"},
-		"an outcome after the certificate":          {bound().claim(1, "g1").add("certificate_issued", nil).ended(1, "g1", OutcomeExited), 4, "follows certificate_issued"},
+		"an outcome after the certificate":          {bound().claim(1, "g1").add("certificate_issued", nil).launchEnded(1, "g1", LaunchExited), 4, "follows certificate_issued"},
 		"an unreadable decision":                    {&chain{events: append(bound().events, domain.RunEventLog{EventType: "yield_decided", Payload: "not json"})}, 2, "unreadable"},
 		"an unreadable binding":                     {&chain{events: []domain.RunEventLog{{EventType: "run_bound", Payload: "{"}}}, 1, "unreadable"},
 		"an unreadable offered review":              {&chain{events: append(bound().events, domain.RunEventLog{EventType: "awaiting_review", Payload: "["})}, 2, "unreadable"},
@@ -128,9 +128,9 @@ func TestReplay_accepts_what_runs_write(t *testing.T) {
 		"an adoption after the review":  bound().edit("a").decided(1, "parked", false).add("awaiting_review", nil).edit("a").decided(2, "operator", true, "adopts", 1),
 		"the old recovery final review": bound().req("file_edit").decided(1, "task", true).add("recovery_final_review", map[string]any{"approved": true}).add("run_recovered", nil),
 		"a lost launch's outcome after commit_prepared, before the recovery": bound().claim(1, "g1").add("commit_prepared", nil).
-			ended(1, "g1", OutcomeUnknown).add("run_recovered", nil),
-		"a launch per segment": bound().claim(1, "g1").ended(1, "g1", OutcomeUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).
-			claim(2, "g2").ended(2, "g2", OutcomeExited),
+			launchEnded(1, "g1", LaunchUnknown).add("run_recovered", nil),
+		"a launch per segment": bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).
+			claim(2, "g2").launchEnded(2, "g2", LaunchExited),
 	} {
 		t.Run(name, func(t *testing.T) { c.replay(t) })
 	}
@@ -326,7 +326,7 @@ func (c *chain) claim(attempt int, generation string) *chain {
 	return c.add("launch_claimed", map[string]any{"attempt": attempt, "generation": generation, "segment": 1})
 }
 
-func (c *chain) ended(attempt int, generation, outcome string) *chain {
+func (c *chain) launchEnded(attempt int, generation, outcome string) *chain {
 	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome})
 }
 
@@ -334,10 +334,10 @@ func (c *chain) ended(attempt int, generation, outcome string) *chain {
 // established, and whether the last of those parks the run until a resume acknowledges it. A lost launch's outcome, written by the
 // restart, adds nothing to the dead segment's active time.
 func TestReplay_what_a_restart_reads_of_the_launches(t *testing.T) {
-	h := bound().claim(1, "g1").ended(1, "g1", OutcomeExited).replay(t)
+	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).replay(t)
 	require.Len(t, h.Launches, 1)
 	assert.Equal(t, LaunchClaimed{Attempt: 1, Generation: "g1", Segment: 1}, h.Launches[0].LaunchClaimed)
-	assert.Equal(t, OutcomeExited, h.Launches[0].Outcome)
+	assert.Equal(t, LaunchExited, h.Launches[0].Outcome)
 	assert.Nil(t, h.OpenLaunch())
 	assert.Equal(t, 0, h.Lost())
 	assert.Equal(t, 0, h.LaunchParked())
@@ -351,7 +351,7 @@ func TestReplay_what_a_restart_reads_of_the_launches(t *testing.T) {
 	before := h.Elapsed
 
 	c.sec += 3600 // the restart came an hour later
-	h = c.ended(1, "g1", OutcomeUnknown).replay(t)
+	h = c.launchEnded(1, "g1", LaunchUnknown).replay(t)
 	assert.Nil(t, h.OpenLaunch())
 	assert.Equal(t, 1, h.Lost())
 	assert.Equal(t, 1, h.LaunchParked(), "still parked: nobody acknowledged it")
@@ -360,11 +360,11 @@ func TestReplay_what_a_restart_reads_of_the_launches(t *testing.T) {
 	c.add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1})
 	h = c.replay(t)
 	assert.Equal(t, 0, h.LaunchParked(), "a resume acknowledged it")
-	h = c.claim(2, "g2").ended(2, "g2", OutcomeUnresponsive).replay(t)
+	h = c.claim(2, "g2").launchEnded(2, "g2", LaunchUnresponsive).replay(t)
 	assert.Equal(t, 2, h.Lost(), "an agent that did not stop is not an established end either")
 	assert.Equal(t, 2, h.LaunchParked())
 
-	h = bound().claim(1, "g1").ended(1, "g1", OutcomeStopped).add("run_resumed", map[string]any{"segment": 2}).claim(2, "g2").ended(2, "g2", OutcomeFailed).replay(t)
+	h = bound().claim(1, "g1").launchEnded(1, "g1", LaunchStopped).add("run_resumed", map[string]any{"segment": 2}).claim(2, "g2").launchEnded(2, "g2", LaunchFailed).replay(t)
 	assert.Equal(t, 0, h.Lost(), "a known failure is not a lost launch")
 	assert.Equal(t, 0, h.LaunchParked())
 }

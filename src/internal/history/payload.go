@@ -146,11 +146,11 @@ type LaunchEnded struct {
 
 // The outcomes of a launch. The first three are established ends; the last two are not.
 const (
-	OutcomeExited       = "exited"                // the agent ended by itself
-	OutcomeFailed       = "failed"                // the agent ended with an error
-	OutcomeStopped      = "stopped"               // the run stopped the agent (cancelled, halted, over its budget or its time)
-	OutcomeUnresponsive = "unresponsive"          // the run asked the agent to stop and it did not, in time
-	OutcomeUnknown      = "unknown_after_restart" // no outcome was recorded: a restart found the claim open
+	LaunchExited       = "exited"                // the agent ended by itself
+	LaunchFailed       = "failed"                // the agent ended with an error
+	LaunchStopped      = "stopped"               // the run stopped the agent (cancelled, halted, over its budget or its time)
+	LaunchUnresponsive = "unresponsive"          // the run asked the agent to stop and it did not, in time
+	LaunchUnknown      = "unknown_after_restart" // no outcome was recorded: a restart found the claim open
 )
 
 // PolicySnapshot is the policy a run decided under.
@@ -231,4 +231,28 @@ type Delivered struct {
 	FinalReview    bool     `json:"final_review,omitempty"`
 	Forced         bool     `json:"forced,omitempty"`
 	EvidenceErrors []string `json:"evidence_errors,omitempty"`
+}
+
+// Ended is run_path: the phases a segment of the run went through, written when its process ends the segment, and the status it
+// ended with (absent on chains written before the status was recorded).
+type Ended struct {
+	Phases []string `json:"phases"`
+	Status string   `json:"status,omitempty"`
+}
+
+// DriftHalt is drift_halt: drift supervision stopped the run, and why.
+type DriftHalt struct {
+	Reason string `json:"reason"`
+}
+
+// EvidenceFailed is evidence_failed: the run's commit is delivered, and what of its evidence could not be written.
+type EvidenceFailed struct {
+	Commit string   `json:"commit"`
+	Errors []string `json:"errors"`
+}
+
+// CertificateFailed is certificate_failed: the run's commit is delivered, and its certificate could not be written.
+type CertificateFailed struct {
+	Commit string `json:"commit"`
+	Error  string `json:"error"`
 }

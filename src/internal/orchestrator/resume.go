@@ -55,7 +55,7 @@ var ErrLaunchLost = errors.New("its agent's last launch has no established end")
 func (r *Runner) settleLostLaunch(c *continuation, ack bool) error {
 	runID := c.run.ID
 	if o := c.history.OpenLaunch(); o != nil {
-		if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.OutcomeUnknown}); err != nil {
+		if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown}); err != nil {
 			return fmt.Errorf("record the outcome of launch %d as unknown: %w", o.Attempt, err)
 		}
 		h, err := history.Read(r.store, runID)

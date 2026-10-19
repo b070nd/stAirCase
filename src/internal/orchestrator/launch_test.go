@@ -70,7 +70,7 @@ func TestRun_claims_the_launch_before_the_agent_starts_and_records_its_end(t *te
 	assert.Equal(t, 1, claims[0].Attempt)
 	assert.Equal(t, 1, claims[0].Segment)
 	assert.Len(t, claims[0].Generation, 32, "a generation of its own")
-	assert.Equal(t, history.LaunchEnded{Attempt: 1, Generation: claims[0].Generation, Outcome: history.OutcomeExited}, ends[0])
+	assert.Equal(t, history.LaunchEnded{Attempt: 1, Generation: claims[0].Generation, Outcome: history.LaunchExited}, ends[0])
 
 	types := r.Types()
 	at := func(event string) int { return slices.Index(types, event) }
@@ -143,7 +143,7 @@ func TestResume_a_launch_with_no_outcome_parks_the_run(t *testing.T) {
 	assert.Contains(t, err.Error(), "--ack-unknown")
 	assert.Equal(t, 0, launched, "the agent is not launched again blindly")
 	_, ends = launches(t, eventsOf(t, r, "launch_ended"))
-	assert.Equal(t, []history.LaunchEnded{{Attempt: 1, Generation: claims[0].Generation, Outcome: history.OutcomeUnknown}}, ends)
+	assert.Equal(t, []history.LaunchEnded{{Attempt: 1, Generation: claims[0].Generation, Outcome: history.LaunchUnknown}}, ends)
 	assert.Empty(t, eventsOf(t, r, "run_resumed"))
 
 	err = resume(t, r, orchestrator.ResumeOptions{Agent: agent})
@@ -185,7 +185,7 @@ func TestResume_a_run_whose_launches_were_lost_three_times_is_not_launched_again
 	_, ends := launches(t, eventsOf(t, r, "launch_ended"))
 	require.Len(t, ends, 3)
 	for _, e := range ends {
-		assert.Equal(t, history.OutcomeUnknown, e.Outcome)
+		assert.Equal(t, history.LaunchUnknown, e.Outcome)
 	}
 
 	_, err = recoverRun(t, r)
@@ -201,13 +201,13 @@ func TestRun_records_how_the_launch_ended(t *testing.T) {
 		})})
 		_, ends := launches(t, r.Events)
 		require.Len(t, ends, 1)
-		assert.Equal(t, history.OutcomeFailed, ends[0].Outcome)
+		assert.Equal(t, history.LaunchFailed, ends[0].Outcome)
 	})
 	t.Run("stopped", func(t *testing.T) {
 		r := interruptedWith(t, [][2]string{{"src/a.txt", "one\n"}})
 		_, ends := launches(t, r.Events)
 		require.Len(t, ends, 1)
-		assert.Equal(t, history.OutcomeStopped, ends[0].Outcome)
+		assert.Equal(t, history.LaunchStopped, ends[0].Outcome)
 	})
 	t.Run("unresponsive", func(t *testing.T) {
 		t.Cleanup(orchestrator.SetLostGraceForTest(300 * time.Millisecond))
@@ -222,6 +222,6 @@ func TestRun_records_how_the_launch_ended(t *testing.T) {
 		})})
 		_, ends := launches(t, r.Events)
 		require.Len(t, ends, 1)
-		assert.Equal(t, history.OutcomeUnresponsive, ends[0].Outcome)
+		assert.Equal(t, history.LaunchUnresponsive, ends[0].Outcome)
 	})
 }

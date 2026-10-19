@@ -45,6 +45,19 @@ type History struct {
 	Head      string     // the last entry's hash
 
 	entries map[string]bool
+	end     ending
+}
+
+// ending is what the chain says about how the run ended, for Outcome.
+type ending struct {
+	segStart   int    // the position of the last segment's start: run_bound or its last run_resumed
+	ended      *Ended // the last segment's run_path; nil while the chain does not say it ended
+	haltReason string // why drift supervision halted the run, while Halted
+	checked    int    // the position of the last phase_checked, and what it found
+	check      PhaseChecked
+	commit     string   // the delivered commit: named by an event written after the branch moved
+	recovered  bool     // it was delivered by recovery of an interrupted run
+	evidence   []string // what the last report on the delivered commit's evidence said was missing
 }
 
 // Decision is one yield_decided with where it is and what it answered.
@@ -74,7 +87,7 @@ type Launch struct {
 
 // lost reports whether the launch's end was never established: no outcome, one a restart recorded, or an agent that did not stop.
 func (l Launch) lost() bool {
-	return l.Outcome == "" || l.Outcome == OutcomeUnknown || l.Outcome == OutcomeUnresponsive
+	return l.Outcome == "" || l.Outcome == LaunchUnknown || l.Outcome == LaunchUnresponsive
 }
 
 // ShellCount is how many approved commands ran, and how many of them in the sandbox.
@@ -143,7 +156,7 @@ func replay(events []domain.RunEventLog) (History, error) {
 			if err := read(&h.Bound); err != nil {
 				return h, err
 			}
-			segStart = e.Timestamp
+			segStart, h.end.segStart = e.Timestamp, n
 		case "run_resumed":
 			if s := firstOf(ended, agentEnded); s != "" {
 				return h, fail("the run was resumed after %s", s)
@@ -156,11 +169,11 @@ func replay(events []domain.RunEventLog) (History, error) {
 				return h, err
 			}
 			h.Elapsed += last.Sub(segStart)
-			segStart = e.Timestamp
+			segStart, h.end.segStart, h.end.ended = e.Timestamp, n, nil
 			h.Segment++
 			pending = nil // a request an earlier segment left is not one this segment can decide
 			if p.AckDrift {
-				h.Halted = false
+				h.Halted, h.end.haltReason = false, ""
 			}
 			if p.AckUnknown > 0 {
 				h.ackedLaunch = p.AckUnknown
@@ -193,12 +206,12 @@ func replay(events []domain.RunEventLog) (History, error) {
 				return h, fail("the outcome names no open launch (attempt %d, generation %q)", p.Attempt, p.Generation)
 			}
 			switch p.Outcome {
-			case OutcomeExited, OutcomeFailed, OutcomeStopped, OutcomeUnresponsive, OutcomeUnknown:
+			case LaunchExited, LaunchFailed, LaunchStopped, LaunchUnresponsive, LaunchUnknown:
 			default:
 				return h, fail("an unknown outcome %q", p.Outcome)
 			}
 			o.Outcome = p.Outcome
-			if p.Outcome == OutcomeUnknown {
+			if p.Outcome == LaunchUnknown {
 				continue // written by a restart, after the run was down: not time the segment used
 			}
 		case "policy_snapshot":
@@ -238,7 +251,34 @@ func replay(events []domain.RunEventLog) (History, error) {
 				h.Shells.Sandboxed++
 			}
 		case "drift_halt":
-			h.Halted = true
+			var p DriftHalt
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			h.Halted, h.end.haltReason = true, p.Reason
+		case "run_path":
+			h.end.ended = &Ended{}
+			if err := read(h.end.ended); err != nil {
+				return h, err
+			}
+		case "evidence_failed":
+			var p EvidenceFailed
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			h.end.commit, h.end.evidence = p.Commit, p.Errors
+		case "certificate_failed":
+			var p CertificateFailed
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			h.end.commit = p.Commit
+		case "recovery_repaired":
+			var p Delivered
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			h.end.evidence = p.EvidenceErrors
 		case "yield_request":
 			if agentEnded != "" {
 				return h, fail("a request follows %s", agentEnded)
@@ -278,8 +318,9 @@ func replay(events []domain.RunEventLog) (History, error) {
 			}
 			h.Decisions = append(h.Decisions, d)
 		case "phase_checked":
-			// read when an awaiting_review names it
-			if err := read(&PhaseChecked{}); err != nil {
+			// read again when an awaiting_review names it
+			h.end.checked, h.end.check = n, PhaseChecked{}
+			if err := read(&h.end.check); err != nil {
 				return h, err
 			}
 		case "awaiting_review":
@@ -307,6 +348,12 @@ func replay(events []domain.RunEventLog) (History, error) {
 				return h, err
 			}
 			h.Delivered = append(h.Delivered, Delivery{e.EventType, p})
+			if e.EventType != "commit_prepared" { // written after the branch moved: the commit is delivered
+				h.end.commit = p.Commit
+			}
+			if e.EventType == "run_recovered" || e.EventType == "review_delivered" {
+				h.end.evidence, h.end.recovered = p.EvidenceErrors, e.EventType == "run_recovered"
+			}
 			if h.Sealed == "" {
 				h.Sealed = e.EventType
 			}
