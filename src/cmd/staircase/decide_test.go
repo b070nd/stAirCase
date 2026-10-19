@@ -100,6 +100,17 @@ func TestDecide_the_inbox_shows_an_empty_change_as_empty(t *testing.T) {
 	assert.Contains(t, text, "#2 src/bad.txt")
 }
 
+// An empty change whose checks failed on the unchanged tree is shown as failed, never as "passed".
+func TestDecide_the_inbox_shows_failing_checks_of_an_empty_change(t *testing.T) {
+	rv := sampleReview()
+	rv.Files = nil
+	rv.ChecksFailed = `check "go test ./..." failed (exit 1)`
+	text := inboxTree([]orchestrator.Review{rv}, nil)
+	assert.Contains(t, text, "FAILED on this unchanged tree")
+	assert.Contains(t, text, `check "go test ./..." failed`)
+	assert.NotContains(t, text, "passed on exactly this change")
+}
+
 // TestDecide_keys: Y and I accept, N and O reject, D defers and shows what was parked, Z opens the clarifying session; anything
 // else asks again. A decision names the review entry that was on the screen.
 func TestDecide_keys(t *testing.T) {

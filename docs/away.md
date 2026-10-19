@@ -101,7 +101,9 @@ other run: a review of an **empty change** (`change   empty: nothing was approve
 parked proposals listed with their numbers. Prototype (**P**) and adopt (`--adopt <n>`) work as above, and the adopted proposal is then
 the change you decide on. Accepting the empty change itself delivers nothing: no commit, no certificate, the branch stays at its base,
 `decide` says so, and the run's outcome reads failed ("you accepted a review of an empty change: nothing was delivered"). Reject it
-to say you want none of it. A run that proposed nothing at all is not offered; its outcome says it ended without a change.
+to say you want none of it. If the project's checks fail on the unchanged tree itself, the empty change is still offered, and says so
+(`checks   FAILED on this unchanged tree`), so the parked proposals are not lost: one of them may be what fixes the checks, and adopting
+it requires the checks to pass with it. A run that proposed nothing at all is not offered; its outcome says it ended without a change.
 
 ## How each run stands
 

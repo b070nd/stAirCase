@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -42,7 +43,10 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	if err := r.audit(runID, "phase_checked", map[string]any{"tree": tree, "checks": checkEvidence(results), "passed": passed, "failed": failed}); err != nil {
 		return persistence.RunStatusFailed, fmt.Errorf("audit phase_checked: %w", err)
 	}
-	if !passed {
+	// An empty change whose checks fail has nothing to deliver, but its parked proposals may be what fixes the checks (a project that
+	// is broken at its base): they are offered, with the failure shown, instead of being lost to a FAILED run.
+	emptyButParked := !passed && len(appr.files) == 0 && parked > 0
+	if !passed && !emptyButParked {
 		fmt.Fprintf(os.Stdout, "   ❌ The approved change does not pass its checks now: %s\n", failed)
 		return persistence.RunStatusFailed, nil
 	}
@@ -52,6 +56,10 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	}
 	if err := r.audit(runID, "awaiting_review", map[string]any{"tree": tree, "files": digest(appr.files), "phase_checked": checked, "parked": parked}); err != nil {
 		return persistence.RunStatusFailed, fmt.Errorf("audit awaiting_review: %w", err)
+	}
+	if emptyButParked {
+		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved and the checks fail on the unchanged tree (%s); %d proposal(s) parked for you. Decide with: staircase decide %d\n", failed, parked, runID)
+		return persistence.RunStatusAwaitingReview, nil
 	}
 	if len(appr.files) == 0 {
 		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved, %d proposal(s) parked for you (an empty change). Decide with: staircase decide %d\n", parked, runID)
@@ -98,6 +106,9 @@ type Review struct {
 	Parked  int
 	Checks  []certificate.Check
 	Decided string // "", "accepted" (delivery not finished) or "rejected"
+	// ChecksFailed is, for an empty change only, why the checks failed on its unchanged tree: the run parked what it proposed, and
+	// the project's own checks do not pass without it. Empty when the checks passed (always, for a change with files).
+	ChecksFailed string
 
 	ParkedProposals []ParkedProposal
 }
@@ -129,8 +140,14 @@ func (r *Runner) ReviewOf(runID int64) (Review, error) {
 	if aw.Checked == nil {
 		return rv, fmt.Errorf("run #%d offers a tree without the checks that ran on it", runID)
 	}
-	if !aw.Checked.Passed || aw.Checked.Tree != aw.Tree {
-		return rv, fmt.Errorf("the checks run #%d names did not pass on the tree it offers", runID)
+	if aw.Checked.Tree != aw.Tree {
+		return rv, fmt.Errorf("the checks run #%d names did not run on the tree it offers", runID)
+	}
+	if !aw.Checked.Passed {
+		if len(aw.Files) > 0 { // only an empty change, which delivers nothing, may be offered on failing checks
+			return rv, fmt.Errorf("the checks run #%d names did not pass on the tree it offers", runID)
+		}
+		rv.ChecksFailed = cmp.Or(aw.Checked.Failed, "the checks ran nothing")
 	}
 	for _, c := range aw.Checked.Checks {
 		rv.Checks = append(rv.Checks, certificate.Check{Command: c.Command, ExitCode: c.ExitCode, Sandboxed: c.Sandboxed, OutputSHA256: c.OutputSHA256})

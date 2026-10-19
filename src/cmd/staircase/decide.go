@@ -242,7 +242,11 @@ func inboxTree(reviews []orchestrator.Review, status map[int64]orchestrator.Stat
 		for _, c := range rv.Checks {
 			checks = append(checks, fmt.Sprintf("%s (exit %d)", c.Command, c.ExitCode))
 		}
-		fmt.Fprintf(&b, "%s├─ checks   passed on exactly this change (tree %.12s): %s\n", indent, rv.Tree, strings.Join(checks, "; "))
+		if rv.ChecksFailed != "" {
+			fmt.Fprintf(&b, "%s├─ checks   FAILED on this unchanged tree (%.12s): %s (a parked proposal may be what fixes them: prototype it)\n", indent, rv.Tree, rv.ChecksFailed)
+		} else {
+			fmt.Fprintf(&b, "%s├─ checks   passed on exactly this change (tree %.12s): %s\n", indent, rv.Tree, strings.Join(checks, "; "))
+		}
 		if len(rv.ParkedProposals) == 0 {
 			fmt.Fprintf(&b, "%s└─ parked   nothing\n", indent)
 			continue

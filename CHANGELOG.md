@@ -52,6 +52,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **Parked proposals are offered even when the checks fail on the unchanged tree.** An away run that approved nothing and parked what
+  it proposed used to end FAILED, with the parked proposals lost, when the project's checks failed on the unchanged tree (a project
+  that is broken at its base, where only a parked proposal fixes the checks). It now awaits your review of an empty change that says
+  its checks failed (`checks   FAILED on this unchanged tree`), with the parked proposals to prototype and adopt; accepting that empty
+  change still delivers nothing. A change with files is still offered only when its checks pass.
+
 - **The status counts launches and shows a parked run.** A run's attempts are the launches claimed on its chain (a launch whose agent
   never started counts), no longer its segments; the two agree for a run without a lost launch. A run whose agent's last launch has
   no established end shows as blocked or partial in `staircase decide` and `staircase inspect`, with the exact command to continue it
