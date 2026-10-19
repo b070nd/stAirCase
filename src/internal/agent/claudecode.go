@@ -98,6 +98,15 @@ func passEnv(names []string) ([]string, error) {
 	return out, nil
 }
 
+// deliverPassed declares the values of passed (NAME=value) as handed to the agent, so that no log and no record carries them.
+func deliverPassed(env *orchestrator.AgentEnv, passed []string) {
+	for _, nv := range passed {
+		if _, v, ok := strings.Cut(nv, "="); ok {
+			env.Deliver(v)
+		}
+	}
+}
+
 // hookTimeout outlives any human approval: Claude Code lets the tool call
 // proceed when a PreToolUse hook times out (30 s by default).
 const hookTimeout = 24 * 60 * 60
@@ -182,6 +191,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	if err != nil {
 		return err
 	}
+	deliverPassed(env, passed)
 	cmd.Dir, cmd.Env = root, append(append(sandbox.Env(), HookFileEnv+"="+hookFile), passed...)
 	cmd.WaitDelay = 5 * time.Second
 	sandbox.KillGroup(cmd)
@@ -195,7 +205,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	if c.Host != nil {
 		switch {
 		case runErr != nil:
-			return fmt.Errorf("claude code: %w: %s", runErr, stderr)
+			return withStderr(fmt.Errorf("claude code: %w", runErr), stderr)
 		case !h.started.Load():
 			return errors.New("claude code never ran staircase's hooks, so the session was not governed; nothing it did is kept")
 		}
@@ -216,7 +226,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 	}
 	switch {
 	case runErr != nil:
-		return fmt.Errorf("claude code: %w: %s%s", runErr, preview(res.Result), stderr)
+		return withStderr(fmt.Errorf("claude code: %w: %s", runErr, preview(res.Result)), stderr)
 	case res.IsError:
 		return fmt.Errorf("claude code reported an error: %s", preview(res.Result))
 	case !h.started.Load():

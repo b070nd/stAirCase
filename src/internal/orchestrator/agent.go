@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/diag"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/obs"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
@@ -252,6 +253,10 @@ func (e *AgentEnv) Emit(ctx context.Context, u Usage) {
 // Secret returns a project secret for the agent, such as an LLM provider key.
 func (e *AgentEnv) Secret(name string) (string, error) { return e.host.secret(name) }
 
+// Deliver declares values the harness hands the agent from outside the secret store (an environment variable of the person's,
+// --pass-env), so that no log and no record of the run carries them.
+func (e *AgentEnv) Deliver(values ...string) { e.host.deliver(values...) }
+
 // maxAuditPayload caps one audit entry, as the IPC server did (64 KiB).
 const maxAuditPayload = 64 << 10
 
@@ -342,11 +347,25 @@ func (h *agentHost) secret(name string) (string, error) {
 		return "", fmt.Errorf("secret %q: decrypt: %w", name, err)
 	}
 	outcome = "success"
-	h.mu.Lock()
-	h.delivered = append(h.delivered, plain)
-	if b, err := json.Marshal(plain); err == nil && string(b[1:len(b)-1]) != plain {
-		h.delivered = append(h.delivered, string(b[1:len(b)-1])) // its JSON-escaped form
-	}
-	h.mu.Unlock()
+	h.deliver(plain)
 	return plain, nil
+}
+
+// deliver records values handed to the agent, and their JSON-escaped forms, for everything the run writes to scrub. Every log of
+// the process scrubs them too (diag.Deliver): a hosted session's log is not the run's.
+func (h *agentHost) deliver(values ...string) {
+	var all []string
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		all = append(all, v)
+		if b, err := json.Marshal(v); err == nil && string(b[1:len(b)-1]) != v {
+			all = append(all, string(b[1:len(b)-1])) // its JSON-escaped form
+		}
+	}
+	h.mu.Lock()
+	h.delivered = append(h.delivered, all...)
+	h.mu.Unlock()
+	diag.Deliver(all...)
 }
