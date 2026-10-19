@@ -94,6 +94,10 @@ func TestAdapters_record_a_lifecycle_failure_as_its_class(t *testing.T) {
 			bin, _, _ := geminiBin(t, "nohooks", nil)
 			return runtest.Run(t, runtest.Options{Agent: &agent.Gemini{Prompt: "p", Bin: bin}})
 		},
+		"opencode": func(t *testing.T) runtest.Result {
+			bin, _, _ := openCodeBin(t, "nohooks", nil)
+			return runtest.Run(t, runtest.Options{Agent: &agent.OpenCode{Prompt: "p", Bin: bin}})
+		},
 	}
 	for name, play := range hooks {
 		t.Run(name+": hooks that never ran are rejected", func(t *testing.T) {
