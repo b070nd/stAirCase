@@ -978,6 +978,13 @@ is ever staged or adopted. A run halted for drift needs --ack-drift. A run whose
 is used up cannot be continued, only recovered ("staircase recover"), and neither can a
 run that began before runs saved their terms.
 
+Every launch of the agent is claimed on the audit chain before its process starts, and
+its outcome is recorded when it stops. A run whose last launch has no outcome (its
+process was killed, crashed or lost its machine) is not launched again blindly: resume
+records the outcome as unknown_after_restart, parks the run and says why. Check what the
+agent may have done, then continue with --ack-unknown. A run whose launches ended this
+way 3 times is not launched again at all; recover what it approved instead.
+
 A run that was started with an agent harness continues the harness's own session when it
 can: Claude Code, Gemini CLI and Codex have their session id on the audit chain and are
 resumed with it, so the agent remembers its conversation. When that cannot be done (the
@@ -989,6 +996,7 @@ Flags:
 
 ```
       --ack-drift               Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)
+      --ack-unknown             Continue a run parked because its last launch has no known outcome, after checking what its agent may have done (recorded on the audit chain)
       --approval-port int       Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
       --debug                   Write every audited message of this segment, scrubbed, to the run's debug log

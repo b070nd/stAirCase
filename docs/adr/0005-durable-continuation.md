@@ -75,7 +75,8 @@ RESUME     -> BRANCH_RESTORE                                                    
 `PRE_FLIGHT`. There is **no pause phase**: an interrupted run is a run whose last segment has no `FINALIZE`, and
 that is derived (the chain has no `run_path`, `certificate_issued` or `run_recovered`), because a crash cannot record
 anything. A clean pause (`staircase pause`, a signal) is only the cooperative way to stop the agent and write one
-`run_paused` record first; resume treats a paused run and a crashed run identically.
+`run_paused` record first; resume treats a paused run and a crashed run identically. (Amended 2026-10-18, see "Launches claimed
+before they start" below: a run whose agent's launch has no recorded outcome is parked until a person acknowledges it.)
 
 `run_resumed` is audited when the checks pass and before the agent starts: the segment number, the chain head it
 resumed from (the **approved generation**), the fingerprint of the approvals, the policy and plan digests, the next
@@ -226,3 +227,25 @@ anything else that differs refuses, naming the files, unless `--discard-unapprov
 is refused. One phase (`RESUME`) was added to the state machine. Tests: `resume_test.go` (continuation, equality with recovery,
 cumulative limits, supervisor, time, worktree, repeated proposals, refusals) and `tests/resume_drill.bats` (real kills at the
 named boundaries of the first segment and of the continuation).
+
+## Launches claimed before they start (2026-10-18)
+
+V11-C01 scope 7 and Cloudroom's first pattern (durable receipts with explicit uncertainty, recovery claimed before spawning) amend
+section 3. The worktree check proves what the agent left in the worktree, not what it did elsewhere before it died, so a crash is not
+treated like a clean stop any more:
+
+- Every launch of the agent (a first segment, a continuation, a resumed hosted session) is claimed on the chain before its process
+  starts (`launch_claimed`: the attempt number among the run's launches, a random generation, the segment), and its outcome is
+  written once it stopped (`launch_ended`: `exited`, `failed`, `stopped`, `unresponsive`), before the run is finalized.
+- A continuation that finds a claim with no outcome records it as `unknown_after_restart` (under the run's lock, the one write it
+  makes before its other checks) and refuses: the run is **parked**. `--ack-unknown` continues it, and `run_resumed` records the
+  acknowledged attempt (`ack_unknown`). An `unresponsive` launch parks the same way.
+- A run with 3 launches whose end was not established (`MaxLostLaunches`) is not launched again, acknowledged or not. Recovery is
+  unchanged and still commits what the run approved.
+- The replay refuses a launch while another has no outcome, a resume while a launch has no outcome, an outcome that names no open
+  launch, an attempt out of order, a launch after `commit_prepared` and an outcome after the chain ended. The time between a lost
+  launch and the restart that records it is not active time.
+
+Tests: `launch_test.go` (the claim before the agent, each outcome, parking, the acknowledgement, the bound), `history_test.go` (the
+fold and the grammar), and `tests/resume_drill.bats` (kills between the claim and the launch, `launch-claimed`, and between the
+agent's end and its outcome, `agent-ended`, and three lost launches).

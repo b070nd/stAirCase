@@ -210,6 +210,9 @@ func (g continuedSegment) checkout(s *runState) error {
 	if cont.withdrawn != "" {
 		resumed["withdrew_review"] = cont.withdrawn
 	}
+	if cont.ackUnknown > 0 {
+		resumed["ack_unknown"] = cont.ackUnknown
+	}
 	if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
 		return fmt.Errorf("audit run_resumed: %w", err)
 	}

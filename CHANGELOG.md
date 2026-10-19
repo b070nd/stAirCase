@@ -15,6 +15,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   refused, and forks stay refused ([hosting](docs/hosting.md#when-the-runner-resumes-a-session)). Run with Claude Code 2.1.236 and
   Cloudroom's argument list: the resumed session continued the run awaiting review, and the agent remembered a word it had said only in
   the first session ([record](docs/release-evidence/hosted-resume-claude-code-2.1.236.md)).
+- **Every agent launch is claimed before it starts.** A new run, a continuation and a resumed hosted session put `launch_claimed`
+  on the audit chain (an attempt number and a generation) before the agent's process starts, and `launch_ended` (how it ended) once
+  it stopped. A run killed in between is not launched again blindly: `staircase resume` records the outcome as
+  `unknown_after_restart`, parks the run and says why; `--ack-unknown` continues it after you looked, and says so on the chain. A run
+  whose launches ended without an established end 3 times is not launched again; `staircase recover` still commits what it approved
+  ([audit](docs/audit.md#lost-launches)).
+
+### Changed
+
+- **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
+  run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
 
 ## [1.1.0] - 2026-10-18
 

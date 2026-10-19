@@ -27,6 +27,8 @@ Events you will see:
 | `drift_halt`, `drift_report` | [drift supervision](drift.md) stopped the run / its summary |
 | `state_emit` | model usage of an agent step (tokens, cost) |
 | `agent_unresponsive` | an agent did not stop when asked |
+| `launch_claimed` | the agent is about to be launched (a new run, a continuation, a resumed hosted session), written before its process starts: the attempt number among the run's launches, a generation that names this launch alone, and the segment |
+| `launch_ended` | how a claimed launch ended, naming its attempt and generation: `exited`, `failed` (the agent ended with an error), `stopped` (the run stopped it), `unresponsive` (it did not stop when asked), or `unknown_after_restart` (no outcome was recorded: its process was lost, and a restart wrote this). See [lost launches](#lost-launches) |
 | `story_accepted`, `rolled_back` | a person accepted a story / discarded a run |
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
 | `policy_snapshot` | the digest of the `policy.json` the run decided under, and whether its signature was valid (written before the first proposal) |
@@ -95,11 +97,30 @@ refuses a chain that breaks any of these rules, and names the entry that breaks 
 - Proposal numbers increase.
 - After `commit_prepared` only a final review may be decided. After `certificate_issued`, `run_recovered` or
   `review_delivered`, nothing is decided and the run is not resumed.
+- Launches are numbered from 1, one after the other. A launch's outcome names its attempt and generation. No agent is
+  launched, and the run is not resumed, while an earlier launch has no outcome. No agent is launched after
+  `commit_prepared`, and no outcome is written after the chain ended.
 
 A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
 often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or
 when its reviewer model left something unreviewed. Recovery asks whenever anything was approved by neither a person
 nor a policy rule, reviewer-model approvals included.
+
+### Lost launches
+
+Every launch of an agent is claimed on the chain (`launch_claimed`) before its process starts, and its outcome
+(`launch_ended`) is written once it stopped. A process that is killed, crashes or loses its machine in between
+leaves a claim with no outcome. Nobody can know what that agent did before it died, outside the worktree included.
+
+`staircase resume` (and a resumed hosted session) that finds such a claim first records its outcome as
+`unknown_after_restart`. Then it **parks** the run: it refuses to launch the agent again and says why. Look at what
+the agent may have done, then continue with `staircase resume <run> --ack-unknown`. The acknowledgement is recorded
+on `run_resumed` (`ack_unknown`, the attempt it acknowledged). An agent that did not stop when asked
+(`unresponsive`) parks the run the same way. Its end was not established either.
+
+A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
+and `staircase recover <run>` still commits what the run had approved. The time a run was down is not counted
+against its time limit.
 
 ## The change certificate on every commit
 

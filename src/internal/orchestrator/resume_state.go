@@ -81,6 +81,7 @@ type continuation struct {
 	wgr         *GitRepo
 	appr        *approvals // the approved state, rebuilt from the chain and checked against the worktree
 	ackDrift    bool
+	ackUnknown  int    // the lost launch a person acknowledged for this continuation
 	sessionID   string // the vendor session to resume, when contextKind is native_resume
 	contextKind string // how the agent's context is carried: "fresh_grounded" (the only kind so far)
 }
