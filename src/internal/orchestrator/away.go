@@ -159,20 +159,20 @@ func (r *Runner) Decide(ctx context.Context, runID int64, o DecideOptions) (Reco
 	}
 	if o.Accept && len(rv.Files) == 0 { // an empty change: accepting it delivers nothing, and says so
 		if rv.Decided == "" {
-			if err := r.audit(runID, "review_accepted", map[string]any{"awaiting_review": rv.Entry, "tree": rv.Tree, "feedback": o.Feedback, "empty": true}); err != nil {
+			if err := r.audit(runID, "review_accepted", history.ReviewDecided{AwaitingReview: rv.Entry, Tree: rv.Tree, Feedback: o.Feedback, Empty: true}); err != nil {
 				return RecoverResult{}, fmt.Errorf("record the acceptance: %w", err)
 			}
 		}
 		return RecoverResult{}, r.store.FinishRun(runID, persistence.RunStatusFailed, time.Now(), "")
 	}
 	if !o.Accept {
-		if err := r.audit(runID, "review_rejected", map[string]any{"awaiting_review": rv.Entry, "feedback": o.Feedback}); err != nil {
+		if err := r.audit(runID, "review_rejected", history.ReviewDecided{AwaitingReview: rv.Entry, Feedback: o.Feedback}); err != nil {
 			return RecoverResult{}, fmt.Errorf("record the rejection: %w", err)
 		}
 		return RecoverResult{}, r.store.FinishRun(runID, persistence.RunStatusFailed, time.Now(), "")
 	}
 	if rv.Decided == "" {
-		if err := r.audit(runID, "review_accepted", map[string]any{"awaiting_review": rv.Entry, "tree": rv.Tree, "feedback": o.Feedback}); err != nil {
+		if err := r.audit(runID, "review_accepted", history.ReviewDecided{AwaitingReview: rv.Entry, Tree: rv.Tree, Feedback: o.Feedback}); err != nil {
 			return RecoverResult{}, fmt.Errorf("record the acceptance: %w", err)
 		}
 	}

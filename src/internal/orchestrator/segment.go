@@ -199,19 +199,15 @@ func (g continuedSegment) checkout(s *runState) error {
 		return err
 	}
 	s.initiator = initiatorOf(cont.history) // the signed request of whoever started the run is kept, never signed again
-	resumed := map[string]any{
-		"segment": cont.segment, "generation": cont.chainHead, "approvals": approvalsOf(cont.history.Approvals()),
-		"next_seq": cont.lastSeq + 1, "policy": policyDigest(cont.history), "plan_digest": cont.history.Bound.PlanDigest,
-		"undecided_requests": cont.undecided, "ack_drift": cont.ackDrift, "elapsed_secs": int(cont.elapsed.Seconds()), "context": cont.contextKind,
+	approvals, err := json.Marshal(approvalsOf(cont.history.Approvals()))
+	if err != nil {
+		return err
 	}
-	if cont.journalDropped > 0 {
-		resumed["journal_dropped"] = cont.journalDropped
-	}
-	if cont.withdrawn != "" {
-		resumed["withdrew_review"] = cont.withdrawn
-	}
-	if cont.ackUnknown > 0 {
-		resumed["ack_unknown"] = cont.ackUnknown
+	resumed := history.Resumed{
+		Segment: cont.segment, Generation: cont.chainHead, Approvals: approvals, NextSeq: cont.lastSeq + 1,
+		Policy: policyDigest(cont.history), PlanDigest: cont.history.Bound.PlanDigest, Undecided: cont.undecided,
+		AckDrift: cont.ackDrift, Elapsed: int(cont.elapsed.Seconds()), Context: cont.contextKind,
+		JournalDropped: cont.journalDropped, WithdrewReview: cont.withdrawn, AckUnknown: cont.ackUnknown,
 	}
 	if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
 		return fmt.Errorf("audit run_resumed: %w", err)
