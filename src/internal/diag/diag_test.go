@@ -42,7 +42,7 @@ func TestLog_written_to_ten_times_its_bound_keeps_the_newest_lines_within_the_bo
 	require.NoError(t, err)
 	const lines = 800 // about 50 bytes each: ten times the bound
 	for i := range lines {
-		_, err := l.Write([]byte(fmt.Sprintf("line %04d of ordinary diagnostic output\n", i)))
+		_, err := fmt.Fprintf(l, "line %04d of ordinary diagnostic output\n", i)
 		require.NoError(t, err, "a full log never fails the writer")
 		assert.LessOrEqual(t, size(t, path)+size(t, path+".1"), bound, "the pair is within the bound after every write")
 	}
@@ -87,13 +87,13 @@ func TestLog_scrubs_a_secret_split_across_a_rotation(t *testing.T) {
 		l, err := diag.Open(path, 1024, secrets(secret))
 		require.NoError(t, err)
 		for i := range 4 {
-			_, _ = l.Write([]byte(fmt.Sprintf("line %02d of ordinary output\n", i)))
+			_, _ = fmt.Fprintf(l, "line %02d of ordinary output\n", i)
 		}
 		// One line longer than a file holds, so that the rotation falls inside it, with the secret arriving in two writes.
 		_, _ = l.Write([]byte(strings.Repeat("p", 150+shift) + secret[:6]))
 		_, _ = l.Write([]byte(secret[6:] + strings.Repeat("q", 400) + "\n"))
 		for i := range 12 {
-			_, _ = l.Write([]byte(fmt.Sprintf("later %02d with %s inside\n", i, secret)))
+			_, _ = fmt.Fprintf(l, "later %02d with %s inside\n", i, secret)
 		}
 		require.NoError(t, l.Close())
 
@@ -112,7 +112,7 @@ func TestLog_reopened_at_its_bound_is_rotated(t *testing.T) {
 	l, err := diag.Open(path, 2048, nil)
 	require.NoError(t, err)
 	for i := range 40 { // fills the first file of 1024 bytes and goes into a second
-		_, _ = l.Write([]byte(fmt.Sprintf("first session line %02d xxxxxxxxxxxxxx\n", i)))
+		_, _ = fmt.Fprintf(l, "first session line %02d xxxxxxxxxxxxxx\n", i)
 	}
 	require.NoError(t, l.Close())
 
