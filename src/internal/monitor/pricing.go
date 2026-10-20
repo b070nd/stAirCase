@@ -40,6 +40,7 @@ var pricingTable = map[string]ModelPricing{
 	"claude-sonnet-4-6": {3.00, 15.00},
 	"claude-sonnet-4-5": {3.00, 15.00},
 	"claude-sonnet-4":   {3.00, 15.00},
+	"claude-haiku-5-5":  {0.50, 2.50}, // above 100k-token prompts (0.10/0.50 below); read from the same page on 2026-10-19
 	"claude-haiku-4-5":  {1.00, 5.00},
 	"claude-haiku-3-5":  {0.80, 4.00},
 	// OpenAI

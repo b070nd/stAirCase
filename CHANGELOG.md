@@ -105,6 +105,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 - **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
   run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
 
+### Fixed
+
+- **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
+  approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
+  `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.
+- **The session commands look at the case's newest run.** For a case with several runs they read the oldest, so the "waits for your
+  review" hint and the run branch named could be those of an earlier run.
+- **Cost estimates know Claude Haiku 5.5.** The price table had no entry for it, so it counted at the unpriced ceiling; it now counts
+  at 0.50 / 2.50 USD per million tokens (the rate above 100k-token prompts, so a budget cap never counts too little).
+
 ## [1.1.0] - 2026-10-18
 
 New:

@@ -258,8 +258,7 @@ func session(l launch, harness, name, command string, args []string) error {
 	}
 	branch := "staircase/run-<id>"
 	if db, err := persistence.InitDB(wsDir); err == nil {
-		if runs, err := persistence.NewStore(db).ListRunsByCase(caseID); err == nil && len(runs) > 0 {
-			last := runs[len(runs)-1]
+		if last := lastRunOfCase(persistence.NewStore(db), caseID); last != nil {
 			branch = fmt.Sprintf("staircase/run-%d", last.ID)
 			if last.Status == persistence.RunStatusAwaitingReview {
 				_ = db.Close()
@@ -273,6 +272,15 @@ func session(l launch, harness, name, command string, args []string) error {
 		return defaultFinish(root, branch, storyID)
 	}
 	return l.finish(root, branch, storyID)
+}
+
+// lastRunOfCase is the case's most recent run, or nil when it has none or they cannot be read. ListRunsByCase is newest first.
+func lastRunOfCase(store *persistence.Store, caseID int64) *domain.Run {
+	runs, err := store.ListRunsByCase(caseID)
+	if err != nil || len(runs) == 0 {
+		return nil
+	}
+	return &runs[0]
 }
 
 // defaultFinish tells what to do with a session's result; staircase seal
