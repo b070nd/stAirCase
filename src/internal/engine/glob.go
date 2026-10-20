@@ -15,6 +15,33 @@ func MatchAny(patterns []string, name string) bool {
 	return false
 }
 
+// MatchAnyFold is MatchAny in any letter case: the file systems of macOS and
+// Windows do not tell "makefile" from "Makefile".
+func MatchAnyFold(patterns []string, name string) bool {
+	lower := make([]string, len(patterns))
+	for i, p := range patterns {
+		lower[i] = strings.ToLower(p)
+	}
+	return MatchAny(lower, strings.ToLower(name))
+}
+
+// ValidGlob reports whether pattern is well formed for MatchGlob: not empty, and every
+// path segment other than ** a pattern filepath.Match accepts.
+func ValidGlob(pattern string) bool {
+	if pattern == "" {
+		return false
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(pattern), "/") {
+		if seg == "**" {
+			continue
+		}
+		if _, err := filepath.Match(seg, ""); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // MatchGlob matches name against pattern with support for the ** multi-segment
 // wildcard used in .gitignore files (which filepath.Match does not support).
 // Single-segment patterns fall through to filepath.Match.

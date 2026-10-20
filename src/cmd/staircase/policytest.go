@@ -7,6 +7,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/history"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/b070nd/stAirCase/src/internal/policysim"
@@ -24,7 +25,10 @@ approve. Run it before you put a new rule into policy.json.
 
 Shell commands, proposals refused by the orchestrator and proposals that drift
 or a guard sent to a person are never the policy's to decide, so they stay as
-they were. The replay applies the rules only, not the per-run limits.
+they were. The replay applies the rules only, not the per-run limits. A rule's
+conditions on paths, lines, files, new files and deletions are checked against
+the edits each proposal recorded, so line counts and new files are estimates
+here; --scenarios checks them exactly.
 
 With --scenarios <file> it asserts instead. Each scenario in the file (JSON: a
 base tree, an optional scope, and proposals with the outcome you expect:
@@ -143,7 +147,7 @@ func policyReplay(store *persistence.Store, e *policy.Engine) (replayReport, err
 						continue
 					}
 					rep.Proposals++
-					replayOne(&rep, e, r.ID, d.Request.YieldRequest, d.Source, d.Drift, d.Guard, d.Approved)
+					replayOne(&rep, e, r.ID, d.Request.YieldRequest, d.Source, d.Drift, d.Guard, d.Approved, d.Lines)
 				}
 			}
 		}
@@ -151,8 +155,45 @@ func policyReplay(store *persistence.Store, e *policy.Engine) (replayReport, err
 	return rep, nil
 }
 
-func replayOne(rep *replayReport, e *policy.Engine, runID int64, req domain.YieldRequest, source, drift, guard string, approved bool) {
-	dec := e.Evaluate(req)
+// replayFacts rebuilds the facts of a past proposal from what the run recorded: its edits, and the
+// lines its decision counted (a decision a person made; otherwise they are estimated from the
+// edit blocks). The base commit is not at hand, so a file is new when its edit says "whole new file"
+// and the request did not record a file it replaced. This is an estimate; `policy test --scenarios`
+// runs the real deciders.
+func replayFacts(req domain.YieldRequest, lines int) policy.Facts {
+	var f policy.Facts
+	seen := map[string]int{}
+	for _, ed := range req.ProposedEdits {
+		file := policy.File{Path: ed.File}
+		switch ed.SearchBlock {
+		case orchestrator.MarkerNewFile:
+			_, replaced := req.Before[ed.File]
+			file.New = !replaced
+			file.Lines = strings.Count(ed.ReplaceBlock, "\n")
+		case orchestrator.MarkerDeleteFile:
+			file.Deleted = true
+		default:
+			file.Lines = strings.Count(ed.SearchBlock, "\n") + strings.Count(ed.ReplaceBlock, "\n")
+		}
+		if i, ok := seen[ed.File]; ok { // one file, edited twice: one changed file
+			f.Files[i].Lines += file.Lines
+			f.Files[i].Deleted = file.Deleted
+			continue
+		}
+		seen[ed.File] = len(f.Files)
+		f.Files = append(f.Files, file)
+	}
+	for _, file := range f.Files {
+		f.Lines += file.Lines
+	}
+	if lines > 0 {
+		f.Lines = lines
+	}
+	return f
+}
+
+func replayOne(rep *replayReport, e *policy.Engine, runID int64, req domain.YieldRequest, source, drift, guard string, approved bool, lines int) {
+	dec := e.Evaluate(req, replayFacts(req, lines))
 	if source == "orchestrator" || drift != "" || guard != "" || !dec.Matched {
 		rep.Unchanged++
 		return
