@@ -138,6 +138,33 @@ func sessionRepo(t *testing.T) (repo, ws string, git func(args ...string) string
 	return repo, ws, git
 }
 
+// TestSession_looks_at_the_newest_run_of_the_case (owner decision 13): a case with several runs is told about its latest run (the
+// branch to review, whether it awaits a decision), not its oldest.
+func TestSession_looks_at_the_newest_run_of_the_case(t *testing.T) {
+	db, err := persistence.InitDB(t.TempDir())
+	require.NoError(t, err)
+	defer db.Close()
+	store := persistence.NewStore(db)
+	v, _ := store.CreateVendor("v")
+	p, _ := store.CreateProject(v.ID, "p", t.TempDir())
+	_, err = store.CreateSwarmTopology(p.ID, "sup", "memory", "langgraph")
+	require.NoError(t, err)
+	c, _ := store.CreateCase(p.ID)
+	assert.Nil(t, lastRunOfCase(store, c.ID), "a case without runs has no last run")
+	first, err := store.CreateRun(c.ID, 1, "staircase/run-x")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(first.ID, persistence.RunStatusFailed, nil, ""))
+	second, err := store.CreateRun(c.ID, 1, "staircase/run-x")
+	require.NoError(t, err)
+	third, err := store.CreateRun(c.ID, 1, "staircase/run-x")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(third.ID, persistence.RunStatusAwaitingReview, nil, ""))
+	last := lastRunOfCase(store, c.ID)
+	require.NotNil(t, last)
+	assert.Equal(t, third.ID, last.ID, "runs %d, %d, %d: the newest is %d", first.ID, second.ID, third.ID, third.ID)
+	assert.Equal(t, persistence.RunStatusAwaitingReview, last.Status)
+}
+
 // TestClaudeSession_outside_a_repository fails with a clear message.
 func TestClaudeSession_outside_a_repository(t *testing.T) {
 	viper.Set("STAIRCASE_DIR", filepath.Join(t.TempDir(), "ws"))

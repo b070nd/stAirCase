@@ -62,6 +62,7 @@ Add `--rebuild` and it also replays the approved proposals and checks that the c
 holds exactly what they produce. A pull request can be required to carry such
 certificates (and that rebuild) with the
 [stAirCase GitHub Action](docs/audit.md#require-certificates-on-pull-requests).
+The Action collects no data: it reads the repository and the pull request, and downloads a release it attests.
 
 ## See it work in one minute
 
