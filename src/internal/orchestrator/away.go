@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/barrier"
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
@@ -34,14 +35,9 @@ const AwayBriefVersion = 1
 // (the agent stopping is not acceptance), and their result is recorded as phase_checked. A tree that passes is offered for
 // review (awaiting_review, naming that phase_checked entry); one that does not ends the run FAILED. Nothing is committed.
 func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, parked int) (string, error) {
-	tree, err := appr.tree()
+	tree, passed, failed, err := r.checkTree(ctx, runID, appr, gate)
 	if err != nil {
-		return persistence.RunStatusFailed, fmt.Errorf("the approved tree: %w", err)
-	}
-	results, failed := gate.runChecks(ctx, nil)
-	passed := failed == "" && len(results) > 0
-	if err := r.audit(runID, "phase_checked", map[string]any{"tree": tree, "checks": checkEvidence(results), "passed": passed, "failed": failed}); err != nil {
-		return persistence.RunStatusFailed, fmt.Errorf("audit phase_checked: %w", err)
+		return persistence.RunStatusFailed, err
 	}
 	// An empty change whose checks fail has nothing to deliver, but its parked proposals may be what fixes the checks (a project that
 	// is broken at its base): they are offered, with the failure shown, instead of being lost to a FAILED run.
@@ -68,6 +64,40 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: %d file(s) approved on evidence, %d proposal(s) parked. Decide with: staircase decide %d\n",
 		len(appr.files), parked, runID)
 	return persistence.RunStatusAwaitingReview, nil
+}
+
+// checkTree runs the checks on the approved tree as it stands and records the result as phase_checked: the first half of an away
+// run's acceptance, for a run that offers its change and for one that did nothing (checkUnchanged). failed says what failed, or "".
+func (r *Runner) checkTree(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate) (tree string, passed bool, failed string, err error) {
+	if tree, err = appr.tree(); err != nil {
+		return "", false, "", fmt.Errorf("the approved tree: %w", err)
+	}
+	results, failed := gate.runChecks(ctx, nil)
+	passed = failed == "" && len(results) > 0
+	if err := r.audit(runID, "phase_checked", map[string]any{"tree": tree, "checks": checkEvidence(results), "passed": passed, "failed": failed}); err != nil {
+		return "", false, "", fmt.Errorf("audit phase_checked: %w", err)
+	}
+	return tree, passed, failed, nil
+}
+
+// checkUnchanged is the end of an away run that approved nothing and parked nothing (its agent made `made` proposals, every one
+// refused): there is no change to offer, so the checks run once on the unchanged tree. A project whose checks fail without any
+// change ends the run FAILED, its worktree kept, since nothing was done and the project is broken; one whose checks pass ends it
+// SUCCESS, which its outcome calls "no change". Nothing is committed either way.
+func (r *Runner) checkUnchanged(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, made int) (string, error) {
+	_, passed, failed, err := r.checkTree(ctx, runID, appr, gate)
+	if err != nil {
+		return persistence.RunStatusFailed, err
+	}
+	barrier.Hit(barrier.NothingChecked)
+	if !passed {
+		fmt.Fprintf(os.Stdout, "   ❌ Nothing to review, and your checks fail: no proposal was approved or parked (the agent made %d), and your checks fail on the unchanged tree (%s). Nothing was committed. Read what the agent did with `staircase inspect log %d`.\n",
+			made, cmp.Or(failed, "the checks ran nothing"), runID)
+		return persistence.RunStatusFailed, nil
+	}
+	fmt.Fprintf(os.Stdout, "   ✅ Nothing to review: no proposal was approved or parked (the agent made %d), and your checks pass on the unchanged tree. If you expected a change, read what the agent said with `staircase inspect log %d`.\n",
+		made, runID)
+	return persistence.RunStatusSuccess, nil
 }
 
 // acceptedReview is what Decide hands to recovery: the tree the owner accepted and the checks that ran on it.

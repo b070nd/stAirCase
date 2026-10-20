@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -457,4 +458,149 @@ func TestAway_accepting_an_empty_review_whose_checks_failed_delivers_nothing(t *
 	now, err := runner.StatusOf(r.Run.ID)
 	require.NoError(t, err)
 	assert.Equal(t, history.OutcomeFailed, now.Outcome, now.Why)
+}
+
+// stdoutOf is what f printed to the terminal.
+func stdoutOf(t *testing.T, f func()) string {
+	t.Helper()
+	rd, wr, err := os.Pipe()
+	require.NoError(t, err)
+	old := os.Stdout
+	os.Stdout = wr
+	done := make(chan string)
+	go func() {
+		b, _ := io.ReadAll(rd)
+		done <- string(b)
+	}()
+	defer func() { os.Stdout = old }()
+	f()
+	os.Stdout = old
+	require.NoError(t, wr.Close())
+	return <-done
+}
+
+// nothingRun is an away run whose agent proposes what proposals does (nothing, when nil) and whose checks are the given ones; it
+// returns what the run printed too.
+func nothingRun(t *testing.T, check string, hosted bool, proposals func(context.Context, *orchestrator.AgentEnv)) (runtest.Result, string) {
+	opts := awayOpts()
+	opts.Checks = []string{check}
+	opts.Hosted = hosted
+	var r runtest.Result
+	out := stdoutOf(t, func() {
+		r = runtest.Run(t, runtest.Options{
+			Setup: inSrc(&operator{approve: true}),
+			Run:   opts,
+			Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+				if proposals != nil {
+					proposals(ctx, env)
+				}
+				return nil
+			})})
+	})
+	return r, out
+}
+
+const (
+	checksPass = `true`
+	checksFail = `test -f elsewhere.txt || { echo "elsewhere.txt is missing"; exit 1; }`
+)
+
+// TestAway_a_run_that_did_nothing_and_whose_checks_fail_ends_failed (ticket 02, PRD 7): nothing approved and nothing parked is not
+// a success when the project's own checks fail on the unchanged tree. The run ends FAILED with its worktree kept, the check recorded
+// on the chain, and a message that says what happened in plain words.
+func TestAway_a_run_that_did_nothing_and_whose_checks_fail_ends_failed(t *testing.T) {
+	r, out := nothingRun(t, checksFail, false, nil)
+	require.ErrorIs(t, r.Err, orchestrator.ErrRunNotSuccessful)
+	assert.Equal(t, persistence.RunStatusFailed, r.Run.Status)
+	assert.Empty(t, r.Run.GitCommitHash)
+	checked := payload(t, r, "phase_checked")
+	require.NotNil(t, checked, "the checks ran on the unchanged tree")
+	assert.Equal(t, false, checked["passed"])
+	assert.Contains(t, checked["failed"], "elsewhere.txt is missing")
+	assert.Nil(t, payload(t, r, "awaiting_review"), "an empty change with nothing parked has nothing for a person to decide")
+	_, err := os.Stat(payload(t, r, "run_bound")["worktree"].(string))
+	assert.NoError(t, err, "the worktree is kept for inspection")
+
+	assert.Contains(t, out, "Nothing to review, and your checks fail: no proposal was approved or parked (the agent made 0), and your checks fail on the unchanged tree (")
+	assert.Contains(t, out, "elsewhere.txt is missing")
+	assert.Contains(t, out, "Nothing was committed. Read what the agent did with `staircase inspect log 1`.")
+
+	st, err := orchestrator.NewRunner(r.Store, r.WsDir).StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeFailed, st.Outcome, st.Why)
+	assert.Contains(t, st.Why, "no proposal was approved or parked, and its checks fail on the unchanged tree (")
+	assert.Contains(t, st.Why, "elsewhere.txt is missing")
+	assert.Contains(t, st.Why, "nothing was delivered")
+}
+
+// TestAway_a_run_that_did_nothing_and_whose_checks_pass_is_a_success_with_no_change: the agent may have had nothing to do. The
+// run stays SUCCESS, says so, and its outcome is "no change".
+func TestAway_a_run_that_did_nothing_and_whose_checks_pass_is_a_success_with_no_change(t *testing.T) {
+	r, out := nothingRun(t, checksPass, false, nil)
+	require.NoError(t, r.Err)
+	assert.Equal(t, persistence.RunStatusSuccess, r.Run.Status)
+	checked := payload(t, r, "phase_checked")
+	require.NotNil(t, checked)
+	assert.Equal(t, true, checked["passed"])
+	assert.Nil(t, payload(t, r, "awaiting_review"))
+	assert.Contains(t, out, "Nothing to review: no proposal was approved or parked (the agent made 0), and your checks pass on the unchanged tree. If you expected a change, read what the agent said with `staircase inspect log 1`.")
+
+	st, err := orchestrator.NewRunner(r.Store, r.WsDir).StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeNoChange, st.Outcome, st.Why)
+	assert.Contains(t, st.Why, "no proposal was approved or parked, and its checks pass on the unchanged tree: there is nothing to deliver")
+}
+
+// TestAway_refused_proposals_are_counted_not_reported_as_none: a proposal the orchestrator refused (a path outside the repository) is
+// neither approved nor parked, and the message counts it, so it never says the agent proposed nothing.
+func TestAway_refused_proposals_are_counted_not_reported_as_none(t *testing.T) {
+	r, out := nothingRun(t, checksPass, false, func(ctx context.Context, env *orchestrator.AgentEnv) {
+		write(ctx, env, "../escape.txt", "x\n")
+		write(ctx, env, "../escape2.txt", "x\n")
+	})
+	require.NoError(t, r.Err)
+	assert.Equal(t, persistence.RunStatusSuccess, r.Run.Status)
+	assert.Contains(t, out, "(the agent made 2)")
+	assert.NotContains(t, out, "proposed nothing")
+}
+
+// TestAway_a_hosted_session_that_did_nothing_is_not_checked: a chat that touched no file is a conversation, not a failed task.
+func TestAway_a_hosted_session_that_did_nothing_is_not_checked(t *testing.T) {
+	r, out := nothingRun(t, checksFail, true, nil)
+	require.NoError(t, r.Err)
+	assert.Equal(t, persistence.RunStatusSuccess, r.Run.Status)
+	assert.Nil(t, payload(t, r, "phase_checked"), "the checks did not run")
+	assert.NotContains(t, out, "Nothing to review")
+	st, err := orchestrator.NewRunner(r.Store, r.WsDir).StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeNoChange, st.Outcome, st.Why)
+	assert.NotContains(t, st.Why, "checks pass", "it never claims a check that did not run")
+}
+
+// TestAway_a_resumed_run_whose_earlier_segment_approved_files_is_not_nothing: the second segment proposed nothing, but the run's
+// change is what the first approved, so it is offered for review as always.
+func TestAway_a_resumed_run_whose_earlier_segment_approved_files_is_not_nothing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	opts := awayOpts()
+	r := runtest.Run(t, runtest.Options{Ctx: ctx,
+		Setup: func(s *persistence.Store, ws string, p int64) {
+			require.NoError(t, crypto.GenerateSigningKey(ws))
+			inSrc(&operator{approve: true})(s, ws, p)
+		},
+		Run: opts,
+		Agent: orchestrator.AgentFunc(func(c context.Context, env *orchestrator.AgentEnv) error {
+			write(c, env, "src/one.txt", "fine\n")
+			cancel()
+			<-c.Done()
+			return c.Err()
+		})})
+	require.Equal(t, persistence.RunStatusKilled, r.Run.Status)
+	require.NoError(t, resume(t, r, orchestrator.ResumeOptions{}))
+	run, err := r.Store.GetRun(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.RunStatusAwaitingReview, run.Status)
+	rv, err := orchestrator.NewRunner(r.Store, r.WsDir).ReviewOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Contains(t, rv.Files, "src/one.txt")
 }

@@ -16,6 +16,7 @@ const (
 	AuditAppend       = "audit-append"        // the decision's append holds the chain lock and has not yet checked the run is still going
 	AuditCommitted    = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
 	Consumed          = "consumed"            // the approval is recorded in memory and released to the agent
+	NothingChecked    = "nothing-checked"     // an away run that did nothing has its checks of the unchanged tree on the chain; the run's path is not
 	CommitPrepared    = "commit-prepared"     // the commit exists and is named on the chain; no branch holds it yet
 	GitCAS            = "git-cas"             // the branch moved to the commit; no evidence yet
 	EvidencePublished = "evidence-published"  // ledger and certificate written; the run record not yet completed
