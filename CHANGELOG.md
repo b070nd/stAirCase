@@ -52,10 +52,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
-- **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
-  run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
-  of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
-  [compatibility](docs/compatibility.md#the-six-contracts)).
+- **Check-defining paths are protected in every run that has checks, and sensitive paths always go to a person.** A change to a path
+  where a run's checks are defined (the script a check runs, the tests given to `bats` or `pytest`, `Makefile` for `make`,
+  `package.json` for `npm`, and anything you name with `--protect`) now always goes to a person, and is parked while away, whatever
+  your policy says. So does a file edit that touches a sensitive path: CI and build files (`.github/`, `Makefile`, `Dockerfile`),
+  dependency files, `.env` files, shell scripts (`*.sh`), and now `CODEOWNERS` files at any depth and Gemini's repository settings
+  (`.gemini/`). If a rule of your `policy.json` approved such an edit before, that edit now reaches a person; the rule itself is
+  unchanged and still decides everything else. The reason shown names the path. Why: an agent that can edit the test a check runs
+  can make the check pass, and one that can edit a CI, build or review-ownership file can change what runs or who must review. What
+  to do: nothing, unless a rule you rely on covered such a path; then name the paths you accept to be protected with `--protect`
+  (check paths only; a sensitive path has no allowance yet). This follows the rule in
+  [compatibility](docs/compatibility.md#how-the-six-contracts-change): a minor release may send more proposals to a person, never fewer.
 
 - **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
   shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of

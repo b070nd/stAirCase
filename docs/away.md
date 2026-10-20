@@ -18,6 +18,9 @@ staircase decide
 - **What needs you is parked, not asked.** A change without evidence, one outside the scope, a sensitive file, a guard hit, a change
   to where your checks are defined or a shell command would come to you; while you are away it is parked: the agent is told at once that it is kept for you and to go on with what
   it can do without it. The parked proposal is on the audit chain with why it needed you. It is never applied by itself.
+- **A sensitive path is parked whatever your policy says.** An edit of a CI or build file, a dependency file, an `.env` or shell file,
+  a `CODEOWNERS` file or Gemini's repository settings (`.gemini/`) is parked even when a rule of your policy approves it, as in a run you watch
+  ([who decides, in order](approvals.md#who-decides-in-order)). The reason on the parked proposal names the path.
 - **The checks cannot be weakened.** The script a check runs, the tests a test runner is given and `make`'s `Makefile` are protected
   with the run's terms, and so is what you name with `--protect` (for `go test ./...`, `--protect "**/*_test.go"`). A change to them
   is parked whatever your policy says, so the agent cannot make a failing check pass by editing or deleting the test it runs

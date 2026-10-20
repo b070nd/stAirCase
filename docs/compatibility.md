@@ -25,10 +25,14 @@ versions, and Gemini CLI and OpenCode are experimental (see below for what has b
 | **Verifier results** | `checks` in the certificate: command, exit code, sandboxed, output digest (`--check`) | Existing fields keep their meaning. Linking full test reports as in-toto test-result attestations is planned, as an addition. |
 | **Policy file** | `policy.json`: rules that approve or reject proposals, and limits ([approvals](approvals.md)) | A valid policy file keeps its meaning. `staircase policy test` shows what a policy decides on your past runs before you rely on a change. |
 
-One change of meaning in the policy file's surroundings, so that you are not surprised: the paths where a run's checks are defined
-are protected for **every** run that has checks, not only away runs ([approvals](approvals.md#checks-the-agent-cannot-weaken)). A
-change to one goes to a person whatever the policy says, so a policy rule that approved an edit of such a path before now sends it
-to a person. The policy file itself is read as before.
+### How the six contracts change
+
+A minor release may add a decider that sends more proposals to a person (a guard, a protected path, a sensitive path). It never lets a rule, a
+signal or a model approve what a person decided before. The policy file's syntax and the meaning of each rule stay as they are; what a rule
+can reach narrows. Every such addition is listed in the CHANGELOG under Changed with what to do. For example, since the release after 1.1.0 the paths where a
+run's checks are defined are protected in every run that has checks ([approvals](approvals.md#checks-the-agent-cannot-weaken)), and a file edit
+that touches a sensitive path always goes to a person ([approvals](approvals.md#who-decides-in-order)): a rule that approved an edit of such
+a path now sends it to a person.
 
 Everything else, including the command-line output, the workspace layout, the
 database and the agents' prompts, can change in any version.
