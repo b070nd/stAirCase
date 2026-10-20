@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Delivery by policy, chosen in the run's terms (`--deliver policy`, `--deliver-path`).** An away run can now be started with
+  the delivery mode `policy` and a delivery scope. The terms refuse it unless the run is away, has no `--validator`, names a delivery
+  scope, signs (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own);
+  a policy that is not signed (`staircase policy sign`) refuses the run when it starts. The agreement says the mode, the scope, the
+  policy's digest and "no person reviews the whole change". Review stays the default and is not in the saved terms: a run saved before
+  the field existed reads as review. The delivery itself is not built yet, so a run in this mode still ends awaiting your review.
+  ADR 0012 is accepted: only what rules of your signed policy will approve is delivered, never what evidence or the agreed task
+  alone approved ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
+
 - **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
   (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
   level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.

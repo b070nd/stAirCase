@@ -12,6 +12,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -240,6 +241,53 @@ func TestSession_protect_names_paths_inside_the_repository(t *testing.T) {
 	require.NotNil(t, f, "staircase claude --protect")
 	require.NoError(t, claudeCmd.Flags().Set("protect", "../tests"))
 	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), `--protect "../tests"`)
+}
+
+// TestAgreement_says_what_delivery_by_policy_arms (ADR 0012): the person who agrees to an unattended delivery is told the mode, the
+// scope, the digest of the policy whose rules will decide, and that no person reviews the whole change. A run delivered by review
+// says none of it.
+func TestAgreement_says_what_delivery_by_policy_arms(t *testing.T) {
+	base := sessionSetup{harness: "claude-code", name: "Claude Code", task: "t", root: "/r", base: "abc", away: true, onEvidence: true, inScope: true,
+		allow: []string{"docs/**", "src/**"}, checks: []string{"make check"}, protected: []string{"Makefile"}, signed: true}
+	policy := base
+	policy.deliver, policy.deliverPaths = "policy", []string{"docs/**", "CHANGELOG.md"}
+	policy.policyDigest, policy.policySigned = "0123456789abcdef0123456789abcdef", true
+	text := agreement(policy)
+	for _, want := range []string{"delivery:", "BY POLICY", "no person reviews the whole change", "docs/**, CHANGELOG.md",
+		"0123456789abcdef0123456789abcdef", "signed", "nothing is pushed", "sends the whole run to your review"} {
+		assert.Contains(t, text, want)
+	}
+	assert.NotContains(t, text, "waits\n               for your review: staircase decide", "the run does not always wait for review")
+	assert.NotContains(t, text, "NOT signed")
+
+	unsigned := policy
+	unsigned.policySigned = false
+	assert.Contains(t, agreement(unsigned), "NOT signed")
+	assert.Contains(t, agreement(unsigned), "staircase policy sign")
+
+	review := agreement(base)
+	for _, not := range []string{"delivery:", "BY POLICY", "no person reviews", "policy:"} {
+		assert.NotContains(t, review, not)
+	}
+	assert.Contains(t, review, "it waits\n               for your review: staircase decide", "review mode is as it was")
+}
+
+// TestSession_delivery_flags_are_judged_before_anything_starts: --deliver and --deliver-path are flags of the sessions, review is the
+// default, and the terms' refusals reach the person before anything is asked or made.
+func TestSession_delivery_flags_are_judged_before_anything_starts(t *testing.T) {
+	keepCLI(t)
+	for _, cmd := range []*cobra.Command{claudeCmd, codexCmd} {
+		deliver := cmd.Flags().Lookup("deliver")
+		require.NotNil(t, deliver, "staircase %s --deliver", cmd.Name())
+		assert.Equal(t, "review", deliver.DefValue)
+		path := cmd.Flags().Lookup("deliver-path")
+		require.NotNil(t, path, "staircase %s --deliver-path", cmd.Name())
+		assert.Equal(t, "stringArray", path.Value.Type(), "repeatable")
+	}
+	cli.terms.Deliver = "policy"
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--deliver policy needs --away")
+	cli.terms.Deliver, cli.terms.DeliverPaths = "review", []string{"docs/**"}
+	assert.ErrorContains(t, claudeSession(nil, []string{"task"}), "--deliver-path")
 }
 
 // TestSession_approve_in_scope_needs_a_scope: approving the task instead of

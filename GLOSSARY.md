@@ -87,7 +87,10 @@ no run can have written has no history. It is refused with the entry that breaks
 - how changes are approved;
 - where commands and checks run, the checks, and the paths where they are defined (protected);
 - what signs;
-- what an away run may do without asking.
+- what an away run may do without asking;
+- how the approved change is delivered (the **delivery mode**: review, the default, which is not in the saved form, or policy, with
+  its delivery scope; ADR 0012). In policy mode no person reviews the whole change: only rules of the owner's signed policy may have
+  approved what is delivered.
 
 They are plain data (`orchestrator.Terms`), made only through `NewTerms`, which normalizes them once and refuses what no run can
 decide under. A run saves them as its `options.json`, bound by digest on `run_bound`. A continuation also keeps the saved plan and

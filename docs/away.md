@@ -25,6 +25,13 @@ staircase decide
   with the run's terms, and so is what you name with `--protect` (for `go test ./...`, `--protect "**/*_test.go"`). A change to them
   is parked whatever your policy says, so the agent cannot make a failing check pass by editing or deleting the test it runs
   ([checks the agent cannot weaken](approvals.md#checks-the-agent-cannot-weaken)).
+- **Delivery by policy is chosen in the terms; the delivery itself is not built yet.** `--deliver policy` with `--deliver-path <glob>`
+  (repeatable) is how you will let rules of your signed policy, and nothing else, deliver a change to the run branch without your
+  review. The terms already refuse it unless the run is away, has no `--validator`, names a delivery scope, signs
+  (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own), and a run
+  whose policy is not signed (`staircase policy sign`) is refused when it starts. The agreement says "no person reviews the whole
+  change". Until the delivery is built, a run in this mode ends awaiting your review like any other
+  ([ADR 0012](adr/0012-delivering-by-policy.md)).
 - **The end is checked, not announced.** When the agent stops, your checks run once more on the whole approved change. A change that
   does not pass ends the run failed. One that passes ends it **awaiting review**, with nothing committed and the run branch where it
   started. The process exits; nothing has to keep running.
