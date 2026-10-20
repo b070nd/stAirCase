@@ -99,6 +99,17 @@ func TestReplay_refuses_what_no_run_can_have_written(t *testing.T) {
 		"a resume while a launch is open":           {bound().claim(1, "g1").add("run_resumed", map[string]any{"segment": 2}), 3, "launch 1 has no outcome"},
 		"a launch after commit_prepared":            {bound().add("commit_prepared", nil).claim(1, "g1"), 3, "follows commit_prepared"},
 		"an outcome after the certificate":          {bound().claim(1, "g1").add("certificate_issued", nil).launchEnded(1, "g1", LaunchExited), 4, "follows certificate_issued"},
+		"an acknowledgement with no launch":         {bound().ack(1, "g1"), 2, "names no lost launch"},
+		"an acknowledgement of an open launch":      {bound().claim(1, "g1").ack(1, "g1"), 3, "names no lost launch"},
+		"an acknowledgement of an exited launch":    {bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).ack(1, "g1"), 4, "names no lost launch"},
+		"an acknowledgement of a failed launch":     {bound().claim(1, "g1").launchEnded(1, "g1", LaunchFailed).ack(1, "g1"), 4, "names no lost launch"},
+		"an acknowledgement of a stopped launch":    {bound().claim(1, "g1").launchEnded(1, "g1", LaunchStopped).ack(1, "g1"), 4, "names no lost launch"},
+		"an acknowledgement of another generation":  {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ack(1, "g0"), 4, "names no lost launch"},
+		"an acknowledgement of another attempt":     {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ack(2, "g1"), 4, "names no lost launch"},
+		"an acknowledgement of an earlier launch":   {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).claim(2, "g2").launchEnded(2, "g2", LaunchUnknown).ack(1, "g1"), 6, "names no lost launch"},
+		"two acknowledgements of one launch":        {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ack(1, "g1").ack(1, "g1"), 5, "already acknowledged"},
+		"an acknowledgement a resume made already":  {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).ack(1, "g1"), 5, "already acknowledged"},
+		"an acknowledgement after the certificate":  {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("certificate_issued", nil).ack(1, "g1"), 5, "follows certificate_issued"},
 		"an unreadable decision":                    {&chain{events: append(bound().events, domain.RunEventLog{EventType: "yield_decided", Payload: "not json"})}, 2, "unreadable"},
 		"an unreadable binding":                     {&chain{events: []domain.RunEventLog{{EventType: "run_bound", Payload: "{"}}}, 1, "unreadable"},
 		"an unreadable offered review":              {&chain{events: append(bound().events, domain.RunEventLog{EventType: "awaiting_review", Payload: "["})}, 2, "unreadable"},
@@ -129,6 +140,9 @@ func TestReplay_accepts_what_runs_write(t *testing.T) {
 		"the old recovery final review": bound().req("file_edit").decided(1, "task", true).add("recovery_final_review", map[string]any{"approved": true}).add("run_recovered", nil),
 		"a lost launch's outcome after commit_prepared, before the recovery": bound().claim(1, "g1").add("commit_prepared", nil).
 			launchEnded(1, "g1", LaunchUnknown).add("run_recovered", nil),
+		"a lost launch's acknowledgement, then the launch after it": bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ack(1, "g1").claim(2, "g2").launchEnded(2, "g2", LaunchExited),
+		"an unresponsive launch's acknowledgement":                  bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnresponsive).ack(1, "g1").add("run_resumed", map[string]any{"segment": 2}),
+		"a lost launch's acknowledgement after commit_prepared":     bound().claim(1, "g1").add("commit_prepared", nil).launchEnded(1, "g1", LaunchUnknown).ack(1, "g1").add("run_recovered", nil),
 		"a launch per segment": bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).
 			claim(2, "g2").launchEnded(2, "g2", LaunchExited),
 	} {
@@ -330,6 +344,10 @@ func (c *chain) launchEnded(attempt int, generation, outcome string) *chain {
 	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome})
 }
 
+func (c *chain) ack(attempt int, generation string) *chain {
+	return c.add("launch_acknowledged", map[string]any{"attempt": attempt, "generation": generation})
+}
+
 func (c *chain) launchClassed(attempt int, generation, outcome, class string) *chain {
 	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome, "class": class})
 }
@@ -371,6 +389,34 @@ func TestReplay_what_a_restart_reads_of_the_launches(t *testing.T) {
 	h = bound().claim(1, "g1").launchEnded(1, "g1", LaunchStopped).add("run_resumed", map[string]any{"segment": 2}).claim(2, "g2").launchEnded(2, "g2", LaunchFailed).replay(t)
 	assert.Equal(t, 0, h.Lost(), "a known failure is not a lost launch")
 	assert.Equal(t, 0, h.LaunchParked())
+}
+
+// TestReplay_an_acknowledged_lost_launch_is_not_parked (owner decisions, ticket 06): a person's launch_acknowledged lifts the park
+// of the launch it names and of no other; it adds nothing to the segment's active time; and it never lifts the bound of lost launches.
+func TestReplay_an_acknowledged_lost_launch_is_not_parked(t *testing.T) {
+	c := bound().claim(1, "g1")
+	c.sec += 60
+	c.launchEnded(1, "g1", LaunchUnknown)
+	h := c.replay(t)
+	require.Equal(t, 1, h.LaunchParked())
+	assert.False(t, h.Launches[0].Acked)
+	before := h.Elapsed
+
+	c.sec += 3600 // the person looked an hour later
+	h = c.ack(1, "g1").replay(t)
+	assert.Equal(t, 0, h.LaunchParked(), "acknowledged by name")
+	assert.True(t, h.Launches[0].Acked)
+	assert.Equal(t, 1, h.Lost(), "acknowledged, it still counts as lost")
+	assert.Equal(t, before, h.Elapsed, "the time before the person looked is not time the run used")
+
+	h = c.claim(2, "g2").launchEnded(2, "g2", LaunchUnresponsive).replay(t)
+	assert.Equal(t, 2, h.LaunchParked(), "acknowledging attempt 1 does not cover the loss of attempt 2")
+	assert.True(t, h.Launches[0].Acked)
+	assert.False(t, h.Launches[1].Acked)
+
+	h = c.ack(2, "g2").claim(3, "g3").launchEnded(3, "g3", LaunchUnknown).ack(3, "g3").replay(t)
+	assert.Equal(t, 0, h.LaunchParked())
+	assert.Equal(t, MaxLostLaunches, h.Lost(), "three lost launches stay three, acknowledged or not")
 }
 
 // TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks (V11-C01 scope 8): a launch that did not end well has a

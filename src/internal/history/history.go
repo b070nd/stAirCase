@@ -35,8 +35,7 @@ type History struct {
 	Usage     []StateEmit
 	Shells    ShellCount
 
-	Launches    []Launch // every agent launch, in chain order
-	ackedLaunch int      // the lost launch a resume acknowledged last
+	Launches []Launch // every agent launch, in chain order
 
 	Review *Review // the last review an away run offered
 	// Sealed is the first entry that ended the agent's part of the run (commit_prepared) or the chain (certificate_issued,
@@ -87,6 +86,8 @@ type Launch struct {
 	// Class is why the launch did not end well (see ClassOf): "" while it has no outcome, and when it ended by itself or the run
 	// stopped it.
 	Class string
+	// Acked: a person acknowledged the launch's lost end, by launch_acknowledged or by the resume that continued it.
+	Acked bool
 }
 
 // lost reports whether the launch's end was never established: no outcome, one a restart recorded, or an agent that did not stop.
@@ -131,7 +132,8 @@ func Read(store *persistence.Store, runID int64) (History, error) {
 // replay is the fold. The grammar (ADR 0010, section 2): run_bound first and once; every decision but a final review uses up a
 // request of the same segment and kind audited before it (the one it names, when it names one); proposal numbers increase;
 // commit_prepared leaves room only for a final review; certificate_issued, run_recovered and review_delivered end the chain; launches
-// are numbered in order, each outcome names the open launch, and nothing launches or resumes while a launch has no outcome. Event
+// are numbered in order, each outcome names the open launch, and nothing launches or resumes while a launch has no outcome; a launch
+// is acknowledged only after it ended unknown or unresponsive, by name, once, and before the chain ends. Event
 // types and fields it does not know are ignored.
 func replay(events []domain.RunEventLog) (History, error) {
 	h := History{Segment: 1, entries: map[string]bool{}}
@@ -180,8 +182,8 @@ func replay(events []domain.RunEventLog) (History, error) {
 			if p.AckDrift {
 				h.Halted, h.end.haltReason = false, ""
 			}
-			if p.AckUnknown > 0 {
-				h.ackedLaunch = p.AckUnknown
+			if at := p.AckUnknown - 1; at >= 0 && at < len(h.Launches) {
+				h.Launches[at].Acked = true // attempts are numbered from 1, in order
 			}
 		case "launch_claimed":
 			if s := firstOf(ended, agentEnded); s != "" {
@@ -226,6 +228,25 @@ func replay(events []domain.RunEventLog) (History, error) {
 			if p.Outcome == LaunchUnknown {
 				continue // written by a restart, after the run was down: not time the segment used
 			}
+		case "launch_acknowledged":
+			if ended != "" {
+				return h, fail("a launch's acknowledgement follows %s", ended)
+			}
+			var p LaunchAcknowledged
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			// Only the last launch can be acknowledged, and only when its end was never established.
+			n := len(h.Launches)
+			if n == 0 || !h.Launches[n-1].lost() || h.Launches[n-1].Outcome == "" ||
+				h.Launches[n-1].Attempt != p.Attempt || h.Launches[n-1].Generation != p.Generation {
+				return h, fail("the acknowledgement names no lost launch (attempt %d, generation %q): only a launch that ended unknown or unresponsive is acknowledged", p.Attempt, p.Generation)
+			}
+			if h.Launches[n-1].Acked {
+				return h, fail("launch %d is already acknowledged", p.Attempt)
+			}
+			h.Launches[n-1].Acked = true
+			continue // written by a person after the run was down: not time the segment used
 		case "policy_snapshot":
 			h.Policy = &PolicySnapshot{}
 			if err := read(h.Policy); err != nil {
@@ -447,10 +468,11 @@ func (h History) Lost() int {
 	return n
 }
 
-// LaunchParked is the attempt number of the run's last launch when its end was never established and no resume has acknowledged
-// it since: the run is not launched again without a person. 0 when the run is not parked for this.
+// LaunchParked is the attempt number of the run's last launch when its end was never established and no person has acknowledged
+// it (launch_acknowledged, or the resume that continued it): the run is not launched again without a person. 0 when the run is
+// not parked for this.
 func (h History) LaunchParked() int {
-	if n := len(h.Launches); n > 0 && h.Launches[n-1].lost() && h.Launches[n-1].Attempt != h.ackedLaunch {
+	if n := len(h.Launches); n > 0 && h.Launches[n-1].lost() && !h.Launches[n-1].Acked {
 		return h.Launches[n-1].Attempt
 	}
 	return 0

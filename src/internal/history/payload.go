@@ -149,6 +149,13 @@ type LaunchEnded struct {
 	Class string `json:"class,omitempty"`
 }
 
+// LaunchAcknowledged is launch_acknowledged: a person's acknowledgement of a launch whose end was never established (ADR 0005,
+// amended), written without launching anything. It names the exact launch, so it cannot cover a later loss.
+type LaunchAcknowledged struct {
+	Attempt    int    `json:"attempt"`
+	Generation string `json:"generation"`
+}
+
 // The outcomes of a launch. The first three are established ends; the last two are not.
 const (
 	LaunchExited       = "exited"                // the agent ended by itself
