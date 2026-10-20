@@ -79,7 +79,7 @@ func TestLoadEngine_invalid_json_returns_error(t *testing.T) {
 
 func TestEvaluate_empty_engine_never_approves(t *testing.T) {
 	e := &policy.Engine{}
-	dec := e.Evaluate(fileEditReq("file_edit", 1.0))
+	dec := e.Evaluate(fileEditReq("file_edit", 1.0), policy.Facts{})
 	assert.False(t, dec.Matched)
 	assert.False(t, dec.Approved)
 	assert.Contains(t, dec.Reason, "no matching rule")
@@ -91,7 +91,7 @@ func TestEvaluate_action_type_match(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.5))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.5), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -100,7 +100,7 @@ func TestEvaluate_action_type_mismatch_falls_through(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("custom", 0.5))
+	dec := e.Evaluate(fileEditReq("custom", 0.5), policy.Facts{})
 	assert.False(t, dec.Matched)
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
@@ -110,7 +110,7 @@ func TestEvaluate_agent_name_match(t *testing.T) {
 		{AgentNames: []string{"coder"}, ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
 	req := domain.YieldRequest{AgentName: "coder", ActionType: "file_edit", ConfidenceScore: 0.5}
-	dec := e.Evaluate(req)
+	dec := e.Evaluate(req, policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -120,7 +120,7 @@ func TestEvaluate_agent_name_mismatch_falls_through(t *testing.T) {
 		{AgentNames: []string{"coder"}, ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
 	req := domain.YieldRequest{AgentName: "reviewer", ActionType: "file_edit", ConfidenceScore: 0.5}
-	dec := e.Evaluate(req)
+	dec := e.Evaluate(req, policy.Facts{})
 	assert.False(t, dec.Matched, "different agent must not match")
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
@@ -131,7 +131,7 @@ func TestEvaluate_empty_agent_names_matches_any(t *testing.T) {
 	}}
 	for _, name := range []string{"coder", "reviewer", "architect", ""} {
 		req := domain.YieldRequest{AgentName: name, ActionType: "file_edit", ConfidenceScore: 0.5}
-		dec := e.Evaluate(req)
+		dec := e.Evaluate(req, policy.Facts{})
 		assert.True(t, dec.Matched, "empty agent_names must match agent %q", name)
 	}
 }
@@ -141,7 +141,7 @@ func TestEvaluate_agent_name_case_insensitive(t *testing.T) {
 		{AgentNames: []string{"Coder"}, Effect: policy.EffectApprove},
 	}}
 	req := domain.YieldRequest{AgentName: "CODER", ActionType: "file_edit"}
-	assert.True(t, e.Evaluate(req).Matched)
+	assert.True(t, e.Evaluate(req, policy.Facts{}).Matched)
 }
 
 func TestEvaluate_empty_action_types_matches_any(t *testing.T) {
@@ -149,7 +149,7 @@ func TestEvaluate_empty_action_types_matches_any(t *testing.T) {
 		{ActionTypes: nil, Effect: policy.EffectApprove},
 	}}
 	for _, at := range []string{"file_edit", "custom"} { // shell_exec is blocked at policy level - tested separately
-		dec := e.Evaluate(fileEditReq(at, 0.5))
+		dec := e.Evaluate(fileEditReq(at, 0.5), policy.Facts{})
 		assert.True(t, dec.Matched, "expected match for %q", at)
 		assert.True(t, dec.Approved, "expected approve for %q", at)
 	}
@@ -159,7 +159,7 @@ func TestEvaluate_action_type_case_insensitive(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"File_Edit"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.5))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.5), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -170,7 +170,7 @@ func TestEvaluate_confidence_above_threshold_approves(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{MinConfidence: 0.8, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.95))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.95), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -179,7 +179,7 @@ func TestEvaluate_confidence_exactly_at_threshold_approves(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{MinConfidence: 0.8, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.8))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.8), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -188,7 +188,7 @@ func TestEvaluate_confidence_below_threshold_misses(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{MinConfidence: 0.8, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.5))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.5), policy.Facts{})
 	assert.False(t, dec.Matched)
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
@@ -197,7 +197,7 @@ func TestEvaluate_zero_min_confidence_matches_any(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{MinConfidence: 0, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.0))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.0), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -208,7 +208,7 @@ func TestEvaluate_allowed_extension_matches(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{AllowedExtensions: []string{".md", ".txt"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "README.md", "notes.txt"))
+	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "README.md", "notes.txt"), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -217,7 +217,7 @@ func TestEvaluate_extension_without_dot_prefix_normalised(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{AllowedExtensions: []string{"md"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "README.md"))
+	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "README.md"), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -226,7 +226,7 @@ func TestEvaluate_disallowed_extension_misses(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{AllowedExtensions: []string{".md"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "README.md", "main.go"))
+	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "README.md", "main.go"), policy.Facts{})
 	assert.False(t, dec.Matched)
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
@@ -235,7 +235,7 @@ func TestEvaluate_empty_extensions_matches_any_file(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{AllowedExtensions: nil, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "main.go", "config.yaml"))
+	dec := e.Evaluate(fileEditReq("file_edit", 1.0, "main.go", "config.yaml"), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -246,7 +246,7 @@ func TestEvaluate_no_edits_vacuously_satisfies_extension_rule(t *testing.T) {
 	}}
 	// custom yield has no ProposedEdits; extension condition is vacuously true.
 	req := domain.YieldRequest{Type: "yield_request", ActionType: "custom", ConfidenceScore: 1.0}
-	dec := e.Evaluate(req)
+	dec := e.Evaluate(req, policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -257,7 +257,7 @@ func TestEvaluate_reject_effect_matched_is_true_approved_is_false(t *testing.T) 
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"custom"}, Effect: policy.EffectReject},
 	}}
-	dec := e.Evaluate(fileEditReq("custom", 1.0))
+	dec := e.Evaluate(fileEditReq("custom", 1.0), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.False(t, dec.Approved)
 	assert.Contains(t, dec.Reason, "auto-rejected")
@@ -269,7 +269,7 @@ func TestEvaluate_zero_effect_defaults_to_approve(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
 		{ActionTypes: []string{"file_edit"}}, // Effect zero value
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.5))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.5), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -281,7 +281,7 @@ func TestEvaluate_first_matching_rule_wins(t *testing.T) {
 		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectReject},
 		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.5))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.5), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.False(t, dec.Approved)
 	assert.Contains(t, dec.Reason, "rule #0")
@@ -300,16 +300,16 @@ func TestEvaluate_combined_conditions_all_must_match(t *testing.T) {
 	}}
 
 	// All conditions met.
-	dec := e.Evaluate(fileEditReq("file_edit", 0.95, "README.md"))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.95, "README.md"), policy.Facts{})
 	assert.True(t, dec.Matched, "all conditions met should match")
 	assert.True(t, dec.Approved, "matched approve rule should approve")
 
 	// Confidence too low → no match.
-	dec = e.Evaluate(fileEditReq("file_edit", 0.5, "README.md"))
+	dec = e.Evaluate(fileEditReq("file_edit", 0.5, "README.md"), policy.Facts{})
 	assert.False(t, dec.Matched, "low confidence should not match")
 
 	// Wrong extension → no match.
-	dec = e.Evaluate(fileEditReq("file_edit", 0.95, "main.go"))
+	dec = e.Evaluate(fileEditReq("file_edit", 0.95, "main.go"), policy.Facts{})
 	assert.False(t, dec.Matched, "wrong extension should not match")
 }
 
@@ -320,7 +320,7 @@ func TestEvaluate_reason_contains_rule_index(t *testing.T) {
 		{ActionTypes: []string{"other"}},
 		{ActionTypes: []string{"file_edit"}, Effect: policy.EffectApprove},
 	}}
-	dec := e.Evaluate(fileEditReq("file_edit", 0.5))
+	dec := e.Evaluate(fileEditReq("file_edit", 0.5), policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.Contains(t, dec.Reason, "rule #1")
 }
@@ -338,7 +338,7 @@ func TestEvaluate_type_compatible_with_domain(t *testing.T) {
 		ActionType:      "file_edit",
 		ConfidenceScore: 0.9,
 	}
-	dec := e.Evaluate(req)
+	dec := e.Evaluate(req, policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved)
 }
@@ -366,7 +366,7 @@ func TestDenyBeatsAllow(t *testing.T) {
 		{Effect: policy.EffectApprove},
 	}}
 	req := domain.YieldRequest{ActionType: "custom", ConfidenceScore: 0.99}
-	dec := e.Evaluate(req)
+	dec := e.Evaluate(req, policy.Facts{})
 	assert.True(t, dec.Matched, "rule must have matched")
 	assert.False(t, dec.Approved, "first-matching reject rule must set Approved=false")
 	assert.Contains(t, dec.Reason, "auto-rejected")
@@ -382,7 +382,7 @@ func TestAllowBeatesDeny(t *testing.T) {
 		{ActionTypes: []string{"custom"}, Effect: policy.EffectReject},
 	}}
 	req := domain.YieldRequest{ActionType: "custom", ConfidenceScore: 0.9}
-	dec := e.Evaluate(req)
+	dec := e.Evaluate(req, policy.Facts{})
 	assert.True(t, dec.Matched)
 	assert.True(t, dec.Approved, "first-matching approve rule must win (first-match-wins, not deny-over-allow)")
 }
@@ -490,7 +490,7 @@ func TestPolicyEngine_shell_exec_never_auto_approved(t *testing.T) {
 		ActionType:      "shell_exec",
 		ConfidenceScore: 1.0, // maximum confidence
 	}
-	dec := eng.Evaluate(req)
+	dec := eng.Evaluate(req, policy.Facts{})
 	assert.False(t, dec.Matched, "shell_exec must not match any policy rule")
 	assert.False(t, dec.Approved, "shell_exec must never be auto-approved")
 }
@@ -506,7 +506,7 @@ func TestPolicyEngine_non_shell_exec_still_auto_approved(t *testing.T) {
 		ActionType:      "file_edit",
 		ConfidenceScore: 0.9,
 	}
-	dec := eng.Evaluate(req)
+	dec := eng.Evaluate(req, policy.Facts{})
 	assert.True(t, dec.Matched, "file_edit should match the wildcard rule")
 	assert.True(t, dec.Approved, "file_edit with high confidence should be auto-approved")
 }
@@ -563,7 +563,7 @@ func TestLoadEngine_fails_closed(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[{"agent_names":["intern"],"effect":"reject"}]}`), 0o600))
 	e, err := loadEngine(dir)
 	require.NoError(t, err)
-	assert.False(t, e.Evaluate(fileEditReq("file_edit", 1, "a.go")).Approved)
+	assert.False(t, e.Evaluate(fileEditReq("file_edit", 1, "a.go"), policy.Facts{}).Approved)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`{"rules":[],"limits":{"max_run_duration":60}}`), 0o600))
 	_, err = loadEngine(dir)

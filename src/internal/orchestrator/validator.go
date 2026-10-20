@@ -50,13 +50,7 @@ var sensitivePaths = []string{".github/**", ".gitlab/**", ".circleci/**", ".husk
 
 // matchesFold matches in any letter case: the file systems of macOS and
 // Windows do not tell "makefile" from "Makefile".
-func matchesFold(patterns []string, name string) bool {
-	lower := make([]string, len(patterns))
-	for i, p := range patterns {
-		lower[i] = strings.ToLower(p)
-	}
-	return engine.MatchAny(lower, strings.ToLower(name))
-}
+func matchesFold(patterns []string, name string) bool { return engine.MatchAnyFold(patterns, name) }
 
 func sensitive(files []string) string {
 	for _, f := range files {

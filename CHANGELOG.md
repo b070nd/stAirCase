@@ -17,6 +17,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   ADR 0012 is accepted: only what rules of your signed policy will approve is delivered, never what evidence or the agreed task
   alone approved ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
 
+- **Policy rules can look at the change itself.** A rule in `policy.json` gains five optional conditions: `paths` (every changed file
+  matches one of these globs, in any letter case), `max_lines`, `max_files`, `new_files_only` and `no_deletions`. They are checked
+  against the files and line counts the orchestrator derives from the proposal, never against what the agent says. A reject rule with
+  only these conditions is not a blanket deny. No rule shape ever matches a shell command or a tool call. The file's `version` stays
+  1: a file that uses the new fields is refused by an older stAirCase (it fails closed instead of reading the rule without them),
+  and a file without them decides exactly as before. `staircase policy test` and the scenarios use the same conditions
+  ([approvals](docs/approvals.md#approving-automatically-with-rules)). Expression conditions (CEL) are deferred, with the findings
+  recorded ([ADR 0013](docs/adr/0013-cel-conditions-in-policy-rules.md)).
+
 - **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
   (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
   level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.
