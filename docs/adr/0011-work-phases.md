@@ -1,6 +1,8 @@
 # ADR 0011: Work phases of several dependent tasks (design)
 
-- Status: proposed (2026-10-18), for the owner to decide. Nothing here is built.
+- Status: accepted (2026-10-20) for the decisions below (the queue, several predecessors, one writer per repository, `--away`
+  unchanged); proposed on 2026-10-18. Nothing here is built: the queue is built at the queue ticket, and the single-task phase needs
+  only the contract and the optional `phase` field on `run_bound`.
 - Related: the v1.1 candidate V11-C01, implementation scope 1 (immutable phase contract) and 4 (durable progress, queue and parking),
   and Cloudroom pattern 2 (in the maintainer's protocol); ADR 0005 (continuation), ADR 0006 (Away mode, section 1 and section 9 item 3),
   ADR 0009 (declared commands), ADR 0010 (one replay), ADR 0012 (delivering by policy).
@@ -45,7 +47,7 @@ is active. Its limits, as the assessment records them: a FIFO of prompts is not 
 not one writer per repository (sessions can share a workspace); parking for a person, eligibility and writer ownership must be Go
 rules; an edited queue item must not revise a frozen contract or replenish limits.
 
-## Decision (proposed)
+## Decision
 
 ### 1. A phase is a contract above runs, and each task is one run
 
@@ -83,6 +85,13 @@ refused with the entry that breaks its grammar. Its events:
 | `phase_paused`, `phase_continued` | when the owner pauses or continues | a pause survives a restart until the owner ends it |
 | `phase_ended` | once | why: all tasks settled, a limit reached, or the owner stopped it |
 
+**Storage (decided).** The phase chain is stored as rows in the workspace database, `phase_event_logs(id, phase_id, seq, event_type,
+payload, event_hash, hash_version, timestamp)`, with a unique `(phase_id, seq)`, so a second writer cannot fork it. The claim is
+written in the same transaction that creates the run row (`runs` gains the nullable columns `phase_id`, `task_id` and `attempt`), so
+the two commit together or not at all (SQLite's atomic commit; the database already runs with `synchronous=FULL`). After a restart,
+a claim whose run has no `run_bound` entry never started its agent: it is closed by a `task_abandoned` event, its attempt stays
+consumed, and a new claim for the same key may follow. This is built when the queue ticket starts, not before.
+
 The phase chain records intent and order. The runs' chains stay the only authority on what was decided: a `task_settled` counts only
 when the run's own verified history says the same thing (delivered means the run's chain names the commit; awaiting review means its
 last `awaiting_review` is undecided). A Markdown handoff is a generated view of both, never an input.
@@ -101,13 +110,27 @@ predecessor. Then:
   A run whose owner lock is free was interrupted and is continued under its saved terms, with the checks `Resume` makes today. A run
   whose ownership cannot be known (`RunOwner` returns `known == false`, as on Windows) stops the phase and is shown to the owner.
 
-### 4. One writer
+Attempts are counted from claims, and a claim carries the writer's generation (a random id per phase process, as `launch_claimed`
+carries one), so a settle from another generation is refused.
+
+### 4. One writer per repository
 
 A phase is driven by one process, which holds the phase's owner lock (`journal/phase-N.owner.lock`, taken as `claimRun` takes a
 run's). It has at most one task run going at a time: one agent writes, in its run's own worktree, on its run's own branch. The
 developer's checkout and branches are never written, as today.
 
+The writer is one per repository, not per phase: while a task runs, the phase also holds a repository lock
+(`journal/repo-<hash of the repository's real path>.writer.lock`, besides its own owner lock), released when the task's run ends. Two
+phases on one repository therefore wait for each other. Relaxing this to one writer per phase later is backward compatible;
+tightening it later would not be. Where locks exclude nothing (Windows) a phase is refused.
+
 ### 5. Dependent tasks wait for a reviewed or delivered predecessor
+
+A task has at most one `depends_on` in contract version 1, and a contract with a task that names more than one is refused when it
+loads. Fan-out (two tasks depending on one) is allowed. A diamond is modelled as a chain until a later join task exists: a task whose
+base is a merge commit stAirCase made (for example with `git merge-tree --write-tree`), recorded on the chain with its tree and both
+parents, conflicts parked, the checks run on the merge tree, and a person's review before any dependent starts. Merging the
+predecessors without that review would deliver bytes nobody approved.
 
 A task is **eligible** when its predecessor's change was delivered (review mode: the owner accepted it and `review_delivered` is on its
 chain; policy mode: Go delivered it under ADR 0012), with complete evidence; the phase is not paused; and attempts and budget remain.
@@ -150,7 +173,11 @@ answers a permission request. No code is copied; Cloudroom is Apache-2.0 and any
 
 ## Options considered
 
-1. **The phase's own hash chain** (proposed). Durable claims before launch, pauses and order, tamper-evident like a run's chain.
+1. **The phase's own hash chain** (chosen, stored as in section 2). Durable claims before launch, pauses and order, tamper-evident
+   like a run's chain.
+   - **Rejected variant: the same chain written in two steps** (the run row first, the claim after, no unique key). There is a window
+     between the two writes in which a crash leaves a run without a claim or a claim without a run, and without a unique key two
+     processes could fork the chain. The single transaction and the unique `(phase_id, seq)` close both.
 2. **No phase state, derived from the runs' chains** (each run tagged with its phase on `run_bound`). Less to build, but a crash between
    creating a run and its `run_bound` loses the attempt, and a pause has nowhere to live.
 3. **A journal file**, fsynced, like the approval journal. Simpler than a chain, but not tamper-evident; the approval journal is
@@ -171,12 +198,32 @@ answers a permission request. No code is copied; Cloudroom is Apache-2.0 and any
   writer (6); kills around claim, start and settle (7); one accepted item per key, same id with other content refused, pause surviving
   restart (9); attempts claimed before launch and bounded (10).
 
+## Failure analysis (why the queue is a chain whose claim shares the run's transaction)
+
+| Failure | What the chosen design does |
+|---|---|
+| A crash between the claim and the dispatch | The claim and the run row commit together or not at all. After a restart a claim whose run has no `run_bound` never started its agent: `task_abandoned` closes it, the attempt stays consumed, and a new claim follows for the same key. |
+| A duplicate claim (`phase continue` twice, a retry, two terminals) | The key is looked up inside the claiming transaction, and a second claim for the same key continues the first run. The unique `(phase_id, seq)` makes a fork of the phase chain impossible. |
+| A stale writer that thinks it still owns the phase | The owner lock, dropped by the operating system when its process dies, stops a second live writer. The unique key is a second fence, and the claim's generation refuses a settle from another process. |
+| A changed or truncated record | A changed row breaks the hash. A truncated tail is not detected without an exported checkpoint, the same limit as a run's chain (ADR 0004). |
+
+Two other places the queue would have lived were weighed and rejected. State derived only from the runs' chains plus columns on `runs`
+keeps pauses and attempt counts in plain rows that no hash covers. A fsynced journal file cannot be updated atomically with the run
+row, so a crash between the two can leave a second run possible for one key.
+
+A related hazard is separate from phases and is fixed on its own (decision 8 of the owner's decisions): two runs of one repository that
+deliver at the same moment can silently lose one run's certificate or ledger note, because `git notes add` run in parallel on one
+notes reference keeps only the last writer's tree. Writing those notes under a repository lock, reading them back and reporting an
+unconfirmed note as an evidence failure serves phases too.
+
+## Decisions on the open questions
+
+1. **Where the queue lives**: the phase's own chain, stored as rows in the workspace database (section 2).
+2. **Several predecessors**: refused in version 1 of the contract (section 5).
+3. **One writer per phase or per repository**: per repository, while a phase runs (section 4).
+4. **`--away` itself**: unchanged (section 7).
+
 ## Open questions for the owner
 
-1. **Where the queue lives**: the phase's own chain (proposed), state derived from the runs' chains, or a journal file?
-2. **Several predecessors**: refuse a task that depends on two (proposed for the first version, since its base would be a merge no
-   approval derived), or let stAirCase merge the predecessors' commits and treat a conflict as parked?
-3. **One writer per phase or per repository**: may two phases run on one repository at once, each with one writer?
-4. **`--away` itself**: keep it as it is (proposed), or make it a one-task phase with a phase chain?
 5. **Attempts**: the default number per task, and whether a native resume of the agent's own session counts as one.
 6. **Compatibility**: should the phase contract join the six contracts of `docs/compatibility.md` now, or after a release has used it?

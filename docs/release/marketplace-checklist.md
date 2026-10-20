@@ -12,6 +12,7 @@ the maintainer's step, after a release is accepted. Checked on 2026-10-07 agains
 | One action metadata file at the root | yes: `action.yml` is the only `action.yml` or `action.yaml` in the repository |
 | Branding | `icon: shield`, `color: green` |
 | The name is not taken | `stAirCase verify`: a Marketplace search for "staircase" returns no action; no GitHub user or organisation is called `staircase-verify`. A user `staircase` exists (not this project); the name differs from it, but GitHub's form has the last word |
+| The README says the Action collects no data | yes (the Developer Agreement asks what personal data a product receives) |
 | Pinned usage in the documented example | [audit](../audit.md#require-certificates-on-pull-requests): the Action and `version` pinned to a release tag, `all: true`, `rebuild: true`, the trust read from the protected base |
 
 Not stated by GitHub's page, so **not claimed**: whether a repository with workflow files (`.github/workflows`, as this one has) can be listed, and the
@@ -21,11 +22,11 @@ icon and colour rules. The listing form validates both; if it refuses, that is t
 
 - Accept the GitHub Marketplace Developer Agreement and have two-factor authentication on the account.
 - Choose the categories in the release form (proposed: Security first, Code quality second) and publish from a release.
-- Do it for the accepted v1.0.0 only.
+- Publish from the current release, v1.1.0 (or the then-current one), under the listing name "stAirCase verify". The bare name "stAirCase" is not used: a GitHub user `staircase` exists, and GitHub bars a name equal to a user's or an organisation's.
 
 ## After publishing (to be done and kept)
 
 1. Confirm the listing URL.
-2. `packaging/verify-release.sh v1.0.0` (checksums, Sigstore signature of `checksums.txt`, build attestation, and its two controls that must fail).
+2. `packaging/verify-release.sh v1.1.0` (checksums, Sigstore signature of `checksums.txt`, build attestation, and its two controls that must fail).
 3. Run the documented pinned setup in a fresh protected test repository and certify and rebuild a real positive range. This is the
    same repository and run as the ruleset fixture ([testing](../testing.md)): one test repository can serve both.

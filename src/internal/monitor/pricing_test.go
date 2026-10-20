@@ -20,6 +20,7 @@ func TestEstimateCost_published_prices(t *testing.T) {
 		"claude-opus-4-1":   15 + 75,
 		"claude-sonnet-5-5": 2 + 10,
 		"claude-sonnet-4-6": 3 + 15,
+		"claude-haiku-5-5":  0.5 + 2.5, // the tier above 100k-token prompts (0.10 / 0.50 below): a cap counts the dearer rate
 		"claude-haiku-4-5":  1 + 5,
 		"claude-haiku-3-5":  0.8 + 4,
 		"gpt-5.5":           5 + 30,

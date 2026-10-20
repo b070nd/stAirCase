@@ -34,9 +34,9 @@ var capabilities = map[string]Capabilities{
 	"claude-code": {NativeResume: true, Sandbox: true, MCPGate: true, Hooks: true, HostMode: true,
 		Note: "its own sandbox confines its commands and the chain counts them as sandboxed; MCP tool calls need --away-tool in an away run"},
 	"codex": {NativeResume: true, Sandbox: true, Hooks: true,
-		Note: "Codex's workspace-write sandbox confines its commands, which the chain does not count as sandboxed; every tool but patches and commands is refused"},
+		Note: "Codex's workspace-write sandbox confines its commands' writes and network (not their reads), which the chain does not count as sandboxed; every tool but patches and commands is refused"},
 	"gemini": {NativeResume: true, Hooks: true,
-		Note: "its commands run without a sandbox; every tool but edits and commands is refused"},
+		Note: "its sandbox is off unless asked for and stAirCase does not ask, so its commands run without one; every tool but edits and commands is refused"},
 	"opencode": {
 		Note: "governed by a plugin generated for the run, not by hooks; its commands run without a sandbox; a continuation needs --fresh-context"},
 }

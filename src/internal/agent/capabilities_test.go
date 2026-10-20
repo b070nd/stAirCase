@@ -47,6 +47,20 @@ func TestCapabilities_native_resume_is_what_the_adapter_does(t *testing.T) {
 	}
 }
 
+// TestCapabilities_notes_say_what_each_sandbox_covers pins the key words of the notes that describe a sandbox (decision 10): Codex's
+// confines writes and network, not reads, and is not counted as sandboxed; Gemini's is off unless asked for and stAirCase does not
+// ask. A reader of the table alone must not over-credit Codex or read Gemini's "no" as "cannot".
+func TestCapabilities_notes_say_what_each_sandbox_covers(t *testing.T) {
+	codex, _ := agent.CapabilitiesOf("codex")
+	for _, w := range []string{"writes and network", "not their reads", "does not count as sandboxed"} {
+		assert.Contains(t, codex.Note, w, "codex note: "+w)
+	}
+	gemini, _ := agent.CapabilitiesOf("gemini")
+	for _, w := range []string{"off unless asked for", "stAirCase does not ask", "without one"} {
+		assert.Contains(t, gemini.Note, w, "gemini note: "+w)
+	}
+}
+
 func TestCapabilities_are_shown_in_words(t *testing.T) {
 	caps, _ := agent.CapabilitiesOf("gemini")
 	yes, no := caps.Supports()

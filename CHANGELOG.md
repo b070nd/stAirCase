@@ -73,6 +73,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   unchanged tree is failed, and its reason says so. Accepting an empty review still ends failed
   ([away](docs/away.md#how-each-run-stands)).
 
+- **The capabilities table says what each agent's sandbox covers.** Codex's `workspace-write` sandbox confines its commands' writes
+  (to the worktree and temporary folders) and network, not their reads, and is still not counted as sandboxed; Gemini's sandbox is off
+  unless asked for, and stAirCase does not ask. `staircase doctor` and [compatibility](docs/compatibility.md#what-each-adapter-supports)
+  show the new words; no behaviour changes.
+
 - **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
   run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
   of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
@@ -123,6 +128,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
+  approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
+  `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.
+- **The session commands look at the case's newest run.** For a case with several runs they read the oldest, so the "waits for your
+  review" hint and the run branch named could be those of an earlier run.
+- **Cost estimates know Claude Haiku 5.5.** The price table had no entry for it, so it counted at the unpriced ceiling; it now counts
+  at 0.50 / 2.50 USD per million tokens (the rate above 100k-token prompts, so a budget cap never counts too little).
 - **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes that are added at the same
   moment without an error (six parallel adds lost notes in 8 of 8 trials), and a commit without its certificate fails verification
   later. Writing a note now holds a lock on the repository, stores the file's exact bytes, reads the note back, and writes it again
