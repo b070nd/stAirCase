@@ -114,6 +114,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   review" hint and the run branch named could be those of an earlier run.
 - **Cost estimates know Claude Haiku 5.5.** The price table had no entry for it, so it counted at the unpriced ceiling; it now counts
   at 0.50 / 2.50 USD per million tokens (the rate above 100k-token prompts, so a budget cap never counts too little).
+- **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes that are added at the same
+  moment without an error (six parallel adds lost notes in 8 of 8 trials), and a commit without its certificate fails verification
+  later. Writing a note now holds a lock on the repository, stores the file's exact bytes, reads the note back, and writes it again
+  a bounded number of times. A note that cannot be confirmed is reported as an evidence failure (the run's summary and
+  `evidence_failed` name it), never as written. Nothing to do; a commit that already lost its note keeps lacking it.
 
 ## [1.1.0] - 2026-10-18
 
