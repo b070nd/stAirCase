@@ -138,7 +138,7 @@ Two commands, with different jobs:
 ## Still stuck?
 
 Run the command again with `--debug` (for `staircase run`) to log every agent
-message to the `log/` folder of the workspace (at most 8 MiB; it says if it dropped any), and
+message to the `log/` folder of the workspace (at most 8 MiB, newest output kept; it says how often it rotated and how much it dropped), and
 [open an issue](https://github.com/b070nd/stAirCase/issues). Remove API keys and
 private code from anything you paste. For a security problem, follow
 [SECURITY.md](../SECURITY.md) instead.

@@ -71,6 +71,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **Logs keep their newest output.** The debug log (`--debug`) and a hosted session's log used to keep the first 8 MiB and drop
+  everything after, so a long session that died left its beginning and lost its end. A log that reaches 4 MiB now moves to a numbered
+  previous file (`<name>.log.1`, replacing an older one) and continues in a fresh file, so the two together never exceed 8 MiB and
+  the newest output survives. A log already at its bound when a continued run reopens it is rotated, so the continuation is not
+  blind. The markers now read "rotated N times, dropped M bytes". The bound and the limit of 3 lost launches are unchanged. What to
+  do: read `<name>.log.1` too for the earlier output
+  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
+
 - **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
   checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that
   says nothing was committed and where to read what the agent did; before, it ended successful and silent. If they pass, it stays

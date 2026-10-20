@@ -163,11 +163,15 @@ Two logs help a person find out why a run went wrong, and neither is part of the
 
 Both are held to the same rules:
 
-- **A bound.** A log stops growing at **8 MiB**, markers included. Where it stops it says so
-  (`[staircase: this log reached its bound of 8388608 bytes; output after this point is dropped]`) and, when the process ends, how much
-  it dropped (`[staircase: dropped N bytes in all]`). Opened again by a resumed session, it counts what it already holds. A full
-  log loses nothing that matters to the run: the audit chain, the certificate and the ledger are written elsewhere and are never short
-  of a record because a log is full.
+- **A bound, and the newest output kept.** A log and its numbered previous file together never exceed **8 MiB**, markers included.
+  When a log reaches half of that (4 MiB) it moves to the previous file (`<name>.log.1`, replacing an older one) and continues in a
+  fresh file, so the oldest output is what is dropped and the end of a long session survives. Each fresh file starts with a line
+  saying how often the log rotated and how much it dropped so far (`[staircase: rotated N times, dropped M bytes so far; ...]`), and
+  when the process ends the log says so once more (`[staircase: rotated N times, dropped M bytes in all]`). A log that is already
+  at half of its bound when a resumed session opens it is rotated at once, so the continuation's output is kept. A log from before
+  rotation, longer than half of the bound, keeps its newest half as the previous file. Rotation cuts at a line end where it can, and a
+  secret is scrubbed before it is cut, so one that falls across a rotation is still gone. A log loses nothing that matters to the run:
+  the audit chain, the certificate and the ledger are written elsewhere and are never short of a record because a log rotated.
 - **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the
   environment variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret is
   shown as `<REDACTED>`.
