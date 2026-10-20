@@ -103,7 +103,25 @@ the change you decide on. Accepting the empty change itself delivers nothing: no
 `decide` says so, and the run's outcome reads failed ("you accepted a review of an empty change: nothing was delivered"). Reject it
 to say you want none of it. If the project's checks fail on the unchanged tree itself, the empty change is still offered, and says so
 (`checks   FAILED on this unchanged tree`), so the parked proposals are not lost: one of them may be what fixes the checks, and adopting
-it requires the checks to pass with it. A run that proposed nothing at all is not offered; its outcome says it ended without a change.
+it requires the checks to pass with it.
+
+## A run that did nothing
+
+An away run in which no proposal was approved or parked has no change to offer, so it is not offered for review. It is not a silent
+success either: the checks run once on the unchanged tree and the result is recorded (`phase_checked`). The agent may have made proposals
+that were refused (a path outside the repository, a rule that rejects), so the message says how many it made, never "none".
+
+- **Your checks fail on the unchanged tree.** The run ends **failed**: `staircase` exits non-zero and keeps the worktree. It says
+  "Nothing to review, and your checks fail: no proposal was approved or parked (the agent made 2), and your checks fail on the unchanged
+  tree (what failed). Nothing was committed. Read what the agent did with `staircase inspect log 12`." Either the project is broken at
+  its base or the task needed changes the agent could not make.
+- **Your checks pass.** The run stays a success, with no commit, and says "Nothing to review: no proposal was approved or parked (the
+  agent made 2), and your checks pass on the unchanged tree. If you expected a change, read what the agent said with `staircase inspect
+  log 12`." Its outcome is **no change**.
+
+A run whose earlier segment approved files is not a run that did nothing: it is offered for review as always. A hosted session
+(`staircase host`) is a conversation the runner ends, so it is not checked at its end. Accepting an empty review (above) still ends
+failed.
 
 ## How each run stands
 
@@ -114,7 +132,8 @@ Every run has one **outcome**, read from its verified audit chain alone (never f
 | **running** | its last segment has not ended: it is working, or its process died, which a crash cannot record (`resume` or `recover` it) |
 | **awaiting review** | it offered its change, checked on the exact tree, and you have not finished deciding; a run that parked everything and approved nothing offers an empty change |
 | **blocked or partial** | it stopped short and waits for you: its agent's last launch has no established end (see below), drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
-| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree, its review was rejected, you accepted an empty change, or it failed |
+| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree (or, when nothing was approved or parked, on the unchanged tree), its review was rejected, you accepted an empty change, or it failed |
+| **no change** | it succeeded without a commit and without parked proposals: no proposal was approved or parked, and its checks pass on the unchanged tree, so there is nothing to deliver (a hosted session is not checked, and its reason says so) |
 | **delivered** | its commit is on the run branch and its evidence is complete |
 | **delivered with incomplete evidence** | its commit is on the run branch, and some of its ledger, certificate or notes could not be written (the reason is shown) |
 

@@ -136,6 +136,9 @@ type RunOptions struct {
 	// ResumesSession and ResumesRun, for a hosted session resumed after its earlier run was decided, are bound on run_bound.
 	ResumesSession string
 	ResumesRun     int64
+	// Hosted marks a hosted session (staircase host): a conversation the runner ends, not a task, so an away run of it that approved
+	// and parked nothing is not checked at its end. It is in memory only, never a saved term.
+	Hosted bool
 }
 
 // Runner orchestrates a single stAirCase run.

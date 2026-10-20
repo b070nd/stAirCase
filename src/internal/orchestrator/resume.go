@@ -39,6 +39,8 @@ type ResumeOptions struct {
 	// not stop when asked), after a person looked at what that agent may have done. Recorded on run_resumed. It never lifts the
 	// bound of MaxLostLaunches.
 	AckUnknown bool
+	// Hosted: the run is a hosted session (as RunOptions.Hosted): an away segment that approved and parked nothing is not checked.
+	Hosted bool
 }
 
 // ErrLaunchRecorded is part of a refusal that came after the continuation recorded something: the outcome of a lost launch,
@@ -101,7 +103,7 @@ func (r *Runner) Resume(ctx context.Context, runID int64, opts ResumeOptions) er
 		return err
 	}
 	ro := RunOptions{Terms: cont.terms, Agent: opts.Agent, ApprovalPort: opts.ApprovalPort, ApprovalToken: opts.ApprovalToken,
-		Debug: opts.Debug, AckDrift: opts.AckDrift, SkipGates: true} // a continuation decides under the terms the run saved
+		Debug: opts.Debug, AckDrift: opts.AckDrift, SkipGates: true, Hosted: opts.Hosted} // a continuation decides under the terms the run saved
 	if cont.history.Bound.PlanDigest != "" {
 		ro.Plan = &cont.plan
 	}

@@ -61,6 +61,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
+  checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that
+  says nothing was committed and where to read what the agent did; before, it ended successful and silent. If they pass, it stays
+  successful and says so. The message counts every proposal the agent made, refused ones included, instead of calling them none.
+  A hosted session is not checked. What to do: nothing, unless a script treated this exit code 0 as done
+  ([away](docs/away.md#a-run-that-did-nothing)).
+
+- **A seventh outcome, "no change".** A successful run without a commit and without parked proposals is called no change instead
+  of failed, so a run's status and its outcome agree. A run that approved nothing and parked nothing and whose checks fail on the
+  unchanged tree is failed, and its reason says so. Accepting an empty review still ends failed
+  ([away](docs/away.md#how-each-run-stands)).
+
 - **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
   run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
   of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),

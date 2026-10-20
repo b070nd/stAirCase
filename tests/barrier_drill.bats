@@ -303,3 +303,32 @@ FAKE
   [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
   sound
 }
+
+# An away run that approved and parked nothing has its checks run on the unchanged tree (ticket 02). Killed between that check and
+# the run's path entry, the run is not delivered, not lost: recover finds nothing approved, and resume (the agent's launch has no
+# recorded end, so after looking) goes on and ends it by the same check.
+@test "away run that did nothing, killed between its check of the unchanged tree and its path entry: resume ends it" {
+  cat >"$WORK/bin/claude" <<'FAKE'
+#!/bin/bash
+settings=""
+while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+cmd="$(sed -n 's/.*"command": *"\([^"]*\)".*/\1/p' "$settings" | head -1)"
+printf '%s' '{"hook_event_name":"SessionStart","cwd":"'"$PWD"'"}' | sh -c "$cmd" >/dev/null
+FAKE
+  chmod +x "$WORK/bin/claude"
+  cd "$WORK/app"
+  hold nothing-checked "$STAIRCASE_BIN" claude --yes --away --allow "src/**" --check "test -f README.md" "do nothing"
+  [ "$(sc inspect log 1 | grep -c phase_checked)" = 1 ]
+  [ "$(sc inspect log 1 | grep -c run_path)" = 0 ]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nothing to recover"* ]] || { echo "$output"; false; }
+  run sc resume 1 --fresh-context --ack-unknown
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [[ "$output" == *"Nothing to review: no proposal was approved or parked"* ]] || { echo "$output"; false; }
+  [ "$(sc inspect log 1 | grep -c phase_checked)" = 2 ]
+  run sc inspect runs
+  [[ "$output" == *"no change"* ]] || { echo "$output"; false; }
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]
+}
