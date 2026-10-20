@@ -53,6 +53,10 @@ func fakeClaudeStream() int {
 		return string(out)
 	}
 	call("SessionStart")
+	if os.Getenv("FAKE_CLAUDE_IDLE") != "" { // a conversation that touches no file
+		fmt.Println(`{"type":"result","is_error":false,"result":"done"}`)
+		return 0
+	}
 	if strings.Contains(call("PreToolUse"), `"allow"`) {
 		_ = os.WriteFile("HEALTH.md", []byte("ok\n"), 0o644)
 		call("PostToolUse")
@@ -74,13 +78,13 @@ func cloudroomArgs(session string) []string {
 }
 
 // hostRepo is a session repository whose workspace is set up to host: scope and checks in host.json, and a stream-json fake claude.
-func hostRepo(t *testing.T) (repo, ws string, git func(args ...string) string) {
+func hostRepo(t *testing.T, fakeEnv ...string) (repo, ws string, git func(args ...string) string) {
 	repo, ws, git = sessionRepo(t)
 	require.NoError(t, os.Remove(filepath.Join(ws, "policy.json"))) // away: decided on evidence, not by a rule
 	require.NoError(t, os.WriteFile(filepath.Join(ws, "host.json"), []byte(`{"allow":["HEALTH.md"],"checks":["test -f HEALTH.md"]}`), 0o600))
 	bin := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "claude"),
-		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE_STREAM=1 exec %q \"$@\"\n", os.Args[0]), 0o755))
+		fmt.Appendf(nil, "#!/bin/sh\nFAKE_CLAUDE_STREAM=1 %s exec %q \"$@\"\n", strings.Join(fakeEnv, " "), os.Args[0]), 0o755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return repo, ws, git
 }
@@ -135,6 +139,17 @@ func TestHost_governs_a_session_a_runner_starts(t *testing.T) {
 	t.Cleanup(func() { decideAccept = false })
 	require.NoError(t, decideHandler(nil, []string{"1"}))
 	assert.Equal(t, "ok\n", git("show", "staircase/run-1:HEALTH.md"))
+}
+
+// TestHost_a_session_that_touches_no_file_is_not_checked (ticket 02): a hosted session is a conversation the runner ends. Even with
+// checks that fail on the unchanged tree it ends successful, with no check recorded, while the same run from the command line
+// (an away run that did nothing) would end failed.
+func TestHost_a_session_that_touches_no_file_is_not_checked(t *testing.T) {
+	_, ws, _ := hostRepo(t, "FAKE_CLAUDE_IDLE=1")
+	hostedRun(t, cloudroomArgs("44444444-2222-3333-4444-555555555555"))
+	assert.Equal(t, persistence.RunStatusSuccess, hostRun(t, ws, 1).Status)
+	assert.Empty(t, hostEvents(t, ws, 1, "phase_checked"), "no check of the unchanged tree")
+	assert.Empty(t, hostEvents(t, ws, 1, "awaiting_review"))
 }
 
 // TestHost_leaves_the_flags_as_they_were: a hosted session is launched from its profile alone. It neither takes this process's

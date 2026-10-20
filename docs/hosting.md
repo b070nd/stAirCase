@@ -30,6 +30,9 @@ it).
   it is parked unless you declared its exact name (`staircase host setup --away-tool mcp__<server>__<tool>`). A change made with an approved
   tool call reaches CAL 2: the tool ran outside stAirCase's sandbox. Probed on Claude Code 2.1.236 with a stdio server
   ([record](release-evidence/claude-code-2.1.236-mcp-tools-under-hooks.md)); an SDK-type server like Cloudroom's own is not probed yet.
+- **A conversation that changes nothing is not a failure.** A hosted session that ends with no proposal approved or parked is not
+  checked at its end, unlike an away run from the command line ([a run that did nothing](away.md#a-run-that-did-nothing)): the runner
+  decides when work is done, and a chat has no task for the checks to judge.
 - **Not an argument stAirCase does not know.** An unknown argument could widen what the agent may do, so the session is refused, naming it.
 - **Not its working copy.** The agent works in stAirCase's run worktree; what reaches `staircase/run-N` is only what stAirCase derived from
   recorded decisions, with its certificate.

@@ -3,18 +3,21 @@ package orchestrator
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/plan"
+	"github.com/b070nd/stAirCase/src/internal/wslock"
 )
 
 // harnessNames are the harnesses as Assisted-by trailers name them.
@@ -195,17 +198,74 @@ const (
 	LedgerNotesRef = "staircase-ledger"
 )
 
-// attachNote adds the file's content as a note under refs/notes/<ref> on commit.
+// noteAttempts bounds how often a note is written again when reading it back
+// does not find it.
+const noteAttempts = 5
+
+// attachNote adds the file's content, byte for byte, as a note under
+// refs/notes/<ref> on commit. Git loses notes that are added at the same moment
+// (without a word: six parallel adds lost notes in 8 of 8 trials), so the write
+// holds a lock on the repository, covering every notes ref, reads the note back
+// and compares it with the file, and writes it again up to noteAttempts times.
+// A note that cannot be confirmed is an error, never a success: a certificate
+// that is not there fails a verifier later.
 func attachNote(repo *GitRepo, ref, file, commit string) error {
-	name, email := repo.identity()
-	cmd := exec.Command("git", "-C", repo.path, "-c", "core.hooksPath=/dev/null",
-		"notes", "--ref="+ref, "add", "-f", "-F", file, commit)
+	unlock, err := lockNotes(repo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	// The note is the blob of the file itself: git's own message cleanup (trailing
+	// blanks, line ends) would change bytes that a verifier compares.
+	want, err := repo.gitNotes("hash-object", "-w", file)
+	if err != nil {
+		return fmt.Errorf("store the note: %w", err)
+	}
+	var last error
+	for attempt := 1; attempt <= noteAttempts; attempt++ {
+		last = errors.New("it was written but is not there")
+		if _, err := repo.gitNotes("notes", "--ref="+ref, "add", "-f", "-C", want, commit); err != nil {
+			last = err
+		} else if got, err := repo.gitNotes("notes", "--ref="+ref, "list", commit); err == nil && got == want {
+			return nil
+		}
+		time.Sleep(time.Duration(attempt) * 20 * time.Millisecond)
+	}
+	return fmt.Errorf("the note in refs/notes/%s on %.12s could not be confirmed after %d tries: %w", ref, commit, noteAttempts, last)
+}
+
+// gitNotes runs one git command in the repository for the note writer and
+// returns its trimmed output.
+func (g *GitRepo) gitNotes(args ...string) (string, error) {
+	name, email := g.identity()
+	cmd := exec.Command("git", append([]string{"-C", g.path, "-c", "core.hooksPath=/dev/null"}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
 		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%w: %s", err, bytes.TrimSpace(stderr.Bytes()))
+		return "", fmt.Errorf("%w: %s", err, bytes.TrimSpace(stderr.Bytes()))
 	}
-	return nil
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// lockNotes takes the repository's notes lock: a flock on a file in the git
+// directory shared by every worktree, so another process and another goroutine
+// wait their turn. It gives up after the time a note write can reasonably take.
+func lockNotes(repo *GitRepo) (unlock func(), err error) {
+	dir, err := repo.gitNotes("rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return nil, fmt.Errorf("lock the notes: %w", err)
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "staircase-notes.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("lock the notes: %w", err)
+	}
+	for deadline := time.Now().Add(30 * time.Second); wslock.LockExclusive(f.Fd()) != nil; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			_ = f.Close()
+			return nil, errors.New("lock the notes: another delivery in this repository holds the lock")
+		}
+	}
+	return func() { _ = wslock.Unlock(f.Fd()); _ = f.Close() }, nil
 }

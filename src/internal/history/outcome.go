@@ -8,7 +8,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
-// Outcome is how a run stands, as its history says (V11-C01 scope 6): one of six, for the owner who comes back to it. It is
+// Outcome is how a run stands, as its history says (V11-C01 scope 6): one of seven, for the owner who comes back to it. It is
 // derived from the verified chain alone, never from the run's status column or its summary file, and it is shown, not stored.
 type Outcome string
 
@@ -28,6 +28,9 @@ const (
 	OutcomeDelivered Outcome = "delivered"
 	// OutcomeDeliveredIncomplete: the run's commit is on its branch, and some of its evidence could not be written.
 	OutcomeDeliveredIncomplete Outcome = "delivered with incomplete evidence"
+	// OutcomeNoChange: the run succeeded without a commit and without parked proposals: nothing was approved or parked, so there is
+	// nothing to deliver and nothing waits.
+	OutcomeNoChange Outcome = "no change"
 )
 
 // Outcome is how the run stands and why, in the chain's own terms. A later event decides over an earlier one: a delivery over
@@ -75,10 +78,13 @@ func (h History) Outcome() (Outcome, string) {
 	rejected := slices.ContainsFunc(h.Decisions, func(d Decision) bool {
 		return d.ActionType == domain.ActionFinalReview && !d.Approved && d.Index > e.segStart
 	})
+	nothing := len(h.Approvals()) == 0 && parked == 0 // nothing the run could have delivered or offered
 	halted := "halted for drift: " + e.haltReason
 	switch e.ended.Status {
 	case domain.RunStatusFailed:
 		switch {
+		case checkFailed && nothing:
+			return OutcomeFailed, "no proposal was approved or parked, and its checks fail on the unchanged tree (" + e.check.Failed + "): nothing was delivered"
 		case checkFailed:
 			return OutcomeFailed, "its checks failed on the approved tree: " + e.check.Failed
 		case rejected:
@@ -100,6 +106,12 @@ func (h History) Outcome() (Outcome, string) {
 	case domain.RunStatusSuccess:
 		if parked > 0 {
 			return OutcomeBlocked, fmt.Sprintf("%d proposal(s) parked for you, and nothing approved to review", parked)
+		}
+		if nothing {
+			if e.checked > e.segStart && e.check.Passed {
+				return OutcomeNoChange, "no proposal was approved or parked, and its checks pass on the unchanged tree: there is nothing to deliver"
+			}
+			return OutcomeNoChange, "no proposal was approved or parked, and its chain records no check of the unchanged tree: there is nothing to deliver"
 		}
 		return OutcomeFailed, "it ended without a change"
 	case "": // a chain from before run_path said how the segment ended

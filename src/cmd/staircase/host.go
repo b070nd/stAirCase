@@ -262,7 +262,7 @@ func hostResume(l launch, id string) error {
 			return err
 		}
 		fmt.Printf("Session %s continues run #%d\n", id, run.ID)
-		return runner.Resume(context.Background(), run.ID, orchestrator.ResumeOptions{Agent: ag, WithdrawReview: withdraw})
+		return runner.Resume(context.Background(), run.ID, orchestrator.ResumeOptions{Agent: ag, WithdrawReview: withdraw, Hosted: true})
 	default: // decided (delivered or rejected), or failed: the session goes on as a new run
 		_ = db.Close()
 		fmt.Printf("Session %s follows run #%d (%s) as a new run\n", id, run.ID, run.Status)

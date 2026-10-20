@@ -759,12 +759,19 @@ func (s *runState) finalize() error {
 		}
 	}
 	stillGoing()
-	// An away run that proposed something is offered for review, whether or not anything was approved: a run whose every proposal was
-	// parked offers an empty change with its parked proposals, never a SUCCESS with nothing offered (V11-C01 acceptance 4).
+	// An away run that approved or parked something is offered for review: a run whose every proposal was parked offers an empty
+	// change with its parked proposals, never a SUCCESS with nothing offered (V11-C01 acceptance 4). One that approved and parked
+	// nothing (a hosted session excepted) has its checks run on the unchanged tree instead (checkUnchanged).
 	parked := s.parkedTotal()
 	if opts.Away && s.finalStatus == persistence.RunStatusSuccess && appr != nil && (len(appr.files) > 0 || parked > 0) {
 		var err error
 		if s.finalStatus, err = r.awaitReview(ctx, run.ID, appr, s.evGate, parked); err != nil {
+			return err
+		}
+	} else if opts.Away && !opts.Hosted && s.finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) == 0 && parked == 0 {
+		// Nothing approved and nothing parked: nothing to offer. Whether the project is whole without a change is still worth saying.
+		var err error
+		if s.finalStatus, err = r.checkUnchanged(ctx, run.ID, appr, s.evGate, s.dec.total); err != nil {
 			return err
 		}
 	}

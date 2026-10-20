@@ -52,6 +52,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
+  checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that
+  says nothing was committed and where to read what the agent did; before, it ended successful and silent. If they pass, it stays
+  successful and says so. The message counts every proposal the agent made, refused ones included, instead of calling them none.
+  A hosted session is not checked. What to do: nothing, unless a script treated this exit code 0 as done
+  ([away](docs/away.md#a-run-that-did-nothing)).
+
+- **A seventh outcome, "no change".** A successful run without a commit and without parked proposals is called no change instead
+  of failed, so a run's status and its outcome agree. A run that approved nothing and parked nothing and whose checks fail on the
+  unchanged tree is failed, and its reason says so. Accepting an empty review still ends failed
+  ([away](docs/away.md#how-each-run-stands)).
+
 - **Check-defining paths are protected in every run that has checks, and sensitive paths always go to a person.** A change to a path
   where a run's checks are defined (the script a check runs, the tests given to `bats` or `pytest`, `Makefile` for `make`,
   `package.json` for `npm`, and anything you name with `--protect`) now always goes to a person, and is parked while away, whatever
@@ -106,6 +118,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   written before read as before; their outcome is inferred from their other events.
 - **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
   run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
+
+### Fixed
+
+- **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes that are added at the same
+  moment without an error (six parallel adds lost notes in 8 of 8 trials), and a commit without its certificate fails verification
+  later. Writing a note now holds a lock on the repository, stores the file's exact bytes, reads the note back, and writes it again
+  a bounded number of times. A note that cannot be confirmed is reported as an evidence failure (the run's summary and
+  `evidence_failed` name it), never as written. Nothing to do; a commit that already lost its note keeps lacking it.
 
 ## [1.1.0] - 2026-10-18
 
