@@ -52,13 +52,13 @@ func TestTools_write_exactly_what_was_approved(t *testing.T) {
 	big := strings.Repeat("x", 50_000) // well past the old 10,000-char preview
 	r, out := runTools(t, map[string]runtest.File{
 		"f.txt":   {Content: "a\r\nb\r\n", Mode: 0o644},
-		"run.sh":  {Content: "echo a\n", Mode: 0o755},
+		"run":     {Content: "echo a\n", Mode: 0o755},
 		"old.txt": {Content: "bye\n", Mode: 0o644},
 	}, orchestrator.RunOptions{}, nil, func(ctx context.Context, env *orchestrator.AgentEnv) []string {
 		return []string{
 			call(ctx, env, "create_file", map[string]string{"path": "big.txt", "content": big, "reasoning": "r"}),
 			call(ctx, env, "request_edit", map[string]string{"file": "f.txt", "search_block": "b\n", "replace_block": "B\n", "reasoning": "r"}),
-			call(ctx, env, "request_edit", map[string]string{"file": "run.sh", "search_block": "echo a", "replace_block": "echo b", "reasoning": "r"}),
+			call(ctx, env, "request_edit", map[string]string{"file": "run", "search_block": "echo a", "replace_block": "echo b", "reasoning": "r"}),
 			call(ctx, env, "delete_file", map[string]string{"path": "old.txt", "reasoning": "r"}),
 		}
 	})
@@ -70,7 +70,7 @@ func TestTools_write_exactly_what_was_approved(t *testing.T) {
 	got, err = r.OnBranch("f.txt")
 	require.NoError(t, err)
 	assert.Equal(t, "a\r\nB\r\n", got, "the CRLF file stays CRLF")
-	mode, err := exec.Command("git", "-C", r.Repo, "ls-tree", fmt.Sprintf("staircase/run-%d", r.Run.ID), "run.sh").CombinedOutput()
+	mode, err := exec.Command("git", "-C", r.Repo, "ls-tree", fmt.Sprintf("staircase/run-%d", r.Run.ID), "run").CombinedOutput()
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(mode), "100755"), "exec bit kept: %s", mode)
 	_, err = r.OnBranch("old.txt")

@@ -36,14 +36,23 @@ screen does not show line by line.
 4. **Where your checks are defined.** A change to a protected path (see
    [below](#checks-the-agent-cannot-weaken)) goes to a person, whatever the rules say, and is
    parked while you are away.
-5. **Your policy** rules (`policy.json`) can approve or reject it automatically.
-6. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
-   that are not sensitive (see [below](#approving-the-task-not-every-step)); with
+5. **Sensitive paths.** A file edit that touches a sensitive path goes to a person,
+   whatever the rules say, in every run, and is parked while you are away. The
+   sensitive paths are CI and build files (`.github/`, `.gitlab/`, `.circleci/`,
+   `.husky/`, `Makefile`, `justfile`, `Dockerfile` and the like), dependency files
+   (`go.mod`, `package.json`, lock files), `.env` files, shell scripts (`*.sh`),
+   `CODEOWNERS` files at any depth, and Gemini's repository settings (`.gemini/`),
+   in any letter case. The reason names the path. A rule of your policy that
+   approved such an edit before now sends it to a person; nothing else about your
+   policy changes (see [compatibility](compatibility.md#how-the-six-contracts-change)).
+6. **Your policy** rules (`policy.json`) can approve or reject it automatically.
+7. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
+   (a sensitive path never gets here, see 5; see [below](#approving-the-task-not-every-step)); with
    `--approve-on-evidence` it approves them only when the evidence is there (see
    [below](#approving-on-evidence)).
-7. **A validator model** or a panel of them, if you turned one on, can decide
+8. **A validator model** or a panel of them, if you turned one on, can decide
    in-scope file changes.
-8. **A person** decides everything else.
+9. **A person** decides everything else.
 
 Shell commands always go to a person.
 
@@ -351,7 +360,7 @@ of the agreed task, and recorded as decided by `task`. You still see:
 - **the whole change once, at the end**, before anything is committed. Rejecting it
   commits nothing.
 
-Your policy rules still come first. This works with `claude`, `codex` and `review`.
+Your policy rules still come first, except on sensitive paths, which a person always decides. This works with `claude`, `codex` and `review`.
 
 ## Approving on evidence
 
