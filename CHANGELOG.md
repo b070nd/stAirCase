@@ -71,6 +71,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **`staircase policy test` shows which past decisions would now go to a person.** It loads the terms each replayed run saved and
+  checks the paths of every past decision against the paths that hold the run's checks' definitions and the sensitive list, which
+  go to a person whatever a rule says. What a rule, the agreed task, a reviewer model or evidence decided there without a person is
+  listed in a section of its own (a Makefile edit approved in a run whose check was `make check`, a CI file), and a person's own
+  decision on such a path is no longer counted as a difference the policy makes. Decisions of the orchestrator, drift and guards stay
+  skipped, and history those paths do not reach reports as before. What to do: run it before you upgrade, and add `--protect` or a
+  rule's `paths` condition where the list shows an area you want a person on ([approvals](docs/approvals.md#approving-automatically-with-rules)).
+
 - **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
   checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that
   says nothing was committed and where to read what the agent did; before, it ended successful and silent. If they pass, it stays
