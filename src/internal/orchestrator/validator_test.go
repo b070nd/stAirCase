@@ -124,7 +124,7 @@ func TestValidator_hands_over_to_a_human(t *testing.T) {
 		reviews = append(reviews, y.Review)
 	}
 	require.Len(t, reviews, 5, strings.Join(reviews, " | "))
-	assert.Contains(t, reviews[0], "sensitive path .github/workflows/ci.yml")
+	assert.Contains(t, reviews[0], "it changes .github/workflows/ci.yml, a sensitive path: a person decides, whatever the policy says")
 	assert.Contains(t, reviews[1], "rejected the last 2")
 	assert.Contains(t, reviews[2], "not a JSON verdict")
 	assert.Contains(t, reviews[3], "sampled for human review")

@@ -13,8 +13,8 @@ import (
 )
 
 const testPolicy = `{"rules":[
-  {"action_types":["file_edit"],"allowed_extensions":[".env"],"effect":"reject"},
-  {"action_types":["file_edit"],"allowed_extensions":[".md"],"effect":"approve"}],
+  {"action_types":["file_edit"],"allowed_extensions":[".env",".tmp"],"effect":"reject"},
+  {"action_types":["file_edit"],"allowed_extensions":[".md",".sh"],"effect":"approve"}],
  "limits":{"max_auto_approved":2}}`
 
 func writePolicy(t *testing.T, body string) string {
@@ -36,7 +36,9 @@ func TestRun_the_policy_decides_as_asserted(t *testing.T) {
 	res, err := policysim.Run(context.Background(), writePolicy(t, testPolicy), policysim.File{Scenarios: []policysim.Scenario{
 		{Name: "a rule approves docs", Proposals: []policysim.Proposal{one("docs/a.md", "hello\n", policysim.Approve)}},
 		{Name: "source code goes to a person", Proposals: []policysim.Proposal{one("src/x.go", "package x\n", policysim.Human)}},
-		{Name: "a rule rejects env files", Proposals: []policysim.Proposal{one(".env", "A=1\n", policysim.Reject)}},
+		{Name: "a rule rejects scratch files", Proposals: []policysim.Proposal{one("scratch.tmp", "A=1\n", policysim.Reject)}},
+		{Name: "a sensitive path goes to a person whatever a rule says", Proposals: []policysim.Proposal{
+			one("scripts/run.sh", "echo\n", policysim.Human), one(".env", "A=1\n", policysim.Human)}},
 		{Name: "the third automatic approval is a limit", Proposals: []policysim.Proposal{
 			one("docs/1.md", "1\n", policysim.Approve), one("docs/2.md", "2\n", policysim.Approve), one("docs/3.md", "3\n", policysim.Human)}},
 		{Name: "a guard escalates what a rule approves", Proposals: []policysim.Proposal{
@@ -53,7 +55,7 @@ func TestRun_the_policy_decides_as_asserted(t *testing.T) {
 	for _, r := range res {
 		assert.True(t, r.Pass, "%s #%d: %s (%s)", r.Scenario, r.Index, r.Detail, r.Reason)
 	}
-	assert.Len(t, res, 11)
+	assert.Len(t, res, 13)
 }
 
 // TestRun_expectations_fail_both_ways: a forbidden approval and an unintended
@@ -62,7 +64,7 @@ func TestRun_expectations_fail_both_ways(t *testing.T) {
 	res, err := policysim.Run(context.Background(), writePolicy(t, testPolicy), policysim.File{Scenarios: []policysim.Scenario{
 		{Name: "a forbidden approval", Proposals: []policysim.Proposal{one("docs/a.md", "x\n", policysim.Human)}},           // the rule approves it
 		{Name: "an unintended refusal", Proposals: []policysim.Proposal{one("src/x.go", "package x\n", policysim.Approve)}}, // a person is asked
-		{Name: "an unintended reject", Proposals: []policysim.Proposal{one(".env", "A=1\n", policysim.Approve)}},
+		{Name: "an unintended reject", Proposals: []policysim.Proposal{one("scratch.tmp", "A=1\n", policysim.Approve)}},
 		{Name: "the wrong reason", Proposals: []policysim.Proposal{
 			{Edits: []policysim.Edit{{File: "notes.md", Content: "AKIAABCDEFGHIJKLMNOP\n"}}, Expect: policysim.Human, ReasonContains: "dependencies"}}},
 	}})

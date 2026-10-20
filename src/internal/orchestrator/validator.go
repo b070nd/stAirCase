@@ -40,12 +40,13 @@ const (
 	validatorMaxFile     = 32 << 10
 )
 
-// sensitivePaths always go to a human: build, CI, dependency and secret files,
-// where a small change has a large effect.
+// sensitivePaths always go to a human, in every run and whatever the policy says (decide.go): build, CI, dependency and secret
+// files, CODEOWNERS and Gemini's repository settings, where a small change has a large effect.
 // ("**/" also matches at the root.) ponytail: fixed list; make it policy if projects need their own.
 var sensitivePaths = []string{".github/**", ".gitlab/**", ".circleci/**", ".husky/**", "**/.gitlab-ci.yml", "**/.travis.yml", "**/azure-pipelines.yml",
 	"**/Jenkinsfile", "**/Makefile", "**/GNUmakefile", "**/justfile", "**/Dockerfile", "**/go.mod", "**/go.sum", "**/package.json", "**/*.lock",
-	"**/.npmrc", "**/.gitattributes", "**/.gitmodules", "**/.pre-commit-config.yaml", "**/.env*", "**/*.sh"}
+	"**/.npmrc", "**/.gitattributes", "**/.gitmodules", "**/.pre-commit-config.yaml", "**/.env*", "**/*.sh",
+	"**/CODEOWNERS", ".gemini/**"}
 
 // matchesFold matches in any letter case: the file systems of macOS and
 // Windows do not tell "makefile" from "Makefile".
@@ -149,13 +150,10 @@ func (v *Validator) review(ctx context.Context, model string, before, after map[
 // returns decided=false when a human must decide, with the reason (empty when
 // no validator runs or the proposal is not a file edit). A nil validator
 // decides nothing.
-func (v *Validator) decide(ctx context.Context, req domain.YieldRequest, files []string,
+func (v *Validator) decide(ctx context.Context, req domain.YieldRequest,
 	next map[string]*approvedFile, appr *approvals, tracker *monitor.Tracker) (why string, resp domain.YieldResponse, decided bool) {
 	if v == nil || req.ActionType != domain.ActionFileEdit || appr == nil {
 		return "", resp, false
-	}
-	if f := sensitive(files); f != "" {
-		return "sensitive path " + f + " - a human decides", resp, false
 	}
 	if v.rejectRun >= validatorRejectLimit {
 		return fmt.Sprintf("the validator rejected the last %d proposals - a human decides", v.rejectRun), resp, false

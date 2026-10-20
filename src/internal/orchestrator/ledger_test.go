@@ -30,7 +30,7 @@ func ledgerRun(t *testing.T) (r runtest.Result, commit string, ledger []byte, di
 			{File: "new/hello.txt", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "hello\n"},
 			{File: "lf.txt", SearchBlock: "b\n", ReplaceBlock: "B\n"},
 			{File: "crlf.txt", SearchBlock: "y\n", ReplaceBlock: "Y\n"},
-			{File: "run.sh", SearchBlock: "echo a", ReplaceBlock: "echo b"},
+			{File: "run", SearchBlock: "echo a", ReplaceBlock: "echo b"},
 			{File: "old.txt", SearchBlock: orchestrator.MarkerDeleteFile},
 			{File: "lf.txt", SearchBlock: "a\n", ReplaceBlock: "A\n"}, // the same file again
 		} {
@@ -43,7 +43,7 @@ func ledgerRun(t *testing.T) (r runtest.Result, commit string, ledger []byte, di
 	base := map[string]runtest.File{
 		"lf.txt":   {Content: "a\nb\n", Mode: 0o644},
 		"crlf.txt": {Content: "x\r\ny\r\n", Mode: 0o644},
-		"run.sh":   {Content: "echo a\n", Mode: 0o755},
+		"run":      {Content: "echo a\n", Mode: 0o755},
 		"old.txt":  {Content: "bye\n", Mode: 0o644},
 	}
 	r, commit, s := certified(t, agent, orchestrator.RunOptions{Plan: &plan.Plan{Harness: "claude-code"}}, nil, base)

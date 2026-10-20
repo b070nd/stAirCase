@@ -36,7 +36,7 @@ func (r *rater) Evaluate(_ context.Context, state any, _ map[string]signal.Quest
 		return signal.Result{Answers: map[string]signal.Answer{"risky": {Probability: risky}, "serves_story": {Probability: serves}, "kind": {Choice: "feature"}}}
 	}
 	switch {
-	case strings.Contains(string(b), "upload.sh"):
+	case strings.Contains(string(b), "upload.py"):
 		return a(0.91, 0.8), nil
 	case strings.Contains(string(b), "unrelated.txt"):
 		return a(0.05, 0.1), nil
@@ -57,7 +57,7 @@ func TestSignal_only_sends_changes_to_a_person(t *testing.T) {
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
 		Run:   orchestrator.RunOptions{SignalEval: rt, Terms: orchestrator.Terms{SignalModel: "typesafe-ai/jev"}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
-			for _, f := range []string{"ok.txt", "upload.sh", "unrelated.txt", "flaky.txt"} {
+			for _, f := range []string{"ok.txt", "upload.py", "unrelated.txt", "flaky.txt"} {
 				create(ctx, env, f)
 			}
 			return nil
@@ -91,7 +91,7 @@ func TestSignal_url_talks_to_a_local_server(t *testing.T) {
 		auth = append(auth, r.URL.Path+" "+r.Header.Get("Authorization"))
 		mu.Unlock()
 		risky := 0.02
-		if strings.Contains(string(body), "upload.sh") {
+		if strings.Contains(string(body), "upload.py") {
 			risky = 0.9
 		}
 		_, _ = fmt.Fprintf(w, `{"model":"laya","answers":{"risky":{"noul":%v},"serves_story":{"noul":0.9},"kind":{"choice":"feature","probabilities":{"feature":1},"confidence":1}},"usage":{"input_tokens":1,"output_tokens":1}}`, risky)
@@ -102,7 +102,7 @@ func TestSignal_url_talks_to_a_local_server(t *testing.T) {
 		Setup: func(s *persistence.Store, wsDir string, projectID int64) { webhook(t, s, projectID, op) },
 		Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{SignalModel: "laya", SignalURL: srv.URL}},
 		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
-			for _, f := range []string{"ok.txt", "upload.sh"} {
+			for _, f := range []string{"ok.txt", "upload.py"} {
 				create(ctx, env, f)
 			}
 			return nil
