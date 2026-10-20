@@ -45,7 +45,11 @@ refused. What happens next depends on where that run stands:
 
 - **It was interrupted** (its process was killed): the session continues it, as `staircase resume` would, with every check that makes.
   A run killed while its agent ran has a launch with no outcome: the session is refused and the run parked, as
-  [audit](audit.md#lost-launches) explains. Continue it yourself with `staircase resume <run> --ack-unknown` once you have looked.
+  [audit](audit.md#lost-launches) explains. A resumed session never acknowledges by itself, because the acknowledgement attests that a
+  person looked; the refusal names the command. Look at what the agent may have done, then run `staircase acknowledge <run>`: it
+  records your acknowledgement of that exact launch on the audit chain and launches nothing, so the runner's own `--resume` then
+  proceeds in its own Claude Code session. (`staircase resume <run> --ack-unknown` also acknowledges, but then continues the run in
+  a session stAirCase starts, not the runner's.) Three lost launches stay refused whatever you acknowledge; recover the run instead.
 - **It awaits your review**: the session continues the same run. The review it offered is withdrawn (`run_resumed` names it), so a
   decision on it is refused as stale. When the session ends, the checks run again on the exact tree, and one new review covers the
   whole change.
