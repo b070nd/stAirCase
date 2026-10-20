@@ -7,14 +7,14 @@
 //   - Short-circuit: the first matching rule wins; rules are evaluated in
 //     declaration order so operators can place more-specific rules first.
 //
-// # CEL expressions (deferred to Phase 8)
+// # Typed conditions (CEL deferred)
 //
-// The checklist (§7.1.1) calls for replacing the static struct conditions with
-// CEL (github.com/google/cel-go) expressions so operators can write arbitrary
-// predicates such as `request.confidence >= 0.9 && request.files.all(f, f.endsWith(".md"))`.
-// The current struct-based rules are an intentional simplification that covers the
-// common cases without the dependency; the upgrade path is additive (new Rule field
-// `Expression string`; old conditions stay for backwards compatibility).
+// A rule can also condition on the files and size of the change: Paths, MaxLines,
+// MaxFiles, NewFilesOnly and NoDeletions, checked against the Facts the
+// orchestrator derives from the proposal. They are additive: a file without them
+// decides exactly as before, and an older stAirCase refuses a file that uses them
+// (the strict parse below), which fails closed. Expressions (CEL) are deferred;
+// see docs/adr/0013-cel-conditions-in-policy-rules.md.
 //
 // Rule semantics (all conditions are AND-ed within a rule):
 //
@@ -23,6 +23,10 @@
 //	AllowedExtensions - if non-empty, every file in ProposedEdits must have an
 //	                    extension from this list (prevents auto-approval of e.g.
 //	                    go/py source from a high-confidence shell_exec rule).
+//	Paths           - if non-empty, every changed file must match one glob.
+//	MaxLines, MaxFiles - if non-zero, the change must not exceed them.
+//	NewFilesOnly    - every changed file must be new (absent from the base commit).
+//	NoDeletions     - no changed file may be deleted.
 //	Effect          - "approve" or "reject".  Defaults to "approve" when absent.
 package policy
 
@@ -38,6 +42,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/engine"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
@@ -92,9 +97,49 @@ type Rule struct {
 	// An empty slice matches any agent (same semantics as ActionTypes).
 	AgentNames []string `json:"agent_names,omitempty"`
 
+	// Paths restricts the rule to changes in which every changed file (a deleted
+	// one too) matches one of these globs, in any letter case. ** matches any
+	// number of directories: "docs/**" is a directory, "**/*.md" a file type
+	// anywhere. An empty slice matches any path.
+	Paths []string `json:"paths,omitempty"`
+
+	// MaxLines, if non-zero, is the most lines (added plus removed) the change may touch.
+	MaxLines int `json:"max_lines,omitempty"`
+
+	// MaxFiles, if non-zero, is the most files the change may touch.
+	MaxFiles int `json:"max_files,omitempty"`
+
+	// NewFilesOnly restricts the rule to changes that only create files the base
+	// commit does not have.
+	NewFilesOnly bool `json:"new_files_only,omitempty"`
+
+	// NoDeletions restricts the rule to changes that delete no file.
+	NoDeletions bool `json:"no_deletions,omitempty"`
+
 	// Effect is the action taken when all conditions match.
 	// Defaults to "approve" when the zero value is provided.
 	Effect Effect `json:"effect"`
+}
+
+// File is one file a proposal would change.
+type File struct {
+	Path    string
+	New     bool // the base commit does not have it
+	Deleted bool
+	Lines   int // lines this proposal adds or removes in it
+}
+
+// Facts is what the orchestrator derived from a proposal: the files it would change and
+// how many lines it touches. The typed conditions of a rule are checked against it, never
+// against the agent's own claims. A proposal that is not a file edit has none.
+type Facts struct {
+	Files []File
+	Lines int
+}
+
+// hasTypedCondition reports whether the rule has a condition on the files or size of the change.
+func (r Rule) hasTypedCondition() bool {
+	return len(r.Paths) > 0 || r.MaxLines != 0 || r.MaxFiles != 0 || r.NewFilesOnly || r.NoDeletions
 }
 
 // Engine holds an ordered list of auto-approval rules and optional session limits.
@@ -195,6 +240,14 @@ func parseEngine(data []byte, path string) (*Engine, error) {
 		if r.Effect != "" && r.Effect != EffectApprove && r.Effect != EffectReject { // anything else would read as reject
 			return nil, fmt.Errorf("parse policy file %s: rule #%d: effect must be \"approve\" or \"reject\", not %q", path, i, r.Effect)
 		}
+		if r.MaxLines < 0 || r.MaxFiles < 0 {
+			return nil, fmt.Errorf("parse policy file %s: rule #%d: max_lines and max_files cannot be negative", path, i)
+		}
+		for _, g := range r.Paths {
+			if !engine.ValidGlob(g) {
+				return nil, fmt.Errorf("parse policy file %s: rule #%d: paths: %q is not a valid glob", path, i, g)
+			}
+		}
 	}
 	// Blanket-deny guard: a rule that matches everything and rejects is dangerous
 	// because it silently blocks all automation.  Require an explicit opt-in.
@@ -204,7 +257,8 @@ func parseEngine(data []byte, path string) (*Engine, error) {
 				len(r.ActionTypes) == 0 &&
 				r.MinConfidence == 0 &&
 				len(r.AllowedExtensions) == 0 &&
-				len(r.AgentNames) == 0 {
+				len(r.AgentNames) == 0 &&
+				!r.hasTypedCondition() {
 				return nil, fmt.Errorf(
 					"policy rule #%d is a blanket-deny (rejects everything) - "+
 						"set allow_blanket_deny: true to permit this", i,
@@ -296,7 +350,11 @@ type PolicyDecision struct {
 //
 // shell_exec actions are never auto-approved: the operator must personally
 // review and approve every shell command regardless of policy configuration.
-func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
+// The same holds for tool calls, whatever conditions a rule has.
+//
+// facts are what the orchestrator derived from the proposal's edits; only the typed
+// conditions (Paths, MaxLines, MaxFiles, NewFilesOnly, NoDeletions) read them.
+func (e *Engine) Evaluate(req domain.YieldRequest, facts Facts) PolicyDecision {
 	// Hard invariant: shell commands must always reach a human operator.
 	// No policy rule can override this - a broad auto-approve rule could
 	// otherwise silently execute arbitrary OS commands.
@@ -314,6 +372,9 @@ func (e *Engine) Evaluate(req domain.YieldRequest) PolicyDecision {
 			continue
 		}
 		if !r.matchesExtensions(req.ProposedEdits) {
+			continue
+		}
+		if !r.matchesFacts(facts) {
 			continue
 		}
 		effect := r.Effect
@@ -357,6 +418,29 @@ func (r Rule) matchesActionType(actionType string) bool {
 
 func (r Rule) matchesConfidence(score float64) bool {
 	return r.MinConfidence == 0 || score >= r.MinConfidence
+}
+
+// matchesFacts checks the typed conditions. Like the extension condition, each is
+// vacuously satisfied by a proposal that changes no file.
+func (r Rule) matchesFacts(f Facts) bool {
+	if r.MaxLines != 0 && f.Lines > r.MaxLines {
+		return false
+	}
+	if r.MaxFiles != 0 && len(f.Files) > r.MaxFiles {
+		return false
+	}
+	for _, file := range f.Files {
+		if len(r.Paths) > 0 && !engine.MatchAnyFold(r.Paths, file.Path) {
+			return false
+		}
+		if r.NewFilesOnly && !file.New {
+			return false
+		}
+		if r.NoDeletions && file.Deleted {
+			return false
+		}
+	}
+	return true
 }
 
 // matchesExtensions returns true when either:

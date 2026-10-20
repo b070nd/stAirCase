@@ -708,7 +708,10 @@ approve. Run it before you put a new rule into policy.json.
 
 Shell commands, proposals refused by the orchestrator and proposals that drift
 or a guard sent to a person are never the policy's to decide, so they stay as
-they were. The replay applies the rules only, not the per-run limits.
+they were. The replay applies the rules only, not the per-run limits. A rule's
+conditions on paths, lines, files, new files and deletions are checked against
+the edits each proposal recorded, so line counts and new files are estimates
+here; --scenarios checks them exactly.
 
 With --scenarios <file> it asserts instead. Each scenario in the file (JSON: a
 base tree, an optional scope, and proposals with the outcome you expect:

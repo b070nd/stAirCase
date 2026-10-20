@@ -248,7 +248,23 @@ goes on to the validator or a person.
 | `allowed_extensions` | every file in the proposal has one of these extensions |
 | `agent_names` | the proposal comes from one of these agents |
 | `min_confidence` | the agent's confidence is at least this (0–1) |
+| `paths` | every changed file, a deleted one too, matches one of these globs, in any letter case. `docs/**` is everything under `docs/`; `**/*.md` is Markdown anywhere; `*.md` alone matches a root file only |
+| `max_lines` | the proposal adds or removes at most this many lines (0, or absent, is no limit) |
+| `max_files` | the proposal changes at most this many files (0, or absent, is no limit) |
+| `new_files_only` | every changed file is new: the run's base commit does not have it |
+| `no_deletions` | no changed file is deleted |
 | `effect` | `approve` (default) or `reject` |
+
+The last five are about the change itself, and stAirCase measures them: it derives the files and
+counts the lines from the edits, so a rule never trusts what an agent says it changed. Each is
+checked for every changed file; a proposal that changes no file satisfies them, as it satisfies
+`allowed_extensions`. No rule, whatever its fields, ever matches a shell command or a tool call.
+For example, `{ "action_types": ["file_edit"], "paths": ["docs/**"], "max_lines": 40, "no_deletions": true }`
+approves a small addition or edit under `docs/` and sends `.github/x.md`, or a deletion, to a person.
+
+A policy file that uses these fields keeps `"version": 1`, and an older stAirCase refuses it
+(it does not know the fields) instead of reading the rule without them. A file without them
+decides exactly as before.
 
 `limits.max_auto_approved` and `limits.max_total_yields` send every later proposal to
 a person once reached. The drift limits also live here - see
@@ -256,7 +272,9 @@ a person once reached. The drift limits also live here - see
 
 The file is strict: if it does not parse, or has a field stAirCase does not know,
 the run stops before it starts. A reject rule with no conditions at all would reject
-everything; it is refused unless you set `"allow_blanket_deny": true`.
+everything; it is refused unless you set `"allow_blanket_deny": true`. A reject rule whose
+only conditions are `paths`, `max_lines`, `max_files`, `new_files_only` or `no_deletions` is a
+targeted rule, not a blanket deny.
 
 Test a rule on your history before you use it. `staircase policy test` replays every
 proposal recorded in the workspace against a policy file and shows what it would have
@@ -277,7 +295,9 @@ staircase policy test new-policy.json
 
 Shell commands, refused proposals and proposals that drift or a guard sent to a person
 are never the policy's to decide, so they stay as they were. The replay applies the
-rules, not the per-run limits.
+rules, not the per-run limits. A rule's conditions on paths, lines, files, new files and
+deletions are checked against the edits each proposal recorded, so line counts and new
+files are estimates in the replay; scenarios (below) check them exactly.
 
 Replay shows history; it does not fail. To keep a policy from drifting, write the outcomes
 you require as scenarios and run them in CI:

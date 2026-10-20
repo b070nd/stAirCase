@@ -199,7 +199,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		d.display.AddActivity(fmt.Sprintf("%-14s DRIFT  %s → HITL (%s)", req.AgentName, req.ActionType, why))
 		return d.human(req, rl)
 	}
-	if dec := d.policy.Evaluate(*req); dec.Matched {
+	if dec := d.policy.Evaluate(*req, d.facts(rl.next)); dec.Matched {
 		if dec.Approved {
 			d.autoApproved++
 		}
@@ -296,6 +296,25 @@ func yieldDecided(seq int, source string, req domain.YieldRequest, resp domain.Y
 		d.Files = digest(approved)
 	}
 	return d
+}
+
+// facts is what the policy's typed conditions are checked against: the files the derived state
+// changes, whether the base commit had each, and the lines this proposal adds or removes in each.
+// It comes from the derived state, never from the agent's claims; a proposal with none (a
+// command, a tool call) has no files.
+func (d *deciders) facts(next map[string]*approvedFile) policy.Facts {
+	var f policy.Facts
+	if d.approvals == nil {
+		return f
+	}
+	for _, p := range slices.Sorted(maps.Keys(next)) {
+		cur, _ := d.approvals.current(p)
+		base, _ := d.approvals.fromBase(p)
+		n := changedLines(map[string]*approvedFile{p: cur}, map[string]*approvedFile{p: next[p]})
+		f.Files = append(f.Files, policy.File{Path: p, New: base == nil, Deleted: next[p].deleted, Lines: n})
+		f.Lines += n
+	}
+	return f
 }
 
 // changedLines counts the lines a change adds or removes, file by file.
