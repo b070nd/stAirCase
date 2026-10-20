@@ -179,6 +179,7 @@ func runCase(l launch, caseID int64) error {
 		Terms:          l.runTerms(),
 		ResumesRun:     l.resumesRun,
 		ResumesSession: l.resumesSession,
+		Hosted:         l.host != nil, // a hosted session is a conversation the runner ends: no check of an unchanged tree
 	})
 }
 

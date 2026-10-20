@@ -70,7 +70,8 @@ description shown by `staircase doctor`, never a grant.
 that passed on that tree (`awaiting_review`, resting on `phase_checked`). It is decided with `staircase decide`.
 
 **Outcome**: how a run stands, read from its history alone (`History.Outcome`): running, awaiting review, blocked or partial,
-failed, delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
+failed, no change (a successful run without a commit and without parked proposals: nothing was approved or parked, so nothing waits and
+nothing is delivered), delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
 then the review the last segment offered, then a parked or refused run (its last launch has no established end), then how the last segment ended (`run_path`, which records the status it ended with). A
 run's **status** (`Runner.StatusOf`) adds its attempts (the launches claimed on its chain: `History.Attempts`) and what it used of its time, tokens and estimated cost.
 
