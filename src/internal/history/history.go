@@ -90,8 +90,8 @@ type Launch struct {
 	Acked bool
 }
 
-// lost reports whether the launch's end was never established: no outcome, one a restart recorded, or an agent that did not stop.
-func (l Launch) lost() bool {
+// Lost reports whether the launch's end was never established: no outcome, one a restart recorded, or an agent that did not stop.
+func (l Launch) Lost() bool {
 	return l.Outcome == "" || l.Outcome == LaunchUnknown || l.Outcome == LaunchUnresponsive
 }
 
@@ -238,7 +238,7 @@ func replay(events []domain.RunEventLog) (History, error) {
 			}
 			// Only the last launch can be acknowledged, and only when its end was never established.
 			n := len(h.Launches)
-			if n == 0 || !h.Launches[n-1].lost() || h.Launches[n-1].Outcome == "" ||
+			if n == 0 || !h.Launches[n-1].Lost() || h.Launches[n-1].Outcome == "" ||
 				h.Launches[n-1].Attempt != p.Attempt || h.Launches[n-1].Generation != p.Generation {
 				return h, fail("the acknowledgement names no lost launch (attempt %d, generation %q): only a launch that ended unknown or unresponsive is acknowledged", p.Attempt, p.Generation)
 			}
@@ -461,7 +461,7 @@ func (h History) Attempts() int {
 func (h History) Lost() int {
 	n := 0
 	for _, l := range h.Launches {
-		if l.lost() {
+		if l.Lost() {
 			n++
 		}
 	}
@@ -472,7 +472,7 @@ func (h History) Lost() int {
 // it (launch_acknowledged, or the resume that continued it): the run is not launched again without a person. 0 when the run is
 // not parked for this.
 func (h History) LaunchParked() int {
-	if n := len(h.Launches); n > 0 && h.Launches[n-1].lost() && !h.Launches[n-1].Acked {
+	if n := len(h.Launches); n > 0 && h.Launches[n-1].Lost() && !h.Launches[n-1].Acked {
 		return h.Launches[n-1].Attempt
 	}
 	return 0

@@ -62,21 +62,16 @@ var ErrLaunchLost = errors.New("its agent's last launch has no established end")
 // not past MaxLostLaunches, and not while a lost launch is unacknowledged. The caller holds the run's owner lock.
 func (r *Runner) settleLostLaunch(c *continuation, ack bool) error {
 	runID := c.run.ID
-	if o := c.history.OpenLaunch(); o != nil {
-		if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}); err != nil {
-			return fmt.Errorf("record the outcome of launch %d as unknown: %w", o.Attempt, err)
-		}
+	h, ended, err := r.recordLostLaunchEnd(runID, c.history)
+	if ended {
 		c.lostEnded = true
-		h, err := history.Read(r.store, runID)
-		if err != nil {
-			return err
-		}
-		c.history, c.chainHead = h, h.Head
 	}
-	h := c.history
+	c.history, c.chainHead = h, h.Head
+	if err != nil {
+		return err
+	}
 	if lost := h.Lost(); lost >= history.MaxLostLaunches {
-		return fmt.Errorf("%w: %w: the end of run #%d's agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again. Recover what it approved with `staircase recover %d`",
-			ErrNotContinuable, ErrLaunchLost, runID, lost, history.MaxLostLaunches, runID)
+		return fmt.Errorf("%w: %w: %s", ErrNotContinuable, ErrLaunchLost, lostLimitText(runID, lost))
 	}
 	parked := h.LaunchParked()
 	if parked == 0 {
@@ -84,11 +79,47 @@ func (r *Runner) settleLostLaunch(c *continuation, ack bool) error {
 	}
 	if !ack {
 		l := h.Launches[len(h.Launches)-1]
-		return fmt.Errorf("%w: %w: launch %d of run #%d ended %s, so nobody knows what its agent did, outside the worktree included; the run is parked rather than launched again. Check what the agent could have done, then continue with --ack-unknown, or recover what it approved with `staircase recover %d`",
-			ErrNotContinuable, ErrLaunchLost, parked, runID, l.Outcome, runID)
+		return fmt.Errorf("%w: %w: launch %d of run #%d ended %s, so nobody knows what its agent did, outside the worktree included; the run is parked rather than launched again. Check what the agent could have done, then say you looked with `staircase acknowledge %d` and resume it, or continue with --ack-unknown, or recover what it approved with `staircase recover %d`",
+			ErrNotContinuable, ErrLaunchLost, parked, runID, l.Outcome, runID, runID)
 	}
+	// --ack-unknown is the acknowledgement command, then the resume: the same operation, under the same claim.
+	if h, err = r.writeAcknowledgement(runID, h); err != nil {
+		return err
+	}
+	c.history, c.chainHead = h, h.Head
 	c.ackUnknown = parked
 	return nil
+}
+
+// lostLimitText is the refusal text of a run whose launches were lost MaxLostLaunches times.
+func lostLimitText(runID int64, lost int) string {
+	return fmt.Sprintf("the end of run #%d's agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again, acknowledged or not. Recover what it approved with `staircase recover %d`",
+		runID, lost, history.MaxLostLaunches, runID)
+}
+
+// recordLostLaunchEnd writes the end of an open launch as unknown (its process was lost before it could record one) and returns
+// the chain read again; ended says whether it wrote. h is returned as it was when nothing was written.
+func (r *Runner) recordLostLaunchEnd(runID int64, h history.History) (out history.History, ended bool, err error) {
+	o := h.OpenLaunch()
+	if o == nil {
+		return h, false, nil
+	}
+	if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}); err != nil {
+		return h, false, fmt.Errorf("record the outcome of launch %d as unknown: %w", o.Attempt, err)
+	}
+	h2, err := history.Read(r.store, runID)
+	return h2, true, err
+}
+
+// writeAcknowledgement writes launch_acknowledged for the run's last launch, which h says is lost and not yet acknowledged, and
+// returns the chain read again. The caller holds the run's owner lock.
+func (r *Runner) writeAcknowledgement(runID int64, h history.History) (history.History, error) {
+	barrier.Hit(barrier.LaunchOutcomeSet)
+	l := h.Launches[len(h.Launches)-1]
+	if err := r.audit(runID, "launch_acknowledged", history.LaunchAcknowledged{Attempt: l.Attempt, Generation: l.Generation}); err != nil {
+		return h, fmt.Errorf("record the acknowledgement of launch %d: %w", l.Attempt, err)
+	}
+	return history.Read(r.store, runID)
 }
 
 // Resume continues an interrupted run: the same run, branch and worktree, under the policy, plan and options it
