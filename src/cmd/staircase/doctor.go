@@ -13,6 +13,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/agent"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
@@ -151,6 +152,9 @@ func interruptedRuns(wsDir string) {
 			n := orchestrator.JournaledApprovals(wsDir, r.ID)
 			if r.GitCommitHash != "" || n == 0 {
 				continue
+			}
+			if h, err := history.Read(store, r.ID); err == nil && h.Review != nil && h.Review.Decided == "rejected" {
+				continue // the owner decided against it: it was not interrupted, and there is nothing to recover
 			}
 			hint := fmt.Sprintf("staircase recover %d (or continue it: staircase resume %d)", r.ID, r.ID)
 			if status == persistence.RunStatusRunning {
