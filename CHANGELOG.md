@@ -52,6 +52,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **The capabilities table says what each agent's sandbox covers.** Codex's `workspace-write` sandbox confines its commands' writes
+  (to the worktree and temporary folders) and network, not their reads, and is still not counted as sandboxed; Gemini's sandbox is off
+  unless asked for, and stAirCase does not ask. `staircase doctor` and [compatibility](docs/compatibility.md#what-each-adapter-supports)
+  show the new words; no behaviour changes.
+
 - **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
   run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
   of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
