@@ -114,8 +114,16 @@ leaves a claim with no outcome. Nobody can know what that agent did before it di
 
 `staircase resume` (and a resumed hosted session) that finds such a claim first records its outcome as
 `unknown_after_restart`. Then it **parks** the run: it refuses to launch the agent again and says why. Look at what
-the agent may have done, then continue with `staircase resume <run> --ack-unknown`. The acknowledgement is recorded
-on `run_resumed` (`ack_unknown`, the attempt it acknowledged). An agent that did not stop when asked
+the agent may have done, then say you looked with `staircase acknowledge <run>`, or continue at once with
+`staircase resume <run> --ack-unknown`.
+
+`staircase acknowledge <run>` launches nothing. Under the run's lock it writes the launch's end (`unknown_after_restart`) if the
+launch is still open, then `launch_acknowledged`, naming the attempt and the generation of the launch it acknowledges, so it
+cannot be reused to cover a later loss. A second call changes nothing, and a run with no open or lost launch is refused. A
+continuation, a hosted runner's resume included, then treats that launch as acknowledged. A hosted resume never acknowledges by
+itself. `--ack-unknown` is the same operation followed by the resume; `run_resumed` records the attempt it acknowledged
+(`ack_unknown`), as it always has. The replay accepts `launch_acknowledged` only after a launch that ended `unknown_after_restart`
+or `unresponsive`, once per launch. An agent that did not stop when asked
 (`unresponsive`) parks the run the same way. Its end was not established either.
 
 A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
@@ -123,8 +131,8 @@ and `staircase recover <run>` still commits what the run had approved. The time 
 against its time limit.
 
 The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or
-partial, with the exact `staircase resume <run> --ack-unknown` command and the `staircase recover <run>` one, or refused when it
-has lost 3 launches. Its attempts are the launches claimed, lost ones included.
+partial, with the exact `staircase acknowledge <run>`, `staircase resume <run> --ack-unknown` and `staircase recover <run>`
+commands, or refused when it has lost 3 launches. An acknowledgement never lifts that limit. Its attempts are the launches claimed, lost ones included.
 
 ### Launch failure classes
 

@@ -42,8 +42,10 @@ Every launch of the agent is claimed on the audit chain before its process start
 its outcome is recorded when it stops. A run whose last launch has no outcome (its
 process was killed, crashed or lost its machine) is not launched again blindly: resume
 records the outcome as unknown_after_restart, parks the run and says why. Check what the
-agent may have done, then continue with --ack-unknown. A run whose launches ended this
-way 3 times is not launched again at all; recover what it approved instead.
+agent may have done, then say you looked with "staircase acknowledge" (it launches nothing,
+and a hosted runner's own resume then proceeds) or continue at once with --ack-unknown,
+which does the same acknowledgement first. A run whose launches ended this way 3 times is
+not launched again at all, acknowledged or not; recover what it approved instead.
 
 A run that was started with an agent harness continues the harness's own session when it
 can: Claude Code, Gemini CLI and Codex have their session id on the audit chain and are
@@ -64,7 +66,7 @@ session grounded by the audit chain instead, and the chain says so.`,
 func init() {
 	resumeCmd.Flags().BoolVar(&resumeDiscard, "discard-unapproved", false, "Put the worktree back to the approved state when it holds changes nobody approved")
 	resumeCmd.Flags().BoolVar(&resumeAckDrift, "ack-drift", false, "Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)")
-	resumeCmd.Flags().BoolVar(&resumeAckUnknown, "ack-unknown", false, "Continue a run parked because its last launch has no known outcome, after checking what its agent may have done (recorded on the audit chain)")
+	resumeCmd.Flags().BoolVar(&resumeAckUnknown, "ack-unknown", false, "Continue a run parked because its last launch has no known outcome, after checking what its agent may have done: acknowledges the launch like staircase acknowledge, then continues (recorded on the audit chain)")
 	resumeCmd.Flags().BoolVar(&resumeFresh, "fresh-context", false, "Continue an agent-harness run in a new session grounded by the audit chain, instead of resuming its own session (the only way to continue one whose session cannot be resumed)")
 	resumeCmd.Flags().IntVar(&cli.approvalPort, "approval-port", 0, "Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)")
 	resumeCmd.Flags().StringVar(&cli.approvalToken, "approval-token", "", "Token for the approval API (default: a new one, printed)")

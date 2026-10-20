@@ -139,7 +139,7 @@ func (h History) ref() string {
 }
 
 // lostLaunch says why a run whose agent's last launch has no established end waits for its owner, or "" when it does not: it is
-// parked until a person acknowledges the launch (staircase resume --ack-unknown), or, past MaxLostLaunches, refused for good and
+// parked until a person acknowledges the launch (staircase acknowledge, or staircase resume --ack-unknown), or, past MaxLostLaunches, refused for good and
 // only recovered. It applies to a run that can be continued: not one that is delivered, being delivered or past its end. An open
 // claim is also what a run working right now looks like; only the run's process lock tells them apart, which the status reads
 // (orchestrator.StatusOf), not the chain.
@@ -155,7 +155,7 @@ func (h History) lostLaunch() string {
 		return fmt.Sprintf("refused: the end of its agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again: recover what it approved with staircase recover %s", lost, MaxLostLaunches, h.ref())
 	}
 	if p := h.LaunchParked(); p > 0 {
-		return fmt.Sprintf("launch %d of its agent has no established end (%s: %s), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), ClassPhrase(h.Launches[n-1].lostClass()), h.ref(), h.ref())
+		return fmt.Sprintf("launch %d of its agent has no established end (%s: %s), so nobody knows what the agent did: check what it could have done, then say you looked with staircase acknowledge %s (it launches nothing) and resume it, or continue it at once with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), ClassPhrase(h.Launches[n-1].lostClass()), h.ref(), h.ref(), h.ref())
 	}
 	return ""
 }
