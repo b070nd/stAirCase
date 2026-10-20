@@ -12,19 +12,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// hostLog is the text and size of the one session's host log.
+// hostLog is the text of the one session's host log and the size of it and its numbered previous file together.
 func hostLog(t *testing.T, ws string) (string, int64) {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(ws, "host"))
 	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	b, err := os.ReadFile(filepath.Join(ws, "host", entries[0].Name()))
-	require.NoError(t, err)
-	return string(b), int64(len(b))
+	var text string
+	var total int64
+	logs := 0
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(ws, "host", e.Name()))
+		require.NoError(t, err)
+		total += int64(len(b))
+		if !strings.HasSuffix(e.Name(), ".1") {
+			text = string(b)
+			logs++
+		}
+	}
+	require.Equal(t, 1, logs)
+	return text, total
 }
 
-// The host log (where a hosted session's own output goes, never the runner's stream) stops growing at its bound and says that it
-// did (V11-C01 scope 8).
+// The host log (where a hosted session's own output goes, never the runner's stream) is held to its bound by rotating, keeps the
+// newest output and says that it rotated (V11-C01 scope 8).
 func TestHost_log_is_bounded_and_says_what_it_dropped(t *testing.T) {
 	_, ws, _ := hostRepo(t)
 	old := diag.MaxLogBytes
@@ -35,8 +45,7 @@ func TestHost_log_is_bounded_and_says_what_it_dropped(t *testing.T) {
 
 	log, size := hostLog(t, ws)
 	assert.LessOrEqual(t, size, int64(1024))
-	assert.Contains(t, log, "bound of 1024 bytes")
-	assert.Regexp(t, `dropped \d+ bytes in all`, log)
+	assert.Regexp(t, `rotated \d+ times, dropped \d+ bytes in all`, log)
 }
 
 // A hosted session that fails: its runner sees an error with the cause and no stderr text (a runner may keep what the program it
