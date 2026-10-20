@@ -21,7 +21,7 @@ import (
 // deciders are who may decide a run's proposals, asked in a fixed order: the
 // orchestrator refuses what cannot be applied as shown; drift supervision
 // halts the run or sends the proposal to a human; so does a change to a
-// check's definition (a protected path); the policy's limits send it
+// check's definition (a protected path) or a sensitive path; the policy's limits send it
 // to a human, its rules decide it; the validator decides in-scope edits; a
 // human decides the rest.
 type deciders struct {
@@ -182,6 +182,16 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 			return d.human(req, rl)
 		}
 	}
+	// A file edit that touches a sensitive path (CI, build, dependency, secret and shell files, CODEOWNERS, an agent's repository
+	// settings) is a person's to decide, whatever the policy says, in every run, and while away it is parked. It sits before the
+	// limits and the policy, like the protected paths, so no rule, task or validator can approve it.
+	if req.ActionType == domain.ActionFileEdit {
+		if f := sensitive(rl.files); f != "" {
+			req.Review = "it changes " + f + ", a sensitive path: a person decides, whatever the policy says"
+			d.display.AddActivity(fmt.Sprintf("%-14s SENSITIVE %s → HITL (%s)", req.AgentName, req.ActionType, f))
+			return d.human(req, rl)
+		}
+	}
 	// CHECK 7.2.1/7.2.2: once a session limit is hit, every proposal goes to a
 	// human regardless of the policy's rules.
 	if limitHit, limitReason := d.policy.CheckLimits(d.autoApproved, d.total); limitHit || rl.drift != "" || req.Guard != "" {
@@ -202,12 +212,8 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		return rl
 	}
 	// The agreed task: the proposal is in scope (no drift), no guard or limit
-	// sent it to a person, and it is not a sensitive file.
+	// sent it to a person, and it is not a sensitive file (the bar above).
 	if d.task && req.ActionType == domain.ActionFileEdit && rl.next != nil {
-		if f := sensitive(rl.files); f != "" {
-			req.Review = "sensitive path " + f + " - a person decides even inside the agreed task"
-			return d.human(req, rl)
-		}
 		if d.evidence != nil {
 			return d.onEvidence(ctx, req, rl)
 		}
@@ -216,7 +222,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		rl.resp, rl.source = domain.Decide(true, "inside the agreed task"), "task"
 		return rl
 	}
-	note, resp, decided := d.validator.decide(ctx, *req, rl.files, rl.next, d.approvals, d.tracker)
+	note, resp, decided := d.validator.decide(ctx, *req, rl.next, d.approvals, d.tracker)
 	if decided {
 		d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → %v (%s)", req.AgentName, req.ActionType, resp.Approved, resp.Feedback))
 		rl.resp, rl.source = resp, "validator:"+d.validator.Name()
@@ -337,7 +343,7 @@ func (d *deciders) onEvidence(ctx context.Context, req *domain.YieldRequest, rl 
 		return d.human(req, rl)
 	}
 	if d.validator != nil {
-		note, resp, decided := d.validator.decide(ctx, *req, rl.files, rl.next, d.approvals, d.tracker)
+		note, resp, decided := d.validator.decide(ctx, *req, rl.next, d.approvals, d.tracker)
 		switch {
 		case decided && !resp.Approved:
 			d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → false (%s)", req.AgentName, req.ActionType, resp.Feedback))

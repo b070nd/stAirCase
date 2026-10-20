@@ -15,7 +15,7 @@ import (
 
 // TestDeciders_rule_order: who decides a proposal, in the order the deciders ask (decide.go): the orchestrator refuses what cannot
 // be applied as shown; drift supervision, the guards and a change to a check's definition (a protected path) send a change to a
-// person even when a rule would approve it, and so does a policy limit; then the policy's rules; then the agreed task, except on a sensitive path; while away, what would go to a person is
+// person even when a rule would approve it, and so does a policy limit; a sensitive path likewise, and both come before the policy's limits; then the policy's rules; then the agreed task; while away, what would go to a person is
 // parked, and a declared command or tool is the owner's decision made in advance; a tool call is never a policy rule's. Each case is
 // one proposal put to deciders built from its terms, with a person who would approve anything.
 func TestDeciders_rule_order(t *testing.T) {
@@ -53,6 +53,11 @@ func TestDeciders_rule_order(t *testing.T) {
 			want: "operator", asked: true, approved: true},
 		"a sensitive path inside the task": {terms: Terms{ApproveInScope: true, Agreed: agreed}, req: edit("src/run.sh", "echo\n"),
 			want: "operator", asked: true, approved: true},
+		"a sensitive path before the policy": {policy: approveEdits, req: edit("src/run.sh", "echo\n"), want: "operator", asked: true, approved: true},
+		"a sensitive path before a policy limit": {policy: `{"rules":[{"action_types":["file_edit"],"effect":"approve"}],"limits":{"max_auto_approved":1}}`,
+			req: edit("src/Makefile", "all:\n"), want: "operator", asked: true, approved: true},
+		"away, a sensitive path is parked whatever the policy says": {terms: Terms{Away: true, Agreed: agreed}, policy: approveEdits,
+			req: edit("src/run.sh", "echo\n"), want: "parked"},
 		"away, what needs a person is parked": {terms: Terms{Away: true, Agreed: agreed}, req: edit("docs/x.md", "x\n"), want: "parked"},
 		"away, a declared command":            {terms: Terms{Away: true, Agreed: agreed, AwayCommands: []string{"make"}}, req: shell("make"), want: "declared", approved: true},
 		"away, any other command is parked":   {terms: Terms{Away: true, Agreed: agreed, AwayCommands: []string{"make"}}, req: shell("make install"), want: "parked"},

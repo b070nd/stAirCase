@@ -250,14 +250,14 @@ func approvalScenarios() []approvalScenario {
 		},
 	}, {
 		name: "exec_bit_preserved",
-		base: map[string]baseFile{"run.sh": {"echo a\n", 0o755}},
+		base: map[string]baseFile{"run": {"echo a\n", 0o755}},
 		agent: func(ctx context.Context, a *scriptedAgent) {
-			a.ask(ctx, [3]string{"run.sh", "echo a", "echo b"})
-			a.write("run.sh", "echo b\n")
+			a.ask(ctx, [3]string{"run", "echo a", "echo b"})
+			a.write("run", "echo b\n")
 		},
 		check: func(t *testing.T, r scenarioResult) {
 			require.Equal(t, persistence.RunStatusSuccess, r.run.Status)
-			out, err := exec.Command("git", "-C", r.repo, "ls-tree", fmt.Sprintf("staircase/run-%d", r.run.ID), "run.sh").CombinedOutput()
+			out, err := exec.Command("git", "-C", r.repo, "ls-tree", fmt.Sprintf("staircase/run-%d", r.run.ID), "run").CombinedOutput()
 			require.NoError(t, err)
 			assert.True(t, strings.HasPrefix(string(out), "100755"), "mode must stay executable: %s", out)
 		},
