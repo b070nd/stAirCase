@@ -114,6 +114,54 @@ func TestReplay_a_delivery_authorization_is_followed_by_the_commit_and_the_evide
 	assert.Nil(t, ready().replay(t).Authorized, "a run that did not authorize anything has none")
 }
 
+// TestReplay_after_an_authorization_only_what_a_delivery_writes_is_read: the grammar after delivery_authorized is an allow-list
+// (ADR 0012, section 3). Every event type the code writes is probed, and a type nobody knows: the commit-naming, the evidence,
+// the launch's end, the run's path and a rollback read; everything else, and anything unknown, is refused by name.
+func TestReplay_after_an_authorization_only_what_a_delivery_writes_is_read(t *testing.T) {
+	commit := map[string]any{"commit": "c1", "base": "b", "tree": "t1"}
+	launched := func() *chain {
+		return policyBound().claim(1, "g1").edit("docs/a.md").decided(1, "policy", true).checkedTree("t1", true).authorized()
+	}
+	allowed := map[string]*chain{
+		"commit_prepared":    ready().authorized().add("commit_prepared", commit),
+		"check_ran":          ready().authorized().add("check_ran", map[string]any{"command": "go test"}),
+		"certificate_issued": ready().authorized().add("certificate_issued", commit),
+		"certificate_failed": ready().authorized().add("certificate_failed", map[string]any{"commit": "c1", "error": "x"}),
+		"evidence_failed":    ready().authorized().add("evidence_failed", map[string]any{"commit": "c1", "errors": []string{"ledger"}}),
+		"recovery_repaired":  ready().authorized().add("recovery_repaired", commit),
+		"run_recovered":      ready().authorized().add("run_recovered", commit),
+		"run_path":           ready().authorized().ended("KILLED"),
+		"rolled_back":        ready().authorized().ended("SUCCESS").add("rolled_back", map[string]any{"actor": "a"}),
+		"launch_ended":       launched().launchEnded(1, "g1", LaunchExited),
+	}
+	for typ, c := range allowed {
+		t.Run("reads "+typ, func(t *testing.T) {
+			h := c.replay(t)
+			require.NotNil(t, h.Authorized)
+		})
+	}
+	refused := []string{
+		"run_bound", "run_resumed", "launch_claimed", "launch_acknowledged", "policy_snapshot", "initiator_signed", "task_agreed",
+		"agent_session", "state_emit", "shell_ran", "shell_exec_rejected", "drift_halt", "drift_report", "agent_unresponsive",
+		"approval_path_escape", "done_checked", "signal_rated", "yield_request", "yield_decided", "phase_checked", "awaiting_review",
+		"review_accepted", "review_rejected", "review_delivered", "a_type_nobody_knows", "",
+	}
+	for _, typ := range refused {
+		t.Run("refuses "+typ, func(t *testing.T) {
+			_, err := replay(ready().authorized().add(typ, map[string]any{}).events)
+			var g *GrammarError
+			require.True(t, errors.As(err, &g), "%v", err)
+			assert.Equal(t, 7, g.Index)
+			assert.Contains(t, g.Error(), "follows delivery_authorized")
+		})
+	}
+	// a chain from before the authorization existed replays as it always did: these types are read there
+	for _, typ := range []string{"state_emit", "shell_ran", "drift_report", "a_type_nobody_knows"} {
+		_, err := replay(ready().add(typ, map[string]any{}).events)
+		assert.NoError(t, err, typ)
+	}
+}
+
 // TestOutcome_a_delivery_authorized_but_not_made: a run that wrote the authorization and ended with no commit is blocked, and
 // recover finishes it; one that is still going is running.
 func TestOutcome_a_delivery_authorized_but_not_made(t *testing.T) {

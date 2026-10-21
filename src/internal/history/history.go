@@ -139,7 +139,7 @@ func Read(store *persistence.Store, runID int64) (History, error) {
 // are numbered in order, each outcome names the open launch, and nothing launches or resumes while a launch has no outcome; a launch
 // is acknowledged only after it ended unknown or unresponsive, by name, once, and before the chain ends; delivery_authorized follows
 // the latest phase_checked, of the same passing tree, once, in policy mode under the run's terms and signed policy, and nothing
-// is proposed, decided, launched, resumed, checked or offered after it. Event
+// is written after it but what a delivery writes (afterAuthorization). Event
 // types and fields it does not know are ignored.
 func replay(events []domain.RunEventLog) (History, error) {
 	h := History{Segment: 1, entries: map[string]bool{}}
@@ -162,7 +162,8 @@ func replay(events []domain.RunEventLog) (History, error) {
 			return h, fail("the audit history begins with %q, not run_bound", e.EventType)
 		}
 		h.entries[e.EventHash] = true
-		if h.Authorized != nil && afterAuthorization[e.EventType] {
+		// delivery_authorized itself falls through: a second one is refused by its own rule, with its own reason
+		if h.Authorized != nil && e.EventType != "delivery_authorized" && !afterAuthorization[e.EventType] {
 			return h, fail("%s follows delivery_authorized: once delivery is authorized, only the commit and its evidence are written", e.EventType)
 		}
 		switch e.EventType {
@@ -432,13 +433,16 @@ func replay(events []domain.RunEventLog) (History, error) {
 	return h, nil
 }
 
-// afterAuthorization are the events a chain does not hold after delivery_authorized (ADR 0012, section 3): nothing is proposed,
-// decided, launched, resumed, checked or offered once delivery is authorized. What follows is the commit-naming and the evidence
-// events, the end of the launch the agent had, and the run's path.
+// afterAuthorization are the only events a chain holds after delivery_authorized (ADR 0012, section 3), an allow-list: what a
+// delivery writes once it is authorized, and nothing else, so an event type that is added later, or that nobody knows, is refused
+// until it is placed here on purpose. They are the commit-naming (commit_prepared, certificate_issued, and run_recovered and
+// recovery_repaired of a recovery), the evidence (check_ran, certificate_failed, evidence_failed), the end of the launch the agent
+// had (launch_ended), the run's path (run_path) and a rollback of the delivered run (rolled_back, written by `staircase case
+// rollback`). review_delivered is not here: a run that authorized its delivery offered no review.
 var afterAuthorization = map[string]bool{
-	"yield_request": true, "yield_decided": true, "run_resumed": true, "launch_claimed": true, "phase_checked": true,
-	"awaiting_review": true, "review_accepted": true, "review_rejected": true, "policy_snapshot": true, "initiator_signed": true,
-	"drift_halt": true, "run_bound": true,
+	"commit_prepared": true, "certificate_issued": true, "run_recovered": true, "recovery_repaired": true,
+	"check_ran": true, "certificate_failed": true, "evidence_failed": true,
+	"launch_ended": true, "run_path": true, "rolled_back": true,
 }
 
 // authorizationRefused says why p is not an authorization a run can have written, or "" when it is: it names the latest
