@@ -14,6 +14,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/policy"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -221,7 +222,16 @@ func session(l launch, harness, name, command string, args []string) error {
 		}
 		_, budget, _ := store.GetProjectConfig(project.ID)
 		base, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
-		if l.terms.Agreed, err = agree(sessionSetup{harness: harness, name: name, task: task, root: root,
+		var snap *policy.Snapshot // the rules a policy delivery would rest on, shown to the person who arms it
+		if t.Deliver == orchestrator.DeliverPolicy {
+			if snap, err = policy.LoadSnapshot(wsDir); err != nil {
+				return 0, fmt.Errorf("load policy: %w", err)
+			}
+		} else {
+			snap = &policy.Snapshot{}
+		}
+		if l.terms.Agreed, err = agree(sessionSetup{deliver: t.Deliver, deliverPaths: t.DeliverPaths, policyDigest: snap.Digest, policySigned: snap.Signed,
+			harness: harness, name: name, task: task, root: root,
 			base: strings.TrimSpace(string(base)), allow: l.allow, checks: l.terms.Checks, protected: t.ProtectedPaths, inScope: l.terms.ApproveInScope, onEvidence: l.terms.ApproveOnEvidence, away: l.terms.Away, validators: len(l.terms.ValidatorModels), signed: l.terms.SignKey != "", requireSigned: l.terms.RequireSignedApprovals, model: l.model,
 			shell: l.terms.AllowShellExec, yes: l.yes, budget: budget, projectID: project.ID}); err != nil {
 			return 0, err
@@ -362,6 +372,12 @@ type sessionSetup struct {
 	yes                                    bool // start without asking
 	budget                                 float64
 	projectID                              int64
+	// delivery by policy (ADR 0012): the mode ("" or "review" is the default), the delivery scope, and the digest of the policy whose
+	// rules would decide, with whether it is signed
+	deliver      string
+	deliverPaths []string
+	policyDigest string
+	policySigned bool
 }
 
 // agreement describes the session before its agent starts: the task, where
@@ -381,6 +397,23 @@ func agreement(s sessionSetup) string {
 	}
 	fmt.Fprintf(&b, "  may change:  %s\n", scope)
 	switch {
+	case s.away && s.deliver == orchestrator.DeliverPolicy:
+		fmt.Fprintf(&b, "  away:        nobody is asked. Inside the scope a change is approved only when %s;\n"+
+			"               anything that needs you (no evidence, outside the scope, a command, a sensitive file) is parked\n"+
+			"               for you and the agent goes on. When it stops, the checks run on the whole change\n", evidenceSources(s))
+		fmt.Fprintf(&b, "  delivery:    BY POLICY: no person reviews the whole change. When the checks pass on exactly what rules of your signed\n"+
+			"               policy approved, inside the delivery scope, it is committed to the run branch without your review;\n"+
+			"               nothing is pushed. One parked proposal, a change approved on evidence alone, or a sensitive or\n"+
+			"               protected path sends the whole run to your review instead (staircase decide)\n")
+		fmt.Fprintf(&b, "  delivers:    only under %s (the delivery scope)\n", strings.Join(s.deliverPaths, ", "))
+		switch {
+		case s.policySigned:
+			fmt.Fprintf(&b, "  policy:      %s (signed): its rules decide\n", s.policyDigest)
+		case s.policyDigest != "":
+			fmt.Fprintf(&b, "  policy:      %s (NOT signed: the run will be refused until you sign it: staircase policy sign)\n", s.policyDigest)
+		default:
+			fmt.Fprintf(&b, "  policy:      none (NOT signed: the run will be refused until you write one and sign it: staircase policy sign)\n")
+		}
 	case s.away:
 		fmt.Fprintf(&b, "  away:        nobody is asked. Inside the scope a change is approved only when %s;\n"+
 			"               anything that needs you (no evidence, outside the scope, a command, a sensitive file) is parked\n"+
@@ -481,6 +514,14 @@ func awayFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&cli.terms.AwayCommands, "away-command", nil,
 		"An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, "+
 			"--allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root")
+	cmd.Flags().StringVar(&cli.terms.Deliver, "deliver", orchestrator.DeliverReview,
+		"How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy "+
+			"(it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; "+
+			"no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy "+
+			"(staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes")
+	cmd.Flags().StringArrayVar(&cli.terms.DeliverPaths, "deliver-path", nil,
+		"A path or pattern (from the repository's root) where --deliver policy may deliver, such as docs/**: a change anywhere else waits "+
+			"for your review. Repeat for more")
 }
 
 // inScopeFlag adds --approve-in-scope and --approve-on-evidence to cmd.

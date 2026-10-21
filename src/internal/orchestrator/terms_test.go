@@ -26,6 +26,13 @@ func TestNewTerms_normalizes_once(t *testing.T) {
 			orchestrator.Terms{Agreed: agreed, ApproveOnEvidence: true, ApproveInScope: true, ValidatorModels: []string{"m"}}},
 		"in scope":         {orchestrator.Terms{Agreed: agreed, ApproveInScope: true}, orchestrator.Terms{Agreed: agreed, ApproveInScope: true}},
 		"a person decides": {orchestrator.Terms{}, orchestrator.Terms{}},
+		// review is the default and is never saved: asking for it is the same as not asking
+		"delivery by review": {orchestrator.Terms{Deliver: "review"}, orchestrator.Terms{}},
+		"delivery by policy": {
+			orchestrator.Terms{Agreed: agreed, Away: true, Checks: checks, Deliver: "policy", SignKey: "/k", ProtectedPaths: []string{"b/_test.go"},
+				DeliverPaths: []string{"./docs/", "CHANGELOG.md", "docs"}},
+			orchestrator.Terms{Agreed: agreed, Away: true, ApproveOnEvidence: true, ApproveInScope: true, Checks: checks, Deliver: "policy", SignKey: "/k",
+				ProtectedPaths: []string{"b/_test.go"}, DeliverPaths: []string{"CHANGELOG.md", "docs"}}},
 		"a docker sandbox": {orchestrator.Terms{Sandbox: "docker:image=golang:1.26"}, orchestrator.Terms{Sandbox: "docker:image=golang:1.26"}},
 		"the checks name their definitions": {
 			orchestrator.Terms{ProtectedPaths: []string{"docs/rules.md", "./tests/check"}, Checks: []string{"sh tests/check", "make check",
@@ -56,6 +63,13 @@ func TestNewTerms_refuses_what_no_run_can_decide_under(t *testing.T) {
 		f(&tm)
 		return tm
 	}
+	// policy is an away run delivering by policy with every condition met; f breaks one
+	policy := func(f func(*orchestrator.Terms)) orchestrator.Terms {
+		tm := orchestrator.Terms{Agreed: agreed, Away: true, Checks: checks, Deliver: orchestrator.DeliverPolicy, DeliverPaths: []string{"docs/**"},
+			SignKey: "/keys/id", SignAs: "dev@example.com", ProtectedPaths: []string{"**/*_test.go"}}
+		f(&tm)
+		return tm
+	}
 	for name, tc := range map[string]struct {
 		terms   orchestrator.Terms
 		harness string
@@ -80,6 +94,19 @@ func TestNewTerms_refuses_what_no_run_can_decide_under(t *testing.T) {
 		"an absolute protected path":              {orchestrator.Terms{ProtectedPaths: []string{"/etc/x"}}, "", "--protect"},
 		"an empty protected path":                 {orchestrator.Terms{ProtectedPaths: []string{""}}, "", "--protect"},
 		"a declared command is allowed":           {away(func(t *orchestrator.Terms) { t.AwayCommands = []string{"make"} }), "claude-code", ""},
+
+		// delivery by policy (ADR 0012): each condition the terms alone decide
+		"policy delivery, all conditions met":              {policy(func(t *orchestrator.Terms) {}), "", ""},
+		"policy delivery, protected by a check":            {policy(func(t *orchestrator.Terms) { t.ProtectedPaths, t.Checks = nil, []string{"make check"} }), "", ""},
+		"policy delivery without away":                     {policy(func(t *orchestrator.Terms) { t.Away = false }), "", "--deliver policy needs --away"},
+		"policy delivery with reviewer models":             {policy(func(t *orchestrator.Terms) { t.ValidatorModels = []string{"m"} }), "", "--validator"},
+		"policy delivery with signed decisions":            {policy(func(t *orchestrator.Terms) { t.RequireSignedApprovals = true }), "", "signed"},
+		"policy delivery without a delivery scope":         {policy(func(t *orchestrator.Terms) { t.DeliverPaths = nil }), "", "--deliver-path"},
+		"policy delivery without a signing key":            {policy(func(t *orchestrator.Terms) { t.SignKey = "" }), "", "--sign-approvals"},
+		"policy delivery, nothing of the checks protected": {policy(func(t *orchestrator.Terms) { t.ProtectedPaths = nil }), "", "--protect"},
+		"policy delivery, a scope outside the repository":  {policy(func(t *orchestrator.Terms) { t.DeliverPaths = []string{"../x"} }), "", "--deliver-path"},
+		"a delivery mode nobody knows":                     {away(func(t *orchestrator.Terms) { t.Deliver = "push" }), "", "review or policy"},
+		"a delivery scope without policy delivery":         {away(func(t *orchestrator.Terms) { t.DeliverPaths = []string{"docs/**"} }), "", "--deliver-path"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := orchestrator.NewTerms(tc.terms, tc.harness)
