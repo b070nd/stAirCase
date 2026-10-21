@@ -397,11 +397,16 @@ func agreement(s sessionSetup) string {
 	}
 	fmt.Fprintf(&b, "  may change:  %s\n", scope)
 	switch {
-	case s.away && s.deliver == orchestrator.DeliverPolicy:
+	case s.away:
+		// what both away runs say; they differ in what follows the checks
 		fmt.Fprintf(&b, "  away:        nobody is asked. Inside the scope a change is approved only when %s;\n"+
 			"               anything that needs you (no evidence, outside the scope, a command, a sensitive file) is parked\n"+
-			"               for you and the agent goes on. When it stops, the checks run on the whole change\n", evidenceSources(s))
-		fmt.Fprintf(&b, "  delivery:    BY POLICY: no person reviews the whole change. When the checks pass on exactly what rules of your signed\n"+
+			"               for you and the agent goes on. When it stops, the checks run on the whole change", evidenceSources(s))
+		if s.deliver != orchestrator.DeliverPolicy {
+			fmt.Fprintf(&b, ", and it waits\n               for your review: staircase decide. Nothing is committed before you accept it\n")
+			break
+		}
+		fmt.Fprintf(&b, "\n  delivery:    BY POLICY: no person reviews the whole change. When the checks pass on exactly what rules of your signed\n"+
 			"               policy approved, inside the delivery scope, it is committed to the run branch without your review;\n"+
 			"               nothing is pushed. One parked proposal, a change approved on evidence alone, or a sensitive or\n"+
 			"               protected path sends the whole run to your review instead (staircase decide)\n")
@@ -414,11 +419,6 @@ func agreement(s sessionSetup) string {
 		default:
 			fmt.Fprintf(&b, "  policy:      none (NOT signed: the run will be refused until you write one and sign it: staircase policy sign)\n")
 		}
-	case s.away:
-		fmt.Fprintf(&b, "  away:        nobody is asked. Inside the scope a change is approved only when %s;\n"+
-			"               anything that needs you (no evidence, outside the scope, a command, a sensitive file) is parked\n"+
-			"               for you and the agent goes on. When it stops, the checks run on the whole change, and it waits\n"+
-			"               for your review: staircase decide. Nothing is committed before you accept it\n", evidenceSources(s))
 	case s.onEvidence:
 		fmt.Fprintf(&b, "  edits:       inside the scope approved when the evidence is there: %s;\n"+
 			"               otherwise the change comes to you with what was missing; nothing is sampled for you,\n"+

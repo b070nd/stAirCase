@@ -247,7 +247,7 @@ goes on to the validator or a person.
 | `action_types` | `file_edit` (files; shell commands are never auto-approved by a rule: the one exception is a command you declared for an away run with `--away-command`, see [away](away.md#declared-commands)) |
 | `allowed_extensions` | every file in the proposal has one of these extensions |
 | `agent_names` | the proposal comes from one of these agents |
-| `min_confidence` | the agent's confidence is at least this (0–1) |
+| `min_confidence` | the agent's confidence is at least this (0 to 1) |
 | `paths` | every changed file, a deleted one too, matches one of these globs, in any letter case. `docs/**` is everything under `docs/`; `**/*.md` is Markdown anywhere; `*.md` alone matches a root file only |
 | `max_lines` | the proposal adds or removes at most this many lines (0, or absent, is no limit) |
 | `max_files` | the proposal changes at most this many files (0, or absent, is no limit) |

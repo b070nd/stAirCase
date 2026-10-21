@@ -35,11 +35,11 @@ const AwayBriefVersion = 1
 // (the agent stopping is not acceptance), and their result is recorded as phase_checked. A tree that passes is offered for
 // review (awaiting_review, naming that phase_checked entry); one that does not ends the run FAILED. Nothing is committed.
 //
-// A run that delivers by policy (deliver is not nil) instead judges the seven conditions of ADR 0012 once its checks passed: when
+// A run that delivers by policy (attempt is not nil) instead judges the seven conditions of ADR 0012 once its checks passed: when
 // they all hold it audits delivery_authorized and ends SUCCESS, so that the commit is made and delivered like a live run's, with
 // no person asked; otherwise it is offered for review like any other, and the awaiting_review entry and the message say which
 // condition sent it to the owner. The tree it authorized is returned, "" when it did not authorize.
-func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, parked int, deliver *deliveryAttempt) (status, authorized string, err error) {
+func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, parked int, attempt *deliveryAttempt) (status, authorizedTree string, err error) {
 	tree, passed, failed, err := r.checkTree(ctx, runID, appr, gate)
 	if err != nil {
 		return persistence.RunStatusFailed, "", err
@@ -53,9 +53,9 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 		return persistence.RunStatusFailed, "", nil
 	}
 	refused := ""
-	if deliver != nil { // delivery by policy: every condition, from the verified history, or the owner decides
+	if attempt != nil { // delivery by policy: every condition, from the verified history, or the owner decides
 		var auth history.DeliveryAuthorized
-		if auth, refused = r.judgeDelivery(runID, appr, tree, parked, deliver); refused == "" {
+		if auth, refused = r.judgeDelivery(runID, appr, tree, parked, attempt); refused == "" {
 			if err := r.audit(runID, "delivery_authorized", auth); err != nil {
 				return persistence.RunStatusFailed, "", fmt.Errorf("audit delivery_authorized: %w", err)
 			}

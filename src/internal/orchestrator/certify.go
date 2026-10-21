@@ -160,7 +160,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		p.Notes = append(p.Notes, "made while the owner was away: changes were approved on evidence or by policy, what needed a person was parked, and the owner accepted the whole change after the run ended (staircase decide)")
 	}
 	if ev.byPolicy { // the level stays what it computes: a later person's signature can still lift it
-		p.Delivery = "policy"
+		p.Delivery = DeliverPolicy
 		p.Notes = append(p.Notes, fmt.Sprintf("made while the owner was away and delivered by policy: every approved change was approved by a rule of the owner's signed policy (%s), none by a person, by the agreed task, by a reviewer model or on evidence alone; the checks passed on the exact tree; no person reviewed the whole change; only the run branch moved and nothing was pushed", ev.policy))
 	}
 	if ev.recovered { // the end of the run (worktree check, final checks) did not happen
@@ -206,6 +206,16 @@ const (
 // noteAttempts bounds how often a note is written again when reading it back
 // does not find it.
 const noteAttempts = 5
+
+// AttachNote is attachNote for a caller outside a run (staircase sign), given the path of the repository: a signature is
+// attached as safely as the certificate it signs.
+func AttachNote(repoPath, ref, file, commit string) error {
+	repo, err := OpenGitRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	return attachNote(repo, ref, file, commit)
+}
 
 // attachNote adds the file's content, byte for byte, as a note under
 // refs/notes/<ref> on commit. Git loses notes that are added at the same moment

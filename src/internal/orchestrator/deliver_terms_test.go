@@ -75,8 +75,8 @@ func TestDeliver_policy_refused_when_the_policy_is_not_signed(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(wsDir, policy.PolicySigFile), []byte(crypto.Sign(priv, data)), 0o644))
 		}})
-	if signed.Err != nil {
-		assert.NotContains(t, signed.Err.Error(), "signed policy")
-	}
+	require.NoError(t, signed.Err, "a signed policy is not refused, and an agent that changes nothing ends well")
 	assert.True(t, ran, "a signed policy starts the run")
+	assert.Equal(t, persistence.RunStatusSuccess, signed.Run.Status)
+	assert.NotContains(t, strings.Join(signed.Types(), " "), "delivery_authorized", "nothing was approved, so nothing was authorized")
 }

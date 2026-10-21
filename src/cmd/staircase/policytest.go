@@ -238,7 +238,7 @@ func replayOne(rep *replayReport, e *policy.Engine, terms orchestrator.Terms, ru
 				return
 			}
 			verb := map[bool]string{true: "approved", false: "rejected"}[d.Approved]
-			rep.WouldGoToPerson = append(rep.WouldGoToPerson, fmt.Sprintf("%s (%s by %s; %s: a person decides, whatever the policy says)", what, verb, d.Source, bar))
+			rep.WouldGoToPerson = append(rep.WouldGoToPerson, fmt.Sprintf("%s (%s by %s; %s%s)", what, verb, d.Source, bar, orchestrator.PersonDecides))
 			return
 		}
 	}

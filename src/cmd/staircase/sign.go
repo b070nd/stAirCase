@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -99,8 +99,13 @@ func signHandler(_ *cobra.Command, args []string) error {
 		return err
 	}
 	_ = f.Close()
-	if out, err := exec.Command("git", "notes", "--ref=staircase", "add", "-f", "-F", f.Name(), commit).CombinedOutput(); err != nil {
-		return fmt.Errorf("write the signed certificate: %w: %s", err, bytes.TrimSpace(out))
+	top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return fmt.Errorf("write the signed certificate: not in a git working tree: %w", err)
+	}
+	// the repository's lock, the note's exact bytes and its read-back, as a run's own certificate is attached
+	if err := orchestrator.AttachNote(strings.TrimSpace(string(top)), orchestrator.NotesRef, f.Name(), commit); err != nil {
+		return fmt.Errorf("write the signed certificate: %w", err)
 	}
 	var st certificate.Statement
 	if json.Unmarshal(payload, &st) == nil { // keep the workspace copy in step, when it is here

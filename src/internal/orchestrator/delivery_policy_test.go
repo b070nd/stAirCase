@@ -1,12 +1,18 @@
 package orchestrator
 
 import (
+	"encoding/base64"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/sshsig"
+	"github.com/b070nd/stAirCase/src/internal/testdeps"
 )
 
 // A delivery by policy is judged on seven conditions (ADR 0012, section 2), each read from the verified history of the run, the
@@ -17,6 +23,7 @@ import (
 type deliveryRun struct {
 	unsigned   bool                // the policy snapshot says it was not signed
 	noInit     bool                // the initiator did not sign
+	forgedInit bool                // the chain names a signature of the initiator that is no signature
 	decisions  []deliveryDecision  // the proposals decided; default: one file approved by a rule
 	checkTree  string              // the tree the checks ran on
 	failed     bool                // the checks failed
@@ -28,6 +35,23 @@ type deliveryDecision struct {
 	source, action string
 	approved       bool
 	paths          []string
+}
+
+// signedRequest is the base64 of principal's real SSH signature of the request of run runID from base under plan, as a run signs it
+// when it starts (segment.go), by a throwaway key.
+func signedRequest(t *testing.T, runID int64, base, plan, principal string) string {
+	t.Helper()
+	testdeps.Need(t, "ssh-keygen")
+	key := filepath.Join(t.TempDir(), "id")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", principal, "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen: %v: %s", err, out)
+	}
+	sig, err := sshsig.Sign(key, certificate.InitiatorNamespace,
+		certificate.InitiatorText(certificate.Predicate{Run: runID, BaseCommit: base, PlanDigest: plan}, principal))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(sig)
 }
 
 // goodTerms are the terms of a policy delivery that met every condition the terms decide.
@@ -63,7 +87,11 @@ func (d deliveryRun) build(t *testing.T) deliveryCase {
 	must("run_bound", history.Bound{BaseSHA: "base", Branch: "refs/heads/staircase/run-1", TermsSHA256: "T"})
 	must("policy_snapshot", history.PolicySnapshot{Digest: "P", Signed: !d.unsigned})
 	if !d.noInit {
-		must("initiator_signed", history.InitiatorSigned{Principal: "dev@example.com", Signature: "c2ln"})
+		sig := "c2ln" // not a signature
+		if !d.forgedInit {
+			sig = signedRequest(t, run.ID, "base", "", "dev@example.com")
+		}
+		must("initiator_signed", history.InitiatorSigned{Principal: "dev@example.com", Signature: sig})
 	}
 	decisions := d.decisions
 	if decisions == nil {
@@ -185,6 +213,10 @@ func TestDeliveryCase_each_condition_failing_alone_refuses_and_names_itself(t *t
 
 		// 7: the initiator signed
 		"7: the initiator did not sign": {deliveryRun{noInit: true}, 7, "initiator"},
+		// ... and a name on the chain is not enough: the signature must be a real one, of this run's request
+		"7: the initiator's signature is no signature": {deliveryRun{forgedInit: true}, 7, "signature"},
+		"7: the signature is of another base commit":   {deliveryRun{mutate: func(c *deliveryCase) { c.hist.Bound.BaseSHA = "other" }}, 7, "signature"},
+		"7: the signature is of another principal":     {deliveryRun{mutate: func(c *deliveryCase) { c.hist.Initiator.Principal = "eve@example.com" }}, 7, "signature"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			why := tc.run.build(t).refusal()
