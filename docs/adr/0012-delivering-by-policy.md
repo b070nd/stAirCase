@@ -105,7 +105,9 @@ verified history (one replay, ADR 0010), not from the live state:
 5. `phase_checked` passed on exactly the approved tree, with the checks the terms name, and the run branch still points at the base
    (the compare-and-swap of `deliver`);
 6. the protected-paths declaration is complete (section 1 refuses the terms otherwise);
-7. the initiator signed (section 1 refuses the terms otherwise).
+7. the initiator signed (section 1 refuses the terms otherwise), and the chain's `initiator_signed` signature is a valid SSH
+   signature of exactly this run's request (run, base commit, plan and principal), checked when the conditions are judged: the
+   chain's hashes do not cover it, and a name beside junk is not an initiator. Whose key it is stays for `staircase verify`.
 
 Otherwise the run ends awaiting review, exactly as in review mode, and says which condition sent it to the owner. Falling back to the
 owner is a normal outcome, never a failure.

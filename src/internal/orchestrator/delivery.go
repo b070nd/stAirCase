@@ -1,13 +1,16 @@
 package orchestrator
 
 import (
+	"encoding/base64"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 
+	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/history"
+	"github.com/b070nd/stAirCase/src/internal/sshsig"
 )
 
 // Delivery by policy (ADR 0012): an away run delivers its approved change without a person only when seven conditions hold. They are
@@ -202,10 +205,22 @@ func (c deliveryCase) protectedDeclared() string {
 	return ""
 }
 
-// 7: the initiator signed, so the certificate names who armed unattended delivery.
+// 7: the initiator signed, so the certificate names who armed unattended delivery. The chain's verification covers its hashes, not
+// this signature, so the signature is checked here: it must be a valid SSH signature of exactly this run's request (run, base
+// commit, plan and principal), as the run made it when it started. Whose key it is stays for `staircase verify` and its signers
+// file; a signature nobody could have made over this request does not name anyone.
 func (c deliveryCase) initiatorSigned() string {
-	if c.hist.Initiator == nil {
+	in := c.hist.Initiator
+	if in == nil {
 		return "the person who started the run did not sign it, so nobody is named as having armed delivery without review"
+	}
+	sig, err := base64.StdEncoding.DecodeString(in.Signature)
+	if err != nil {
+		return "the initiator's signature on the chain is not readable, so nobody is named as having armed delivery without review"
+	}
+	text := certificate.InitiatorText(certificate.Predicate{Run: c.hist.RunID, BaseCommit: c.hist.Bound.BaseSHA, PlanDigest: c.hist.Bound.PlanDigest}, in.Principal)
+	if _, err := sshsig.Check(certificate.InitiatorNamespace, text, sig); err != nil {
+		return fmt.Sprintf("the initiator's signature on the chain is not a signature of this run's request by %s: %v", in.Principal, err)
 	}
 	return ""
 }
