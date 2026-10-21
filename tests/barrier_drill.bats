@@ -74,6 +74,9 @@ decisions() { sc inspect log 1 | grep -c "yield_decided" || true; }
 on_branch() { git -C "$WORK/app" show "staircase/run-1:$1" 2>/dev/null; }
 note() { git -C "$WORK/app" notes --ref="$1" show "$(git -C "$WORK/app" rev-parse staircase/run-1)" 2>/dev/null; }
 
+# predicate: the run branch's certificate (a DSSE envelope in a git note), its in-toto predicate as JSON
+predicate() { note staircase | jq -r '.payload' | base64 -d | jq '.predicate'; }
+
 # the approved changes verify and rebuild like any other
 sound() {
   run sc verify staircase/run-1 --min-cal 2
@@ -375,6 +378,7 @@ policy_killed_at() {
   [ "$(on_branch src/b.txt)" = "b content" ]
   [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
   [ "$(git -C "$WORK/app" notes --ref=staircase list | wc -l | tr -d ' ')" = 1 ]
+  [ "$(predicate | jq -r '.delivery')" = policy ]   # the decoder sees the field when it is there
   sound
 }
 
@@ -388,4 +392,26 @@ policy_killed_at() {
 
 @test "delivery by policy killed once its evidence is written: one commit, one certificate" {
   policy_killed_at evidence-published
+}
+
+# killed after the final checks are on the chain and before delivery_authorized: nothing authorized the delivery, so nothing is
+# delivered by policy; the approved changes are recovered like any other interrupted run's, once
+@test "delivery by policy killed after its final checks, before its authorization: one commit, one certificate, not delivered by policy" {
+  by_policy phase-checked
+  [ "$(sc inspect log 1 | grep -c phase_checked)" = 1 ]
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 0 ]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]   # nothing was committed
+  run sc recover 1 --force
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
+  [ "$(git -C "$WORK/app" notes --ref=staircase list | wc -l | tr -d ' ')" = 1 ]
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 0 ]   # recovery does not authorize a delivery
+  [ "$(predicate | jq -r '.delivery // "absent"')" = absent ]   # a recovered run is not a delivery by policy
+  [ "$(predicate | jq -r '.cal')" -le 2 ]
+  sound
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]                     # delivered: nothing left to recover
+  [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
 }

@@ -240,6 +240,23 @@ func TestDeliverByPolicy_a_change_approved_on_evidence_goes_to_the_owner(t *test
 	refusedBy(t, r, 2, "evidence")
 }
 
+// TestDeliverByPolicy_a_run_the_owner_accepted_is_not_certified_as_delivered_by_policy: the terms say policy, but a condition failed and
+// a person accepted the whole change, so that certificate has no delivery field and no note that nobody reviewed the change.
+func TestDeliverByPolicy_a_run_the_owner_accepted_is_not_certified_as_delivered_by_policy(t *testing.T) {
+	p := &policyRun{rules: `{"rules":[]}`, agent: writes([2]string{"docs/a.md", "approved on evidence\n"})}
+	r := p.run(t)
+	require.Equal(t, persistence.RunStatusAwaitingReview, r.Run.Status)
+	_, err := orchestrator.NewRunner(r.Store, r.WsDir).Decide(context.Background(), r.Run.ID, orchestrator.DecideOptions{Accept: true})
+	require.NoError(t, err)
+
+	s := certificateOf(t, r)
+	assert.Empty(t, s.Predicate.Delivery, "a person reviewed the whole change: it was not delivered by policy")
+	assert.NotContains(t, strings.Join(s.Predicate.Notes, " "), "no person reviewed the whole change")
+	b, err := json.Marshal(s.Predicate)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), `"delivery"`)
+}
+
 // TestDeliverByPolicy_a_path_outside_the_delivery_scope_goes_to_the_owner (condition 4).
 func TestDeliverByPolicy_a_path_outside_the_delivery_scope_goes_to_the_owner(t *testing.T) {
 	p := &policyRun{agent: writes([2]string{"docs/a.md", "inside\n"}, [2]string{"src/b.go", "package b\n"})}

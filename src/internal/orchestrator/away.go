@@ -44,6 +44,7 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	if err != nil {
 		return persistence.RunStatusFailed, "", err
 	}
+	barrier.Hit(barrier.PhaseChecked)
 	// An empty change whose checks fail has nothing to deliver, but its parked proposals may be what fixes the checks (a project that
 	// is broken at its base): they are offered, with the failure shown, instead of being lost to a FAILED run.
 	emptyButParked := !passed && len(appr.files) == 0 && parked > 0

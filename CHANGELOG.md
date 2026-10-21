@@ -24,7 +24,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   computes, says no person reviewed the whole change, and has a new optional field `delivery: policy` (the predicate type stays
   version 1; verifiers ignore fields they do not know). A run killed after the authorization is finished with `staircase recover`
   and cannot be resumed. Old chains and old certificates are unchanged. What to do: nothing, unless you start a run with
-  `--deliver policy`; then read the seven conditions first.
+  `--deliver policy`; then read the seven conditions first. Delivery by policy suits work whose correctness a rule of your signed
+  policy already decided (documentation, changelog entries, generated or formatted files, the areas a rule's `paths` name); code
+  approved on evidence still waits for your review.
   ADR 0012 is accepted: only what rules of your signed policy approved is delivered, never what evidence or the agreed task
   alone approved ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
 

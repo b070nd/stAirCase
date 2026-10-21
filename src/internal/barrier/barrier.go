@@ -18,6 +18,7 @@ const (
 	AuditCommitted     = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
 	Consumed           = "consumed"            // the approval is recorded in memory and released to the agent
 	NothingChecked     = "nothing-checked"     // an away run that did nothing has its checks of the unchanged tree on the chain; the run's path is not
+	PhaseChecked       = "phase-checked"       // an away run's final checks are on the chain; no delivery is authorized and the run is not yet offered
 	DeliveryAuthorized = "delivery-authorized" // a run delivering by policy has authorized its delivery on the chain; no commit is named yet
 	CommitPrepared     = "commit-prepared"     // the commit exists and is named on the chain; no branch holds it yet
 	GitCAS             = "git-cas"             // the branch moved to the commit; no evidence yet

@@ -34,6 +34,14 @@ run's checks are defined are protected in every run that has checks ([approvals]
 that touches a sensitive path always goes to a person ([approvals](approvals.md#who-decides-in-order)): a rule that approved an edit of such
 a path now sends it to a person.
 
+Delivery by policy (`--deliver policy`, [away](away.md#while-you-are-away)) is opt-in per run and changes nothing for a run that does not
+choose it; it suits work whose correctness a rule of your signed policy already decided, and everything else still goes to a person. It
+adds one optional field to the change certificate, `delivery: "policy"`, present only on a certificate of such a delivery. The predicate
+type stays `#v1`, the level is the one the certificate computes (delivery by policy is not a cap), the
+[test vectors](spec/vectors) are unchanged, and a verifier written before the field existed ignores it and accepts the certificate as
+before; a verifier whose own policy refuses unattended delivery can read the field and refuse. The audit chain gains the event
+`delivery_authorized`; chains and certificates made before it read exactly as they did.
+
 Everything else, including the command-line output, the workspace layout, the
 database and the agents' prompts, can change in any version.
 
