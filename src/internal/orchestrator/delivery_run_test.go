@@ -281,6 +281,21 @@ func TestDeliverByPolicy_never_delivers_a_sensitive_or_protected_path_even_if_a_
 	}
 }
 
+// TestDeliverByPolicy_terms_the_chain_does_not_bind_go_to_the_owner (condition 1): the saved terms are read back and checked against
+// the digest on run_bound. Terms that were changed while the run went (here, by the agent) are not the terms it was bound to, and in
+// doubt the owner decides.
+func TestDeliverByPolicy_terms_the_chain_does_not_bind_go_to_the_owner(t *testing.T) {
+	p := &policyRun{agent: func(ctx context.Context, env *orchestrator.AgentEnv) error {
+		write(ctx, env, "docs/a.md", "fine\n")
+		path := filepath.Join(env.Workspace, "journal", "run-1.options.json")
+		b, err := os.ReadFile(path)
+		require.NoError(t, err)
+		return os.WriteFile(path, []byte(strings.Replace(string(b), `"deliver_paths":["docs/**"]`, `"deliver_paths":["**"]`, 1)), 0o600)
+	}}
+	r := p.run(t)
+	refusedBy(t, r, 1, "bound")
+}
+
 // TestDeliverByPolicy_an_unsigned_policy_never_starts: condition 1 as the terms leave it to the start of the run (ticket 10). The
 // evaluation repeats it (TestDeliveryCase_...), so a policy that is not signed can never be what delivers.
 func TestDeliverByPolicy_an_unsigned_policy_never_starts(t *testing.T) {
