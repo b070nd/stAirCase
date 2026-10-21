@@ -73,6 +73,9 @@ func (h History) Outcome() (Outcome, string) {
 	if h.Sealed == "commit_prepared" {
 		return OutcomeBlocked, fmt.Sprintf("its commit %.12s was named but not delivered: staircase recover finishes it", h.Delivered[0].Commit)
 	}
+	if h.Sealed == "delivery_authorized" {
+		return OutcomeBlocked, fmt.Sprintf("its delivery by policy was authorized (tree %.12s) but its commit was never named: staircase recover %s finishes it", h.Authorized.Tree, h.ref())
+	}
 	parked := len(h.Parked())
 	checkFailed := e.checked > e.segStart && !e.check.Passed
 	rejected := slices.ContainsFunc(h.Decisions, func(d Decision) bool {
