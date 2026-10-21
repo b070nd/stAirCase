@@ -32,7 +32,8 @@ signal or a model approve what a person decided before. The policy file's syntax
 can reach narrows. Every such addition is listed in the CHANGELOG under Changed with what to do. For example, since the release after 1.1.0 the paths where a
 run's checks are defined are protected in every run that has checks ([approvals](approvals.md#checks-the-agent-cannot-weaken)), and a file edit
 that touches a sensitive path always goes to a person ([approvals](approvals.md#who-decides-in-order)): a rule that approved an edit of such
-a path now sends it to a person.
+a path now sends it to a person. The bar sits before the policy, so it also sends a person an edit that a `reject` rule would have
+rejected: the person may approve it, and while you are away it is parked, not rejected.
 
 Delivery by policy (`--deliver policy`, [away](away.md#while-you-are-away)) is opt-in per run and changes nothing for a run that does not
 choose it; it suits work whose correctness a rule of your signed policy already decided, and everything else still goes to a person. It

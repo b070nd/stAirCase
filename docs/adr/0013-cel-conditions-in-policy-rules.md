@@ -21,8 +21,9 @@ What the policy file already guarantees:
   bytes, and a continuation decides under them (`SnapshotFromBytes`), never under today's file.
 - **Where the policy sits.** In `deciders.rule` (`orchestrator/decide.go`) the order is: the orchestrator refuses what it cannot apply;
   a command or tool the owner declared for an away run is approved from the run's terms; drift supervision halts or sends to a person;
-  a change to a path that holds a check's definition (`Terms.ProtectedPaths`) goes to a person, parked while away; a limit, drift or a
-  guard sends to a person; only then the policy's rules; then the agreed task, evidence, the validator, a person. A signal can only
+  a change to a path that holds a check's definition (`Terms.ProtectedPaths`) goes to a person, parked while away; a file edit that
+  touches a sensitive path (CI, build, dependency, secret and shell files, `CODEOWNERS`) does too, ahead of the limits and the policy
+  (so it reaches a person even when a `reject` rule would have rejected it); a limit, drift or a guard sends to a person; only then the policy's rules; then the agreed task, evidence, the validator, a person. A signal can only
   turn an automatic approval into a person's decision. The final review never reaches the engine.
 - **Commands and tool calls.** `Engine.Evaluate` returns "no match" for `shell_exec` and `tool_call` before it looks at any rule:
   "shell commands must always reach a human operator", and an MCP tool acts outside the sandbox too.

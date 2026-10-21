@@ -105,7 +105,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   everything after, so a long session that died left its beginning and lost its end. A log that reaches 4 MiB now moves to a numbered
   previous file (`<name>.log.1`, replacing an older one) and continues in a fresh file, so the two together never exceed 8 MiB and
   the newest output survives. A log already at its bound when a continued run reopens it is rotated, so the continuation is not
-  blind. The markers now read "rotated N times, dropped M bytes". The bound and the limit of 3 lost launches are unchanged. What to
+  blind. The markers now read "rotated N times, dropped M bytes". What to
   do: read `<name>.log.1` too for the earlier output
   ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
 
@@ -126,22 +126,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   unless asked for, and stAirCase does not ask. `staircase doctor` and [compatibility](docs/compatibility.md#what-each-adapter-supports)
   show the new words; no behaviour changes.
 
-- **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
-  run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
-  of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
-  [compatibility](docs/compatibility.md#the-six-contracts)).
-
 - **Check-defining paths are protected in every run that has checks, and sensitive paths always go to a person.** A change to a path
   where a run's checks are defined (the script a check runs, the tests given to `bats` or `pytest`, `Makefile` for `make`,
   `package.json` for `npm`, and anything you name with `--protect`) now always goes to a person, and is parked while away, whatever
   your policy says. So does a file edit that touches a sensitive path: CI and build files (`.github/`, `Makefile`, `Dockerfile`),
   dependency files, `.env` files, shell scripts (`*.sh`), and now `CODEOWNERS` files at any depth and Gemini's repository settings
   (`.gemini/`). If a rule of your `policy.json` approved such an edit before, that edit now reaches a person; the rule itself is
-  unchanged and still decides everything else. The reason shown names the path. Why: an agent that can edit the test a check runs
+  unchanged and still decides everything else. The bar sits before the policy, so it also sends a person the edits that a policy
+  `reject` rule would have rejected: the person may approve them, and while you are away they are parked, not rejected. The reason
+  shown names the path. Why: an agent that can edit the test a check runs
   can make the check pass, and one that can edit a CI, build or review-ownership file can change what runs or who must review. What
   to do: nothing, unless a rule you rely on covered such a path; then name the paths you accept to be protected with `--protect`
   (check paths only; a sensitive path has no allowance yet). This follows the rule in
-  [compatibility](docs/compatibility.md#how-the-six-contracts-change): a minor release may send more proposals to a person, never fewer.
+  [compatibility](docs/compatibility.md#how-the-six-contracts-change): a minor release may send more proposals to a person, never fewer
+  ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken), [the six contracts](docs/compatibility.md#the-six-contracts)).
 
 - **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
   shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
@@ -174,7 +172,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   `empty` on `review_accepted`.
 
 - **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** The debug log (`--debug`) and a hosted session's
-  log (`host/<session>.log`) stop growing at 8 MiB, say where they stopped and, at the end, how much they dropped. Both are scrubbed of
+  log (`host/<session>.log`) are bounded (they rotate and keep their newest output: see "Logs keep their newest output") and say how much
+  they dropped. Both are scrubbed of
   every secret handed to an agent, including the environment variables named with `--pass-env`, which were not scrubbed before. The
   stderr tail of a failed agent (Claude Code, Codex, Gemini, OpenCode) is no longer part of the error the run ends with, which a
   runner may keep (Cloudroom keeps stderr tails in its records); it is shown at the terminal or in the host log, and in the debug log,
@@ -198,8 +197,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 - **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes that are added at the same
   moment without an error (six parallel adds lost notes in 8 of 8 trials), and a commit without its certificate fails verification
   later. Writing a note now holds a lock on the repository, stores the file's exact bytes, reads the note back, and writes it again
-  a bounded number of times. A note that cannot be confirmed is reported as an evidence failure (the run's summary and
-  `evidence_failed` name it), never as written. Nothing to do; a commit that already lost its note keeps lacking it.
+  a bounded number of times, and `staircase sign` writes its signed certificate the same way. A note that cannot be confirmed is
+  reported as an evidence failure (the run's summary and `evidence_failed` name it), never as written. The lock does nothing on
+  Windows ([audit](docs/audit.md#writing-a-note)). Nothing to do; a commit that already lost its note keeps lacking it.
 
 ## [1.1.0] - 2026-10-18
 
