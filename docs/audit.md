@@ -271,6 +271,15 @@ With `--require-evidence` the run also exits non-zero in that case, so a script 
 job cannot mistake it for a complete result. The run is not relabelled as failed or
 undelivered: the commit exists, and its hash is in the record.
 
+### Writing a note
+
+Git drops notes that are added at the same moment, without an error. So every write of a certificate or ledger note, and the one
+`staircase sign` makes, holds a lock on the repository (a lock file in its git directory, shared by every worktree), stores the
+file's exact bytes, reads the note back and writes it again a bounded number of times. A note that cannot be confirmed is an
+evidence failure, never a success. **On Windows that lock excludes nothing:** the build compiles, but its lock calls are
+no-ops, so two deliveries or a `sign` at the same moment in one repository can still lose a note there. The read-back narrows that window but does not close it; on
+Windows, do not run two writers in one repository at once.
+
 ## Keeping evidence: clean, archive and legal hold
 
 `staircase clean --aggressive` tidies the workspace, but it does not throw evidence

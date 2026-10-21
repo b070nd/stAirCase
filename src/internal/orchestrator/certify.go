@@ -207,6 +207,16 @@ const (
 // does not find it.
 const noteAttempts = 5
 
+// AttachNote is attachNote for a caller outside a run (staircase sign), given the path of the repository: a signature is
+// attached as safely as the certificate it signs.
+func AttachNote(repoPath, ref, file, commit string) error {
+	repo, err := OpenGitRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	return attachNote(repo, ref, file, commit)
+}
+
 // attachNote adds the file's content, byte for byte, as a note under
 // refs/notes/<ref> on commit. Git loses notes that are added at the same moment
 // (without a word: six parallel adds lost notes in 8 of 8 trials), so the write
