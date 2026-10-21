@@ -53,14 +53,15 @@ type History struct {
 
 // ending is what the chain says about how the run ended, for Outcome.
 type ending struct {
-	segStart   int    // the position of the last segment's start: run_bound or its last run_resumed
-	ended      *Ended // the last segment's run_path; nil while the chain does not say it ended
-	haltReason string // why drift supervision halted the run, while Halted
-	checked    int    // the position of the last phase_checked, and what it found
-	check      PhaseChecked
-	commit     string   // the delivered commit: named by an event written after the branch moved
-	recovered  bool     // it was delivered by recovery of an interrupted run
-	evidence   []string // what the last report on the delivered commit's evidence said was missing
+	segStart     int    // the position of the last segment's start: run_bound or its last run_resumed
+	ended        *Ended // the last segment's run_path; nil while the chain does not say it ended
+	haltReason   string // why drift supervision halted the run, while Halted
+	checked      int    // the position of the last phase_checked, its entry hash, and what it found
+	checkedEntry string
+	check        PhaseChecked
+	commit       string   // the delivered commit: named by an event written after the branch moved
+	recovered    bool     // it was delivered by recovery of an interrupted run
+	evidence     []string // what the last report on the delivered commit's evidence said was missing
 }
 
 // Decision is one yield_decided with where it is and what it answered.
@@ -361,7 +362,7 @@ func replay(events []domain.RunEventLog) (History, error) {
 			h.Decisions = append(h.Decisions, d)
 		case "phase_checked":
 			// read again when an awaiting_review or a delivery_authorized names it
-			h.end.checked, h.end.check, reviewedSince = n, PhaseChecked{}, false
+			h.end.checked, h.end.checkedEntry, h.end.check, reviewedSince = n, e.EventHash, PhaseChecked{}, false
 			if err := read(&h.end.check); err != nil {
 				return h, err
 			}
@@ -444,7 +445,9 @@ var afterAuthorization = map[string]bool{
 // phase_checked entry before it, of the same tree, whose checks passed and that no offered review followed, and it is made
 // in policy mode under the terms the run was bound to and the signed policy it loaded.
 func authorizationRefused(h History, before []domain.RunEventLog, p DeliveryAuthorized, reviewedSince bool) string {
-	named := slices.IndexFunc(before, func(e domain.RunEventLog) bool { return e.EventType == "phase_checked" && e.EventHash == p.PhaseChecked })
+	named := slices.IndexFunc(before, func(e domain.RunEventLog) bool {
+		return e.EventType == "phase_checked" && e.EventHash == p.PhaseChecked
+	})
 	switch {
 	case named < 0:
 		return fmt.Sprintf("the authorization names no phase_checked entry (%q)", p.PhaseChecked)
@@ -485,6 +488,12 @@ func (h History) OpenLaunch() *Launch {
 		return &h.Launches[n-1]
 	}
 	return nil
+}
+
+// LastChecked is the latest phase_checked entry on the chain (its hash) and what it found: the checks of an away run on the
+// approved tree. ok is false when the chain holds none.
+func (h History) LastChecked() (entry string, c PhaseChecked, ok bool) {
+	return h.end.checkedEntry, h.end.check, h.end.checked > 0
 }
 
 // Failures are the launches that did not end well, each with its class, in chain order.

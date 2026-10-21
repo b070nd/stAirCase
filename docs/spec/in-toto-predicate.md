@@ -68,6 +68,7 @@ meanings and the verification procedure, is
 | `signed` | object `{decisions, signers}` (decisions people signed; informative) | no |
 | `attention` | object `{humanDecisions, medianSeconds, quickApprovals}` (how people decided; informative) | no |
 | `checks` | array of `{command, exitCode, sandboxed, outputSha256}` (commands run on the commit) | no |
+| `delivery` | string, `policy` (the change was delivered by rules of the owner's signed policy with no person reviewing the whole change; absent otherwise) | no |
 
 ## Parsing rules
 

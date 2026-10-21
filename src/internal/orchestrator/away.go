@@ -34,36 +34,56 @@ const AwayBriefVersion = 1
 // awaitReview is the acceptance of an away run when its agent stopped: the checks run once more, on the exact approved tree
 // (the agent stopping is not acceptance), and their result is recorded as phase_checked. A tree that passes is offered for
 // review (awaiting_review, naming that phase_checked entry); one that does not ends the run FAILED. Nothing is committed.
-func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, parked int) (string, error) {
+//
+// A run that delivers by policy (deliver is not nil) instead judges the seven conditions of ADR 0012 once its checks passed: when
+// they all hold it audits delivery_authorized and ends SUCCESS, so that the commit is made and delivered like a live run's, with
+// no person asked; otherwise it is offered for review like any other, and the awaiting_review entry and the message say which
+// condition sent it to the owner. The tree it authorized is returned, "" when it did not authorize.
+func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, parked int, deliver *deliveryAttempt) (status, authorized string, err error) {
 	tree, passed, failed, err := r.checkTree(ctx, runID, appr, gate)
 	if err != nil {
-		return persistence.RunStatusFailed, err
+		return persistence.RunStatusFailed, "", err
 	}
 	// An empty change whose checks fail has nothing to deliver, but its parked proposals may be what fixes the checks (a project that
 	// is broken at its base): they are offered, with the failure shown, instead of being lost to a FAILED run.
 	emptyButParked := !passed && len(appr.files) == 0 && parked > 0
 	if !passed && !emptyButParked {
 		fmt.Fprintf(os.Stdout, "   ❌ The approved change does not pass its checks now: %s\n", failed)
-		return persistence.RunStatusFailed, nil
+		return persistence.RunStatusFailed, "", nil
+	}
+	refused := ""
+	if deliver != nil { // delivery by policy: every condition, from the verified history, or the owner decides
+		var auth history.DeliveryAuthorized
+		if auth, refused = r.judgeDelivery(runID, appr, tree, parked, deliver); refused == "" {
+			if err := r.audit(runID, "delivery_authorized", auth); err != nil {
+				return persistence.RunStatusFailed, "", fmt.Errorf("audit delivery_authorized: %w", err)
+			}
+			barrier.Hit(barrier.DeliveryAuthorized)
+			fmt.Fprintf(os.Stdout, "   ✅ Delivering by policy: every condition holds, so %d file(s) that rules of your signed policy approved are committed to the run branch without your review. Nothing is pushed.\n", len(appr.files))
+			return persistence.RunStatusSuccess, tree, nil
+		}
 	}
 	checked, err := r.store.GetLastEventHash(runID)
 	if err != nil {
-		return persistence.RunStatusFailed, err
+		return persistence.RunStatusFailed, "", err
 	}
-	if err := r.audit(runID, "awaiting_review", map[string]any{"tree": tree, "files": digest(appr.files), "phase_checked": checked, "parked": parked}); err != nil {
-		return persistence.RunStatusFailed, fmt.Errorf("audit awaiting_review: %w", err)
+	if err := r.audit(runID, "awaiting_review", history.AwaitingReview{Tree: tree, Files: digest(appr.files), PhaseChecked: checked, Parked: parked, DeliveryRefused: refused}); err != nil {
+		return persistence.RunStatusFailed, "", fmt.Errorf("audit awaiting_review: %w", err)
+	}
+	if refused != "" {
+		fmt.Fprintf(os.Stdout, "   🙋 Delivery by policy is refused, and falling back to your review is a normal outcome: %s\n", refused)
 	}
 	if emptyButParked {
 		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved and the checks fail on the unchanged tree (%s); %d proposal(s) parked for you. Decide with: staircase decide %d\n", failed, parked, runID)
-		return persistence.RunStatusAwaitingReview, nil
+		return persistence.RunStatusAwaitingReview, "", nil
 	}
 	if len(appr.files) == 0 {
 		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved, %d proposal(s) parked for you (an empty change). Decide with: staircase decide %d\n", parked, runID)
-		return persistence.RunStatusAwaitingReview, nil
+		return persistence.RunStatusAwaitingReview, "", nil
 	}
 	fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: %d file(s) approved on evidence, %d proposal(s) parked. Decide with: staircase decide %d\n",
 		len(appr.files), parked, runID)
-	return persistence.RunStatusAwaitingReview, nil
+	return persistence.RunStatusAwaitingReview, "", nil
 }
 
 // checkTree runs the checks on the approved tree as it stands and records the result as phase_checked: the first half of an away
@@ -139,6 +159,8 @@ type Review struct {
 	// ChecksFailed is, for an empty change only, why the checks failed on its unchanged tree: the run parked what it proposed, and
 	// the project's own checks do not pass without it. Empty when the checks passed (always, for a change with files).
 	ChecksFailed string
+	// DeliveryRefused is, for a run that was to deliver by policy and fell back to the owner, the condition that sent it (ADR 0012).
+	DeliveryRefused string
 
 	ParkedProposals []ParkedProposal
 }
@@ -167,6 +189,7 @@ func (r *Runner) ReviewOf(runID int64) (Review, error) {
 		return rv, fmt.Errorf("run #%d has no awaiting_review entry on its chain", runID)
 	}
 	rv.Entry, rv.Tree, rv.Files, rv.Parked, rv.Decided = aw.Entry, aw.Tree, aw.Files, aw.Parked, aw.Decided
+	rv.DeliveryRefused = aw.DeliveryRefused
 	if aw.Checked == nil {
 		return rv, fmt.Errorf("run #%d offers a tree without the checks that ran on it", runID)
 	}
