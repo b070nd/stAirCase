@@ -19,8 +19,8 @@ it).
 ## What the runner keeps, and what it does not
 
 - **Its protocol.** The runner's stdin and stdout reach Claude Code untouched (stream-json in and out); stAirCase's own output goes to
-  `host/<session>.log` in the workspace, never into the runner's stream. That log stops at 8 MiB and says where it did and how much
-  it dropped, holds no secret the session was handed, and is where the stderr tail of a failed Claude Code is kept. The error the
+  `host/<session>.log` in the workspace, never into the runner's stream. That log and its previous file (`<session>.log.1`) together stay within 8 MiB, keep the
+  newest output, and say how often it rotated and how much it dropped, holds no secret the session was handed, and is where the stderr tail of a failed Claude Code is kept. The error the
   runner receives names the cause only, no stderr text, because a runner may keep what the program it starts prints
   ([logs are diagnostics, not evidence](audit.md#logs-are-diagnostics-not-evidence)).
 - **Its session id**, on the audit chain as the agent's session.

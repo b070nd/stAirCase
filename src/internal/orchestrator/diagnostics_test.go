@@ -16,18 +16,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// debugLog is the text of the run's debug log and the size of it and its numbered previous file together.
 func debugLog(t *testing.T, wsDir string) string {
+	t.Helper()
+	text, _ := debugLogAndSize(t, wsDir)
+	return text
+}
+
+func debugLogAndSize(t *testing.T, wsDir string) (string, int64) {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(wsDir, "log"))
 	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	b, err := os.ReadFile(filepath.Join(wsDir, "log", entries[0].Name()))
-	require.NoError(t, err)
-	return string(b)
+	var text string
+	var total int64
+	logs := 0
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(wsDir, "log", e.Name()))
+		require.NoError(t, err)
+		total += int64(len(b))
+		if !strings.HasSuffix(e.Name(), ".1") {
+			text = string(b)
+			logs++
+		}
+	}
+	require.Equal(t, 1, logs)
+	return text, total
 }
 
-// The --debug log stops growing at its bound and says that it did (V11-C01 scope 8: diagnostics are bounded, and their loss is
-// visible); the run's audit chain, which is the record, is whole.
+// The --debug log is held to its bound by rotating, and says how often it did (V11-C01 scope 8: diagnostics are bounded, and their
+// loss is visible); the run's audit chain, which is the record, is whole.
 func TestDebugLog_is_bounded_and_says_what_it_dropped(t *testing.T) {
 	old := diag.MaxLogBytes
 	diag.MaxLogBytes = 2048
@@ -43,15 +60,9 @@ func TestDebugLog_is_bounded_and_says_what_it_dropped(t *testing.T) {
 	})
 	require.NoError(t, r.Err)
 
-	entries, err := os.ReadDir(filepath.Join(r.WsDir, "log"))
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	fi, err := os.Stat(filepath.Join(r.WsDir, "log", entries[0].Name()))
-	require.NoError(t, err)
-	assert.LessOrEqual(t, fi.Size(), int64(2048))
-	log := debugLog(t, r.WsDir)
-	assert.Contains(t, log, "bound of 2048 bytes")
-	assert.Regexp(t, `dropped \d+ bytes in all`, log)
+	log, size := debugLogAndSize(t, r.WsDir)
+	assert.LessOrEqual(t, size, int64(2048), "the log and its previous file together are within the bound")
+	assert.Regexp(t, `rotated \d+ times, dropped \d+ bytes in all`, log)
 	emits := 0
 	for _, e := range r.Events {
 		if e.EventType == "state_emit" {

@@ -1,8 +1,10 @@
 // Package diag holds the logs stAirCase keeps for a person to read when something went wrong: the hosted-session log
 // (host/<session>.log) and the run's debug log. They are local, never evidence, and they are held to two rules.
 //
-//   - They are bounded. A log stops growing at its bound (MaxLogBytes), says so where it stopped, and at its end says how much
-//     it dropped. The bound covers the markers too: the file never exceeds it.
+//   - They are bounded. A log and its numbered previous file (path.1) together never exceed the bound (MaxLogBytes): when the log
+//     reaches half of it, it moves to path.1, replacing an older one, and continues in a fresh file. The newest output survives and
+//     the oldest is what is dropped. Each fresh file, and the end, say how often it rotated and how many bytes were dropped. The
+//     bound covers the markers too.
 //   - They hold no secret the agent was handed. Every write is scrubbed of the delivered values, line by line, so a value cut in
 //     two by two writes is still found.
 //
@@ -26,8 +28,12 @@ import (
 var MaxLogBytes int64 = 8 << 20
 
 const (
-	// reserve is room kept back for the two markers, so that a full log can still say it is full.
-	reserve = 256
+	// reserve is room kept back in a file for the marker at its end.
+	reserve = 128
+	// markerRoom is room for the line a fresh file starts with, whatever the counts in it.
+	markerRoom = 128
+	// minBound keeps a file's half of the bound larger than its markers.
+	minBound = 8 * reserve
 	// maxLine is how much of a line without an end is held back before it is written.
 	maxLine = 64 << 10
 )
@@ -52,21 +58,24 @@ func Delivered() []string {
 	return append([]string(nil), delivered...)
 }
 
-// Log is a bounded, scrubbed, append-only diagnostic file. Its Write never fails and never blocks the writer on a full log: what
-// does not fit is counted and dropped.
+// Log is a bounded, scrubbed, append-only diagnostic file. Its Write never fails and never blocks the writer on a full log: when
+// the file reaches half the bound it becomes the numbered previous file (path.1, replacing an older one) and the log continues in a
+// fresh file, so the two together never exceed the bound and the newest output survives.
 type Log struct {
-	mu      sync.Mutex
-	f       *os.File
-	max     int64
-	written int64 // bytes in the file, the earlier opens' included
-	dropped int64
-	marked  bool
-	secrets func() []string
-	pending []byte // the line being written, until it has an end
+	mu        sync.Mutex
+	f         *os.File
+	path      string
+	max       int64
+	written   int64 // bytes in the file, the earlier opens' included
+	rotations int
+	dropped   int64 // bytes lost: what a rotation replaced, and what could not be written at all
+	secrets   func() []string
+	pending   []byte // the line being written, until it has an end
 }
 
-// Open opens (or creates, mode 0600) the log at path to append, bounded at bound bytes in all, scrubbing the values secrets returns
-// (which may be nil) from everything written.
+// Open opens (or creates, mode 0600) the log at path to append, bounded at bound bytes in all (the file and its previous file
+// together), scrubbing the values secrets returns (which may be nil) from everything written. A log that is already at half of its
+// bound is rotated at once, so that a continuation is not blind.
 func Open(path string, bound int64, secrets func() []string) (*Log, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
@@ -77,8 +86,15 @@ func Open(path string, bound int64, secrets func() []string) (*Log, error) {
 		_ = f.Close()
 		return nil, err
 	}
-	return &Log{f: f, max: max(bound, 2*reserve), written: st.Size(), secrets: secrets}, nil
+	l := &Log{f: f, path: path, max: max(bound, minBound), written: st.Size(), secrets: secrets}
+	if l.written >= l.half() {
+		l.rotate()
+	}
+	return l, nil
 }
+
+// half is the size at which a file is rotated: two files of it are the bound.
+func (l *Log) half() int64 { return l.max / 2 }
 
 // Write takes p into the log. It reports all of p as written, whatever became of it.
 func (l *Log) Write(p []byte) (int, error) {
@@ -94,8 +110,11 @@ func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.drain(true)
-	if l.dropped > 0 {
-		l.put([]byte(fmt.Sprintf("[staircase: dropped %d bytes in all]\n", l.dropped)))
+	if l.rotations > 0 || l.dropped > 0 {
+		l.put([]byte(fmt.Sprintf("[staircase: rotated %d times, dropped %d bytes in all]\n", l.rotations, l.dropped)))
+	}
+	if l.f == nil {
+		return nil
 	}
 	return l.f.Close()
 }
@@ -155,7 +174,8 @@ func lastNewline(b []byte) int {
 	return -1
 }
 
-// emit scrubs b and writes as much of it as the bound leaves room for, counting the rest as dropped.
+// emit scrubs b and writes it, rotating the file whenever the room it has is used up. A piece is cut at a line end when it can be,
+// so that rotation keeps lines whole. Scrubbing comes first, so a secret that would have been cut by a rotation is already gone.
 func (l *Log) emit(b []byte) {
 	if len(b) == 0 {
 		return
@@ -163,29 +183,87 @@ func (l *Log) emit(b []byte) {
 	if l.secrets != nil {
 		b = crypto.ScrubBytes(b, l.secrets())
 	}
-	room := max(l.max-reserve-l.written, 0)
-	if int64(len(b)) <= room {
-		l.put(b)
-		return
-	}
-	keep := int(room)
-	for keep > 0 && !utf8.RuneStart(b[keep]) { // a cut inside a character would leave a broken one
-		keep--
-	}
-	l.put(b[:keep])
-	l.dropped += int64(len(b) - keep)
-	if !l.marked {
-		l.marked = true
-		l.put([]byte(fmt.Sprintf("\n[staircase: this log reached its bound of %d bytes; output after this point is dropped]\n", l.max)))
+	fresh := false // rotated, and nothing written since: another rotation would gain nothing
+	for len(b) > 0 {
+		n := int(min(int64(len(b)), max(l.half()-reserve-l.written, 0)))
+		if n < len(b) {
+			if i := lastNewline(b[:n]); i >= 0 {
+				n = i + 1
+			} else if !fresh && int64(len(b)) <= l.half()-reserve-markerRoom {
+				n = 0 // it fits a fresh file whole: rotate rather than cut it
+			} else {
+				for n > 0 && !utf8.RuneStart(b[n]) { // a cut inside a character would leave a broken one
+					n--
+				}
+			}
+		}
+		if n == 0 {
+			if fresh {
+				l.dropped += int64(len(b))
+				return
+			}
+			l.rotate()
+			fresh = true
+			continue
+		}
+		l.put(b[:n])
+		b = b[n:]
+		fresh = false
+		if len(b) > 0 {
+			l.rotate()
+			fresh = true
+		}
 	}
 }
 
-// put appends b if the file stays within its bound, and counts it dropped if it would not.
+// put appends b if the file stays within its half of the bound, and counts it dropped if it would not.
 func (l *Log) put(b []byte) {
-	if l.written+int64(len(b)) > l.max {
+	if l.f == nil || l.written+int64(len(b)) > l.half() {
 		l.dropped += int64(len(b))
 		return
 	}
 	n, _ := l.f.Write(b)
 	l.written += int64(n)
+}
+
+// rotate moves the file to its numbered previous file, replacing the one that was there, and continues in a fresh file whose first
+// line says how often the log has rotated and how much it has dropped. What the replaced previous file held is dropped. A file
+// longer than half of the bound (a log from before rotation) is cut to its newest half, so the two never exceed the bound.
+func (l *Log) rotate() {
+	prev := l.path + ".1"
+	if st, err := os.Stat(prev); err == nil {
+		l.dropped += st.Size()
+	}
+	if l.f != nil {
+		_ = l.f.Close()
+		l.f = nil
+	}
+	if err := os.Rename(l.path, prev); err != nil {
+		l.dropped += l.written // the file cannot move: start it again, losing what it held
+		_ = os.Remove(l.path)
+	} else if cut := l.written - l.half(); cut > 0 {
+		l.dropped += cut
+		keepTail(prev, l.half())
+	}
+	l.rotations++
+	l.written = 0
+	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_TRUNC, 0o600)
+	if err != nil {
+		return // the log is lost from here on; the writer is never told
+	}
+	l.f = f
+	l.put([]byte(fmt.Sprintf("[staircase: rotated %d times, dropped %d bytes so far; earlier output is in the .1 file]\n", l.rotations, l.dropped)))
+}
+
+// keepTail cuts the file at path to its last keep bytes, from the start of a character.
+func keepTail(path string, keep int64) {
+	b, err := os.ReadFile(path)
+	if err != nil || int64(len(b)) <= keep {
+		return
+	}
+	b = b[int64(len(b))-keep:]
+	for len(b) > 0 && !utf8.RuneStart(b[0]) {
+		b = b[1:]
+	}
+	_ = os.WriteFile(path, b, 0o600)
 }
