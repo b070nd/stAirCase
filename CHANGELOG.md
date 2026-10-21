@@ -26,6 +26,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   ([approvals](docs/approvals.md#approving-automatically-with-rules)). Expression conditions (CEL) are deferred, with the findings
   recorded ([ADR 0013](docs/adr/0013-cel-conditions-in-policy-rules.md)).
 
+- **`staircase acknowledge <run>`: say you looked at a run whose agent was lost, without launching anything.** A run whose agent's
+  launch has no established end stays parked until a person acknowledges it. The new command records that acknowledgement on the audit
+  chain (`launch_acknowledged`, naming the exact attempt and generation, so it cannot cover a later loss) and writes the launch's end
+  first if it is still open; a second call changes nothing, and a run with no open or lost launch is refused. A hosted runner's
+  `--resume` still never acknowledges by itself, its refusal now names the command, and once you ran it the runner's own resume
+  proceeds in its own session. `staircase resume --ack-unknown` is this same operation followed by the resume. The limit of 3 lost
+  launches stays: an acknowledgement does not lift it, and `staircase recover` still works. Chains written before read as before. What to
+  do: nothing, unless a hosted run was parked; then look at what its agent may have done and run `staircase acknowledge <run>`
+  ([audit](docs/audit.md#lost-launches), [hosting](docs/hosting.md#when-the-runner-resumes-a-session)).
+
 - **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
   (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
   level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.
@@ -69,6 +79,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   the class derived from the outcome ([audit](docs/audit.md#lost-launches), [compatibility](docs/compatibility.md#what-each-adapter-supports)).
 
 ### Changed
+
+- **Logs keep their newest output.** The debug log (`--debug`) and a hosted session's log used to keep the first 8 MiB and drop
+  everything after, so a long session that died left its beginning and lost its end. A log that reaches 4 MiB now moves to a numbered
+  previous file (`<name>.log.1`, replacing an older one) and continues in a fresh file, so the two together never exceed 8 MiB and
+  the newest output survives. A log already at its bound when a continued run reopens it is rotated, so the continuation is not
+  blind. The markers now read "rotated N times, dropped M bytes". The bound and the limit of 3 lost launches are unchanged. What to
+  do: read `<name>.log.1` too for the earlier output
+  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
 
 - **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
   checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that

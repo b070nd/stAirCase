@@ -23,7 +23,7 @@ stAirCase is at **1.0**: its six interfaces follow semantic versioning ([compati
 - **Keys stay out of the model's reach.** API keys are stored encrypted, used only
   to call the provider, and removed from every log and audit record. That holds for the
   values you hand an agent with `--pass-env` too, and for the debug log and a hosted
-  session's log, which are also bounded (8 MiB) and say when they dropped output. An
+  session's log, which are also bounded (8 MiB, newest output kept) and say how much they dropped. An
   agent program's stderr is a local diagnostic: it is never on the audit chain, in the
   certificate or in the ledger ([logs are diagnostics, not evidence](audit.md#logs-are-diagnostics-not-evidence)).
 

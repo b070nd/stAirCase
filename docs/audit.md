@@ -114,8 +114,16 @@ leaves a claim with no outcome. Nobody can know what that agent did before it di
 
 `staircase resume` (and a resumed hosted session) that finds such a claim first records its outcome as
 `unknown_after_restart`. Then it **parks** the run: it refuses to launch the agent again and says why. Look at what
-the agent may have done, then continue with `staircase resume <run> --ack-unknown`. The acknowledgement is recorded
-on `run_resumed` (`ack_unknown`, the attempt it acknowledged). An agent that did not stop when asked
+the agent may have done, then say you looked with `staircase acknowledge <run>`, or continue at once with
+`staircase resume <run> --ack-unknown`.
+
+`staircase acknowledge <run>` launches nothing. Under the run's lock it writes the launch's end (`unknown_after_restart`) if the
+launch is still open, then `launch_acknowledged`, naming the attempt and the generation of the launch it acknowledges, so it
+cannot be reused to cover a later loss. A second call changes nothing, and a run with no open or lost launch is refused. A
+continuation, a hosted runner's resume included, then treats that launch as acknowledged. A hosted resume never acknowledges by
+itself. `--ack-unknown` is the same operation followed by the resume; `run_resumed` records the attempt it acknowledged
+(`ack_unknown`), as it always has. The replay accepts `launch_acknowledged` only after a launch that ended `unknown_after_restart`
+or `unresponsive`, once per launch. An agent that did not stop when asked
 (`unresponsive`) parks the run the same way. Its end was not established either.
 
 A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
@@ -123,8 +131,8 @@ and `staircase recover <run>` still commits what the run had approved. The time 
 against its time limit.
 
 The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or
-partial, with the exact `staircase resume <run> --ack-unknown` command and the `staircase recover <run>` one, or refused when it
-has lost 3 launches. Its attempts are the launches claimed, lost ones included.
+partial, with the exact `staircase acknowledge <run>`, `staircase resume <run> --ack-unknown` and `staircase recover <run>`
+commands, or refused when it has lost 3 launches. An acknowledgement never lifts that limit. Its attempts are the launches claimed, lost ones included.
 
 ### Launch failure classes
 
@@ -155,11 +163,15 @@ Two logs help a person find out why a run went wrong, and neither is part of the
 
 Both are held to the same rules:
 
-- **A bound.** A log stops growing at **8 MiB**, markers included. Where it stops it says so
-  (`[staircase: this log reached its bound of 8388608 bytes; output after this point is dropped]`) and, when the process ends, how much
-  it dropped (`[staircase: dropped N bytes in all]`). Opened again by a resumed session, it counts what it already holds. A full
-  log loses nothing that matters to the run: the audit chain, the certificate and the ledger are written elsewhere and are never short
-  of a record because a log is full.
+- **A bound, and the newest output kept.** A log and its numbered previous file together never exceed **8 MiB**, markers included.
+  When a log reaches half of that (4 MiB) it moves to the previous file (`<name>.log.1`, replacing an older one) and continues in a
+  fresh file, so the oldest output is what is dropped and the end of a long session survives. Each fresh file starts with a line
+  saying how often the log rotated and how much it dropped so far (`[staircase: rotated N times, dropped M bytes so far; ...]`), and
+  when the process ends the log says so once more (`[staircase: rotated N times, dropped M bytes in all]`). A log that is already
+  at half of its bound when a resumed session opens it is rotated at once, so the continuation's output is kept. A log from before
+  rotation, longer than half of the bound, keeps its newest half as the previous file. Rotation cuts at a line end where it can, and a
+  secret is scrubbed before it is cut, so one that falls across a rotation is still gone. A log loses nothing that matters to the run:
+  the audit chain, the certificate and the ledger are written elsewhere and are never short of a record because a log rotated.
 - **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the
   environment variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret is
   shown as `<REDACTED>`.

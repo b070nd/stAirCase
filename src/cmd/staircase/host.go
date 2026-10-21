@@ -200,8 +200,8 @@ func hostClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err := os.MkdirAll(filepath.Join(ws, "host"), 0o700); err != nil {
 		return err
 	}
-	// stAirCase's own output must not reach the runner's stream: it goes to the session's log, which stops at diag.MaxLogBytes (and
-	// says so) and holds no secret the session was handed.
+	// stAirCase's own output must not reach the runner's stream: it goes to the session's log, which stays within diag.MaxLogBytes by
+	// rotating (and says so) and holds no secret the session was handed.
 	logFile, err := diag.Open(filepath.Join(ws, "host", sanitizeName(h.session)+".log"), diag.MaxLogBytes, diag.Delivered)
 	if err != nil {
 		return err

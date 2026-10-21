@@ -14,6 +14,29 @@ Global flag, accepted by every command:
 
 The workspace directory can also be set with the `STAIRCASE_DIR` environment variable.
 
+## staircase acknowledge
+
+Say you looked at a run whose agent was lost, without launching anything
+
+```
+staircase acknowledge <run-id>
+```
+
+A run whose agent's launch has no established end (its process was killed, crashed or lost
+its machine, or the agent did not stop when asked) is parked: nobody knows what the agent did,
+outside the worktree included, so it is not launched again blindly. acknowledge records, on the
+run's audit chain, that a person looked: it writes the launch's end (unknown_after_restart) if the
+launch is still open, then the acknowledgement, naming the exact launch (its attempt and
+generation), so it cannot cover a later loss. It launches nothing and continues nothing.
+
+Afterwards the run can be continued: with staircase resume, or by a hosted runner's own resume
+(a hosted resume never acknowledges by itself, because the acknowledgement attests that a person
+looked). staircase resume --ack-unknown does both in one step.
+
+A run with no open or lost launch is refused, and calling it again on an acknowledged launch
+changes nothing. Acknowledging does not lift the limit: a run whose launches were lost 3 times
+is not launched again; recover what it approved with staircase recover.
+
 ## staircase attach
 
 Stop plain git commits in this checkout while an agent works in it (use staircase seal)
@@ -1004,8 +1027,10 @@ Every launch of the agent is claimed on the audit chain before its process start
 its outcome is recorded when it stops. A run whose last launch has no outcome (its
 process was killed, crashed or lost its machine) is not launched again blindly: resume
 records the outcome as unknown_after_restart, parks the run and says why. Check what the
-agent may have done, then continue with --ack-unknown. A run whose launches ended this
-way 3 times is not launched again at all; recover what it approved instead.
+agent may have done, then say you looked with "staircase acknowledge" (it launches nothing,
+and a hosted runner's own resume then proceeds) or continue at once with --ack-unknown,
+which does the same acknowledgement first. A run whose launches ended this way 3 times is
+not launched again at all, acknowledged or not; recover what it approved instead.
 
 A run that was started with an agent harness continues the harness's own session when it
 can: Claude Code, Gemini CLI and Codex have their session id on the audit chain and are
@@ -1018,7 +1043,7 @@ Flags:
 
 ```
       --ack-drift               Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)
-      --ack-unknown             Continue a run parked because its last launch has no known outcome, after checking what its agent may have done (recorded on the audit chain)
+      --ack-unknown             Continue a run parked because its last launch has no known outcome, after checking what its agent may have done: acknowledges the launch like staircase acknowledge, then continues (recorded on the audit chain)
       --approval-port int       Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
       --debug                   Write every audited message of this segment, scrubbed, to the run's debug log

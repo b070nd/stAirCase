@@ -97,11 +97,13 @@ parked, not launched again blindly, because nobody knows what the agent did, out
 partial** (not as running, unless its process still holds the run) with the command to continue it after you looked:
 
 ```text
-outcome    blocked or partial: launch 1 of its agent has no established end (its process was lost), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume 12 --ack-unknown, or recover what it approved with staircase recover 12
+outcome    blocked or partial: launch 1 of its agent has no established end (its process was lost), so nobody knows what the agent did: check what it could have done, then say you looked with staircase acknowledge 12 (it launches nothing) and resume it, or continue it at once with staircase resume 12 --ack-unknown, or recover what it approved with staircase recover 12
 attempts   1 (times the agent was launched: the run, then each continuation); 1 launch(es) ended without an established end
 ```
 
-Once you acknowledge it with `--ack-unknown` the run goes on and counts one more attempt. A run whose launches ended without an
+`staircase acknowledge 12` records, on the audit chain, that you looked at that exact launch, and launches nothing; a later `staircase resume 12`
+(or a hosted runner's own resume, which never acknowledges by itself) then goes on. `staircase resume 12 --ack-unknown` does both at once.
+Either way the run goes on and counts one more attempt. A run whose launches ended without an
 established end 3 times is **refused**: no acknowledgement continues it, and the status points to `staircase recover 12`.
 
 ## A run that parked everything

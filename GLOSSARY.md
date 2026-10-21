@@ -51,7 +51,7 @@ rejection (`unconsumed` when its journal line was already written). The live run
 review.
 
 A run can be parked too: its last **launch** has no established end, so its agent is not launched again until a person
-acknowledges it.
+acknowledges it (`staircase acknowledge <run>`, which launches nothing, or `staircase resume --ack-unknown`).
 
 **Launch**: one start of a run's agent: by a new run, a continuation or a resumed hosted session. It is claimed on the chain
 (`launch_claimed`, its attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is
