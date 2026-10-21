@@ -332,3 +332,60 @@ FAKE
   [[ "$output" == *"no change"* ]] || { echo "$output"; false; }
   [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]
 }
+
+# Delivery by policy (ADR 0012): an away run whose approvals were all rules of the signed policy commits without a person. The policy
+# is signed, the initiator signs, the checks name no file of their own so the protected paths are declared.
+by_policy() {
+  ssh-keygen -q -t ed25519 -N "" -C drill@example.com -f "$WORK/id" >/dev/null
+  sc policy sign >/dev/null
+  cd "$WORK/app"
+  hold "$1" "$STAIRCASE_BIN" claude --yes --away --allow "src/**" --check "test -f README.md" --protect "tests/**" \
+    --deliver policy --deliver-path "src/**" --sign-approvals "$WORK/id" --sign-as drill@example.com "write two files"
+}
+
+@test "delivery by policy killed after its authorization: no commit yet, resume is refused, recover delivers one" {
+  by_policy delivery-authorized
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 1 ]
+  [ "$(sc inspect log 1 | grep -c commit_prepared)" = 0 ]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]   # nothing was committed
+  run sc resume 1 --fresh-context --ack-unknown
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"recover"* ]] || { echo "$output"; false; }
+  run sc recover 1 --force
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+  [ -n "$(note staircase)" ] && [ -n "$(note staircase-ledger)" ]
+  sound
+  [ -z "$(git -C "$WORK/app" remote)" ]   # nothing to push to, and nothing pushed
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]                     # delivered: nothing left to recover
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+}
+
+# killed at a later point of a delivery by policy, a fresh recover leaves one commit with the approved bytes and one certificate
+policy_killed_at() {
+  by_policy "$1"
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 1 ]
+  run sc recover 1 --force
+  # killed once the evidence was written, the run only lacked its record: recover repairs it or finds it done
+  [ "$status" -eq 0 ] || [ "$1" = evidence-published ] || { echo "$1: $output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
+  [ "$(git -C "$WORK/app" notes --ref=staircase list | wc -l | tr -d ' ')" = 1 ]
+  sound
+}
+
+@test "delivery by policy killed with its commit named, the branch not moved: one commit, one certificate" {
+  policy_killed_at commit-prepared
+}
+
+@test "delivery by policy killed with the branch moved, no evidence: one commit, one certificate" {
+  policy_killed_at git-cas
+}
+
+@test "delivery by policy killed once its evidence is written: one commit, one certificate" {
+  policy_killed_at evidence-published
+}

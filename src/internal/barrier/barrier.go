@@ -9,22 +9,23 @@ package barrier
 
 // Points, in the order a run reaches them. A drill kills at one and checks what a fresh process finds.
 const (
-	LaunchClaimed     = "launch-claimed"      // the agent's launch is on the audit chain; its process has not started
-	LaunchOutcomeSet  = "launch-outcome-set"  // a lost launch's end (unknown) is on the audit chain; its acknowledgement is not
-	AgentEnded        = "agent-ended"         // the agent has stopped; how it ended is not on the audit chain yet
-	DecisionMade      = "decision-made"       // a proposal has been decided; nothing of it is journaled or audited yet
-	JournalSynced     = "journal-synced"      // an approval is in the journal, flushed; not yet on the audit chain
-	AuditAppend       = "audit-append"        // the decision's append holds the chain lock and has not yet checked the run is still going
-	AuditCommitted    = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
-	Consumed          = "consumed"            // the approval is recorded in memory and released to the agent
-	NothingChecked    = "nothing-checked"     // an away run that did nothing has its checks of the unchanged tree on the chain; the run's path is not
-	CommitPrepared    = "commit-prepared"     // the commit exists and is named on the chain; no branch holds it yet
-	GitCAS            = "git-cas"             // the branch moved to the commit; no evidence yet
-	EvidencePublished = "evidence-published"  // ledger and certificate written; the run record not yet completed
-	DBCompleted       = "db-completed"        // the run record says it finished
-	ResumeChecked     = "resume-checked"      // a continuation passed every check and has changed nothing yet
-	ResumeStarted     = "resume-started"      // the run is reopened and run_resumed is on the chain; the agent has not started
-	RecoverCommitted  = "recover-committed"   // recovery made its commit; its evidence is not yet written
-	RecoverOpRecorded = "recover-op-recorded" // recovery wrote its operation record, before the commit
-	AdoptApproved     = "adopt-approved"      // the owner's approval of a parked proposal is recorded; its checks and review are not (ADR 0007)
+	LaunchClaimed      = "launch-claimed"      // the agent's launch is on the audit chain; its process has not started
+	LaunchOutcomeSet   = "launch-outcome-set"  // a lost launch's end (unknown) is on the audit chain; its acknowledgement is not
+	AgentEnded         = "agent-ended"         // the agent has stopped; how it ended is not on the audit chain yet
+	DecisionMade       = "decision-made"       // a proposal has been decided; nothing of it is journaled or audited yet
+	JournalSynced      = "journal-synced"      // an approval is in the journal, flushed; not yet on the audit chain
+	AuditAppend        = "audit-append"        // the decision's append holds the chain lock and has not yet checked the run is still going
+	AuditCommitted     = "audit-committed"     // the decision is on the audit chain; the agent has not been answered
+	Consumed           = "consumed"            // the approval is recorded in memory and released to the agent
+	NothingChecked     = "nothing-checked"     // an away run that did nothing has its checks of the unchanged tree on the chain; the run's path is not
+	DeliveryAuthorized = "delivery-authorized" // a run delivering by policy has authorized its delivery on the chain; no commit is named yet
+	CommitPrepared     = "commit-prepared"     // the commit exists and is named on the chain; no branch holds it yet
+	GitCAS             = "git-cas"             // the branch moved to the commit; no evidence yet
+	EvidencePublished  = "evidence-published"  // ledger and certificate written; the run record not yet completed
+	DBCompleted        = "db-completed"        // the run record says it finished
+	ResumeChecked      = "resume-checked"      // a continuation passed every check and has changed nothing yet
+	ResumeStarted      = "resume-started"      // the run is reopened and run_resumed is on the chain; the agent has not started
+	RecoverCommitted   = "recover-committed"   // recovery made its commit; its evidence is not yet written
+	RecoverOpRecorded  = "recover-op-recorded" // recovery wrote its operation record, before the commit
+	AdoptApproved      = "adopt-approved"      // the owner's approval of a parked proposal is recorded; its checks and review are not (ADR 0007)
 )

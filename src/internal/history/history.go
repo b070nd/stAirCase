@@ -38,8 +38,11 @@ type History struct {
 	Launches []Launch // every agent launch, in chain order
 
 	Review *Review // the last review an away run offered
-	// Sealed is the first entry that ended the agent's part of the run (commit_prepared) or the chain (certificate_issued,
-	// run_recovered, review_delivered): "" while the run can still be continued.
+	// Authorized is the delivery_authorized entry of a run that delivers by policy: set once the run decided to deliver without a
+	// person. Nothing is decided on the chain after it.
+	Authorized *DeliveryAuthorized
+	// Sealed is the first entry that ended the agent's part of the run (delivery_authorized, until the commit is named, then
+	// commit_prepared) or the chain (certificate_issued, run_recovered, review_delivered): "" while the run can still be continued.
 	Sealed    string
 	Delivered []Delivery // the commit-naming events, in chain order
 	Head      string     // the last entry's hash
@@ -50,14 +53,15 @@ type History struct {
 
 // ending is what the chain says about how the run ended, for Outcome.
 type ending struct {
-	segStart   int    // the position of the last segment's start: run_bound or its last run_resumed
-	ended      *Ended // the last segment's run_path; nil while the chain does not say it ended
-	haltReason string // why drift supervision halted the run, while Halted
-	checked    int    // the position of the last phase_checked, and what it found
-	check      PhaseChecked
-	commit     string   // the delivered commit: named by an event written after the branch moved
-	recovered  bool     // it was delivered by recovery of an interrupted run
-	evidence   []string // what the last report on the delivered commit's evidence said was missing
+	segStart     int    // the position of the last segment's start: run_bound or its last run_resumed
+	ended        *Ended // the last segment's run_path; nil while the chain does not say it ended
+	haltReason   string // why drift supervision halted the run, while Halted
+	checked      int    // the position of the last phase_checked, its entry hash, and what it found
+	checkedEntry string
+	check        PhaseChecked
+	commit       string   // the delivered commit: named by an event written after the branch moved
+	recovered    bool     // it was delivered by recovery of an interrupted run
+	evidence     []string // what the last report on the delivered commit's evidence said was missing
 }
 
 // Decision is one yield_decided with where it is and what it answered.
@@ -133,12 +137,15 @@ func Read(store *persistence.Store, runID int64) (History, error) {
 // request of the same segment and kind audited before it (the one it names, when it names one); proposal numbers increase;
 // commit_prepared leaves room only for a final review; certificate_issued, run_recovered and review_delivered end the chain; launches
 // are numbered in order, each outcome names the open launch, and nothing launches or resumes while a launch has no outcome; a launch
-// is acknowledged only after it ended unknown or unresponsive, by name, once, and before the chain ends. Event
+// is acknowledged only after it ended unknown or unresponsive, by name, once, and before the chain ends; delivery_authorized follows
+// the latest phase_checked, of the same passing tree, once, in policy mode under the run's terms and signed policy, and nothing
+// is proposed, decided, launched, resumed, checked or offered after it. Event
 // types and fields it does not know are ignored.
 func replay(events []domain.RunEventLog) (History, error) {
 	h := History{Segment: 1, entries: map[string]bool{}}
 	var pending []*Request // this segment's requests not yet decided, in chain order
 	agentEnded, ended := "", ""
+	reviewedSince := false // a review was offered since the last phase_checked
 	var segStart, last time.Time
 	for i, e := range events {
 		n := i + 1
@@ -155,6 +162,9 @@ func replay(events []domain.RunEventLog) (History, error) {
 			return h, fail("the audit history begins with %q, not run_bound", e.EventType)
 		}
 		h.entries[e.EventHash] = true
+		if h.Authorized != nil && afterAuthorization[e.EventType] {
+			return h, fail("%s follows delivery_authorized: once delivery is authorized, only the commit and its evidence are written", e.EventType)
+		}
 		switch e.EventType {
 		case "run_bound":
 			if i > 0 {
@@ -351,12 +361,28 @@ func replay(events []domain.RunEventLog) (History, error) {
 			}
 			h.Decisions = append(h.Decisions, d)
 		case "phase_checked":
-			// read again when an awaiting_review names it
-			h.end.checked, h.end.check = n, PhaseChecked{}
+			// read again when an awaiting_review or a delivery_authorized names it
+			h.end.checked, h.end.checkedEntry, h.end.check, reviewedSince = n, e.EventHash, PhaseChecked{}, false
 			if err := read(&h.end.check); err != nil {
 				return h, err
 			}
+		case "delivery_authorized":
+			if h.Authorized != nil {
+				return h, fail("delivery is already authorized")
+			}
+			p := DeliveryAuthorized{Index: n, Entry: e.EventHash}
+			if err := read(&p); err != nil {
+				return h, err
+			}
+			if why := authorizationRefused(h, events[:i], p, reviewedSince); why != "" {
+				return h, fail("%s", why)
+			}
+			h.Authorized = &p
+			if h.Sealed == "" {
+				h.Sealed = e.EventType
+			}
 		case "awaiting_review":
+			reviewedSince = true
 			rv := &Review{Index: n, Entry: e.EventHash}
 			if err := read(&rv.AwaitingReview); err != nil {
 				return h, err
@@ -387,7 +413,7 @@ func replay(events []domain.RunEventLog) (History, error) {
 			if e.EventType == "run_recovered" || e.EventType == "review_delivered" {
 				h.end.evidence, h.end.recovered = p.EvidenceErrors, e.EventType == "run_recovered"
 			}
-			if h.Sealed == "" {
+			if h.Sealed == "" || h.Sealed == "delivery_authorized" { // naming the commit refines the seal an authorization made
 				h.Sealed = e.EventType
 			}
 			if e.EventType == "commit_prepared" {
@@ -404,6 +430,45 @@ func replay(events []domain.RunEventLog) (History, error) {
 		h.Head = events[len(events)-1].EventHash
 	}
 	return h, nil
+}
+
+// afterAuthorization are the events a chain does not hold after delivery_authorized (ADR 0012, section 3): nothing is proposed,
+// decided, launched, resumed, checked or offered once delivery is authorized. What follows is the commit-naming and the evidence
+// events, the end of the launch the agent had, and the run's path.
+var afterAuthorization = map[string]bool{
+	"yield_request": true, "yield_decided": true, "run_resumed": true, "launch_claimed": true, "phase_checked": true,
+	"awaiting_review": true, "review_accepted": true, "review_rejected": true, "policy_snapshot": true, "initiator_signed": true,
+	"drift_halt": true, "run_bound": true,
+}
+
+// authorizationRefused says why p is not an authorization a run can have written, or "" when it is: it names the latest
+// phase_checked entry before it, of the same tree, whose checks passed and that no offered review followed, and it is made
+// in policy mode under the terms the run was bound to and the signed policy it loaded.
+func authorizationRefused(h History, before []domain.RunEventLog, p DeliveryAuthorized, reviewedSince bool) string {
+	named := slices.IndexFunc(before, func(e domain.RunEventLog) bool {
+		return e.EventType == "phase_checked" && e.EventHash == p.PhaseChecked
+	})
+	switch {
+	case named < 0:
+		return fmt.Sprintf("the authorization names no phase_checked entry (%q)", p.PhaseChecked)
+	case named+1 != h.end.checked:
+		return "the authorization names a phase_checked entry that is not the latest: the checks it rests on are not the last that ran"
+	case h.end.check.Tree != p.Tree:
+		return fmt.Sprintf("the authorization is for tree %q, not the tree %q the checks ran on", p.Tree, h.end.check.Tree)
+	case !h.end.check.Passed:
+		return "the checks the authorization rests on did not pass"
+	case reviewedSince:
+		return "a review was offered after the checks the authorization rests on: a run that offers its change does not deliver it by policy"
+	case p.Mode != ModePolicy:
+		return fmt.Sprintf("the authorization is for mode %q, not %q", p.Mode, ModePolicy)
+	case h.Bound.TermsSHA256 == "" || p.TermsSHA256 != h.Bound.TermsSHA256:
+		return "the authorization names other terms than the run was bound to"
+	case h.Policy == nil || !h.Policy.Signed:
+		return "the authorization rests on a policy that was not signed"
+	case p.Policy != h.Policy.Digest:
+		return "the authorization names another policy than the one the run loaded"
+	}
+	return ""
 }
 
 // firstOf is the first of its arguments that is not empty.
@@ -423,6 +488,12 @@ func (h History) OpenLaunch() *Launch {
 		return &h.Launches[n-1]
 	}
 	return nil
+}
+
+// LastChecked is the latest phase_checked entry on the chain (its hash) and what it found: the checks of an away run on the
+// approved tree. ok is false when the chain holds none.
+func (h History) LastChecked() (entry string, c PhaseChecked, ok bool) {
+	return h.end.checkedEntry, h.end.check, h.end.checked > 0
 }
 
 // Failures are the launches that did not end well, each with its class, in chain order.

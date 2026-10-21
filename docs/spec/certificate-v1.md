@@ -62,6 +62,7 @@ is always `commit`, so the certificate does not reveal the repository's name.
 | `signed` | object | no | decisions people signed with SSH keys: `{"decisions": integer, "signers": [string]}`; `signers` are the principals a trusted `allowed_signers` file lists for the keys that signed. Informative: it does not change the level |
 | `attention` | object | no | how people decided, when any did: `{"humanDecisions": integer, "medianSeconds": number, "quickApprovals": integer}`; a quick approval is a change of 20 or more lines approved in under 5 seconds. Informative: it does not change the level |
 | `checks` | array | no | commands run on the commit after it was made, each `{"command": string, "exitCode": integer, "sandboxed": boolean, "outputSha256": string}`; `exitCode` -1 means it could not run |
+| `delivery` | string | no | how the change reached the branch when that was without a person reviewing the whole change: `"policy"` means every approved change was approved by a rule of the owner's signed policy (`policy` is that policy's digest), none by a person, the agreed task, a reviewer model or evidence alone. Absent for every other delivery. It does not change `cal`; a verifier whose own policy refuses such certificates can read it, and a later person's signature can still lift the level as for any level-3 certificate |
 
 Producers MUST NOT put code, prompts or command output in the predicate: it holds
 digests and names only. Verifiers SHOULD ignore fields they do not know.
