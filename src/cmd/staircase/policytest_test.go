@@ -18,7 +18,7 @@ import (
 // policy would approve. Shell commands, guarded changes and refusals are
 // never the policy's to decide.
 func TestPolicyReplay(t *testing.T) {
-	_, s := e2eWorkspace(t)
+	ws, s := e2eWorkspace(t)
 	caseID, topo := seedFullCase(t, s)
 	run, err := s.CreateRun(caseID, topo, "main")
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestPolicyReplay(t *testing.T) {
 	e, err := policy.LoadEngineFile(f)
 	require.NoError(t, err)
 
-	rep, err := policyReplay(s, e)
+	rep, err := policyReplay(s, ws, e)
 	require.NoError(t, err)
 	assert.Equal(t, 5, rep.Proposals)
 	assert.Equal(t, 1, rep.ApprovedByPersonToo, "README.md")
@@ -66,7 +66,7 @@ func TestPolicyReplay(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.AppendEventLogChained(other.ID, "yield_decided", `{"seq":1,"action_type":"file_edit","source":"operator","approved":false}`, "")
 	require.NoError(t, err)
-	rep, err = policyReplay(s, e)
+	rep, err = policyReplay(s, ws, e)
 	require.NoError(t, err)
 	assert.Equal(t, 5, rep.Proposals)
 	require.Len(t, rep.Skipped, 1)
@@ -76,7 +76,7 @@ func TestPolicyReplay(t *testing.T) {
 // TestPolicyReplay_typed_conditions: the replay reads the typed conditions from what each past
 // proposal recorded: its files, whether it created them, and its lines.
 func TestPolicyReplay_typed_conditions(t *testing.T) {
-	_, s := e2eWorkspace(t)
+	ws, s := e2eWorkspace(t)
 	caseID, topo := seedFullCase(t, s)
 	run, err := s.CreateRun(caseID, topo, "main")
 	require.NoError(t, err)
@@ -105,13 +105,106 @@ func TestPolicyReplay_typed_conditions(t *testing.T) {
 	require.NoError(t, os.WriteFile(f, []byte(`{"rules":[{"action_types":["file_edit"],"paths":["docs/**"],"max_lines":5,"effect":"approve"}]}`), 0o600))
 	e, err := policy.LoadEngineFile(f)
 	require.NoError(t, err)
-	rep, err := policyReplay(s, e)
+	rep, err := policyReplay(s, ws, e)
 	require.NoError(t, err)
 	assert.Equal(t, 4, rep.Proposals)
 	assert.Equal(t, 1, rep.ApprovedByPersonToo, "docs/a.md")
 	require.Len(t, rep.RejectedByPerson, 1, "docs/new.md is small and under docs/")
 	assert.Contains(t, rep.RejectedByPerson[0], "docs/new.md")
 	assert.Equal(t, 2, rep.Unchanged, ".github/x.md and the large docs/big.md are not the rule's")
+}
+
+// TestPolicyReplay_bars: the protected paths a run's saved terms name and the sensitive list are checked against the paths of
+// every past decision, and what a rule, the agreed task, a validator or evidence approved there is reported in a section of its
+// own: it would go to a person now. What a person decided stays as it was, and so does history the bars do not reach.
+func TestPolicyReplay_bars(t *testing.T) {
+	ws, s := e2eWorkspace(t)
+	caseID, topo := seedFullCase(t, s)
+	run, err := s.CreateRun(caseID, topo, "main")
+	require.NoError(t, err)
+	_, err = s.AppendEventLogChained(run.ID, "run_bound", `{"base_sha":"b","branch":"staircase/run-1"}`, "")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(ws, "journal"), 0o700))
+	// the run's terms, as it saved them: its check is `make check`, which defines the Makefile
+	require.NoError(t, os.WriteFile(filepath.Join(ws, "journal", "run-1.options.json"), []byte(`{"version":1,"checks":["make check"]}`), 0o600))
+	seq := 0
+	record := func(file, source string, approved bool) {
+		seq++
+		req := domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionFileEdit,
+			ProposedEdits: []domain.ProposedEdit{{File: file, SearchBlock: "a", ReplaceBlock: "b"}}}
+		b, _ := json.Marshal(req)
+		_, err := s.AppendEventLogChained(run.ID, "yield_request", string(b), "")
+		require.NoError(t, err)
+		b, _ = json.Marshal(map[string]any{"seq": seq, "action_type": req.ActionType, "source": source, "approved": approved, "paths": []string{file}})
+		_, err = s.AppendEventLogChained(run.ID, "yield_decided", string(b), "")
+		require.NoError(t, err)
+	}
+	record("Makefile", "policy", true)                 // a rule approved the check's own definition
+	record(".github/workflows/ci.yml", "policy", true) // a rule approved a CI file
+	record("go.mod", "task", true)                     // the agreed task approved a sensitive file
+	record("docs/a.md", "policy", true)                // not reached by a bar
+	record("Makefile", "operator", true)               // a person decided it: as it was
+	record("scripts/x.txt", "operator", true)          // a person decided it: as it was
+	record("Makefile", "operator", false)              // a person rejected it: the policy cannot decide it now, so it is no difference
+
+	f := filepath.Join(t.TempDir(), "policy.json")
+	require.NoError(t, os.WriteFile(f, []byte(`{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`), 0o600))
+	e, err := policy.LoadEngineFile(f)
+	require.NoError(t, err)
+	rep, err := policyReplay(s, ws, e)
+	require.NoError(t, err)
+	assert.Equal(t, 7, rep.Proposals)
+	require.Len(t, rep.WouldGoToPerson, 3)
+	assert.Contains(t, rep.WouldGoToPerson[0], "Makefile")
+	assert.Contains(t, rep.WouldGoToPerson[0], "run #1")
+	assert.Contains(t, rep.WouldGoToPerson[0], "policy")
+	assert.Contains(t, rep.WouldGoToPerson[0], "holds the definition of a check")
+	assert.Contains(t, rep.WouldGoToPerson[1], ".github/workflows/ci.yml")
+	assert.Contains(t, rep.WouldGoToPerson[1], "sensitive")
+	assert.Contains(t, rep.WouldGoToPerson[2], "go.mod")
+	assert.Contains(t, rep.WouldGoToPerson[2], "task")
+	assert.Equal(t, 3, rep.Unchanged, "docs/a.md (the rule still approves it) and the Makefile edits a person decided")
+	assert.Equal(t, 1, rep.ApprovedByPersonToo, "scripts/x.txt: a person approved it, the policy approves it too")
+	assert.Empty(t, rep.RejectedByPerson, "a person's decision on a barred path is not a difference the policy makes")
+}
+
+// TestPolicyReplay_bars_unreadable_terms: a run whose saved terms cannot be read is named, and the sensitive list still applies
+// to it; its protected paths are unknown, so a Makefile edit is not reported.
+func TestPolicyReplay_bars_unreadable_terms(t *testing.T) {
+	ws, s := e2eWorkspace(t)
+	caseID, topo := seedFullCase(t, s)
+	run, err := s.CreateRun(caseID, topo, "main")
+	require.NoError(t, err)
+	_, err = s.AppendEventLogChained(run.ID, "run_bound", `{"base_sha":"b","branch":"staircase/run-1"}`, "")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(ws, "journal"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(ws, "journal", "run-1.options.json"), []byte(`not json`), 0o600))
+	for i, file := range []string{"docs/a.md", ".github/workflows/ci.yml"} {
+		req := domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionFileEdit,
+			ProposedEdits: []domain.ProposedEdit{{File: file, SearchBlock: "a", ReplaceBlock: "b"}}}
+		b, _ := json.Marshal(req)
+		_, err := s.AppendEventLogChained(run.ID, "yield_request", string(b), "")
+		require.NoError(t, err)
+		b, _ = json.Marshal(map[string]any{"seq": i + 1, "action_type": req.ActionType, "source": "policy", "approved": true, "paths": []string{file}})
+		_, err = s.AppendEventLogChained(run.ID, "yield_decided", string(b), "")
+		require.NoError(t, err)
+	}
+	e, err := policy.LoadEngineFile(writePolicy(t, `{"rules":[]}`))
+	require.NoError(t, err)
+	rep, err := policyReplay(s, ws, e)
+	require.NoError(t, err)
+	require.Len(t, rep.Unchecked, 1)
+	assert.Contains(t, rep.Unchecked[0], "run #1")
+	require.Len(t, rep.WouldGoToPerson, 1)
+	assert.Contains(t, rep.WouldGoToPerson[0], ".github/workflows/ci.yml")
+	assert.Equal(t, 1, rep.Unchanged)
+}
+
+func writePolicy(t *testing.T, body string) string {
+	t.Helper()
+	f := filepath.Join(t.TempDir(), "policy.json")
+	require.NoError(t, os.WriteFile(f, []byte(body), 0o600))
+	return f
 }
 
 // TestPolicyScenarios_command: --scenarios asserts. A met expectation exits

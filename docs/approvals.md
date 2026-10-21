@@ -299,6 +299,25 @@ rules, not the per-run limits. A rule's conditions on paths, lines, files, new f
 deletions are checked against the edits each proposal recorded, so line counts and new
 files are estimates in the replay; scenarios (below) check them exactly.
 
+The replay also shows what an upgrade changes in your own history. The paths that hold a
+run's checks' definitions (read from the terms that run saved) and the
+sensitive paths (item 5 of the order above) go to a person whatever a rule says, so a past decision
+there that no person made (a rule, the agreed task, a reviewer model or evidence) is listed
+in a section of its own:
+
+```
+  3 would now go to a person, whatever the policy says
+
+⚠️  these were decided without a person, and a protected or sensitive path now sends them to one:
+  run #12: Makefile by coder (approved by policy; it changes Makefile, which holds the definition of a check: a person decides, whatever the policy says)
+  run #12: .github/workflows/ci.yml by coder (approved by policy; it changes .github/workflows/ci.yml, a sensitive path: a person decides, whatever the policy says)
+```
+
+A past approval of a Makefile edit in a run whose check was `make check`, or of a CI file,
+is reported this way. A person's own decision on such a path stays as it was and is not
+counted as a difference the policy makes. Run the report before you upgrade, and add
+`--protect` or a rule's `paths` condition where the list shows an area you want a person on.
+
 Replay shows history; it does not fail. To keep a policy from drifting, write the outcomes
 you require as scenarios and run them in CI:
 

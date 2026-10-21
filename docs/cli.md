@@ -736,6 +736,13 @@ conditions on paths, lines, files, new files and deletions are checked against
 the edits each proposal recorded, so line counts and new files are estimates
 here; --scenarios checks them exactly.
 
+The replay also applies the paths only a person may change, whatever the policy says:
+the paths that hold the checks' definitions (from the terms each run saved) and the
+sensitive paths. A change that a rule, the agreed task, a reviewer model or evidence
+approved or rejected there, with no person, is listed in its own section as one that
+would now go to a person, and a person's earlier decision on such a path is not
+counted as a difference the policy makes.
+
 With --scenarios <file> it asserts instead. Each scenario in the file (JSON: a
 base tree, an optional scope, and proposals with the outcome you expect:
 approve, reject, refuse or human) is run through the real admission code with

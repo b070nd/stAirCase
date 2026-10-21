@@ -71,6 +71,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
+- **`staircase policy test` shows which past decisions would now go to a person.** It loads the terms each replayed run saved and
+  checks the paths of every past decision against the paths that hold the run's checks' definitions and the sensitive list, which
+  go to a person whatever a rule says. What a rule, the agreed task, a reviewer model or evidence decided there without a person is
+  listed in a section of its own (a Makefile edit approved in a run whose check was `make check`, a CI file), and a person's own
+  decision on such a path is no longer counted as a difference the policy makes. Decisions of the orchestrator, drift and guards stay
+  skipped, and history those paths do not reach reports as before. What to do: run it before you upgrade, and add `--protect` or a
+  rule's `paths` condition where the list shows an area you want a person on ([approvals](docs/approvals.md#approving-automatically-with-rules)).
+
 - **Logs keep their newest output.** The debug log (`--debug`) and a hosted session's log used to keep the first 8 MiB and drop
   everything after, so a long session that died left its beginning and lost its end. A log that reaches 4 MiB now moves to a numbered
   previous file (`<name>.log.1`, replacing an older one) and continues in a fresh file, so the two together never exceed 8 MiB and
