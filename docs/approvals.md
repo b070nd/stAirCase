@@ -413,7 +413,9 @@ whole change once at the end**.
 A change approved on evidence is never delivered without you, not even by
 [delivery by policy](away.md#while-you-are-away): that mode delivers only what a rule of your signed
 policy approved, and sends a run that holds anything approved on evidence, the agreed task or a
-model, or anything parked, to your review.
+model, or anything parked, to your review. Delivery by policy suits work whose correctness a rule
+already decided (documentation, changelog entries, generated or formatted files, and the areas you
+name with a rule's `paths`); code that only passed its checks still waits for your review.
 
 ### Checks the agent cannot weaken
 
