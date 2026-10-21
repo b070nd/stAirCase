@@ -14,15 +14,21 @@ import (
 // judged from the run's verified history and the terms its chain binds, never from live state alone, and anything doubtful sends the
 // run to its owner's review, naming the condition. A condition that cannot be read is a condition that fails.
 
-// deliveryConditions names the seven conditions, in the order they are judged.
-var deliveryConditions = [7]string{
-	"a signed policy",
-	"only rules of your policy approved",
-	"nothing was parked",
-	"inside the delivery scope, clear of the sensitive and protected paths",
-	"the checks passed on exactly the approved tree",
-	"the protected paths are declared",
-	"the initiator signed",
+// deliveryCondition is one condition: what it is called in a refusal, and the check that returns why it does not hold, or "".
+type deliveryCondition struct {
+	name  string
+	check func(deliveryCase) string
+}
+
+// deliveryConditions are the seven conditions, in the order they are judged; the first to fail is the one a refusal names.
+var deliveryConditions = [7]deliveryCondition{
+	{"a signed policy", deliveryCase.signedPolicy},
+	{"only rules of your policy approved", deliveryCase.onlyRules},
+	{"nothing was parked", deliveryCase.nothingParked},
+	{"inside the delivery scope, clear of the sensitive and protected paths", deliveryCase.insideBars},
+	{"the checks passed on exactly the approved tree", deliveryCase.checkedTree},
+	{"the protected paths are declared", deliveryCase.protectedDeclared},
+	{"the initiator signed", deliveryCase.initiatorSigned},
 }
 
 // deliveryCase is what the conditions are judged on: the run's verified history, the terms its chain binds, and the state the run
@@ -41,9 +47,9 @@ type deliveryCase struct {
 
 // refusal is why the change is not delivered without a person, naming the first condition that does not hold; "" when all seven do.
 func (c deliveryCase) refusal() string {
-	for i, check := range [7]func() string{c.signedPolicy, c.onlyRules, c.nothingParked, c.insideBars, c.checkedTree, c.protectedDeclared, c.initiatorSigned} {
-		if why := check(); why != "" {
-			return fmt.Sprintf("condition %d (%s): %s", i+1, deliveryConditions[i], why)
+	for i, cond := range deliveryConditions {
+		if why := cond.check(c); why != "" {
+			return fmt.Sprintf("condition %d (%s): %s", i+1, cond.name, why)
 		}
 	}
 	return ""
@@ -62,11 +68,11 @@ type deliveryAttempt struct {
 func (r *Runner) judgeDelivery(runID int64, appr *approvals, tree string, parked int, at *deliveryAttempt) (history.DeliveryAuthorized, string) {
 	h, err := history.Read(r.store, runID)
 	if err != nil {
-		return history.DeliveryAuthorized{}, fmt.Sprintf("condition 1 (%s): the audit history cannot be read, so nothing in it is believed: %v", deliveryConditions[0], err)
+		return history.DeliveryAuthorized{}, fmt.Sprintf("condition 1 (%s): the audit history cannot be read, so nothing in it is believed: %v", deliveryConditions[0].name, err)
 	}
 	terms, err := loadTerms(r.wsDir, runID, h, h.Bound.Harness)
 	if err != nil {
-		return history.DeliveryAuthorized{}, fmt.Sprintf("condition 1 (%s): the terms the run was bound to cannot be confirmed: %v", deliveryConditions[0], err)
+		return history.DeliveryAuthorized{}, fmt.Sprintf("condition 1 (%s): the terms the run was bound to cannot be confirmed: %v", deliveryConditions[0].name, err)
 	}
 	c := deliveryCase{terms: terms, hist: h, tree: tree, files: digest(appr.files), parked: parked,
 		taskApproved: at.taskApproved, unreviewed: at.unreviewed, atBase: at.atBase(), unchanged: tree == appr.base.TreeHash.String()}
@@ -141,13 +147,11 @@ func (c deliveryCase) insideBars() string {
 		paths[p] = true
 	}
 	for _, p := range slices.Sorted(maps.Keys(paths)) {
-		switch {
-		case !matchesFold(c.terms.DeliverPaths, p):
+		if !matchesFold(c.terms.DeliverPaths, p) {
 			return fmt.Sprintf("%s is outside the delivery scope (%s)", p, strings.Join(c.terms.DeliverPaths, ", "))
-		case matchesFold(c.terms.ProtectedPaths, p):
-			return fmt.Sprintf("%s holds the definition of a check (a protected path)", p)
-		case sensitive([]string{p}) != "":
-			return fmt.Sprintf("%s is a sensitive path", p)
+		}
+		if bar := c.terms.PersonBar([]string{p}); bar != "" { // the deciders' own wording: the bars are repeated, not restated
+			return bar + " (a person's to decide, so never delivered by policy)"
 		}
 	}
 	return ""

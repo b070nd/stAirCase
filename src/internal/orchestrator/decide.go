@@ -175,20 +175,18 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 	}
 	// A change to a check's definition would let the agent make a failing check pass: a person decides it, whatever the policy
 	// says, and while away it is parked.
-	for _, f := range rl.files {
-		if matchesFold(d.protected, f) {
-			req.Review = "it changes " + f + ", which holds the definition of a check: a person decides, whatever the policy says"
-			d.display.AddActivity(fmt.Sprintf("%-14s CHECKS %s → HITL (%s)", req.AgentName, req.ActionType, f))
-			return d.human(req, rl)
-		}
+	if why := protectedBar(d.protected, rl.files); why != "" {
+		req.Review = why + PersonDecides
+		d.display.AddActivity(fmt.Sprintf("%-14s CHECKS %s → HITL (%s)", req.AgentName, req.ActionType, why))
+		return d.human(req, rl)
 	}
 	// A file edit that touches a sensitive path (CI, build, dependency, secret and shell files, CODEOWNERS, an agent's repository
 	// settings) is a person's to decide, whatever the policy says, in every run, and while away it is parked. It sits before the
 	// limits and the policy, like the protected paths, so no rule, task or validator can approve it.
 	if req.ActionType == domain.ActionFileEdit {
-		if f := sensitive(rl.files); f != "" {
-			req.Review = "it changes " + f + ", a sensitive path: a person decides, whatever the policy says"
-			d.display.AddActivity(fmt.Sprintf("%-14s SENSITIVE %s → HITL (%s)", req.AgentName, req.ActionType, f))
+		if why := sensitiveBar(rl.files); why != "" {
+			req.Review = why + PersonDecides
+			d.display.AddActivity(fmt.Sprintf("%-14s SENSITIVE %s → HITL (%s)", req.AgentName, req.ActionType, why))
 			return d.human(req, rl)
 		}
 	}
