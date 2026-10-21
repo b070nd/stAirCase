@@ -215,8 +215,8 @@ func TestDeliveryCase_each_condition_failing_alone_refuses_and_names_itself(t *t
 		"7: the initiator did not sign": {deliveryRun{noInit: true}, 7, "initiator"},
 		// ... and a name on the chain is not enough: the signature must be a real one, of this run's request
 		"7: the initiator's signature is no signature": {deliveryRun{forgedInit: true}, 7, "signature"},
-		"7: the signature is of another base commit": {deliveryRun{mutate: func(c *deliveryCase) { c.hist.Bound.BaseSHA = "other" }}, 7, "signature"},
-		"7: the signature is of another principal":   {deliveryRun{mutate: func(c *deliveryCase) { c.hist.Initiator.Principal = "eve@example.com" }}, 7, "signature"},
+		"7: the signature is of another base commit":   {deliveryRun{mutate: func(c *deliveryCase) { c.hist.Bound.BaseSHA = "other" }}, 7, "signature"},
+		"7: the signature is of another principal":     {deliveryRun{mutate: func(c *deliveryCase) { c.hist.Initiator.Principal = "eve@example.com" }}, 7, "signature"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			why := tc.run.build(t).refusal()
