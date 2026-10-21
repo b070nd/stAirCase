@@ -25,16 +25,31 @@ staircase decide
   with the run's terms, and so is what you name with `--protect` (for `go test ./...`, `--protect "**/*_test.go"`). A change to them
   is parked whatever your policy says, so the agent cannot make a failing check pass by editing or deleting the test it runs
   ([checks the agent cannot weaken](approvals.md#checks-the-agent-cannot-weaken)).
-- **Delivery by policy is chosen in the terms; the delivery itself is not built yet.** `--deliver policy` with `--deliver-path <glob>`
-  (repeatable) is how you will let rules of your signed policy, and nothing else, deliver a change to the run branch without your
-  review. The terms already refuse it unless the run is away, has no `--validator`, names a delivery scope, signs
-  (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own), and a run
-  whose policy is not signed (`staircase policy sign`) is refused when it starts. The agreement says "no person reviews the whole
-  change". Until the delivery is built, a run in this mode ends awaiting your review like any other
-  ([ADR 0012](adr/0012-delivering-by-policy.md)).
+- **Delivery by policy: rules you signed deliver a change to the run branch without your review.** `--deliver policy` with
+  `--deliver-path <glob>` (repeatable) is for work whose correctness you already decided in a rule: in practice documentation,
+  changelog entries, generated or formatted files, and the places you name with a rule's `paths`. The terms refuse it unless the run
+  is away, has no `--validator`, names a delivery scope, signs (`--sign-approvals`) and declares where its checks are defined
+  (`--protect`, or checks that name a file of their own), and a run whose policy is not signed (`staircase policy sign`) is refused
+  when it starts. The agreement says "no person reviews the whole change".
+  When the agent stops and your checks pass, the run delivers on its own **only if all seven of these hold**, read from the run's
+  verified history and never from live state: (1) the terms say policy and the policy was signed; (2) every change was approved by a
+  rule of that policy, none by the agreed task, by evidence, by a reviewer model or by a person; (3) nothing was parked, because
+  one parked proposal sends the whole run to you (it may be what the approved part depends on); (4) every approved path is inside
+  your delivery scope and is neither a sensitive path nor one that holds a check's definition, even if a rule approves it; (5) the
+  checks passed on exactly the approved tree and the run branch is still where the run started; (6) the protected paths are
+  declared; (7) you signed as the initiator, so the certificate names who armed unattended delivery. The run then records
+  `delivery_authorized` on the audit chain and commits like a run you watch, with its ledger and certificate. If any condition
+  fails, or is in doubt, nothing is committed: the run ends awaiting your review and `staircase decide` shows which condition sent
+  it to you. That is a normal outcome, not an error. Changes approved on evidence, which is most code in an ordinary away run, still
+  wait for your review.
+  The mode moves only the run branch: it never pushes, publishes, releases or deploys. The certificate keeps the level it computes,
+  says that every approved change was approved by a rule of your signed policy (its digest) and that no person reviewed the whole
+  change, and has the optional field `delivery: policy`, so a verifier's own policy can refuse such certificates. A run killed after
+  `delivery_authorized` is finished by `staircase recover`, never continued ([ADR 0012](adr/0012-delivering-by-policy.md)).
 - **The end is checked, not announced.** When the agent stops, your checks run once more on the whole approved change. A change that
   does not pass ends the run failed. One that passes ends it **awaiting review**, with nothing committed and the run branch where it
-  started. The process exits; nothing has to keep running.
+  started (a run delivering by policy that meets every condition commits instead, as above). The process exits; nothing has to keep
+  running.
 
 ## Declared commands
 
@@ -169,4 +184,4 @@ column and `staircase inspect log 12` shows the status above the events.
 - Adopting a parked proposal ([ADR 0007](adr/0007-prototype-bridging.md)) is recorded as what a live approval would have written, so the
   delivered commit verifies and rebuilds like any other; it is refused, with nothing recorded, when your checks fail with it.
 - Not yet: a run that requires signed decisions cannot be away (the review in `decide` is not signed); a prototype in which the agent
-  continues on top of a parked change; work of several dependent tasks; delivery by policy without your review.
+  continues on top of a parked change; work of several dependent tasks.

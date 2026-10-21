@@ -410,6 +410,11 @@ least one check or validator. Nothing is sampled for you either: you still see a
 outside the scope, sensitive files, guard hits and shell commands, and **you approve the
 whole change once at the end**.
 
+A change approved on evidence is never delivered without you, not even by
+[delivery by policy](away.md#while-you-are-away): that mode delivers only what a rule of your signed
+policy approved, and sends a run that holds anything approved on evidence, the agreed task or a
+model, or anything parked, to your review.
+
 ### Checks the agent cannot weaken
 
 A check is only evidence while the agent cannot change what it runs. The paths where your checks are

@@ -249,6 +249,9 @@ func inboxTree(reviews []orchestrator.Review, status map[int64]orchestrator.Stat
 		} else {
 			fmt.Fprintf(&b, "%s├─ checks   passed on exactly this change (tree %.12s): %s\n", indent, rv.Tree, strings.Join(checks, "; "))
 		}
+		if rv.DeliveryRefused != "" {
+			fmt.Fprintf(&b, "%s├─ delivery   by policy was refused, so no person reviewed this yet and nothing was committed: %s\n", indent, rv.DeliveryRefused)
+		}
 		if len(rv.ParkedProposals) == 0 {
 			fmt.Fprintf(&b, "%s└─ parked   nothing\n", indent)
 			continue

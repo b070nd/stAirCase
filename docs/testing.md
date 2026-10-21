@@ -114,6 +114,7 @@ what was left in a fresh process. The points, in order, and what must hold after
 | `audit-committed`: the decision is on the chain, the agent not yet answered | `recover` commits that change and no other |
 | `consumed`: the approval is recorded and released | `recover` commits every approved change |
 | `nothing-checked`: an away run that approved and parked nothing has its checks of the unchanged tree on the chain, its path not | `recover` finds nothing approved; `resume` continues the run and ends it by the same check, once more |
+| `delivery-authorized`: a run delivering by policy has `delivery_authorized` on its chain, no commit named | `resume` is refused; `recover` commits exactly the approved bytes, once, without asking a person (the drill repeats the later points for a policy delivery: one commit, one certificate) |
 | `commit-prepared`: the commit exists and is named on the chain, no branch holds it | `recover` makes its own commit; the named one is never on the branch |
 | `git-cas`: the branch moved to the run's commit, no evidence | `recover` keeps that commit (no second one) and writes the ledger and certificate |
 | `evidence-published`: certificate and ledger written, the run's record not | `recover` completes the record and leaves the run's own certificate as it was |

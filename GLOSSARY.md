@@ -75,8 +75,18 @@ nothing is delivered), delivered, or delivered with incomplete evidence. A later
 then the review the last segment offered, then a parked or refused run (its last launch has no established end), then how the last segment ended (`run_path`, which records the status it ended with). A
 run's **status** (`Runner.StatusOf`) adds its attempts (the launches claimed on its chain: `History.Attempts`) and what it used of its time, tokens and estimated cost.
 
-**Sealed**: describes a chain after which nothing more may be decided. `commit_prepared` ends the agent's part.
-`certificate_issued`, `run_recovered` and `review_delivered` end the chain.
+**Delivery by policy**: the delivery mode in which an away run commits its approved change to the run branch with no person
+reviewing the whole change (ADR 0012). It happens only when seven conditions hold, each read from the run's verified history and
+its bound terms: the terms say policy and the policy was signed; every approval is a rule of that policy (never the agreed task,
+evidence, a reviewer model or a person); nothing was parked; every approved path is inside the delivery scope and neither
+sensitive nor protected; the checks passed on exactly the approved tree and the run branch is still at the base; the protected
+paths are declared; the initiator signed. The run then writes `delivery_authorized` and commits like a live run does. If any
+condition fails, or is in doubt, the run ends awaiting review and says which condition (`delivery_refused` on its
+`awaiting_review`): a normal outcome, not an error. It never pushes. The certificate keeps the level it computes, carries the
+optional field `delivery: policy` and a note that no person reviewed the whole change.
+
+**Sealed**: describes a chain after which nothing more may be decided. `delivery_authorized` ends the agent's part until the commit
+is named; `commit_prepared` ends the agent's part. `certificate_issued`, `run_recovered` and `review_delivered` end the chain.
 
 **History**: what one replay of a verified chain says about a run: its binding, every decision with its request, the parked and
 adopted proposals, the offered review, the continuation's counters, and what sealed it (`internal/history`, ADR 0010). A chain that

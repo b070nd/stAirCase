@@ -13,8 +13,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   scope, signs (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own);
   a policy that is not signed (`staircase policy sign`) refuses the run when it starts. The agreement says the mode, the scope, the
   policy's digest and "no person reviews the whole change". Review stays the default and is not in the saved terms: a run saved before
-  the field existed reads as review. The delivery itself is not built yet, so a run in this mode still ends awaiting your review.
-  ADR 0012 is accepted: only what rules of your signed policy will approve is delivered, never what evidence or the agreed task
+  the field existed reads as review.
+  The delivery itself: when the agent stops and your checks pass, the run commits to its branch with no person only if seven
+  conditions hold, read from its verified history (the terms say policy and the policy was signed; every change was approved by a rule
+  of that policy and none by the agreed task, evidence, a reviewer model or a person; nothing was parked; every path is inside your
+  delivery scope and neither sensitive nor protected; the checks passed on exactly the approved tree and the run branch is still at its
+  base; the protected paths are declared; you signed as the initiator). It then writes the new audit event `delivery_authorized`
+  and commits like a run you watch. If any condition fails or is in doubt, nothing is committed: the run ends awaiting your review
+  and `staircase decide` names the condition. Only the run branch moves; nothing is pushed. The certificate keeps the level it
+  computes, says no person reviewed the whole change, and has a new optional field `delivery: policy` (the predicate type stays
+  version 1; verifiers ignore fields they do not know). A run killed after the authorization is finished with `staircase recover`
+  and cannot be resumed. Old chains and old certificates are unchanged. What to do: nothing, unless you start a run with
+  `--deliver policy`; then read the seven conditions first.
+  ADR 0012 is accepted: only what rules of your signed policy approved is delivered, never what evidence or the agreed task
   alone approved ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
 
 - **Policy rules can look at the change itself.** A rule in `policy.json` gains five optional conditions: `paths` (every changed file

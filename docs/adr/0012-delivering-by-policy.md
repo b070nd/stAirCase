@@ -1,9 +1,11 @@
 # ADR 0012: Delivering by policy, the second delivery mode (design)
 
 - Status: accepted (2026-10-20), option 2 tightened, as the owner's decisions below; proposed on 2026-10-18 with option 1, which is
-  rejected. Built so far: the terms (the delivery mode and scope, every refusal that the terms alone decide, the refusal of an unsigned
-  policy at the start of the run), the command-line choice and the agreement screen. Not built yet: the delivery itself (section 2's
-  evaluation, the `delivery_authorized` event, the certificate note and field), which is its own ticket.
+  rejected. Built: the terms (the delivery mode and scope, every refusal that the terms alone decide, the refusal of an unsigned
+  policy at the start of the run), the command-line choice and the agreement screen, and the delivery itself (section 2's seven
+  conditions judged from the verified history, the `delivery_authorized` event with its replay grammar, typed payload and barrier
+  point, the certificate note and the optional field `delivery`, the message that says why a run fell back to the owner, and
+  recovery as section 7 describes). Not built, by decision: a cap on the level, any push, and anything in a phase (ADR 0011).
 - Related: the v1.1 candidate V11-C01 ("Accepted delivery choice - select before every phase starts", in the maintainer's protocol);
   ADR 0001 (core promise, CAL), ADR 0006 (Away mode, section 5 and section 9 item 2), ADR 0008 (section 3, delivery by policy "not taken
   now"), ADR 0010 (one replay), ADR 0011 (work phases), ADR 0013 (typed policy conditions, which let a rule name paths).
@@ -165,9 +167,14 @@ refused), and the sentence "no person reviews the whole change". A review run's 
 
 The kill points are the existing barriers plus one: after `phase_checked`, after `delivery_authorized`, after `commit_prepared`, after
 the compare-and-swap, after the evidence. Killed before `delivery_authorized`, the run is an interrupted away run, as today. Killed
-after it, `staircase recover` finishes the delivery without a person only when the tree it derives is the authorized tree and the terms
-still say `policy`; otherwise it asks for a final review, as recovery does today after an approval no person or rule made (ADR 0010,
-Q23). After `commit_prepared`, recovery's existing repair applies: one commit, one certificate.
+after it, `staircase recover` finishes the delivery without a person only when the tree it derives is the authorized tree and no
+approval needs a person's review; otherwise it refuses and delivers nothing. (As first drafted it asked for a final review, as
+recovery does after an approval no person or rule made, ADR 0010, Q23. That cannot be: the grammar allows no decision after the
+authorization, so a review could not be recorded, and refusing is the safe side.) The replay also checks that the authorization names
+the terms the run was bound to and the signed policy it loaded, so the terms "still say policy" by construction. A run killed
+after the authorization is not continued (`staircase resume` refuses and names `recover`); its outcome is blocked. The certificate a
+recovery issues for it carries the same `delivery: policy` field and note, at the level a recovery gives (CAL 2 at most, as for any
+recovered run). After `commit_prepared`, recovery's existing repair applies: one commit, one certificate.
 
 ## Options considered
 
