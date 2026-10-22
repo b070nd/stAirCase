@@ -3,7 +3,6 @@ package persistence
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -1056,13 +1055,17 @@ func caseStatusAfter(tx *sql.Tx, caseID int64, runStatus string) (string, error)
 	return CaseStatusCompleted, nil
 }
 
+// AuditEntry is an entry of the audit chain that is made before it is inserted: the event's name and its payload, as history shapes
+// them. The store hashes it into the chain; it does not look inside.
+type AuditEntry struct{ Type, Payload string }
+
 // AcceptUserStory records an operator's acceptance of a story after they have
 // verified delivered work. It requires a successful run of the story's case and,
-// in one transaction, marks the story IMPLEMENTED, appends a story_accepted
-// entry to that run's audit chain (bound to the run's commit), and recomputes
+// in one transaction, marks the story IMPLEMENTED, appends the given entry (the
+// story_accepted event, prepared by history) to that run's audit chain (bound to the run's commit), and recomputes
 // the case status. Returns the run the acceptance was recorded against and the
 // resulting case status.
-func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseStatus string, err error) {
+func (s *Store) AcceptUserStory(storyID int64, entry AuditEntry) (runID int64, caseStatus string, err error) {
 	s.appendMu.Lock() // same serialization as AppendEventLogChained: no chain forks
 	defer s.appendMu.Unlock()
 	tx, err := s.db.Begin()
@@ -1089,13 +1092,12 @@ func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseS
 	if err := tx.QueryRow(`SELECT event_hash FROM run_event_logs WHERE run_id = ? ORDER BY id DESC LIMIT 1`, runID).Scan(&prevHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, "", fmt.Errorf("accept story: read last event hash: %w", err)
 	}
-	payload, err := json.Marshal(map[string]any{"type": "story_accepted", "story_id": storyID, "actor": actor})
-	if err != nil {
+	if err := chain.CheckSize(entry.Type, entry.Payload); err != nil {
 		return 0, "", fmt.Errorf("accept story: %w", err)
 	}
 	now := time.Now()
 	if _, err := tx.Exec(`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		runID, "story_accepted", string(payload), now, chain.HashV2("story_accepted", string(payload), prevHash, commit), commit, chain.Version); err != nil {
+		runID, entry.Type, entry.Payload, now, chain.HashV2(entry.Type, entry.Payload, prevHash, commit), commit, chain.Version); err != nil {
 		return 0, "", fmt.Errorf("accept story: audit: %w", err)
 	}
 	if _, err := tx.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, StoryStatusImplemented, storyID); err != nil {

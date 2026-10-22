@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"os/user"
 	"path"
 	"strings"
@@ -123,7 +124,11 @@ var storyAcceptCmd = &cobra.Command{
 		if u, err := user.Current(); err == nil {
 			actor = u.Username
 		}
-		runID, caseStatus, err := store.AcceptUserStory(storyID, actor)
+		entry, err := history.Prepare(history.StoryAccepted{StoryID: storyID, Actor: actor})
+		if err != nil {
+			return fmt.Errorf("accept story: %w", err)
+		}
+		runID, caseStatus, err := store.AcceptUserStory(storyID, entry)
 		if err != nil {
 			return fmt.Errorf("accept story: %w", err)
 		}

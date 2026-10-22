@@ -187,6 +187,22 @@ func TestNoHiddenUnicode(t *testing.T) {
 	}
 }
 
+// TestNoBuiltBinaryIsTracked: nothing the build leaves behind is in the repository. A `go build` run inside this directory writes a
+// binary of tens of megabytes here, and a careless `git add -A` once took one in; the largest file the repository holds is far smaller
+// than the limit.
+func TestNoBuiltBinaryIsTracked(t *testing.T) {
+	const limit = 2 << 20
+	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z").Output()
+	require.NoError(t, err)
+	for _, f := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		info, err := os.Stat(filepath.Join(repoRoot, f))
+		if err != nil {
+			continue
+		}
+		assert.LessOrEqual(t, info.Size(), int64(limit), "%s is %d bytes: a built binary, or a file that does not belong in the repository", f, info.Size())
+	}
+}
+
 // latestRelease is the newest released version the changelog names: the first "## [X.Y.Z]" heading under [Unreleased].
 func latestRelease(t *testing.T) string {
 	src, err := os.ReadFile(filepath.Join(repoRoot, "CHANGELOG.md"))
