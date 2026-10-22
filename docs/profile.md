@@ -22,6 +22,7 @@ you are in.
 | `sensitive` | more paths a change to which always needs a person, on top of the built-in list (CI, build, dependency and secret files). A contract file belongs here. A profile can add to the list and never take from it |
 | `scope` | where a change may land: a file elsewhere comes to a person as drift. For `claude`, `codex` and `gemini` it is the default for `--allow`; for `run` it narrows the stories' scope |
 | `visible` | ignored directories or files of your checkout that the checks need, such as `vendor/` or `generated/`: literal paths from the repository's root. Checks see them, read-only, in the checkout of the commit they run in ([what that is and is not](safety.md)) |
+| `unreadable` | paths or patterns the agent must not read, such as a tracked Composer `auth.json`. `--unreadable-defaults` writes the usual list into the profile (`auth.json`, `.env` files, private keys). An agent that can be held to it refuses to read them; one that cannot is not started on the project ([per agent](safety.md)) |
 | `instructions` | what every agent on the project is told before its task, as text of at most 32 KiB: the house's conventions ("patches only, never edit `vendor/`", the copyright header). Set with `--instructions "..."` or `--instructions-file <file>` (the profile keeps a copy; the file may go) |
 | `checks` | commands, such as the tests, run on the commit a run makes |
 | `sandbox` | where approved commands and checks run: `auto`, `required`, `off` or `docker:image=<ref>` |
@@ -55,4 +56,8 @@ use. The instructions are saved with the run's terms, their digest is bound on `
 tells its agent the same words. They are **instructions to a model, not enforcement**: an agent can ignore them. What must hold belongs
 in `protect`, `sensitive` and `scope`, which a person decides.
 
-Files the agent must not read are a further field to come; this page lists a field when it exists.
+**What the agent must not read.** A file your repository tracks is in the agent's worktree, and what an agent reads can go to your model
+provider (the [safety page](safety.md) says so). `unreadable` names such files. It is a boundary only where an agent can be held to it, so
+the profile decides what each agent may do on the project, and no agent is started under a promise it cannot keep: Codex, Gemini CLI and
+OpenCode have sandboxes that restrict what they write, not what they read, so a run of them on a project with unreadable paths is
+refused, naming the agent. The same applies to `--unreadable` for one run, which adds to the profile and never replaces it.

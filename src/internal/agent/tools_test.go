@@ -187,3 +187,38 @@ func TestTools_run_shell_cannot_read_the_workspace(t *testing.T) {
 	// Landlock refuse the listing; either way the workspace's files are hidden.
 	assert.NotContains(t, out[0], "policy.json", out[0])
 }
+
+// TestTools_a_project_can_keep_files_out_of_reach (the read boundary): the built-in tools refuse to read, list, edit, create over or
+// delete a path the project keeps out of reach, also through a link, whatever the letter case; the listing does not show it, and
+// everything else reads as before.
+func TestTools_a_project_can_keep_files_out_of_reach(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "secrets"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "auth.json"), []byte(`{"password":"p"}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "secrets", "key.pem"), []byte("k"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src", ".env"), []byte("TOKEN=t"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src", "a.php"), []byte("<?php\n"), 0o644))
+	require.NoError(t, os.Symlink("auth.json", filepath.Join(root, "innocent.json")))
+	env := &orchestrator.AgentEnv{Worktree: root, Unreadable: []string{"auth.json", "secrets/**", "**/.env"}}
+	ctx := context.Background()
+	read := func(p string) string { return call(ctx, env, "read_file", map[string]string{"path": p}) }
+
+	assert.Equal(t, "<?php\n", read("src/a.php"), "the rest reads as before")
+	for _, p := range []string{"auth.json", "AUTH.JSON", "innocent.json", "secrets/key.pem", "src/.env"} {
+		got := read(p)
+		assert.Contains(t, got, "out of reach", p)
+		assert.NotContains(t, got, "password")
+		assert.NotContains(t, got, "TOKEN")
+	}
+	listing := call(ctx, env, "list_dir", map[string]string{"path": ""})
+	assert.NotContains(t, listing, "auth.json")
+	assert.NotContains(t, listing, "secrets")
+	assert.Contains(t, listing, "src/")
+	assert.NotContains(t, call(ctx, env, "list_dir", map[string]string{"path": "src"}), ".env")
+	assert.Contains(t, call(ctx, env, "list_dir", map[string]string{"path": "secrets"}), "out of reach")
+
+	assert.Contains(t, call(ctx, env, "request_edit", map[string]string{"file": "auth.json", "search_block": "p", "replace_block": "q", "reasoning": "r"}), "out of reach")
+	assert.Contains(t, call(ctx, env, "create_file", map[string]string{"path": "src/.env", "content": "x", "reasoning": "r"}), "out of reach")
+	assert.Contains(t, call(ctx, env, "delete_file", map[string]string{"path": "secrets/key.pem", "reasoning": "r"}), "out of reach")
+}

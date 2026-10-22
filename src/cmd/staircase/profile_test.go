@@ -70,7 +70,7 @@ func TestProfile_set_and_show(t *testing.T) {
 func TestApplyProfile_precedence(t *testing.T) {
 	ws, id := profileWorkspace(t)
 	require.NoError(t, profile.Save(ws, id, profile.Profile{Checks: []string{"make test"}, Protect: []string{"Makefile.test"}, Sandbox: "required",
-		Scope: []string{"src/**"}, Sensitive: []string{"contracts/**"}, Visible: []string{"vendor"}}))
+		Scope: []string{"src/**"}, Sensitive: []string{"contracts/**"}, Visible: []string{"vendor"}, Unreadable: []string{"auth.json"}}))
 	t.Cleanup(func() { explicitFlags = map[string]bool{} })
 
 	var l launch
@@ -82,6 +82,7 @@ func TestApplyProfile_precedence(t *testing.T) {
 	assert.Equal(t, []string{"src/**"}, l.allow)
 	assert.Equal(t, []string{"vendor"}, l.terms.Visible)
 	assert.Equal(t, []string{"contracts/**"}, l.terms.SensitivePaths)
+	assert.Equal(t, []string{"auth.json"}, l.terms.Unreadable)
 	want, _, _ := profile.Load(ws, id)
 	assert.Equal(t, want.Digest(), l.terms.ProfileSHA256)
 
@@ -90,9 +91,11 @@ func TestApplyProfile_precedence(t *testing.T) {
 	l.terms.Sandbox = "off"
 	l.allow = []string{"docs/**"}
 	l.terms.Visible = []string{"generated"}
+	l.terms.Unreadable = []string{".env"}
 	explicitFlags = map[string]bool{"check": true, "sandbox": true, "allow": true, "visible": true}
 	require.NoError(t, applyProfile(&l, ws, id))
 	assert.Equal(t, []string{"generated"}, l.terms.Visible, "a flag wins here too")
+	assert.Equal(t, []string{".env", "auth.json"}, l.terms.Unreadable, "what a flag keeps from the agent is added to the project's, never instead of it")
 	assert.Equal(t, []string{"go test ./..."}, l.terms.Checks, "a flag on the command line wins")
 	assert.Equal(t, "off", l.terms.Sandbox)
 	assert.Equal(t, []string{"docs/**"}, l.allow)
@@ -250,4 +253,56 @@ func TestProfile_instructions(t *testing.T) {
 	assert.False(t, found, "with nothing left the profile is gone")
 
 	assert.ErrorContains(t, showBriefing(&out, ws, 5), "is not compiled")
+}
+
+// TestSession_a_project_that_keeps_files_from_its_agent_refuses_an_agent_that_cannot_keep_them (the read boundary): Codex cannot be stopped
+// from reading, so a session of it on such a project does not start and makes nothing; the profile's defaults add the usual list;
+// Claude Code starts, and its hook refuses a read of the file.
+func TestSession_a_project_that_keeps_files_from_its_agent_refuses_an_agent_that_cannot_keep_them(t *testing.T) {
+	repo, ws, git := sessionRepo(t)
+	t.Cleanup(func() {
+		explicitFlags = map[string]bool{}
+		cli.yes = false
+		profileUnreadable, profileClear = nil, nil
+		profileUnreadableDefaults = false
+	})
+	require.NoError(t, claudeSession(nil, []string{"first"})) // makes the project
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	projects, err := persistence.NewStore(db).ListAllProjects()
+	require.NoError(t, err)
+	id := projects[0].ID
+	require.NoError(t, db.Close())
+
+	var out bytes.Buffer
+	profileUnreadableDefaults = true
+	require.NoError(t, setProfile(&out, ws, id, map[string]bool{"unreadable-defaults": true}))
+	assert.Contains(t, out.String(), "auth.json")
+	assert.Contains(t, out.String(), "**/.env")
+	got, _, err := profile.Load(ws, id)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, profile.DefaultUnreadable, got.Unreadable, "the defaults are written into the profile")
+
+	cli.yes = true
+	before := strings.TrimSpace(git("branch", "--list", "staircase/*"))
+	err = session(cli, "codex", "Codex", "codex", []string{"a task"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Codex cannot be stopped from reading")
+	assert.Equal(t, before, strings.TrimSpace(git("branch", "--list", "staircase/*")), "nothing was made: no branch, no run")
+	assert.NoFileExists(t, repo+"/HEALTH.md")
+
+	require.NoError(t, claudeSession(nil, []string{"again"}), "Claude Code can be held to it")
+	db, err = persistence.InitDB(ws)
+	require.NoError(t, err)
+	defer db.Close()
+	h, err := history.Read(persistence.NewStore(db), 2)
+	require.NoError(t, err)
+	terms, err := orchestrator.SavedTerms(ws, 2, h)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, profile.DefaultUnreadable, terms.Unreadable, "the run's terms say what it kept from its agent")
+
+	profileUnreadableDefaults, profileClear = false, []string{"unreadable"}
+	require.NoError(t, setProfile(&out, ws, id, map[string]bool{"clear": true}))
+	got, found, _ := profile.Load(ws, id)
+	assert.False(t, found && len(got.Unreadable) > 0)
 }

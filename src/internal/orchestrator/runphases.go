@@ -400,7 +400,7 @@ func (s *runState) startAgent() error {
 	s.cancelAgent = cancelAgent
 	s.deferred(cancelAgent)
 	s.stopped = make(chan struct{})
-	env := &AgentEnv{Session: agentSession(cont), Continuation: contBrief(cont), Brief: awayBrief(opts.Away), Worktree: s.worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Instructions: opts.Instructions, Environment: s.overlays, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: s.proposals, usage: s.usage, host: s.host}
+	env := &AgentEnv{Session: agentSession(cont), Continuation: contBrief(cont), Brief: awayBrief(opts.Away), Worktree: s.worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Instructions: opts.Instructions, Unreadable: opts.Unreadable, Environment: s.overlays, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: s.proposals, usage: s.usage, host: s.host}
 	if len(opts.ValidatorModels) > 0 {
 		s.val = &Validator{Models: opts.ValidatorModels, Chat: opts.ValidatorChat}
 		if s.val.Chat == nil {

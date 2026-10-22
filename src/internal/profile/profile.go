@@ -30,6 +30,10 @@ type Profile struct {
 	// Visible are directories or files of the user's checkout, relative to its root, that the repository ignores and the checks need
 	// (composer's vendor/): checks see them read-only (the project's environment). Literal paths, never patterns.
 	Visible []string `json:"visible,omitempty"`
+	// Unreadable are paths or patterns, from the repository's root, that the agent must not read: files of the project that hold
+	// secrets (a tracked Composer auth.json). An agent that can enforce it refuses to read them; one that cannot is not started on
+	// the project.
+	Unreadable []string `json:"unreadable,omitempty"`
 	// Instructions are what every agent that works on the project is told before its task: conventions, rules of the house. Text, at
 	// most MaxInstructions bytes. They are instructions to a model, never enforcement.
 	Instructions string `json:"instructions,omitempty"`
@@ -40,7 +44,11 @@ type Profile struct {
 }
 
 // Fields are the names of a profile's fields, as the commands say them.
-var Fields = []string{"protect", "sensitive", "scope", "visible", "instructions", "checks", "sandbox"}
+var Fields = []string{"protect", "sensitive", "scope", "visible", "unreadable", "instructions", "checks", "sandbox"}
+
+// DefaultUnreadable is the usual list of what a project keeps secret: Composer credentials, environment files, private keys. A profile
+// holds it only when asked (`--unreadable-defaults`), so what a project keeps from its agents is written in its profile and nowhere else.
+var DefaultUnreadable = []string{"auth.json", "**/auth.json", ".env", ".env.*", "**/.env", "**/.env.*", "**/*.pem", "**/id_rsa", "**/id_ed25519"}
 
 // MaxInstructions is the most a project may tell its agents: they are read by a model on every run, and kept on the record of each.
 const MaxInstructions = 32 << 10
@@ -62,6 +70,9 @@ func (p Profile) Normalize() (Profile, error) {
 		return p, err
 	}
 	if p.Visible, err = literalPaths("visible", p.Visible); err != nil {
+		return p, err
+	}
+	if p.Unreadable, err = paths("unreadable", p.Unreadable); err != nil {
 		return p, err
 	}
 	if p.Instructions = strings.TrimSpace(p.Instructions); len(p.Instructions) > MaxInstructions {

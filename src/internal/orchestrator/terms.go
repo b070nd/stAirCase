@@ -66,6 +66,9 @@ type Terms struct {
 	// Instructions are the project's, given to the agent before its task, whichever agent it is (the project's profile). Text: bound
 	// by the terms' digest, saved with them, so a continuation tells its agent the same words.
 	Instructions string `json:"instructions,omitempty"`
+	// Unreadable are paths or patterns (from the repository's root) the project keeps out of the agent's reach: an agent that can enforce it
+	// refuses to read them, and one that cannot is not started (the project's profile).
+	Unreadable []string `json:"unreadable,omitempty"`
 	// Visible is the run's environment: directories (or files) of the user's checkout, relative to its root, that the repository
 	// ignores and the checks need (composer's vendor/, generated code). Checks see them, read-only, in the checkout of the commit they
 	// run in. They are never in the agent's worktree and never part of what is approved.
@@ -146,6 +149,12 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	}
 	if t.Visible, err = visiblePaths(t.Visible); err != nil {
 		return t, err
+	}
+	if t.Unreadable, err = cleanPaths("--unreadable", t.Unreadable); err != nil {
+		return t, err
+	}
+	if why := t.unreadableRefusal(harness); why != "" {
+		return t, errors.New(why)
 	}
 	if len(t.Instructions) > maxInstructions {
 		return t, fmt.Errorf("the project's instructions are %d bytes and an agent is told at most %d", len(t.Instructions), maxInstructions)

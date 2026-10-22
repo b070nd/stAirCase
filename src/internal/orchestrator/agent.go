@@ -63,6 +63,9 @@ type AgentEnv struct {
 	Worktree   string // the run's git worktree: the agent's project root
 	AllowShell bool   // shell_exec may be proposed (--allow-shell-exec)
 	Sandbox    string // approved commands: "auto", "required" or "off" (--sandbox)
+	// Unreadable are paths or patterns, from the worktree's root, that the project keeps out of the agent's reach (Terms.Unreadable).
+	Unreadable []string
+	reach      reach
 	// Instructions are the project's, told to the agent before its task (Terms.Instructions).
 	Instructions string
 	// Environment is the run's declared environment, shown read-only to the checks run when the agent says it is done.

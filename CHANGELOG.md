@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A read boundary: files the agent must not read (`unreadable` in the profile, `--unreadable`).** A file your repository tracks, such as
+  a Composer `auth.json`, is in the agent's worktree, and what an agent reads can go to your model provider. A project can now name
+  paths that the agent must not read (`--unreadable-defaults` writes the usual list into the profile: `auth.json`, `.env` files,
+  private keys). The built-in runtime refuses to read, list or edit them; Claude Code's hook refuses its `Read`, `Write` and `Edit` of
+  them and a `Grep` from a folder that holds one. Codex, Gemini CLI and OpenCode cannot be held to it (their sandboxes restrict what
+  they write, not what they read), so a run of them on such a project is refused before anything is made, naming the agent. An
+  approved shell command and Claude Code's `Bash` are not covered, and the safety page says so, agent by agent. Nothing changes for a
+  project that names none. What to do: nothing, unless you keep secrets in the repository ([safety](docs/safety.md), [profile](docs/profile.md)).
+
 - **A project's instructions reach every agent, and nothing goes into the repository.** `staircase project profile set <id>
   --instructions "..."` (or `--instructions-file`) keeps the conventions of a client's project (the copyright header, "patches only,
   never edit `vendor/`") in your workspace. Every run of the project tells its agent those words, whichever agent it is (Claude Code,

@@ -70,6 +70,10 @@ func applyProfile(l *launch, wsDir string, projectID int64) error {
 		l.terms.Instructions = p.Instructions
 		fill("instructions", true)
 	}
+	if len(p.Unreadable) > 0 { // what a project keeps from the agent: no flag takes it away, as with the sensitive paths
+		l.terms.Unreadable = slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(l.terms.Unreadable), p.Unreadable...))))
+		fill("unreadable", true)
+	}
 	if len(p.Visible) > 0 && !explicitFlags["visible"] && len(l.terms.Visible) == 0 {
 		l.terms.Visible = slices.Clone(p.Visible)
 		fill("visible", true)
@@ -119,8 +123,9 @@ need a person and never take any away.`,
 }
 
 var (
-	profileProtect, profileSensitive, profileScope, profileVisible, profileChecks, profileClear []string
-	profileSandbox, profileInstructions, profileInstructionsFile                                string
+	profileProtect, profileSensitive, profileScope, profileVisible, profileUnreadable, profileChecks, profileClear []string
+	profileUnreadableDefaults                                                                                      bool
+	profileSandbox, profileInstructions, profileInstructionsFile                                                   string
 )
 
 var projectProfileShowCmd = &cobra.Command{
@@ -156,6 +161,8 @@ func init() {
 	projectProfileSetCmd.Flags().StringArrayVar(&profileSensitive, "sensitive", nil, "Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileScope, "scope", nil, "Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileVisible, "visible", nil, "Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root")
+	projectProfileSetCmd.Flags().StringArrayVar(&profileUnreadable, "unreadable", nil, "Paths or patterns, from the repository's root, that the agent must not read (a tracked auth.json): an agent that cannot be stopped from reading them is not started on the project")
+	projectProfileSetCmd.Flags().BoolVar(&profileUnreadableDefaults, "unreadable-defaults", false, "Add the usual list to the unreadable paths: auth.json, .env files, private keys (it is written into the profile, which you can edit)")
 	projectProfileSetCmd.Flags().StringVar(&profileInstructions, "instructions", "", "What every agent on this project is told before its task (conventions, rules of the house), as text")
 	projectProfileSetCmd.Flags().StringVar(&profileInstructionsFile, "instructions-file", "", "The same, read from a file now (the profile keeps a copy in the workspace; the file stays where it is)")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileChecks, "check", nil, "A command (such as the tests) run on the commit a run makes; repeat for more")
@@ -201,6 +208,7 @@ func showProfile(w io.Writer, wsDir string, id int64) error {
 	show("sensitive", pr.Sensitive)
 	show("scope", pr.Scope)
 	show("visible", pr.Visible)
+	show("unreadable", pr.Unreadable)
 	show("checks", pr.Checks)
 	if pr.Instructions != "" {
 		sum := sha256.Sum256([]byte(pr.Instructions))
@@ -234,6 +242,8 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 			pr.Scope = nil
 		case "visible":
 			pr.Visible = nil
+		case "unreadable":
+			pr.Unreadable = nil
 		case "instructions":
 			pr.Instructions = ""
 		case "checks":
@@ -256,6 +266,12 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 	if named["visible"] {
 		pr.Visible = profileVisible
 	}
+	if named["unreadable"] {
+		pr.Unreadable = profileUnreadable
+	}
+	if named["unreadable-defaults"] {
+		pr.Unreadable = append(slices.Clone(pr.Unreadable), profile.DefaultUnreadable...)
+	}
 	if named["instructions"] && named["instructions-file"] {
 		return errors.New("give the instructions once: --instructions (text) or --instructions-file")
 	}
@@ -276,7 +292,7 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 		pr.Sandbox = profileSandbox
 	}
 	if len(named) == 0 {
-		return errors.New("nothing to set: name a field (--protect, --sensitive, --scope, --visible, --instructions, --check, --sandbox) or --clear one")
+		return errors.New("nothing to set: name a field (--protect, --sensitive, --scope, --visible, --unreadable, --instructions, --check, --sandbox) or --clear one")
 	}
 	if err := profile.Save(wsDir, id, pr); err != nil {
 		return err

@@ -219,6 +219,9 @@ func checkFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&cli.terms.ProtectedPaths, "protect", nil,
 		"A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, "+
 			"whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more")
+	cmd.Flags().StringArrayVar(&cli.terms.Unreadable, "unreadable", nil,
+		"A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: "+
+			"the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more")
 	cmd.Flags().StringArrayVar(&cli.terms.Visible, "visible", nil,
 		"A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in "+
 			"the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more "+

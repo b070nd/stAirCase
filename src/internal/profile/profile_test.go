@@ -94,3 +94,15 @@ func TestNormalize_instructions_are_trimmed_and_bounded(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, blank.Empty(), "blank instructions say nothing")
 }
+
+func TestNormalize_unreadable_paths_and_the_defaults(t *testing.T) {
+	p, err := profile.Profile{Unreadable: []string{"./auth.json", "**/.env", "auth.json"}}.Normalize()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"**/.env", "auth.json"}, p.Unreadable)
+	_, err = profile.Profile{Unreadable: []string{"/home/me/.ssh"}}.Normalize()
+	assert.Error(t, err, "a path outside the repository is not the project's to keep")
+	d, err := profile.Profile{Unreadable: profile.DefaultUnreadable}.Normalize()
+	require.NoError(t, err, "the defaults are well formed")
+	assert.Contains(t, d.Unreadable, "auth.json", "the usual list covers Composer's credentials")
+	assert.Contains(t, d.Unreadable, "**/.env")
+}

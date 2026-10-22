@@ -151,3 +151,35 @@ func TestNewTerms_normalizes_the_scope_and_the_project_sensitive_paths(t *testin
 		}
 	}
 }
+
+// TestNewTerms_the_read_boundary: a project that keeps paths out of the agent's reach cannot be run by an agent that cannot be stopped from
+// reading them (Codex, Gemini CLI, OpenCode: their sandboxes restrict writes, not reads); the built-in runtime and Claude Code can.
+func TestNewTerms_the_read_boundary(t *testing.T) {
+	terms := Terms{Unreadable: []string{"./auth.json", "**/.env", "auth.json"}}
+	for harness, name := range map[string]string{"codex": "Codex", "gemini": "Gemini CLI", "opencode": "OpenCode"} {
+		_, err := NewTerms(terms, harness)
+		if err == nil {
+			t.Fatalf("%s was accepted on a project that keeps files out of its reach", harness)
+		}
+		for _, want := range []string{name + " cannot be stopped from reading", "auth.json", "Claude Code or the built-in runtime"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: %q does not say %q", harness, err, want)
+			}
+		}
+		if _, err := NewTerms(Terms{}, harness); err != nil {
+			t.Errorf("%s with nothing out of reach: %v", harness, err)
+		}
+	}
+	for _, harness := range []string{"", "claude-code"} {
+		got, err := NewTerms(terms, harness)
+		if err != nil {
+			t.Fatalf("%q: %v", harness, err)
+		}
+		if strings.Join(got.Unreadable, ",") != "**/.env,auth.json" {
+			t.Errorf("%q: the paths are cleaned and sorted: %v", harness, got.Unreadable)
+		}
+	}
+	if _, err := NewTerms(Terms{Unreadable: []string{"/etc/passwd"}}, ""); err == nil {
+		t.Error("a path outside the repository was accepted")
+	}
+}
