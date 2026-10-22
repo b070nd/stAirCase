@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **`staircase verify` reads the trusted key from a protected ref itself, so any CI system can run it (`--trust-ref`, `--key-path`,
+  `--signers-path`).** The rule "never take the key from the change under test" was shell code inside the GitHub Action, so another
+  CI had to rewrite it. `verify` now reads the key, and the allowed signers, from the ref you name with git, and refuses a ref that is,
+  or holds, a commit being verified, and a path that is not on the ref, naming it. `--key` and `--allowed-signers` still work. The
+  packaged Action uses the new options when the verifier it installed has them and reads the files itself for a pinned older release;
+  its results do not change. The CI page gains a GitLab merge-request job, marked as not run by the project, and says which parts of
+  the page are GitHub's. What to do: nothing; on another CI, copy the job ([audit](docs/audit.md#other-ci-systems-gitlab)).
+
 - **The reviewer models' votes are on the audit chain.** With `--validator`, each model of the panel that is asked about a proposal
   now has its verdict written as its own entry (`validator_voted`) before the decision: the model, the request it judged, approve,
   reject or error, its reason and the digest of its whole reply. Until now the chain held only the outcome and a line of text, and

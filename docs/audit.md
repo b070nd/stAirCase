@@ -510,6 +510,46 @@ copy of the workflow, with `contents: read`, the pull request's head checked out
 
 The same check runs locally: `staircase verify main..HEAD --all --min-cal 3`.
 
+### Other CI systems (GitLab)
+
+Everything above that names GitHub is the packaging: the Action, its attestation check and `pull_request_target`. The check itself is one
+command over a git range. Since 1.2.0 it reads the trusted key, and the allowed signers if you use CAL 4, from a ref the change under
+test cannot alter, so a job on any CI is a few lines:
+
+```bash
+staircase verify origin/main..$HEAD --all --min-cal 2 --rebuild \
+  --trust-ref origin/main --key-path ci/staircase.pub
+# CAL 4: add  --signers-path ci/allowed_signers  and  --require-initiator
+```
+
+`--trust-ref` refuses a ref that is, or holds, a commit being verified, and names the path it could not find. The public key is committed
+to the protected branch, as above.
+
+A GitLab job for merge requests, written from the commands of this page and of [install](install.md) and **not run against a GitLab
+instance by the project** (try it on a test project first):
+
+```yaml
+staircase-verify:
+  stage: test
+  image: golang:1.26                 # any image with git and curl will do
+  variables: { GIT_DEPTH: "0" }      # the whole history: the range needs real commits
+  rules: [ { if: '$CI_PIPELINE_SOURCE == "merge_request_event"' } ]
+  script:
+    - V=v1.2.0                       # pin a release, and check checksums.txt with cosign as install.md says
+    - curl -fsSLO https://github.com/b070nd/stAirCase/releases/download/$V/staircase_${V#v}_linux_amd64.tar.gz
+    - curl -fsSLO https://github.com/b070nd/stAirCase/releases/download/$V/checksums.txt
+    - sha256sum -c --ignore-missing checksums.txt && tar -xzf staircase_*.tar.gz staircase
+    - git fetch -q origin refs/notes/staircase:refs/notes/staircase refs/notes/staircase-ledger:refs/notes/staircase-ledger
+    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - ./staircase verify "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA" --all --min-cal 2 --rebuild
+        --trust-ref "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --key-path ci/staircase.pub
+```
+
+End the range at `CI_MERGE_REQUEST_SOURCE_BRANCH_SHA`, not at `CI_COMMIT_SHA`: in a merged-results pipeline the latter is a commit GitLab
+made, which has no certificate. The notes must be pushed to the project (`git push origin refs/notes/staircase refs/notes/staircase-ledger`),
+and everything under "Limits, stated plainly" applies to a squash-merge on GitLab too. Release archives are hosted on github.com, so the
+runner needs outbound access to it; the build attestation and the cosign recipe check GitHub's identity, and are GitHub-specific.
+
 ## Look at a run
 
 ```bash

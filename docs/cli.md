@@ -1449,7 +1449,10 @@ which a run writes; fetch notes from a remote with
 or pass the certificate file with --certificate.
 
 The trusted key is the workspace's public signing key (.signing.pub), or the
-file given with --key: that file is all a reviewer needs.
+file given with --key: that file is all a reviewer needs. In CI, read it from a
+protected ref instead: --trust-ref origin/main --key-path ci/staircase.pub (and
+--signers-path for the allowed signers). That ref must not hold a commit being
+verified, so a change cannot vouch for itself.
 
 A range (main..HEAD) checks every commit in it that names an agent in an
 Assisted-by: trailer; --all checks every commit. This is what a CI check on a
@@ -1463,12 +1466,15 @@ Flags:
       --certificate string       Read the certificate from this file instead of the git note
       --check-anchor             Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
       --key string               Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)
+      --key-path string          With --trust-ref, the path of the public signing key at that ref (instead of --key)
       --ledger string            With --rebuild, read the ledger from this file instead of the git note (one commit only)
       --min-cal int              Fail below this change assurance level (1-4)
       --policy-uri string        With --vsa-out, the URI that says what the policy digest covers (default: the VSA specification's policy section)
       --rebuild                  Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note (refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails
       --require-initiator        CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; without it the requester is the git email, which anyone can set
       --resource-uri string      With --vsa-out, the repository URI, such as git+https://github.com/org/repo (default: from the origin remote)
+      --signers-path string      With --trust-ref, the path of the allowed_signers file at that ref (instead of --allowed-signers)
+      --trust-ref string         Read the trusted key (--key-path) and signers (--signers-path) from this git ref, such as origin/main or a protected tag, never from the checkout: a ref that is, or contains, a commit being verified is refused, because a change must not vouch for itself
       --verifier-id string       With --vsa-out, the verifier's identity URI (default: https://github.com/b070nd/stAirCase); consumers accept a VSA only from verifiers they know
       --vsa-key string           With --vsa-out, the raw Ed25519 private key file that signs it (default: the workspace's .signing.key)
       --vsa-out string           Write a SLSA Verification Summary Attestation (VSA v1, signed DSSE) for every commit that passes, to <dir>/<commit>.vsa.json; its levels are stAirCase's own (STAIRCASE_CAL_n, STAIRCASE_REBUILT, ...), never a SLSA source level
