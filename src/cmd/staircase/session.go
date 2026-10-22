@@ -182,6 +182,13 @@ func session(l launch, harness, name, command string, args []string) error {
 	if task == "" {
 		return fmt.Errorf(`what should %s do? For example: staircase %s "add a /health endpoint"`, name, command)
 	}
+	// What is true of this repository's project for every run of it fills what the command line left out (when the workspace has the
+	// project already: nothing is made yet).
+	if root, err := gitTopLevel(); err == nil {
+		if err := profileForRoot(&l, viper.GetString("STAIRCASE_DIR"), root); err != nil {
+			return err
+		}
+	}
 	// The terms are judged before anything is asked or made. Who agrees to the task is asked below, so it stands in here.
 	t := l.runTerms()
 	t.Agreed = "the person asked below"

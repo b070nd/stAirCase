@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	// Execute prints each error exactly once. Usage is shown only for invalid
 	// invocations: cobra validates flags/args before PersistentPreRun runs.
 	SilenceErrors:    true,
-	PersistentPreRun: func(cmd *cobra.Command, _ []string) { cmd.SilenceUsage = true },
+	PersistentPreRun: func(cmd *cobra.Command, _ []string) { cmd.SilenceUsage = true; recordExplicitFlags(cmd) },
 }
 
 func init() {

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -87,4 +88,14 @@ func globMatchParts(pat, name []string) bool {
 		}
 	}
 	return len(name) == 0
+}
+
+// CleanRepoPath is p cleaned, when it names something inside a repository from its root: not empty, not absolute, not the root itself,
+// not outside it. A pattern with ** or * is cleaned the same way.
+func CleanRepoPath(p string) (string, bool) {
+	clean := path.Clean(p)
+	if p == "" || clean == "." || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", false
+	}
+	return clean, true
 }

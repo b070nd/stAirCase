@@ -101,6 +101,10 @@ is named; `commit_prepared` ends the agent's part. `certificate_issued`, `run_re
 adopted proposals, the offered review, the continuation's counters, and what sealed it (`internal/history`, ADR 0010). A chain that
 no run can have written has no history. It is refused with the entry that breaks the grammar.
 
+**Profile**: what is true of a project for every run of it: the paths a person must always decide (protected and sensitive), the scope a
+change may touch, the checks and the sandbox. It is kept in the workspace, never in the client's repository, and a run resolves it into its terms
+when it starts: a flag wins over it, its digest is bound with the terms, and a continuation keeps the profile it started with.
+
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
 - how changes are approved;

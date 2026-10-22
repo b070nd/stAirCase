@@ -17,11 +17,14 @@ type launch struct {
 	agent, model                                                    string // the built-in agent or a harness, and its model
 	passEnv                                                         []string
 
-	allow  []string     // the paths a session's task may change
-	yes    bool         // start without asking to confirm the task
-	review *plan.Review // what staircase review and seal bring in
-	finish func(root, branch string, storyID int64) error
-	host   *agent.HostIO // a runner's session the Claude Code agent stands in for (staircase host)
+	allow []string // the paths a session's task may change
+	// profileScope says the allow list came from the project's profile, not from a flag
+	profileScope bool
+	scopeInTerms bool         // the run command: the scope narrows the plan's, in the run's terms (a session's becomes its story's scope instead)
+	yes          bool         // start without asking to confirm the task
+	review       *plan.Review // what staircase review and seal bring in
+	finish       func(root, branch string, storyID int64) error
+	host         *agent.HostIO // a runner's session the Claude Code agent stands in for (staircase host)
 	// resumesSession and resumesRun are the hosted session a new run resumes and the decided run it follows (ADR 0008).
 	resumesSession string
 	resumesRun     int64

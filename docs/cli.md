@@ -847,6 +847,33 @@ List projects for a vendor
 staircase project list <vendor-name>
 ```
 
+## staircase project profile set
+
+Set fields of a project's profile (a field named replaces it; --clear removes one)
+
+```
+staircase project profile set <project-id> [flags]
+```
+
+Flags:
+
+```
+      --check stringArray       A command (such as the tests) run on the commit a run makes; repeat for more
+      --clear stringArray       Remove a field: protect, sensitive, scope, checks, sandbox (repeatable)
+      --protect stringArray     Paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person
+      --sandbox string          Where approved commands and checks run: auto, required, off or docker:image=<ref>
+      --scope stringArray       Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift
+      --sensitive stringArray   Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)
+```
+
+## staircase project profile show
+
+Show a project's profile
+
+```
+staircase project profile show <project-id>
+```
+
 ## staircase project set-webhook
 
 Set (or clear) the HITL webhook URL for a project
@@ -1115,6 +1142,7 @@ Flags:
 ```
       --ack-drift                  Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
       --agent string               Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental) (default "built-in")
+      --allow stringArray          A path (glob) this run's changes may touch, on top of the stories' scope: a change elsewhere comes to a person as drift (default: the project's profile)
       --allow-shell-exec           Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int          Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string      Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.

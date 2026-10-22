@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A project profile: what is true of a client's repository for every run, kept in your workspace.** `staircase project profile set` and
+  `show` hold, per project, the paths that define a check (`--protect`), further paths that always need a person (`--sensitive`, for a
+  contract file, say, added to the built-in list and never taking from it), the scope a change may touch (`--scope`), the checks and the
+  sandbox. A run fills what its command line left out from the profile (a flag wins, then the profile, then the default), records the
+  profile's digest in its terms, and a continuation keeps the profile it started with. `staircase run` gains `--allow` like `claude`,
+  `codex` and `gemini` have, narrowing the stories' scope for that run. Nothing is written into the client's repository. A project
+  without a profile behaves as before. What to do: nothing, unless you want it ([profile](docs/profile.md)).
+
 - **A run says exactly what a dirty checkout leaves out, and records that it did.** A run works on a copy of your last commit, so
   uncommitted work is not in it. The warning already said so in one line; it now names the files, the tracked changes apart from the
   untracked files (ten of each, then a count), and says that ignored paths such as `vendor/` are not in the copy either. The fact (the

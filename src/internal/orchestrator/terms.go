@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/engine"
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
@@ -53,6 +54,15 @@ type Terms struct {
 	// ProtectedPaths hold the checks' definitions (paths or ** patterns, from the repository's root): a change to one always
 	// needs a person, whatever the policy says, and is parked while away. Those the checks name are added (checkDefinitions).
 	ProtectedPaths []string `json:"protected_paths,omitempty"`
+	// Scope narrows the plan's scope for this run: a change outside these paths (or ** patterns, from the repository's root) comes to a
+	// person as drift, whatever the stories allow (--allow on a run, or the project's profile).
+	Scope []string `json:"scope,omitempty"`
+	// SensitivePaths are the project's own sensitive paths, added to the built-in list: a change to one always needs a person,
+	// whatever the policy says. They can only add to the list (the project's profile).
+	SensitivePaths []string `json:"sensitive_paths,omitempty"`
+	// ProfileSHA256 is the digest of the project's profile the run started under, "" when the project had none: what the run was told
+	// about its project is on the record.
+	ProfileSHA256 string `json:"profile_sha256,omitempty"`
 	// Deliver is how the run's approved change reaches its branch (ADR 0012): DeliverReview (also when empty, and then absent
 	// from the saved form, so every run saved before the field existed reads as review) offers it to a person; DeliverPolicy
 	// delivers it, while nobody is there, when only rules of the owner's signed policy approved it.
@@ -118,6 +128,13 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 		return t, fmt.Errorf("--sandbox: %w", err)
 	}
 	if err := t.protect(); err != nil {
+		return t, err
+	}
+	var err error
+	if t.Scope, err = cleanPaths("--allow", t.Scope); err != nil {
+		return t, err
+	}
+	if t.SensitivePaths, err = cleanPaths("the profile's sensitive paths", t.SensitivePaths); err != nil {
 		return t, err
 	}
 	if err := t.deliver(); err != nil {
@@ -186,14 +203,25 @@ func (t *Terms) protect() error {
 	return nil
 }
 
-// repoPath is p cleaned, if it names something inside the repository from its root.
-func repoPath(p string) (string, bool) {
-	clean := path.Clean(p)
-	if p == "" || clean == "." || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", false
+// cleanPaths is paths cleaned, sorted and without duplicates, refusing one that is outside the repository or not a well formed pattern.
+func cleanPaths(what string, paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		clean, ok := repoPath(p)
+		if !ok {
+			return nil, fmt.Errorf("%s %q: name a path or pattern inside the repository, from its root", what, p)
+		}
+		if !engine.ValidGlob(clean) {
+			return nil, fmt.Errorf("%s %q is not a well formed pattern", what, p)
+		}
+		out = append(out, clean)
 	}
-	return clean, true
+	slices.Sort(out)
+	return slices.Compact(out), nil
 }
+
+// repoPath is p cleaned, if it names something inside the repository from its root.
+func repoPath(p string) (string, bool) { return engine.CleanRepoPath(p) }
 
 // checkDefinitions are the paths a check names as its definition, where that can be known: the script it runs, the files a
 // test runner is given, a build tool's file. What it only looks at (test -f x) or finds by itself (go test ./...) is not known.
