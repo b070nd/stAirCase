@@ -200,6 +200,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   a bounded number of times, and `staircase sign` writes its signed certificate the same way. A note that cannot be confirmed is
   reported as an evidence failure (the run's summary and `evidence_failed` name it), never as written. The lock does nothing on
   Windows ([audit](docs/audit.md#writing-a-note)). Nothing to do; a commit that already lost its note keeps lacking it.
+- **Built with Go 1.26.10.** `govulncheck` reports GO-2026-6809 (`crypto/x509`, intermediate certificates a CA has compromised) against
+  Go 1.26.9, and the audit anchor check (`audit.AnchorRecord`) reaches it. Go 1.26.10 fixes it. Build from a checkout with Go 1.26.10
+  or later; the release archives and Homebrew carry the fix once a release is cut from this version.
 
 ## [1.1.0] - 2026-10-18
 
