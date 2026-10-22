@@ -192,9 +192,6 @@ func TestStore_error_paths_with_closed_db(t *testing.T) {
 
 	_, err = store.ListAllSecrets()
 	assert.Error(t, err, "ListAllSecrets on closed db must error")
-
-	_, err = store.HasSuccessfulRunAtTopologyVersion(1, 1)
-	assert.Error(t, err, "HasSuccessfulRunAtTopologyVersion on closed db must error")
 }
 
 // TestInitDB_commits_are_durable: every pooled connection runs in WAL mode with

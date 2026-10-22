@@ -449,33 +449,6 @@ func TestRotateSecrets_decrypt_error_aborts(t *testing.T) {
 	assert.Contains(t, err.Error(), "rotate: decrypt")
 }
 
-// ─── HasSuccessfulRunAtTopologyVersion ───────────────────────────────────────
-
-func TestHasSuccessfulRunAtTopologyVersion_false_when_no_runs(t *testing.T) {
-	s := newTestStore(t)
-	_, projectID, _ := scaffoldTopology(t, s)
-
-	has, err := s.HasSuccessfulRunAtTopologyVersion(projectID, 1)
-	require.NoError(t, err)
-	assert.False(t, has)
-}
-
-func TestHasSuccessfulRunAtTopologyVersion_true_after_success(t *testing.T) {
-	s := newTestStore(t)
-	_, projectID, _ := scaffoldTopology(t, s)
-	c, err := s.CreateCase(projectID)
-	require.NoError(t, err)
-
-	run, err := s.CreateRun(c.ID, 1, "main")
-	require.NoError(t, err)
-	now := time.Now()
-	require.NoError(t, s.UpdateRunStatus(run.ID, "SUCCESS", &now, "abc"))
-
-	has, err := s.HasSuccessfulRunAtTopologyVersion(projectID, 1)
-	require.NoError(t, err)
-	assert.True(t, has)
-}
-
 // ─── DeleteFlaggedCases / PruneEventLogs ──────────────────────────────────────
 
 func TestDeleteFlaggedCases_removes_deleted_cases(t *testing.T) {

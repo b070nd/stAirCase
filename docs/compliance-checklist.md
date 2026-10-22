@@ -243,7 +243,7 @@
 ### Dependency (2)
 | Gate | Severity | Status |
 |---|---|---|
-| `deps.deps_completed` | WARN | ✅ Checks upstream projects have SUCCESS run at **current** topology version |
+| `deps.deps_completed` | WARN | ✅ Checks upstream projects have a **delivered** run (read from its verified history) at the **current** topology version |
 | `deps.no_cycle` | BLOCK | ✅ DAG cycle detection |
 
 ---

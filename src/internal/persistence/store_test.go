@@ -572,48 +572,6 @@ func TestKillStaleRuns_skips_completed(t *testing.T) {
 	assert.Equal(t, int64(0), n, "SUCCESS run must not be killed")
 }
 
-// ─── HasSuccessfulRunAtTopologyVersion ────────────────────────────────────────
-
-func TestHasSuccessfulRunAtTopologyVersion_no_runs_returns_false(t *testing.T) {
-	s := newTestStore(t)
-	_, pID, caseID := scaffold(t, s)
-	topo, _ := s.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
-
-	// Run exists but is still RUNNING (not SUCCESS).
-	s.CreateRun(caseID, topo.Version, "main")
-
-	ok, err := s.HasSuccessfulRunAtTopologyVersion(pID, topo.Version)
-	require.NoError(t, err)
-	assert.False(t, ok, "RUNNING run must not satisfy the check")
-}
-
-func TestHasSuccessfulRunAtTopologyVersion_wrong_version_returns_false(t *testing.T) {
-	s := newTestStore(t)
-	_, pID, caseID := scaffold(t, s)
-	topo, _ := s.CreateSwarmTopology(pID, "sup", "memory", "langgraph") // v1
-
-	run, _ := s.CreateRun(caseID, topo.Version, "main")
-	s.UpdateRunStatus(run.ID, "SUCCESS", nil, "abc")
-
-	// Ask for v2 - which has never been run.
-	ok, err := s.HasSuccessfulRunAtTopologyVersion(pID, topo.Version+1)
-	require.NoError(t, err)
-	assert.False(t, ok, "SUCCESS run at v1 must not satisfy query for v2")
-}
-
-func TestHasSuccessfulRunAtTopologyVersion_matching_version_returns_true(t *testing.T) {
-	s := newTestStore(t)
-	_, pID, caseID := scaffold(t, s)
-	topo, _ := s.CreateSwarmTopology(pID, "sup", "memory", "langgraph")
-
-	run, _ := s.CreateRun(caseID, topo.Version, "main")
-	s.UpdateRunStatus(run.ID, "SUCCESS", nil, "abc")
-
-	ok, err := s.HasSuccessfulRunAtTopologyVersion(pID, topo.Version)
-	require.NoError(t, err)
-	assert.True(t, ok, "SUCCESS run at matching version must satisfy the check")
-}
-
 // ─── Secret unique constraint enforcement ─────────────────────────────────────
 
 func TestCreateSecret_duplicate_global_key_fails(t *testing.T) {

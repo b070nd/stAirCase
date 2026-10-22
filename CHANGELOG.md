@@ -198,6 +198,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A dependency counts as done only when a run of it was delivered.** The gate `deps.deps_completed` asked a status column ("a run of the
+  upstream project is SUCCESS at its current topology"), so a run row with no history and no commit satisfied it. It now reads each
+  run's verified history, the way the status commands do, and counts a run only when its outcome is delivered: a run that ended without
+  delivering, or delivered with incomplete evidence, does not, and a history that cannot be read is reported as unknown, naming the run,
+  never as satisfied. It is still a warning, and it still compares the topology version. What to do: nothing; a project that depends on
+  another one may see the warning where it saw none, and the message says why ([gates](docs/gates.md)).
 - **A change of several hundred files no longer makes its run unreadable.** The audit chain cut every entry at 64 KiB without a
   word, and an entry cut in the middle still hashes and verifies. The entries that list a change's files (a decision on a proposal
   of 700 files or more, the review an away run offers) pass that size, so the run's history was refused as "its payload is
