@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -183,6 +184,26 @@ func (g *GitRepo) IsClean() (bool, error) {
 		return false, err
 	}
 	return status.IsClean(), nil
+}
+
+// DirtyFiles lists what the checkout holds that its commit does not: the tracked files that changed (in the working tree or the index),
+// and the untracked files, each sorted. Ignored paths are not listed.
+func (g *GitRepo) DirtyFiles() (tracked, untracked []string, err error) {
+	status, err := g.w.Status()
+	if err != nil {
+		return nil, nil, err
+	}
+	for path, st := range status {
+		switch {
+		case st.Worktree == gogit.Untracked && st.Staging == gogit.Untracked:
+			untracked = append(untracked, path)
+		case st.Worktree != gogit.Unmodified || st.Staging != gogit.Unmodified:
+			tracked = append(tracked, path)
+		}
+	}
+	slices.Sort(tracked)
+	slices.Sort(untracked)
+	return tracked, untracked, nil
 }
 
 // ListBranches returns all local branch names that start with prefix.

@@ -33,6 +33,7 @@ import (
 // runState is one run, or one segment of it, while it goes: what its phases share. Each phase is a method; run calls them in the
 // order of the run's state machine. What a phase sets up for the rest of the run is undone by cleanup, in the reverse order.
 type runState struct {
+	dirty  *history.SourceDirty // what the source checkout held that the run does not have, when it held something
 	r      *Runner
 	ctx    context.Context
 	caseID int64

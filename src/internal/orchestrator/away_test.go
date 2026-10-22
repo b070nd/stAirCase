@@ -634,3 +634,58 @@ func TestAway_a_review_of_a_large_change_is_offered_whole(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, history.OutcomeAwaitingReview, st.Outcome, st.Why)
 }
+
+// TestRun_says_what_a_dirty_checkout_leaves_out (spec: real use): a worktree is made from a commit, so a checkout with uncommitted
+// work starts a run that does not have it. The warning names the files, tracked changes apart from untracked files, and says ignored
+// paths are not there either; the fact (the counts and a digest of the names) is on the chain, right after run_bound.
+func TestRun_says_what_a_dirty_checkout_leaves_out(t *testing.T) {
+	var r runtest.Result
+	out := stdoutOf(t, func() {
+		r = runtest.Run(t, runtest.Options{
+			Base: map[string]runtest.File{".gitignore": {Content: "vendor/\n", Mode: 0o644}, "src/Module.php": {Content: "<?php // committed\n", Mode: 0o644}},
+			Setup: func(s *persistence.Store, _ string, projectID int64) {
+				p, err := s.GetProject(projectID)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(filepath.Join(p.SourcePath, "src/Module.php"), []byte("<?php // edited\n"), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(p.SourcePath, "src/New.php"), []byte("<?php\n"), 0o644))
+				require.NoError(t, os.MkdirAll(filepath.Join(p.SourcePath, "vendor"), 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(p.SourcePath, "vendor/autoload.php"), []byte("<?php\n"), 0o644))
+			},
+			Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
+	})
+	require.NoError(t, r.Err)
+	assert.Contains(t, out, "has uncommitted changes; the agent works on commit")
+	assert.Contains(t, out, "tracked changes: src/Module.php")
+	assert.Contains(t, out, "untracked files: src/New.php")
+	assert.NotContains(t, out, "vendor/autoload.php", "an ignored path is not a change")
+	assert.Contains(t, out, "ignored paths", "it says ignored paths are not in the worktree")
+
+	types := r.Types()
+	require.Greater(t, len(types), 1)
+	assert.Equal(t, []string{"run_bound", "source_dirty"}, types[:2], "the fact follows the binding")
+	fact := payload(t, r, "source_dirty")
+	assert.EqualValues(t, 1, fact["tracked"])
+	assert.EqualValues(t, 1, fact["untracked"])
+	names := "M src/Module.php\n? src/New.php"
+	assert.Equal(t, sha256Of(names), fact["names_sha256"])
+	h, err := history.Read(r.Store, r.Run.ID)
+	require.NoError(t, err, "the history reads with the new entry")
+	require.NotNil(t, h.SourceDirty)
+	assert.Equal(t, 1, h.SourceDirty.Tracked)
+}
+
+// TestRun_a_clean_checkout_records_and_prints_nothing_new: nothing to say, nothing on the chain.
+func TestRun_a_clean_checkout_records_and_prints_nothing_new(t *testing.T) {
+	var r runtest.Result
+	out := stdoutOf(t, func() {
+		r = runtest.Run(t, runtest.Options{Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
+	})
+	require.NoError(t, r.Err)
+	assert.NotContains(t, out, "uncommitted")
+	assert.NotContains(t, r.Types(), "source_dirty")
+}
+
+func sha256Of(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}

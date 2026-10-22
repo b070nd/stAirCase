@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A run says exactly what a dirty checkout leaves out, and records that it did.** A run works on a copy of your last commit, so
+  uncommitted work is not in it. The warning already said so in one line; it now names the files, the tracked changes apart from the
+  untracked files (ten of each, then a count), and says that ignored paths such as `vendor/` are not in the copy either. The fact (the
+  counts and a digest of the names) is a new audit entry, `source_dirty`, written right after `run_bound` and only when there is
+  something to say. Older stAirCase versions read a chain that has it and ignore it. What to do: nothing
+  ([troubleshooting](docs/troubleshooting.md), [audit](docs/audit.md)).
+
 - **`staircase verify` reads the trusted key from a protected ref itself, so any CI system can run it (`--trust-ref`, `--key-path`,
   `--signers-path`).** The rule "never take the key from the change under test" was shell code inside the GitHub Action, so another
   CI had to rewrite it. `verify` now reads the key, and the allowed signers, from the ref you name with git, and refuses a ref that is,
