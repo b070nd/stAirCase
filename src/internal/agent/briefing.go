@@ -2,18 +2,23 @@ package agent
 
 import "github.com/b070nd/stAirCase/src/internal/orchestrator"
 
-// withContinuation is the agent's first message, with what a continued run tells a fresh session appended: the task as it
-// stood, built from the audit chain. A first segment has nothing to add.
-// An away run's brief (ADR 0008) comes first: how to work when nobody answers.
-func withContinuation(prompt string, env *orchestrator.AgentEnv) string {
-	if env == nil {
-		return prompt
+// briefing is the text an agent is told, composed in one place for every agent, the built-in runtime and the hosted harnesses alike. The
+// order is fixed: an away run's brief first (ADR 0008: how to work when nobody answers), then the task (the PRD, the stories and the
+// reviewers' lessons, as the plan compiled them), then what a continued run tells a fresh session (the task as it stood, built from
+// the audit chain; a first segment has nothing to add), then the tail the agent's own harness needs (its rules, the repository map).
+// An empty piece leaves no gap.
+func briefing(task string, env *orchestrator.AgentEnv, tail string) string {
+	text := task
+	if env != nil {
+		if env.Brief != "" {
+			text = env.Brief + "\n\n" + text
+		}
+		if env.Continuation != "" {
+			text += "\n\n" + env.Continuation
+		}
 	}
-	if env.Brief != "" {
-		prompt = env.Brief + "\n\n" + prompt
+	if tail != "" {
+		text += "\n\n" + tail
 	}
-	if env.Continuation == "" {
-		return prompt
-	}
-	return prompt + "\n\n" + env.Continuation
+	return text
 }

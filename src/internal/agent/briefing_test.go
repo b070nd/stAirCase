@@ -1,30 +1,19 @@
 package agent
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/stretchr/testify/assert"
 )
 
-// TestWithContinuation: a first segment's prompt is untouched; a continuation's is followed by what the audit chain says.
-func TestWithContinuation(t *testing.T) {
-	if got := withContinuation("task", &orchestrator.AgentEnv{}); got != "task" {
-		t.Errorf("a first segment's prompt changed: %q", got)
-	}
-	if got := withContinuation("task", nil); got != "task" {
-		t.Errorf("no env: %q", got)
-	}
-	got := withContinuation("task", &orchestrator.AgentEnv{Continuation: "you are continuing"})
-	if got != "task\n\nyou are continuing" {
-		t.Errorf("a continuation's prompt: %q", got)
-	}
-}
-
-// TestWithContinuation_puts_the_away_brief_first: an away run's brief comes before the task in the agent's first message.
-func TestWithContinuation_puts_the_away_brief_first(t *testing.T) {
-	got := withContinuation("add a test", &orchestrator.AgentEnv{Brief: "BRIEF"})
-	if !strings.HasPrefix(got, "BRIEF\n\n") || !strings.Contains(got, "add a test") {
-		t.Fatalf("got %q", got)
-	}
+// TestBriefing_order (one place composes what an agent is told): the away brief first, the task, what a continuation adds, then the
+// harness's own tail; a first segment's task is untouched and an empty piece leaves no gap.
+func TestBriefing_order(t *testing.T) {
+	assert.Equal(t, "task", briefing("task", &orchestrator.AgentEnv{}, ""), "a first segment's prompt is untouched")
+	assert.Equal(t, "task", briefing("task", nil, ""), "no env")
+	assert.Equal(t, "task\n\nyou are continuing", briefing("task", &orchestrator.AgentEnv{Continuation: "you are continuing"}, ""))
+	assert.Equal(t, "BRIEF\n\nadd a test", briefing("add a test", &orchestrator.AgentEnv{Brief: "BRIEF"}, ""), "an away run's brief comes first")
+	assert.Equal(t, "BRIEF\n\nTASK\n\nCONTINUATION\n\nRULES", briefing("TASK", &orchestrator.AgentEnv{Brief: "BRIEF", Continuation: "CONTINUATION"}, "RULES"))
+	assert.Equal(t, "TASK\n\nMAP", briefing("TASK", nil, "MAP"))
 }

@@ -171,7 +171,7 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		}
 	} else {
 		sid, resumed := sessionFor(env, "claude-code")
-		args = []string{"-p", withContinuation(c.Prompt, env), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+		args = []string{"-p", briefing(c.Prompt, env, ""), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 			"--output-format", "json"}
 		if resumed {
 			args = append(args, "--resume", sid)
