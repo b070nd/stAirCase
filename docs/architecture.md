@@ -81,7 +81,8 @@ move. The path a run took is recorded as its last audit event (`run_path`).
 | `blueprint` | blueprint parsing, snapshot hash, binding, plan-vs-blueprint check |
 | `policy` | auto-approval rules and limits (`policy.json`), drift supervisor |
 | `gate` | pre-run gates and plugin gates |
-| `persistence` | SQLite schema, migrations, store, event hash chain |
+| `persistence` | SQLite schema, migrations, store (the rows of the audit chain among them) |
+| `chain` | the audit chain's rule: entry hash, verification, the size one entry may have (ADR 0014) |
 | `crypto` | AES-256-GCM secrets, Ed25519 signing keys, secret scrubbing |
 | `audit` | signed checkpoints, Rekor anchoring |
 | `approvalhttp` | local HTTP approval API (`--approval-port`) |

@@ -1,0 +1,824 @@
+{
+ "about": "One entry for every shape of payload (event type and set of keys) the runs of stAirCase 1.1.x write, taken from the test suites of the code before ADR 0014 and sanitized (no local paths, names or keys). Its hashes are chain version 2 as the code before ADR 0014 computed them. Writers must reproduce each payload byte for byte, and the chain package must verify the chain.",
+ "entries": [
+  {
+   "id": 1,
+   "event_type": "agent_session",
+   "payload": "{\"agent\":\"stand-in\",\"id\":\"s1\",\"mode\":\"started\"}",
+   "event_hash": "d6b0bc935c9e988c8ac51b351ab8e22b0cd7dbb3b0bcb2343a554a97592b116a",
+   "hash_version": 2
+  },
+  {
+   "id": 2,
+   "event_type": "agent_unresponsive",
+   "payload": "{\"grace_seconds\":1,\"type\":\"agent_unresponsive\"}",
+   "event_hash": "82c3f7f6c46897a8b9117efa2812c7f59796827c55a0a7ac4fce0b22944e2405",
+   "hash_version": 2
+  },
+  {
+   "id": 3,
+   "event_type": "approval_content_mismatch",
+   "payload": "{\"detail\":\"approved sha256 7f8518f7db5e9a55049f49c4ea6d6e8f509695231e60cbd607bcb36c88a75a14, found a1621be95040239ee14362c16e20510ddc20f527d772d823b2a1679b33f5cd74\",\"file\":\"x.txt\",\"type\":\"approval_content_mismatch\"}",
+   "event_hash": "fbceba73586476f9ae84f75854aad19c73609ac6a6093f4a822e07025edf74b0",
+   "hash_version": 2
+  },
+  {
+   "id": 4,
+   "event_type": "approval_path_escape",
+   "payload": "{\"agent\":\"coder\",\"detail\":\"invalid path \\\"sub\\\": is a directory\",\"type\":\"approval_path_escape\"}",
+   "event_hash": "dddd46af734dfa208aaa97e63dfeeb3d0c8bcf747b2c79198255956c9bdff2f8",
+   "hash_version": 2
+  },
+  {
+   "id": 5,
+   "event_type": "awaiting_review",
+   "payload": "{\"delivery_refused\":\"condition 3 (nothing was parked): 1 proposal(s) were parked for you, and what is approved may depend on them\",\"files\":{\"docs/a.md\":\"8ecc5f94c57b05d6c5e0ee316bee4875427e1845bbeef3ead59df29c72aab36e\"},\"parked\":1,\"phase_checked\":\"ccab1e4a4e80bfb7ae538dcefd9e4c03e5e88f69178d793b3963ee9ac718748c\",\"tree\":\"ce5d8a6f4f143ff5a75e7243c956ce11ca67af4b\",\"type\":\"awaiting_review\"}",
+   "event_hash": "824fabed22b6e1e983fde619b580104ca1d83abc8d9cf5d91947adbcc0ee01ac",
+   "hash_version": 2
+  },
+  {
+   "id": 6,
+   "event_type": "awaiting_review",
+   "payload": "{\"files\":{},\"parked\":2,\"phase_checked\":\"ef00f959295b169a39753fc04a99e8749b267c35dbb2c22fec53f9531fea1d7d\",\"tree\":\"4b825dc642cb6eb9a060e54bf8d69288fbee4904\",\"type\":\"awaiting_review\"}",
+   "event_hash": "f7adcb9d4dd3ef78be7ffb4e9b632a070c7723143db09a446f41efaebd178f85",
+   "hash_version": 2
+  },
+  {
+   "id": 7,
+   "event_type": "certificate_failed",
+   "payload": "{\"commit\":\"89ad766adc7151166dea8ac18ebeefaad0fe52b2\",\"error\":\"mkdir /tmp/ws/audit: not a directory\",\"type\":\"certificate_failed\"}",
+   "event_hash": "01f25196c07b3075c2c578cd7c18ff03c1ff5f46d4d9329f56b5cd795fb742d7",
+   "hash_version": 2
+  },
+  {
+   "id": 8,
+   "event_type": "certificate_issued",
+   "payload": "{\"cal\":3,\"commit\":\"478c2eac52f70a665e83c8de79c689f53d1f5430\",\"envelope_sha256\":\"dbab61b312a1af554df524e67a6649b9045d7bca9562746dd06f01a08639c24a\",\"type\":\"certificate_issued\"}",
+   "event_hash": "64711290ca8f801967cb183308a5847dcfd309d94f8498f8a8ba9d721ef34568",
+   "hash_version": 2
+  },
+  {
+   "id": 9,
+   "event_type": "check_ran",
+   "payload": "{\"command\":\"true\",\"exit_code\":0,\"output_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"sandboxed\":true,\"type\":\"check_ran\"}",
+   "event_hash": "6b29a663929f9fbb6c75807405fef54ff7308009bfed3a079ec159ce97c25afc",
+   "hash_version": 2
+  },
+  {
+   "id": 10,
+   "event_type": "commit_prepared",
+   "payload": "{\"base\":\"03954df5c12e65651f5e94f605c0eb264f0bb94e\",\"branch\":\"staircase/run-1\",\"commit\":\"478c2eac52f70a665e83c8de79c689f53d1f5430\",\"tree\":\"efb3185903bf04e7e073fbd65d0663523c4a3032\",\"type\":\"commit_prepared\"}",
+   "event_hash": "f2fb276cd8419907dab005e3a68e7201cbb883f0c55fed7d3f5671590f12a266",
+   "hash_version": 2
+  },
+  {
+   "id": 11,
+   "event_type": "delivery_authorized",
+   "payload": "{\"files\":{\"docs/a.md\":\"874009709507be7cfc4886fec76cb2b8216499c974bc96452d22a5ee15b459c7\",\"docs/b.md\":\"2396099c6c084fa4b9beac9f0d52cf3be9cf8d47040ef127883d532b5790cd74\"},\"mode\":\"policy\",\"phase_checked\":\"d8af57ecdf6e9a56717803518de64f4edd7e006d95fb951993c7ce7b8faede28\",\"policy\":\"2c24c52e4b1f62c10b270c0d6f601d1e8dc58d15ffb99083a9c29b645b3f599a\",\"terms_sha256\":\"9f0f7f65417953a2f57a93ca2ae7ee45e55942ab766c75088a5a160c4454c693\",\"tree\":\"aae7ed8e0b11f2238fe270834fd2f308f9ae4f7d\",\"type\":\"delivery_authorized\"}",
+   "event_hash": "5b71eed7eebe4c22500735f27739748ee8f59ae098a85707e148b1031ede12d4",
+   "hash_version": 2
+  },
+  {
+   "id": 12,
+   "event_type": "done_checked",
+   "payload": "{\"attempt\":2,\"failed\":null}",
+   "event_hash": "4325441d13af9531e05de949f0206c67976f819e88d6284d2e7cedf3b6ada959",
+   "hash_version": 2
+  },
+  {
+   "id": 13,
+   "event_type": "drift_halt",
+   "payload": "{\"reason\":\"the run exceeded its 1 s limit\",\"type\":\"drift_halt\"}",
+   "event_hash": "1b240a55916a07ca857a80ba3fa313c3b681a04baa3dec699d3ecd4cbec13215",
+   "hash_version": 2
+  },
+  {
+   "id": 14,
+   "event_type": "drift_report",
+   "payload": "{\"report\":{\"scope_violations\":0,\"overrides\":0,\"auto_decided\":0,\"human_decided\":1},\"type\":\"drift_report\"}",
+   "event_hash": "7644d7e49b72f8981e880cbfbef525f05b1d8bd98e0b0b891b3a4c3dbdca2ee7",
+   "hash_version": 2
+  },
+  {
+   "id": 15,
+   "event_type": "evidence_failed",
+   "payload": "{\"commit\":\"89ad766adc7151166dea8ac18ebeefaad0fe52b2\",\"errors\":[\"ledger: mkdir /tmp/ws/audit: not a directory\",\"certificate: mkdir /tmp/ws/audit: not a directory\"],\"type\":\"evidence_failed\"}",
+   "event_hash": "235818935d4f5ae3b98cc94cc0b3865de604623163399b862ee9aa0005026a84",
+   "hash_version": 2
+  },
+  {
+   "id": 16,
+   "event_type": "initiator_signed",
+   "payload": "{\"principal\":\"dev@example.com\",\"signature\":\"c2ln\",\"type\":\"initiator_signed\"}",
+   "event_hash": "5fa61c0dae9f368cdbdfad10e65ea734e8a7c0e5556aaf45de83210a8313a55a",
+   "hash_version": 2
+  },
+  {
+   "id": 17,
+   "event_type": "launch_acknowledged",
+   "payload": "{\"attempt\":1,\"generation\":\"d05838cd91808f4076243b4a41f675a2\",\"type\":\"launch_acknowledged\"}",
+   "event_hash": "a7df0bad2331102008d2f9bef9a1c6b775d67a1cff93c63f7b9c1fdab3a31543",
+   "hash_version": 2
+  },
+  {
+   "id": 18,
+   "event_type": "launch_claimed",
+   "payload": "{\"attempt\":1,\"generation\":\"e974848cae45cd79255594e3fca82980\",\"segment\":1,\"type\":\"launch_claimed\"}",
+   "event_hash": "76d85152be7ab3452233ceb306a6e107307d6640aba7751673f7607c34789a11",
+   "hash_version": 2
+  },
+  {
+   "id": 19,
+   "event_type": "launch_ended",
+   "payload": "{\"attempt\":1,\"class\":\"storage\",\"generation\":\"de0c6ca91bf9df8a7125f3722eeb8cf5\",\"outcome\":\"exited\",\"type\":\"launch_ended\"}",
+   "event_hash": "1924656b13db1f81caf18d97a3ed03e3e7f3b31a6566615c8001f000482a1cfc",
+   "hash_version": 2
+  },
+  {
+   "id": 20,
+   "event_type": "launch_ended",
+   "payload": "{\"attempt\":1,\"generation\":\"e974848cae45cd79255594e3fca82980\",\"outcome\":\"exited\",\"type\":\"launch_ended\"}",
+   "event_hash": "761f947078d481e7183e5ee9d5f770cbf9e2b612725ef15d584c9f47f151fa8d",
+   "hash_version": 2
+  },
+  {
+   "id": 21,
+   "event_type": "phase_checked",
+   "payload": "{\"checks\":[{\"command\":\"true\",\"exit_code\":0,\"sandboxed\":false,\"output_sha256\":\"\"}],\"failed\":\"\",\"passed\":true,\"tree\":\"t1\",\"type\":\"phase_checked\"}",
+   "event_hash": "275b065da80edde452d3f49fd762a7957e47f4787ea4425d3047b7f60f64096f",
+   "hash_version": 2
+  },
+  {
+   "id": 22,
+   "event_type": "policy_snapshot",
+   "payload": "{\"digest\":\"\",\"signed\":false,\"type\":\"policy_snapshot\"}",
+   "event_hash": "574ba4121e6657fb6e365c806fae68ab6efb6947454e137d9017da59fe2a8411",
+   "hash_version": 2
+  },
+  {
+   "id": 23,
+   "event_type": "recovery_repaired",
+   "payload": "{\"commit\":\"d494af2d0856a408e8b422968abdd5371fa3367a\",\"evidence_errors\":null,\"type\":\"recovery_repaired\"}",
+   "event_hash": "000ed3308b1ee1115735e7b1f006f83ae95499aa5dbc1b086e632d98268bee09",
+   "hash_version": 2
+  },
+  {
+   "id": 24,
+   "event_type": "review_accepted",
+   "payload": "{\"awaiting_review\":\"376641cc54cae4e979f768b40c3fe10b629b4f2f54af18f533d05e6e755cb341\",\"empty\":true,\"feedback\":\"\",\"tree\":\"4b825dc642cb6eb9a060e54bf8d69288fbee4904\",\"type\":\"review_accepted\"}",
+   "event_hash": "a0ad345a62670e1dc3233188b23f7a621360d32c971a46f664a904ee886d9bc8",
+   "hash_version": 2
+  },
+  {
+   "id": 25,
+   "event_type": "review_accepted",
+   "payload": "{\"awaiting_review\":\"5475009188592663f8cc214613a10ab015673b8add8afe72336dc5281e36bb27\",\"feedback\":\"\",\"tree\":\"153ca0673028530c58211be749d0f2edce8a7e45\",\"type\":\"review_accepted\"}",
+   "event_hash": "df85a7ed54f1e91d7ce462cf5450e5c44201bc6d633e01b437718cbda911047f",
+   "hash_version": 2
+  },
+  {
+   "id": 26,
+   "event_type": "review_delivered",
+   "payload": "{\"commit\":\"78237271a1b70a33d570940847d78b1396c51a14\",\"evidence_errors\":null,\"final_review\":false,\"forced\":false,\"proposals\":1,\"type\":\"review_delivered\"}",
+   "event_hash": "b0931030246e2926614549e12ed47719660e5f77582e3d7aa1e327e722ec4017",
+   "hash_version": 2
+  },
+  {
+   "id": 27,
+   "event_type": "review_rejected",
+   "payload": "{\"awaiting_review\":\"e19c6c77ef2e23cb6f7100991456bd005aa7cc3f2d45a5d299f0db7dc25e2edf\",\"feedback\":\"\",\"type\":\"review_rejected\"}",
+   "event_hash": "d00aefecfe535862e4a8e451d70b90cf8507e03ba875a9513e0a46bb93c6067f",
+   "hash_version": 2
+  },
+  {
+   "id": 28,
+   "event_type": "rolled_back",
+   "payload": "{\"actor\":\"dev\",\"branch\":\"staircase/run-1\",\"type\":\"rolled_back\"}",
+   "event_hash": "82ca5a840c822cda27434a7ce18ff8383a43b9f9881b94bd9f4f882ddedf9828",
+   "hash_version": 2
+  },
+  {
+   "id": 29,
+   "event_type": "run_bound",
+   "payload": "{\"ack_drift\":1,\"base_sha\":\"69a738a66b9481bb32584534859566143a7e7e36\",\"branch\":\"staircase/run-2\",\"terms_sha256\":\"2430f1a2ad2982d0067885488a4c89e21ad1d7c83b115ba8f1b20acc88dfaea8\",\"topology_version\":1,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-2\"}",
+   "event_hash": "fc1481268557004db62f736178a557d4467cdb85cec19d9da0a390a2b8c05b7b",
+   "hash_version": 2
+  },
+  {
+   "id": 30,
+   "event_type": "run_bound",
+   "payload": "{\"away_brief\":{\"version\":1,\"sha256\":\"c600d13b94306db9ef96e2a8db85f0a152b5b1febd39bb2fb94ee2754d95cf64\"},\"away_commands\":{\"commands\":[\"sh gen.sh\"],\"sha256\":\"7516da3ecd45b5866e800a49f6abad5896f4cfc6d655962e7b0e38eb7c307e01\"},\"base_sha\":\"1f7da35e43b640ac902418aa19d34a32ec4a632f\",\"branch\":\"staircase/run-1\",\"terms_sha256\":\"655728f463116d5dc154d94708f9c4e1919d8d68dafa5e8da3bb931e72df6db2\",\"topology_version\":1,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "8dde406fdf346a10bb333163215ae137ae3ea62f8296599c5216d1b8d0c8bd35",
+   "hash_version": 2
+  },
+  {
+   "id": 31,
+   "event_type": "run_bound",
+   "payload": "{\"away_brief\":{\"version\":1,\"sha256\":\"c600d13b94306db9ef96e2a8db85f0a152b5b1febd39bb2fb94ee2754d95cf64\"},\"away_tools\":{\"tools\":[\"mcp__probe__ok\"],\"sha256\":\"05cc3a6d2369abe64064c6407d0f5b550b4bf1c7b2e3ecf026f6b4006bb76e3c\"},\"base_sha\":\"83c6db821c1765d0c3e8c1b54e1db2ce4297e028\",\"branch\":\"staircase/run-1\",\"terms_sha256\":\"e63afac8ce600de3c9e04fc17769328c204ea21b82201e75a7f75e69a38fde96\",\"topology_version\":1,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "a0bc1cc712cdbb014768e881e3b715526492875ceffa0b1acce5ba82305a83f8",
+   "hash_version": 2
+  },
+  {
+   "id": 32,
+   "event_type": "run_bound",
+   "payload": "{\"away_brief\":{\"version\":1,\"sha256\":\"c600d13b94306db9ef96e2a8db85f0a152b5b1febd39bb2fb94ee2754d95cf64\"},\"base_sha\":\"83c6db821c1765d0c3e8c1b54e1db2ce4297e028\",\"branch\":\"staircase/run-1\",\"terms_sha256\":\"3af8f1c15fb9a652e1720030c6ad8ebdba8ae8f9d0d4820c6327cc79e93a5fcf\",\"topology_version\":1,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "b8d77db132f5c72c0474787dd9399a9fa4d6fc75b7a6517e52648392b11f6248",
+   "hash_version": 2
+  },
+  {
+   "id": 33,
+   "event_type": "run_bound",
+   "payload": "{\"away_brief\":{\"version\":1,\"sha256\":\"c600d13b94306db9ef96e2a8db85f0a152b5b1febd39bb2fb94ee2754d95cf64\"},\"base_sha\":\"ce8ac3781596d159ce3efca6c452f40cd5c54760\",\"branch\":\"staircase/run-2\",\"harness\":\"claude-code\",\"plan_digest\":\"cfc163b0737fe2f77b84851e8dcec407fa82c611c116b4d7dbc5a905e04e2b03\",\"resumes_run\":1,\"resumes_session\":\"44444444-2222-3333-4444-555555555555\",\"terms_sha256\":\"b05544cd2b279e0f0de5e03d31d617ddfb1694d6ce3b9c395e21a5ac2c882384\",\"topology_version\":0,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-2\"}",
+   "event_hash": "70c49a13872ddf81f05741d5a8cbcbb1fdf1366e62ac384922c766d243302f87",
+   "hash_version": 2
+  },
+  {
+   "id": 34,
+   "event_type": "run_bound",
+   "payload": "{\"away_brief\":{\"version\":1,\"sha256\":\"c600d13b94306db9ef96e2a8db85f0a152b5b1febd39bb2fb94ee2754d95cf64\"},\"base_sha\":\"f3eb0a0e914cc32bf14e6c16c7267a2e1f0db82c\",\"branch\":\"staircase/run-1\",\"harness\":\"claude-code\",\"plan_digest\":\"befd32e493ec0f9574a79379c53a50a58a0e1c64749b18a8818f34642300e01b\",\"terms_sha256\":\"b05544cd2b279e0f0de5e03d31d617ddfb1694d6ce3b9c395e21a5ac2c882384\",\"topology_version\":0,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "26bfda46e64786672948af2cc88938d8e189d0f39b9754bdfc71adddcdfe4f93",
+   "hash_version": 2
+  },
+  {
+   "id": 35,
+   "event_type": "run_bound",
+   "payload": "{\"base_sha\":\"3eeacf91844429ac32a1cb0b7cef9a51346e88d4\",\"branch\":\"staircase/run-1\",\"harness\":\"claude-code\",\"plan_digest\":\"p1an\",\"terms_sha256\":\"3aa48caca2bfa52f31b6a7f69ce4768b3216c8418d3f60d4d16ecdccd10ba79e\",\"topology_version\":0,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "6cc23a5febeaba04ac061eced735d3185f8ffc81141b3aa266d322e8eff76447",
+   "hash_version": 2
+  },
+  {
+   "id": 36,
+   "event_type": "run_bound",
+   "payload": "{\"base_sha\":\"7cc123014c1a2e662ef82fe0b26a6ce2c9f67cc7\",\"branch\":\"staircase/run-1\",\"harness\":\"codex\",\"terms_sha256\":\"2430f1a2ad2982d0067885488a4c89e21ad1d7c83b115ba8f1b20acc88dfaea8\",\"topology_version\":0,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "047f5c379ce37bd3c1062e1aadf8c1bb4824f5ea1f1e82c97daa9a75ab677f07",
+   "hash_version": 2
+  },
+  {
+   "id": 37,
+   "event_type": "run_bound",
+   "payload": "{\"base_sha\":\"b\",\"branch\":\"staircase/run-1\"}",
+   "event_hash": "824d74f32ea4ba3b703fc1226045464aefafa559a358bafdfa57586c51767ac6",
+   "hash_version": 2
+  },
+  {
+   "id": 38,
+   "event_type": "run_bound",
+   "payload": "{\"base_sha\":\"b\"}",
+   "event_hash": "9609d9efaf53a3c8ac8fd15498f0527ca88bf6a58147c775e7ca35085f825534",
+   "hash_version": 2
+  },
+  {
+   "id": 39,
+   "event_type": "run_bound",
+   "payload": "{\"base_sha\":\"base\",\"branch\":\"refs/heads/staircase/run-1\",\"terms_sha256\":\"T\",\"topology_version\":0,\"type\":\"run_bound\",\"worktree\":\"\"}",
+   "event_hash": "9970f850d4fe882e4bb76a7c4a9dc943c3a314cf4509a9a133256c2fa57455b5",
+   "hash_version": 2
+  },
+  {
+   "id": 40,
+   "event_type": "run_bound",
+   "payload": "{\"base_sha\":\"da5ee5f98eec50c37cfbc10669943b0bd0a8e210\",\"blueprint_hash\":\"b1u3\",\"branch\":\"staircase/run-1\",\"plan_digest\":\"d1g35t\",\"terms_sha256\":\"2430f1a2ad2982d0067885488a4c89e21ad1d7c83b115ba8f1b20acc88dfaea8\",\"topology_version\":1,\"type\":\"run_bound\",\"worktree\":\"/tmp/ws/run-1\"}",
+   "event_hash": "bbeebfda16b10bb75fadd533bf792a09640c469e1783cb8c4e76e1bae5ac4786",
+   "hash_version": 2
+  },
+  {
+   "id": 41,
+   "event_type": "run_branch_moved",
+   "payload": "{\"detail\":\"HEAD is d934f9abf48f1b4129c7c2ae3a674b47e6306aab, not the base commit 995806e69fd9f06d9a4b29c99944cb630628d461\",\"type\":\"run_branch_moved\"}",
+   "event_hash": "6324dddecc6309c166b0a1270254d29e850f37440199996f696a7bb47b9bf935",
+   "hash_version": 2
+  },
+  {
+   "id": 42,
+   "event_type": "run_path",
+   "payload": "{\"phases\":[\"PRE_FLIGHT\",\"BRANCH_CREATE\",\"BRANCH_RESTORE\"],\"status\":\"FAILED\",\"type\":\"run_path\"}",
+   "event_hash": "23e21fc9ab29d3cb0008a1a6514d9d643a3b3ad1d32bb0a64ff5bea4c3297a0e",
+   "hash_version": 2
+  },
+  {
+   "id": 43,
+   "event_type": "run_recovered",
+   "payload": "{\"commit\":\"46c5fdf9c51615ffafb990209d5cde0c7be1057d\",\"evidence_errors\":null,\"final_review\":true,\"forced\":false,\"proposals\":2,\"type\":\"run_recovered\"}",
+   "event_hash": "4768911da5235d43a5c1bb642202d7124da7d4b000c822584d5539b37ee7be0d",
+   "hash_version": 2
+  },
+  {
+   "id": 44,
+   "event_type": "run_resumed",
+   "payload": "{\"ack_drift\":false,\"ack_unknown\":1,\"approvals\":[{\"seq\":1,\"source\":\"policy\",\"request_sha256\":\"c1497892ee8de022f5197599bf3409064bfcbdddba792e8aa6d1c865e327e6b0\"}],\"context\":\"fresh_grounded\",\"elapsed_secs\":0,\"generation\":\"d422b78d798df01f03e81686b9ccf059aad1d269077960b59973f6eaf92cd43d\",\"next_seq\":2,\"plan_digest\":\"\",\"policy\":\"2c24c52e4b1f62c10b270c0d6f601d1e8dc58d15ffb99083a9c29b645b3f599a\",\"segment\":2,\"type\":\"run_resumed\",\"undecided_requests\":0}",
+   "event_hash": "a45cc2074880e23ccd6d05d5bffd8a3eecd5a6693752776ca7d0b3f49db1ae0b",
+   "hash_version": 2
+  },
+  {
+   "id": 45,
+   "event_type": "run_resumed",
+   "payload": "{\"ack_drift\":false,\"approvals\":[{\"seq\":1,\"source\":\"evidence\",\"request_sha256\":\"6327f2b4a2951c42ee12573010ef53f940f3e21d34f5ac7eef4646123c764039\"}],\"context\":\"native_resume\",\"elapsed_secs\":0,\"generation\":\"68f0bda817300cf5c3903a0ca6160f0bc1ec0f748214ce4eece2fbbe6ecb5cb6\",\"next_seq\":2,\"plan_digest\":\"6afa7b418f092849fdea5677d3ca197b633f0a690f2c0c704f127d70d26603af\",\"policy\":\"\",\"segment\":2,\"type\":\"run_resumed\",\"undecided_requests\":0,\"withdrew_review\":\"fca3abd4b238389e8f7f0338eb230a80d8e41a0050c25672e291c9abedadbf69\"}",
+   "event_hash": "ed2d28c23959c8433226323ddb7c356a8ad7e5b32ec66973800350623cac10a9",
+   "hash_version": 2
+  },
+  {
+   "id": 46,
+   "event_type": "run_resumed",
+   "payload": "{\"ack_drift\":false,\"approvals\":[{\"seq\":1,\"source\":\"policy\",\"request_sha256\":\"c1497892ee8de022f5197599bf3409064bfcbdddba792e8aa6d1c865e327e6b0\"}],\"context\":\"fresh_grounded\",\"elapsed_secs\":0,\"generation\":\"4c30f01ceae785263bde017a63f41e91943cc343126f61e164d294f77fb23079\",\"journal_dropped\":1,\"next_seq\":2,\"plan_digest\":\"\",\"policy\":\"2c24c52e4b1f62c10b270c0d6f601d1e8dc58d15ffb99083a9c29b645b3f599a\",\"segment\":2,\"type\":\"run_resumed\",\"undecided_requests\":0}",
+   "event_hash": "318788dfb9d9b4a9e0aca35956f7f9d8319063ca53a1ab4457a785d882c25862",
+   "hash_version": 2
+  },
+  {
+   "id": 47,
+   "event_type": "run_resumed",
+   "payload": "{\"ack_drift\":true,\"approvals\":[],\"context\":\"fresh_grounded\",\"elapsed_secs\":0,\"generation\":\"0fbadb625ce96252cb9347505333353855dab90c1882c9a40e40aa115d978645\",\"next_seq\":3,\"plan_digest\":\"\",\"policy\":\"fdc2ab7dfacf421c8c731ebbf16d0b74fda76a98378c33dcfa1aee7d3a91859f\",\"segment\":2,\"type\":\"run_resumed\",\"undecided_requests\":0}",
+   "event_hash": "dc28edeee0a8f34b137c819cb52a4b79850c0aa61c1836e5cf164e2c4c1b877d",
+   "hash_version": 2
+  },
+  {
+   "id": 48,
+   "event_type": "shell_exec_rejected",
+   "payload": "{\"type\":\"yield_request\",\"agent_name\":\"coder\",\"action_type\":\"shell_exec\",\"proposed_edits\":[{\"file\":\".\",\"search_block\":\"(shell)\",\"replace_block\":\"rm -rf /\"}],\"reasoning_trace\":\"\",\"confidence_score\":0}",
+   "event_hash": "3afffbe0da4422d14dd27ec2907eefead7a68fa7ca14a99d3aee7e3a435ed5be",
+   "hash_version": 2
+  },
+  {
+   "id": 49,
+   "event_type": "shell_ran",
+   "payload": "{\"agent\":\"coder\",\"command\":\"ls ../..\",\"sandboxed\":true}",
+   "event_hash": "c4613b47814758c1c378c6e7f7829f193e1cdb9b23c9d8c467ceea047329c616",
+   "hash_version": 2
+  },
+  {
+   "id": 50,
+   "event_type": "signal_rated",
+   "payload": "{\"cost_usd\":0,\"kind\":\"feature\",\"model\":\"laya\",\"risky\":0.9,\"serves_story\":0.9,\"type\":\"signal_rated\"}",
+   "event_hash": "74bf83b2b1bfa63ca6f74095e92c46cdc0424cacb0c917b978378bee8122b4ef",
+   "hash_version": 2
+  },
+  {
+   "id": 51,
+   "event_type": "signal_rated",
+   "payload": "{\"error\":\"laya: HTTP 429: \",\"model\":\"laya\",\"type\":\"signal_rated\"}",
+   "event_hash": "c46784317f1c7f3e98fb79f394759345288537d3734a45a9b6b7b7063bef4710",
+   "hash_version": 2
+  },
+  {
+   "id": 52,
+   "event_type": "state_emit",
+   "payload": "{\"active_agent\":\"codex\",\"state\":{\"model\":\"codex\",\"input_tokens\":0,\"output_tokens\":0,\"has_tool_calls\":false},\"type\":\"state_emit\"}",
+   "event_hash": "8626343fb4e131482f64e59debe68421947ac77a2d80725f7397c767e8dfb121",
+   "hash_version": 2
+  },
+  {
+   "id": 53,
+   "event_type": "state_emit",
+   "payload": "{\"node\":\"worker\",\"state\":\"done\"}",
+   "event_hash": "596373414f772f2bdc0fa16b279e8daef8457f75da4323cb071c34d4981a65ff",
+   "hash_version": 2
+  },
+  {
+   "id": 54,
+   "event_type": "state_emit",
+   "payload": "{\"step\":0}",
+   "event_hash": "257662d68df1212e9f821012c751181c5ad1afb88f01542406fbaa05757db17a",
+   "hash_version": 2
+  },
+  {
+   "id": 55,
+   "event_type": "state_emit",
+   "payload": "{\"x\":1}",
+   "event_hash": "91c6913ae5c455d58548e69d529bd4886d753c963c984e3d6c942bae73539e5a",
+   "hash_version": 2
+  },
+  {
+   "id": 56,
+   "event_type": "state_emit",
+   "payload": "{}",
+   "event_hash": "82e360f397e47df54b2c248e54b2b5d2004fbbcb12c91a30e1ce95dab5fa3ffd",
+   "hash_version": 2
+  },
+  {
+   "id": 57,
+   "event_type": "task_agreed",
+   "payload": "{\"by\":\"--yes\",\"plan_digest\":\"befd32e493ec0f9574a79379c53a50a58a0e1c64749b18a8818f34642300e01b\",\"type\":\"task_agreed\"}",
+   "event_hash": "8a55cc42e051b639e7ccfb956c9d4d0abada408c22d8e8daa355a22236426303",
+   "hash_version": 2
+  },
+  {
+   "id": 58,
+   "event_type": "task_agreed",
+   "payload": "{\"by\":\"scenarios\",\"type\":\"task_agreed\"}",
+   "event_hash": "46f6861f471cf62fe3695149d4aaaf603836442758d8317f4d54174c5690364e",
+   "hash_version": 2
+  },
+  {
+   "id": 59,
+   "event_type": "unapproved_worktree_change",
+   "payload": "{\"detail\":\"index '?', worktree '?'\",\"file\":\"link\",\"type\":\"unapproved_worktree_change\"}",
+   "event_hash": "f364c0600b67cb4ae6ba4b2adce246d51f6beba693282e4a7fc02f6d77bdfbf2",
+   "hash_version": 2
+  },
+  {
+   "id": 60,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"adopts\":2,\"agent\":\"staircase\",\"approved\":true,\"base_sha\":\"7f21f7656d8ab414394406a54303d4d5f306943c\",\"feedback\":\"adopted by the owner after a prototype\",\"files\":{\"elsewhere.txt\":\"d6ae646a4753f7b3b2421bad8f0f461eb0648ff76fb1ff868d5b1a60c21dba3f\"},\"paths\":[\"elsewhere.txt\"],\"request_entry\":\"96de7ab521b534559e9132db87140f4abacad4afe23ab1c10f9e0ff98088e991\",\"request_sha256\":\"f681cdd7ced51692fcbe3e1a82335766414dd8d68f3b81e76639f8ff96b48095\",\"seq\":3,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "eb7d45c33a1ac476e0954cac708d61524be1c4bf88b20fde570675d2a9344d4d",
+   "hash_version": 2
+  },
+  {
+   "id": 61,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"\",\"approved\":false,\"base_sha\":\"\",\"feedback\":\"\",\"parked_why\":\"it needs a person's decision\",\"paths\":[\"docs/b.md\"],\"request_sha256\":\"r\",\"seq\":2,\"source\":\"parked\",\"type\":\"yield_decided\"}",
+   "event_hash": "6ab66c148adc6ceef4d4e4694694714c5edeacfc3d7f83e9aaf813facd11a684",
+   "hash_version": 2
+  },
+  {
+   "id": 62,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"\",\"approved\":false,\"base_sha\":\"\",\"feedback\":\"\",\"paths\":[\"docs/a.md\"],\"request_sha256\":\"r\",\"seq\":1,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "a8b6ce02d48e2aea30d173fd9e9e4c243b93805d65c66d29e27a6d3beb0f5c93",
+   "hash_version": 2
+  },
+  {
+   "id": 63,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"\",\"approved\":true,\"base_sha\":\"\",\"feedback\":\"\",\"files\":{\"src/a.go\":\"d-src/a.go\"},\"paths\":[\"src/a.go\"],\"request_sha256\":\"r\",\"seq\":1,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "1d8910699eacf349aca8fe31bb90883ceb4ef980a4d972b4bb5ce34ab72a7e8a",
+   "hash_version": 2
+  },
+  {
+   "id": 64,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"agent\",\"approved\":false,\"base_sha\":\"bf3ecdc3f3843e01f8f7ecc1f5efc07690437a91\",\"decide_ms\":0,\"drift\":\"outside the stories' scope: go.mod\",\"feedback\":\"answered by the scenario\",\"guard\":\"it changes dependencies (go.mod)\",\"lines\":1,\"paths\":[\"go.mod\"],\"request_entry\":\"275a964b5c52ca82dc00f6d96b558598ea0459b02643baf2d7349311e1d445c2\",\"request_sha256\":\"096e0e86198da67da968ad1aa4c71764bb405bca02b7189e42c839df579bb760\",\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "99e37c28abae18e617c8a98a2917d95f92206ba6fb6095c13d56590c63a1afaf",
+   "hash_version": 2
+  },
+  {
+   "id": 65,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"agent\",\"approved\":false,\"base_sha\":\"df888d36fab7051070ae5206a1435a4f147d130e\",\"decide_ms\":0,\"feedback\":\"answered by the scenario\",\"guard\":\"it writes what looks like a secret (notes.md)\",\"lines\":1,\"paths\":[\"notes.md\"],\"request_entry\":\"71458e3c88fc99237024fc2b440dd9e116e12c88a5b4dfbcbfe9921ace39b954\",\"request_sha256\":\"76a22abe39cdd3fd577b845824feb8cf9bedfadccd1ebb184c587aa24a2f2fc2\",\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "45120f31d73feec4c9520ca06ff36ffe3d180c82adb074565cde2cae227dfb67",
+   "hash_version": 2
+  },
+  {
+   "id": 66,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"12fee6f4fa02db5d7410bc265c295e5e7876cb21\",\"feedback\":\"parked for the owner, who is away: it changes Makefile, a sensitive path: a person decides, whatever the policy says. It is kept for their review; do not propose it again. Go on with what you can do without it.\",\"parked_why\":\"it changes Makefile, a sensitive path: a person decides, whatever the policy says\",\"paths\":[\"Makefile\"],\"request_entry\":\"4368f8c8289241f0f5e4bc2dd9980a3f29ab04f6f9e4e10787e866378635f0f1\",\"request_sha256\":\"b3bd03ce96a2e0012a77640217795220b4ad95615e28ab66cc26916bb94c973c\",\"seq\":3,\"source\":\"parked\",\"type\":\"yield_decided\"}",
+   "event_hash": "b493b6816b49566a8b05626ce98b614d24668afae4ac4769def067dd8cf0d28a",
+   "hash_version": 2
+  },
+  {
+   "id": 67,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"1f7da35e43b640ac902418aa19d34a32ec4a632f\",\"feedback\":\"parked for the owner, who is away: it changes src/tests/one, which holds the definition of a check: a person decides, whatever the policy says. It is kept for their review; do not propose it again. Go on with what you can do without it.\",\"parked_why\":\"it changes src/tests/one, which holds the definition of a check: a person decides, whatever the policy says\",\"paths\":[\"src/tests/one\"],\"request_entry\":\"bf683a06fe4d44c8e94572322299e50eacb078d20207658ac7ad76b1d3b7e49e\",\"request_sha256\":\"a7564cfe9ce130df18292bc8e1a3d8d01507725320db7fa01e685421deb86b3c\",\"review_after\":true,\"sandboxed\":true,\"seq\":2,\"source\":\"parked\",\"type\":\"yield_decided\"}",
+   "event_hash": "31dae5f0a87f59c4bc63a8213ad50ed02fe2001befc3193cf3260c35585467c2",
+   "hash_version": 2
+  },
+  {
+   "id": 68,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"25e3e4ac4ecd254e089a991b72843b3c493dcff7\",\"feedback\":\"review: no\",\"paths\":[\"a.txt\"],\"request_entry\":\"c555a911d9b1c8a0ac0feb769b17ffc454eba93a9b705ca4746910402eda74e6\",\"request_sha256\":\"67e89cc06713527095ebe8c0e824f165c48f924fe3c5d245fdfb91e0b3e1e191\",\"seq\":2,\"source\":\"validator:review/model\",\"type\":\"yield_decided\",\"validator_state\":{\"approvals\":0,\"reject_run\":1,\"unreviewed\":false}}",
+   "event_hash": "0f75cea78f3a6924fda4820f3f9882215344296831106084324f35fcc8380955",
+   "hash_version": 2
+  },
+  {
+   "id": 69,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"321e1ba45875a52776759c6d5262ba5b3eb720b6\",\"evidence\":{},\"feedback\":\"review: no\",\"paths\":[\"src/b.txt\"],\"request_entry\":\"4ef8f813624afd91a84cba2c653e1fd4bd24ff1760796326ca22a72cfcef4731\",\"request_sha256\":\"fc4ee0a5f928e109eca635c4dd116b754daac4fc0dc0d37005630367410d440e\",\"seq\":2,\"source\":\"validator:review/model\",\"type\":\"yield_decided\",\"validator_state\":{\"approvals\":1,\"reject_run\":1,\"unreviewed\":true}}",
+   "event_hash": "66386b8fc9d4f9cfb60442e6182ebbe817ba26c272971f02e70c5cbac7e06973",
+   "hash_version": 2
+  },
+  {
+   "id": 70,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"3eeacf91844429ac32a1cb0b7cef9a51346e88d4\",\"decide_ms\":14,\"feedback\":\"a signed decision is required: sign the decision_payload of the request with your SSH key\",\"lines\":1,\"paths\":[\"GREETING.md\"],\"request_entry\":\"67f360d1f401c0496cc2d14832802524ce2ba3b67e8a39239fbbcc058e8d2abf\",\"request_sha256\":\"2e2e80e9541c7055209c5642856ee0357b5f0c9cc7008ff4fd0f8b137c3d4d6a\",\"seq\":1,\"signature_refused\":\"a signed decision is required: sign the decision_payload of the request with your SSH key\",\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "71ba72aa83c3863f640432f07881106e0ee7e2ebb7234bde63179daeea540839",
+   "hash_version": 2
+  },
+  {
+   "id": 71,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"3eeacf91844429ac32a1cb0b7cef9a51346e88d4\",\"decide_ms\":33,\"feedback\":\"by script\",\"key\":\"SHA256:gGPw5iElrTMvYf1OR9n7ZA8ces0ESDxvO+9h1JJxHjM\",\"lines\":1,\"paths\":[\"GREETING.md\"],\"request_entry\":\"f69f00ca5f5862b584efc17a86b4440e4843c2b7970402ae541fe2c4c865d40f\",\"request_sha256\":\"2e2e80e9541c7055209c5642856ee0357b5f0c9cc7008ff4fd0f8b137c3d4d6a\",\"seq\":1,\"signature\":\"LS0tLS1CRUdJTiBTU0ggU0lHTkFUVVJFLS0tLS0KVTFOSVUwbEhBQUFBQVFBQUFETUFBQUFMYzNOb0xXVmtNalUxTVRrQUFBQWdBVmp4MW4zUVdySlVZQ1NaMnExelVVVk82cwpDaXFEdW45RnI2UWsxWllKc0FBQUFTYzNSaGFYSmpZWE5sTFdSbFkybHphVzl1QUFBQUFBQUFBQVp6YUdFMU1USUFBQUJUCkFBQUFDM056YUMxbFpESTFOVEU1QUFBQVFGYmNEL3o0WE5lZ1ZhTmZmVHBmcXNybWtpdmdjT1JJNjlWS2tzMGk2L2MxS2MKbTlOTE01VEFxV1hPSTZrUThxcFlnZGZUd0JIdDBab3B0TWRMTWxpUXM9Ci0tLS0tRU5EIFNTSCBTSUdOQVRVUkUtLS0tLQo=\",\"signed_by\":\"alice@example.com\",\"signed_text\":\"staircase-decision-v1\\nrun=1\\nnonce=QBF5IHKVOCA5FRW74NBMMMYZF6\\nrequest=2e2e80e9541c7055209c5642856ee0357b5f0c9cc7008ff4fd0f8b137c3d4d6a\\ndecision=reject\",\"source\":\"operator\",\"trusted\":true,\"type\":\"yield_decided\"}",
+   "event_hash": "f565099a4c27c03b81f7674792122275a17268054750ab0a1765dd99624f1933",
+   "hash_version": 2
+  },
+  {
+   "id": 72,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"69a738a66b9481bb32584534859566143a7e7e36\",\"decide_ms\":0,\"drift\":\"outside the stories' scope: a.txt\",\"feedback\":\"operator\",\"lines\":1,\"paths\":[\"a.txt\"],\"request_entry\":\"84f64b65248816c2e0a11f742d622c31428f277db4b014c484de44ddb477a718\",\"request_sha256\":\"5747aed4c810b84ce57feeb5f052ed0baa29741698226d8cceb25fef7d39ec68\",\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "c2a644c9a742c439ed60d03b6554cc760e5d182ee3e9531f8af3ebdaf5eadfb0",
+   "hash_version": 2
+  },
+  {
+   "id": 73,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"83c6db821c1765d0c3e8c1b54e1db2ce4297e028\",\"drift\":\"outside the stories' scope: elsewhere.txt\",\"feedback\":\"parked for the owner, who is away: outside the stories' scope: elsewhere.txt. It is kept for their review; do not propose it again. Go on with what you can do without it.\",\"parked_why\":\"outside the stories' scope: elsewhere.txt\",\"paths\":[\"elsewhere.txt\"],\"request_entry\":\"f54bfd732ed29a6eb47afc82416a5996cc1dc7a7916434b3ddeb185674742b15\",\"request_sha256\":\"1cf9d23cd3bbd20b7b72704e3d721d610b7d63316b87e0710d456dde4157d83a\",\"seq\":4,\"source\":\"parked\",\"type\":\"yield_decided\"}",
+   "event_hash": "9e399f6e2d0dd69f7c7c21e5c49d4be6948733567b4ae7d76904ca6b37cf3d35",
+   "hash_version": 2
+  },
+  {
+   "id": 74,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"eccfc7ad2a81ccc7b30cabe7d1f854a8b0b566a9\",\"decide_ms\":0,\"feedback\":\"operator\",\"lines\":1,\"paths\":[\"src/c.txt\"],\"request_entry\":\"0bcb0acba63f93b93a6510e83f08d99c4fb18521e9d242667daf54126d138791\",\"request_sha256\":\"68a78608b7e5ae18945026ab61662abed403a03f437600d1352991ebc9fcf013\",\"seq\":3,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "de655a575f9c9b3b5122e2e19455cc5bcdf55eb8fb4958b084b204c9c342d3a5",
+   "hash_version": 2
+  },
+  {
+   "id": 75,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"\",\"decide_ms\":94,\"feedback\":\"\",\"request_entry\":\"3846f1143bfa5e47a102d021f236f8f3a8d4a5b4c04901ce32233adf6cf8390e\",\"request_sha256\":\"27e3cbe07e35c096326e598e1d3f84b4d4dd49014636ad1377b0c99ab669f2f4\",\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "91c9c0339abac89709baec446c57203333a33561bac56f391e07c756958d2431",
+   "hash_version": 2
+  },
+  {
+   "id": 76,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"\",\"feedback\":\"policy rule #0 auto-approved\",\"request_entry\":\"bf4ca4afa9db95d1b15c3e91809ca0ac5f8a85e8bc61f39b111624aacff0c518\",\"request_sha256\":\"27e3cbe07e35c096326e598e1d3f84b4d4dd49014636ad1377b0c99ab669f2f4\",\"seq\":1,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "fb55c566a8df4c6f85e93710b50bff6cb07a39ad611cec1eb753a67509c6b419",
+   "hash_version": 2
+  },
+  {
+   "id": 77,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"0f35ce6ca687a2c2c125ff55ee1aaf083c964950\",\"decide_ms\":0,\"feedback\":\"operator\",\"files\":{\"src/old.txt\":\"deleted\"},\"lines\":1,\"paths\":[\"src/old.txt\"],\"request_entry\":\"f4e55d44ae61d8fb0c6abe61cf67e50048f599d69e3f1645d456f1929d0ff473\",\"request_sha256\":\"6fd4ad0077b38120bc97ad144d08af5edceb1917924ed08be0370429ae2e2b57\",\"seq\":4,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "138b576fa6b62fd778baf7fcb91397c18f620ba4a21374cfb1156112525a626c",
+   "hash_version": 2
+  },
+  {
+   "id": 78,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"10fd43d194724895fc88e2eea83fe6f235be2409\",\"decide_ms\":0,\"drift\":\"2 files changed (limit 1)\",\"feedback\":\"operator\",\"files\":{\"docs/b.md\":\"73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac\"},\"lines\":1,\"paths\":[\"docs/b.md\"],\"request_entry\":\"ac6c0da08b541b2c9b842d5c440e21f9d80b2db75f0c6571f18804bdf2a3a5c5\",\"request_sha256\":\"33c55da5402f5ef31a10a10b5162d1db75270bc3931b774c8364585a284e3d13\",\"seq\":2,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "e1a111369b95e48d88cebc8309149dd6279a624af69e4dffef3c5ea8909f99df",
+   "hash_version": 2
+  },
+  {
+   "id": 79,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"25e3e4ac4ecd254e089a991b72843b3c493dcff7\",\"feedback\":\"review: a\",\"files\":{\"e.txt\":\"73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac\"},\"paths\":[\"e.txt\"],\"request_entry\":\"a5b65e9ba75d0dce356977f92aa0b7f3b31042ddbdae13d909f99649196a58b7\",\"request_sha256\":\"be9204d9ce89423559bb332ad375a13b6efbbdf9e731a6cd16f39e07733ed1f3\",\"seq\":6,\"source\":\"validator:review/model\",\"type\":\"yield_decided\",\"validator_state\":{\"approvals\":1,\"reject_run\":0,\"unreviewed\":true}}",
+   "event_hash": "c756c11397de3d0728bd09f84f3b38dc720d2fc36a2b1a97d4b54e0c9d884656",
+   "hash_version": 2
+  },
+  {
+   "id": 80,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"321e1ba45875a52776759c6d5262ba5b3eb720b6\",\"evidence\":{\"validator\":\"review/model\"},\"feedback\":\"approved on evidence\",\"files\":{\"src/a.txt\":\"87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7\"},\"paths\":[\"src/a.txt\"],\"request_entry\":\"d376bcfba4889d622be2c78e4a071c0ae845504c7bc7bffb0af9cb57a538646c\",\"request_sha256\":\"1e2031fffbcb93bfe6ed82324a9381805e5c77a4cbf33501c1a64ea94c50453d\",\"seq\":1,\"source\":\"evidence\",\"type\":\"yield_decided\",\"validator_state\":{\"approvals\":1,\"reject_run\":0,\"unreviewed\":true}}",
+   "event_hash": "89d9caba610dd23485d45fbc609dc1c3f31b56ad911235c146736acf79d14dc8",
+   "hash_version": 2
+  },
+  {
+   "id": 81,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"89f83e438c88090627aa8bdb78b88e5601063fe4\",\"feedback\":\"policy rule #0 auto-approved\",\"files\":{\"gen.txt\":\"f2905ed55c2d9d4e4673686dd1027bd336f3265b4dcea36eca188fafa8f764ba\"},\"paths\":[\"gen.txt\"],\"request_entry\":\"d8a57711d30994d32fa9b0af3d2419b5a6ee544e09250aab9cd2a887452c9f63\",\"request_sha256\":\"0bb1ec231bcfc75ce862811ca68ca4dd8d32d4eb8d6f172acbf86bd84fd619ce\",\"review_after\":true,\"sandboxed\":true,\"seq\":2,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "f7ab92f044c60345a0305d4c8e6637bd11b53d5db8af52b421f6ee2f8da02ca3",
+   "hash_version": 2
+  },
+  {
+   "id": 82,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"c0337ed9f13254ba699c2a110503a933dea2b2ac\",\"decide_ms\":35,\"feedback\":\"by script\",\"files\":{\"GREETING.md\":\"73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac\"},\"key\":\"SHA256:ryPbV3iLIIB/kFg4Jr00pzgx4h1wS2xuL1d57Z1+1aU\",\"lines\":1,\"paths\":[\"GREETING.md\"],\"request_entry\":\"0c43e918e39e092c2ac308f83559edca39e7bdf40db74adb549b43d964fbd7d0\",\"request_sha256\":\"2e2e80e9541c7055209c5642856ee0357b5f0c9cc7008ff4fd0f8b137c3d4d6a\",\"seq\":1,\"signature\":\"LS0tLS1CRUdJTiBTU0ggU0lHTkFUVVJFLS0tLS0KVTFOSVUwbEhBQUFBQVFBQUFETUFBQUFMYzNOb0xXVmtNalUxTVRrQUFBQWdHdmVINnpNZGJHQlRaeWRSNzQ5T3RZckxiVQo3T1lkSDQxZm50YU56TG1rd0FBQUFTYzNSaGFYSmpZWE5sTFdSbFkybHphVzl1QUFBQUFBQUFBQVp6YUdFMU1USUFBQUJUCkFBQUFDM056YUMxbFpESTFOVEU1QUFBQVFFTUdDVlRjZjI1RDJVc0pyZTIwNWtCTnVrcGxtSU43NEJuNHc5S1dTZ0pqOFIKTkh0cXFJK040ZU5JOER0WmNIc0MwdVN2TWNsT29qVGl1b0xEZWRxdzA9Ci0tLS0tRU5EIFNTSCBTSUdOQVRVUkUtLS0tLQo=\",\"signed_by\":\"alice@example.com\",\"signed_text\":\"staircase-decision-v1\\nrun=1\\nnonce=3OA2RJSJW4OSGKM3577RAKPKUL\\nrequest=2e2e80e9541c7055209c5642856ee0357b5f0c9cc7008ff4fd0f8b137c3d4d6a\\ndecision=approve\",\"source\":\"operator\",\"trusted\":true,\"type\":\"yield_decided\"}",
+   "event_hash": "b27b30f132112236b3399b46148248e6ac553ddea6b4b442290b1426e38525ae",
+   "hash_version": 2
+  },
+  {
+   "id": 83,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"c15f026b7ab9b5bdfbfd1b0d56a926c2a10146a5\",\"decide_ms\":0,\"drift\":\"checkpoint: one in every 2 proposals is reviewed\",\"feedback\":\"operator\",\"files\":{\"GREETING.md\":\"73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac\"},\"paths\":[\"GREETING.md\"],\"request_entry\":\"cdd1d6fb5245c4bd88030b40f07ace59b816b008b9468520b799dc97c8acff00\",\"request_sha256\":\"c9ab4d7d601d7f4f5633dbeea645b8de36d92f220a8b94dce6e40ffcd15eee3d\",\"seq\":2,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "5caf03d68ede93bfeb892ab1e5305308a5f817b1f18f907b92a22b15be7cc9c9",
+   "hash_version": 2
+  },
+  {
+   "id": 84,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"e21eb898a8cf452ac7044e450992597b7d3a95e8\",\"decide_ms\":0,\"feedback\":\"operator\",\"files\":{\"go.mod\":\"3aaba8b91cafc7cf2082a8de0988413c0858f31a87c7671fc639965bdb872356\"},\"guard\":\"it changes dependencies (go.mod)\",\"lines\":2,\"paths\":[\"go.mod\"],\"request_entry\":\"8e80e4b530eeec5a042ad9c85dcb182e6dc65be2098a71fe90a627e5f4a40fb3\",\"request_sha256\":\"06bc20efb2180b6a9b49743b64b8853b1eac082b8885dc6f6cefc79f6fc8504a\",\"seq\":3,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "d73163e1b93acf411c800625e9e0b033fe8cf68b961371cc037e49cf3e3bbe3c",
+   "hash_version": 2
+  },
+  {
+   "id": 85,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"e21eb898a8cf452ac7044e450992597b7d3a95e8\",\"decide_ms\":0,\"feedback\":\"operator\",\"files\":{\"tool\":\"ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e\"},\"guard\":\"it makes a file executable (tool)\",\"paths\":[\"tool\"],\"request_entry\":\"190dd82bdc706931915899f0d3eda0e254ed7f0db8ae1d2e78d3abce9434942d\",\"request_sha256\":\"3148de05d599a372d42de63b7ca0ac5f6e974a5026d7a245cb3097a612dc24d6\",\"seq\":8,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "a7f163d3dddcdcd6311d4072de3350794ce9126f34a6caa29e67bc8d956db98c",
+   "hash_version": 2
+  },
+  {
+   "id": 86,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"e69f19e790e430b32c3f5ed902d2bd2c7e6dbf5a\",\"evidence\":{\"checks\":[{\"command\":\"true\",\"exit_code\":0,\"output_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"sandboxed\":true}]},\"feedback\":\"approved on evidence\",\"files\":{\"docs/a.md\":\"82ce8d13e242d09061896cb920258ae02a041117f9172bcbeb70f56c2535d3ce\"},\"paths\":[\"docs/a.md\"],\"request_entry\":\"78bd85d166dd039f63b5865f50fcbed462fd552dd0f042d100772e5802e354c5\",\"request_sha256\":\"b799c3bae39576732637547116611e6c5b79ab95fae5c042b71221a094724b34\",\"seq\":1,\"source\":\"evidence\",\"type\":\"yield_decided\"}",
+   "event_hash": "5a1e1f4696ed0915068367b8028913c22a8e907c73aeaff1be58a1613f102e32",
+   "hash_version": 2
+  },
+  {
+   "id": 87,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"f3d88a8baa7f6294f7d55d64375f56e2809f888a\",\"feedback\":\"policy rule #0 auto-approved\",\"files\":{},\"paths\":[\"src/a.txt\"],\"request_entry\":\"e256842a4dd5bf8e949c89355f3f11c6da37411e78e9f9a0288a4262dd8cdb83\",\"request_sha256\":\"c1497892ee8de022f5197599bf3409064bfcbdddba792e8aa6d1c865e327e6b0\",\"seq\":1,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "f7769f10d13c298d40c43c5583bcaaf4b0262ad72440d89f3c9e88eb454dc4eb",
+   "hash_version": 2
+  },
+  {
+   "id": 88,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"f3d88a8baa7f6294f7d55d64375f56e2809f888a\",\"feedback\":\"policy rule #0 auto-approved\",\"paths\":[\"src/a.txt\"],\"request_entry\":\"df8e1c9b15ceede26b4f357f8b08d1f7cc381dbb7d4847ff12d62b3224b82ede\",\"request_sha256\":\"c1497892ee8de022f5197599bf3409064bfcbdddba792e8aa6d1c865e327e6b0\",\"seq\":1,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "25c6f01799a333391399df0d6b840f35a0739756b682714e7909c3f5046e417a",
+   "hash_version": 2
+  },
+  {
+   "id": 89,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"fe0c3c6772f370c44fc9ffb97a9ff1cc8b34428c\",\"decide_ms\":0,\"feedback\":\"operator\",\"files\":{\"b.txt\":\"73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac\"},\"lines\":1,\"paths\":[\"b.txt\"],\"request_entry\":\"6507e1d97aa42a0b5c559d0ff4f9e5212c09b200cbf99cbf2e8d1d7111e3856c\",\"request_sha256\":\"f6150ad6a6ec103d7a6201ed46b272b411550b618ff1f78ede18a7593c80db55\",\"seq\":2,\"source\":\"operator\",\"type\":\"yield_decided\",\"validator_state\":{\"approvals\":1,\"reject_run\":0,\"unreviewed\":true}}",
+   "event_hash": "9d122ae3d8920d216c7cdb485bbc3a6bfb246b7b92ca601d93fa04c68d74f61b",
+   "hash_version": 2
+  },
+  {
+   "id": 90,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"coder\",\"approved\":true,\"feedback\":\"\",\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "e74ef4b01639242daf5095eeb0a81fcf4c86c74e75873d968eac74532a156155",
+   "hash_version": 2
+  },
+  {
+   "id": 91,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"codex\",\"approved\":false,\"base_sha\":\"f15c95d40c9d9d081c4718a02137ce523cf9dd4f\",\"decide_ms\":0,\"feedback\":\"operator\",\"lines\":4,\"paths\":[\"f.txt\",\"gen.txt\",\"old.txt\"],\"request_entry\":\"98d0a614a9dc88e2fa7d9bc104a606ba61d722f2fa39ef432918459d60304d1e\",\"request_sha256\":\"1dea021479f141c791f58a9c2d7929fb2082078fecbe6950aff5635d73567f9d\",\"review_after\":true,\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "99164a8c1c1ff6dad20e8b81b3c9fce0f07ee17be10af96c48d6a073ed9618d2",
+   "hash_version": 2
+  },
+  {
+   "id": 92,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"codex\",\"approved\":true,\"base_sha\":\"eab7512f12759b89ec720ca3d9a95462ef68113c\",\"feedback\":\"policy rule #0 auto-approved\",\"files\":{\"gen.txt\":\"9f5936ff15d3a2ba7d3d8f21858338a6c1e2adc9fe34c685c7de5b4a00caa29a\"},\"paths\":[\"gen.txt\"],\"request_entry\":\"b5e148cec0716304fbd73e20db8317fd56360f1e75fe7dabc883ff0fdc236a2f\",\"request_sha256\":\"f5802e3239fd2782f2310de72dfc9130cc8008aaba4f0e635d2223e4fe7eb607\",\"review_after\":true,\"seq\":2,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "3ada7d6f3a593a692454729af44fcb0dc17cd181d6e51b8aee862749471cb76a",
+   "hash_version": 2
+  },
+  {
+   "id": 93,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"cursor\",\"approved\":false,\"base_sha\":\"c58dc49b4aa8b93840cf159b264adae0af7de3d4\",\"feedback\":\"refused by the orchestrator: invalid path \\\"innocent.txt\\\": goes through a symlink\",\"request_entry\":\"e3b94a51bff48c959615f87eb5f5d1718c144031f6b95800af3da56eedfa94db\",\"request_sha256\":\"3068b4c43729a62742e5c5c48d48990da571c91c9dd27dd98d86717870e2783b\",\"review_after\":true,\"seq\":1,\"source\":\"orchestrator\",\"type\":\"yield_decided\"}",
+   "event_hash": "877ff4d1d424693669b1b78de10732e76619c4e237c273042de9103fcb2186ef",
+   "hash_version": 2
+  },
+  {
+   "id": 94,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"cursor\",\"approved\":true,\"base_sha\":\"66361ee794a5ced71f4106046b52607248f40687\",\"decide_ms\":0,\"drift\":\"outside the stories' scope: logo.png\",\"feedback\":\"operator\",\"files\":{\"logo.png\":\"854e4b5f04c08dd7a8df75e0c0c9ce444f353bf1385a8a7ddbc9c73c4181ce0b\"},\"guard\":\"it changes a file that is not text and cannot be reviewed (logo.png, 6 bytes)\",\"lines\":1,\"paths\":[\"logo.png\"],\"request_entry\":\"1b822f8d655552471de67b97b4d2839651643f01529e1ea8758cadc1ae616068\",\"request_sha256\":\"bbb88590e3614d1efe9f0045e9cc81d9977873d8745a0235e9719ccf39773416\",\"review_after\":true,\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "5eb3fdccf6b92568548236880dfc9aa26962e94830d33b18c42173d8e48fb1f9",
+   "hash_version": 2
+  },
+  {
+   "id": 95,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"agent\":\"cursor\",\"approved\":true,\"base_sha\":\"e10be8029e160dab5e8bd4fa03c7bccac53c99d9\",\"decide_ms\":0,\"feedback\":\"operator\",\"files\":{\"changed.sh\":\"92d81e71bd3ff894978ac7d8f7f977539d70f6ed4e9590f89cca972cd3ffd471\",\"new.sh\":\"92d81e71bd3ff894978ac7d8f7f977539d70f6ed4e9590f89cca972cd3ffd471\",\"new.txt\":\"b9e68e1bea3e5b19ca6b2f98b73a54b73daafaa250484902e09982e07a12e733\",\"plain.sh\":\"69472ce95c91f64fb3b809611196d3aee541a79fa51e6cbe47e44e5ff9f3282a\",\"tool.sh\":\"dbdf94a50c89a7810193760766fc0892bfd02e687488dd3ef4ee83d7da6d3f33\"},\"guard\":\"it makes a file executable (new.sh); it makes a file executable (plain.sh)\",\"lines\":4,\"paths\":[\"changed.sh\",\"new.sh\",\"new.txt\",\"plain.sh\",\"tool.sh\"],\"request_entry\":\"9cc0235de7d82568ce58e8daab07901a3863568e5977874b981385a3e1bc6406\",\"request_sha256\":\"b8ffa37f3c25b06349e19268260b63357d836b2c0264eb974cd3e20dc688c641\",\"review_after\":true,\"seq\":1,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "47160f7c1669b429b5fe52c0258812654f48e8951abac198f1c52ac39af76825",
+   "hash_version": 2
+  },
+  {
+   "id": 96,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"approved\":false,\"feedback\":\"\",\"seq\":4,\"source\":\"operator\"}",
+   "event_hash": "352750f0456f4652fd75be961f066d1b1c4ca1a9a5b816fd1cf03caf31251f04",
+   "hash_version": 2
+  },
+  {
+   "id": 97,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"approved\":true,\"guard\":\"it writes what looks like a secret\",\"seq\":5,\"source\":\"operator\"}",
+   "event_hash": "907fb616becfb319ca107fb7ecb11b40e97401d7bbced0edc2f94095c85f9c4a",
+   "hash_version": 2
+  },
+  {
+   "id": 98,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"approved\":true,\"lines\":2,\"seq\":1,\"source\":\"operator\"}",
+   "event_hash": "06ae16f1917fdb8d0af4d49ef59364ab324e95a8d67385a4229c58e9e6156287",
+   "hash_version": 2
+  },
+  {
+   "id": 99,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"approved\":true,\"paths\":[\"go.mod\"],\"seq\":3,\"source\":\"task\"}",
+   "event_hash": "a03c45b0383f888b9d791e5a1d18c8120fa85fc7e3113e5afa0bcf9c322f5709",
+   "hash_version": 2
+  },
+  {
+   "id": 100,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"file_edit\",\"approved\":true,\"seq\":1,\"source\":\"operator\"}",
+   "event_hash": "1bd33cd35362c64ca2f20d9bfd457efccceb685f5b2c8e8da216867f7fac9c57",
+   "hash_version": 2
+  },
+  {
+   "id": 101,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"final_review\",\"agent\":\"staircase\",\"approved\":true,\"base_sha\":\"25e3e4ac4ecd254e089a991b72843b3c493dcff7\",\"decide_ms\":0,\"feedback\":\"operator\",\"files\":{\"GREETING.md\":\"73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac\"},\"lines\":1,\"request_sha256\":\"2bd79aea5e58824d3ce45d962583a8fb3026c30c1eafedc2c10a2f6abd4241a0\",\"seq\":3,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "81c61b2c4f6f06f66eb718ade27314c20ef79440e6c2f03bf8f8c3c2d67a43a5",
+   "hash_version": 2
+  },
+  {
+   "id": 102,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"final_review\",\"agent\":\"staircase\",\"approved\":true,\"base_sha\":\"90b8fec8482541fe6876b036dad8ce1a26240134\",\"feedback\":\"ok\",\"files\":{\"src/a.txt\":\"b640e840b19d378660b32fb51ae18d67dccb4a8596a29e7bd72c1b2ae5928f41\",\"src/b.txt\":\"480c2336b410f1ad5f8bf1b28944490255804b65350c527787e74ebdd511e3a4\"},\"request_sha256\":\"dbe2a5d5e72c5155f84fb0a19c61cc93c9cd39dcf166b5a9c9a74838935bacad\",\"seq\":3,\"source\":\"operator\",\"type\":\"yield_decided\"}",
+   "event_hash": "b2710b29098e4d946e5223ad6fefb3946dff6a2094abac7c57767945e29a9ab4",
+   "hash_version": 2
+  },
+  {
+   "id": 103,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"final_review\",\"agent\":\"staircase\",\"approved\":true,\"files\":{\"src/a.txt\":\"b640e840b19d378660b32fb51ae18d67dccb4a8596a29e7bd72c1b2ae5928f41\",\"src/b.txt\":\"480c2336b410f1ad5f8bf1b28944490255804b65350c527787e74ebdd511e3a4\"},\"request_sha256\":\"x\",\"seq\":3,\"source\":\"operator\"}",
+   "event_hash": "ecf769ef01380ab1da5161b5f0da2f7a1be16787f2a17ebcb100bd68b3c2b5f2",
+   "hash_version": 2
+  },
+  {
+   "id": 104,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"shell_exec\",\"agent\":\"\",\"approved\":false,\"base_sha\":\"\",\"feedback\":\"\",\"parked_why\":\"it needs a person's decision\",\"request_sha256\":\"r\",\"seq\":2,\"source\":\"parked\",\"type\":\"yield_decided\"}",
+   "event_hash": "b8187ef650e91874d0f17c4fb548919091d3a86084c51699a525abbe028cd3d6",
+   "hash_version": 2
+  },
+  {
+   "id": 105,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"shell_exec\",\"agent\":\"\",\"approved\":true,\"base_sha\":\"\",\"feedback\":\"\",\"request_sha256\":\"r\",\"seq\":4,\"source\":\"policy\",\"type\":\"yield_decided\"}",
+   "event_hash": "3be3f0ca63215b37042bf6bff8ae1987f6135cb4fba402921a27badceb904c71",
+   "hash_version": 2
+  },
+  {
+   "id": 106,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"shell_exec\",\"agent\":\"coder\",\"approved\":false,\"base_sha\":\"399292382c411d3542fff48f522cf2666218aec9\",\"feedback\":\"parked for the owner, who is away: it needs a person's decision. It is kept for their review; do not propose it again. Go on with what you can do without it.\",\"parked_why\":\"it needs a person's decision\",\"request_entry\":\"a33158830264fdab56151a6c3fa25f852e06d18967263827b4493f8a2ac33109\",\"request_sha256\":\"9302aea1dc48107f196232dfb394ca1ebdc92b252f3fec3c71395425e07d3cf9\",\"seq\":3,\"source\":\"parked\",\"type\":\"yield_decided\"}",
+   "event_hash": "34515245fe5db7ba663603aa345bf56d3a432a56c6abcca135b52830e949f581",
+   "hash_version": 2
+  },
+  {
+   "id": 107,
+   "event_type": "yield_decided",
+   "payload": "{\"action_type\":\"shell_exec\",\"agent\":\"coder\",\"approved\":true,\"base_sha\":\"399292382c411d3542fff48f522cf2666218aec9\",\"evidence\":{\"declared_sha256\":\"bece6091ef5bc55b1efd56f234c4069abfe44ef4494872bc256ed40da65afbac\"},\"feedback\":\"a command the owner declared for this away run\",\"request_entry\":\"25272af2de6dada5d10400296dbc4451dadd07ef1aa02d8c44c1242910ae6db7\",\"request_sha256\":\"906e131af173d030c05e9fbbd242e2f025424eca370e4629356a199186f3684c\",\"seq\":2,\"source\":\"declared\",\"type\":\"yield_decided\"}",
+   "event_hash": "b0e014fb82ae920ba90cb41a5170223e2137293af5b4506e84bac7ba47b5809a",
+   "hash_version": 2
+  },
+  {
+   "id": 108,
+   "event_type": "yield_decided",
+   "payload": "{\"b\":2}",
+   "event_hash": "0bdfcfe40271ca20242cfc5b1f4f6ccf0e8a6b97203e09e7823999fe49db017a",
+   "hash_version": 2
+  },
+  {
+   "id": 109,
+   "event_type": "yield_decided",
+   "payload": "{\"n\":1}",
+   "event_hash": "9ff09116322750cd1fd007332d4b870c478eb4a6340f8c4b16c4c41e6e9c2e01",
+   "hash_version": 2
+  },
+  {
+   "id": 110,
+   "event_type": "yield_request",
+   "payload": "{\"action_type\":\"file_edit\",\"adopts\":2,\"agent_name\":\"staircase\",\"confidence_score\":0,\"proposed_edits\":[{\"file\":\"elsewhere.txt\",\"search_block\":\"(new file)\",\"replace_block\":\"out of scope\\n\"}],\"reasoning_trace\":\"the owner adopted parked proposal 2 after a prototype\",\"type\":\"yield_request\"}",
+   "event_hash": "a534b2a13eae0d21c9429f88235064f3a3df543d47c3047c0bee5964151a06b1",
+   "hash_version": 2
+  },
+  {
+   "id": 111,
+   "event_type": "yield_request",
+   "payload": "{\"action_type\":\"file_edit\",\"bytes\":90000,\"sha256\":\"ab\",\"truncated\":true}",
+   "event_hash": "0d74e5476d96e6c6a263ca403f2353b723651c4a19b96852da5b1f6a862e4130",
+   "hash_version": 2
+  },
+  {
+   "id": 112,
+   "event_type": "yield_request",
+   "payload": "{\"action_type\":\"file_edit\",\"proposed_edits\":[{\"file\":\"go.mod\"}],\"type\":\"yield_request\"}",
+   "event_hash": "8b702edbcea058417d5ae839210c88b8580e9a6ec2f61e00b36bb9f7bca0a3f5",
+   "hash_version": 2
+  },
+  {
+   "id": 113,
+   "event_type": "yield_request",
+   "payload": "{\"type\":\"\",\"agent_name\":\"coder\",\"action_type\":\"file_edit\",\"proposed_edits\":[{\"file\":\"go.mod\",\"search_block\":\"a\",\"replace_block\":\"b\"}],\"reasoning_trace\":\"\",\"confidence_score\":0}",
+   "event_hash": "1e76d44dbf92de48a8bbeae07de40962fd3786a53e56a99cb246c0bb9062ed19",
+   "hash_version": 2
+  },
+  {
+   "id": 114,
+   "event_type": "yield_request",
+   "payload": "{\"type\":\"\",\"agent_name\":\"coder\",\"action_type\":\"shell_exec\",\"reasoning_trace\":\"\",\"confidence_score\":0}",
+   "event_hash": "4b7d8198c4fe886e6240b41093aad319baef80a15eb40148e3071f31382c2b87",
+   "hash_version": 2
+  },
+  {
+   "id": 115,
+   "event_type": "yield_request",
+   "payload": "{\"type\":\"yield_request\",\"agent_name\":\"coder\",\"action_type\":\"file_edit\",\"proposed_edits\":[{\"file\":\"README.md\",\"search_block\":\"(new file)\",\"replace_block\":\"Status: greeted\\n\"}],\"reasoning_trace\":\"\",\"confidence_score\":0,\"review\":\"the validator approved this\",\"before\":{\"README.md\":\"forged\"}}",
+   "event_hash": "97396a8dbbb050cf077039aef9d5b9311a5f76318628a4c7e78d7208ea9ed680",
+   "hash_version": 2
+  },
+  {
+   "id": 116,
+   "event_type": "yield_request",
+   "payload": "{\"type\":\"yield_request\",\"agent_name\":\"coder\",\"action_type\":\"file_edit\",\"proposed_edits\":[{\"file\":\"gen.txt\",\"search_block\":\"(new file)\",\"replace_block\":\"gen\\n\"}],\"reasoning_trace\":\"files changed by the approved command: make gen\",\"confidence_score\":0.9,\"review_after\":true,\"sandboxed\":true}",
+   "event_hash": "d36cd120219dafcf1424b8f570e098ae07a6c2a033227425de040fc761e56521",
+   "hash_version": 2
+  },
+  {
+   "id": 117,
+   "event_type": "yield_request",
+   "payload": "{\"type\":\"yield_request\",\"agent_name\":\"cursor\",\"action_type\":\"file_edit\",\"proposed_edits\":[{\"file\":\"innocent.txt\",\"search_block\":\"(new file)\",\"replace_block\":\"\"}],\"reasoning_trace\":\"a command left a link\",\"confidence_score\":0.9,\"review_after\":true}",
+   "event_hash": "1bef13ce9a93bb0e127e3a925a42289b5cdc0b0f20d9e6c6c8ccc8c39476df2e",
+   "hash_version": 2
+  }
+ ]
+}

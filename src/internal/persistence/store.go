@@ -2,16 +2,14 @@ package persistence
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
@@ -1097,7 +1095,7 @@ func (s *Store) AcceptUserStory(storyID int64, actor string) (runID int64, caseS
 	}
 	now := time.Now()
 	if _, err := tx.Exec(`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		runID, "story_accepted", string(payload), now, ComputeEventHashV2("story_accepted", string(payload), prevHash, commit), commit, ChainVersion); err != nil {
+		runID, "story_accepted", string(payload), now, chain.HashV2("story_accepted", string(payload), prevHash, commit), commit, chain.Version); err != nil {
 		return 0, "", fmt.Errorf("accept story: audit: %w", err)
 	}
 	if _, err := tx.Exec(`UPDATE user_stories SET status = ? WHERE id = ?`, StoryStatusImplemented, storyID); err != nil {
@@ -1184,101 +1182,21 @@ func (s *Store) GetLastEventHash(runID int64) (string, error) {
 	return hash, err
 }
 
-// MaxEventPayload is the most one chain entry holds (ADR 0014). Payloads an agent supplies are capped lower, at 64 KiB, by
-// the agent host before they get here; this is the ceiling for what the orchestrator writes itself, such as the offered review
-// of a large change.
-const MaxEventPayload = 1 << 20
-
-// ErrPayloadTooLarge is returned, with the event and its size, for a payload over MaxEventPayload. The entry is not written: a
-// payload cut short would still hash and verify, and so stand as a record of something the run never wrote.
-var ErrPayloadTooLarge = errors.New("the audit entry is too large")
-
-// ComputeEventHash is the single source of truth for the SOC2 chain-hash
-// algorithm: SHA-256(payload ‖ prevHash ‖ gitCommitHash).
-//
-// Note on CHECK 9.1.1: the checklist specifies SHA-256(prev_hash ‖ event_body)
-// (prevHash first). The implementation uses payload first and includes
-// gitCommitHash as a third input.  This divergence is intentional: including
-// the git commit hash ties each entry to the exact source revision that wrote
-// it, which is a stronger guarantee than the baseline spec.  Changing the
-// order would invalidate all existing audit chains, so we document it here
-// rather than silently break backward compatibility.
-//
-// Both AppendEventLog and external verifiers (audit export/verify) must call
-// this function so that any future change to the algorithm stays in one place.
-func ComputeEventHash(payload, prevHash, gitCommitHash string) string {
-	h := sha256.Sum256([]byte(payload + prevHash + gitCommitHash))
-	return fmt.Sprintf("%x", h)
-}
-
-// ChainVersion is the chain format new entries are written under.
-//
-// Version 1 (SHA-256(payload ‖ prev ‖ commit)) did not cover the event type, and
-// joined its parts without separators. Version 2 covers the event type and
-// length-prefixes every part (see docs/audit.md, "The hash chain"). Entries
-// written before it stay version 1 and verify as they always did.
-const ChainVersion = 2
-
-// ComputeEventHashV2 is the version 2 chain hash: SHA-256 of the label
-// "staircase-chain-v2\n" followed by event type, payload, previous hash and
-// commit, each as an 8-byte big-endian length and its bytes.
-func ComputeEventHashV2(eventType, payload, prevHash, gitCommitHash string) string {
-	h := sha256.New()
-	h.Write([]byte("staircase-chain-v2\n"))
-	for _, field := range []string{eventType, payload, prevHash, gitCommitHash} {
-		var n [8]byte
-		binary.BigEndian.PutUint64(n[:], uint64(len(field)))
-		h.Write(n[:])
-		h.Write([]byte(field))
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// ExpectedEventHash is the hash entry e must carry, given the hash of the entry
-// before it, under the chain version e names.
-func ExpectedEventHash(e domain.RunEventLog, prevHash string) (string, error) {
-	switch e.HashVersion {
-	case 0, 1:
-		return ComputeEventHash(e.Payload, prevHash, e.GitCommitHash), nil
-	case 2:
-		return ComputeEventHashV2(e.EventType, e.Payload, prevHash, e.GitCommitHash), nil
-	}
-	return "", fmt.Errorf("entry id=%d uses chain version %d, which this version of stAirCase does not know", e.ID, e.HashVersion)
-}
-
-// VerifyEntries recomputes every hash of a run's entries, oldest first, and
-// names the first one that does not match: the single check that the store,
-// `staircase audit verify` and `staircase inspect log` share.
-func VerifyEntries(entries []domain.RunEventLog) error {
-	prevHash := ""
-	for i, e := range entries {
-		want, err := ExpectedEventHash(e, prevHash)
-		if err != nil {
-			return err
-		}
-		if e.EventHash != want {
-			return fmt.Errorf("hash mismatch at entry %d (id=%d, %s): stored=%s computed=%s", i+1, e.ID, e.EventType, e.EventHash, want)
-		}
-		prevHash = e.EventHash
-	}
-	return nil
-}
-
-// AppendEventLog writes a tamper-proof entry: hash = SHA-256 over event type, payload, prevHash and gitCommitHash (ChainVersion).
+// AppendEventLog writes a tamper-proof entry: hash = SHA-256 over event type, payload, prevHash and gitCommitHash (chain.Version).
 // gitCommitHash is stored per-entry so that inspect log can verify each entry
 // with the exact value that was current when the entry was written - the hash
 // changes from "" to the real commit hash at teardown, so a single run-level
 // value cannot be used for verification of all entries.
 func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCommitHash string) (*domain.RunEventLog, error) {
-	if len(payload) > MaxEventPayload {
-		return nil, fmt.Errorf("%w: %s is %d bytes and an entry holds at most %d", ErrPayloadTooLarge, eventType, len(payload), MaxEventPayload)
+	if err := chain.CheckSize(eventType, payload); err != nil {
+		return nil, err
 	}
-	eventHash := ComputeEventHashV2(eventType, payload, prevHash, gitCommitHash)
+	eventHash := chain.HashV2(eventType, payload, prevHash, gitCommitHash)
 	now := time.Now()
 	res, err := s.db.Exec(
 		`INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		runID, eventType, payload, now, eventHash, gitCommitHash, ChainVersion,
+		runID, eventType, payload, now, eventHash, gitCommitHash, chain.Version,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("append event log: %w", err)
@@ -1292,7 +1210,7 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 		Timestamp:     now,
 		EventHash:     eventHash,
 		GitCommitHash: gitCommitHash,
-		HashVersion:   ChainVersion,
+		HashVersion:   chain.Version,
 	}, nil
 }
 
@@ -1363,7 +1281,7 @@ func (s *Store) VerifyChain(runID int64) error {
 	if err != nil {
 		return fmt.Errorf("verify chain: list events: %w", err)
 	}
-	if err := VerifyEntries(logs); err != nil {
+	if err := chain.Verify(logs); err != nil {
 		return fmt.Errorf("verify chain: %w", err)
 	}
 	return nil
@@ -1377,7 +1295,7 @@ func (s *Store) ListVerifiedEventLogs(runID int64) ([]domain.RunEventLog, error)
 	if err != nil {
 		return nil, fmt.Errorf("verify chain: list events: %w", err)
 	}
-	if err := VerifyEntries(logs); err != nil {
+	if err := chain.Verify(logs); err != nil {
 		return nil, fmt.Errorf("verify chain: %w", err)
 	}
 	return logs, nil

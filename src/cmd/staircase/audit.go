@@ -35,6 +35,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"log"
 	"os"
 	"path/filepath"
@@ -303,8 +304,8 @@ func marshalEntries(entries []domain.RunEventLog) ([]byte, error) {
 }
 
 // verifyHashChain re-derives each entry's event_hash under the chain version
-// the entry names (persistence.VerifyEntries, the one place the algorithm
+// the entry names (chain.Verify, the one place the algorithm
 // lives) and confirms it matches the stored value.
 func verifyHashChain(entries []domain.RunEventLog) error {
-	return persistence.VerifyEntries(entries)
+	return chain.Verify(entries)
 }

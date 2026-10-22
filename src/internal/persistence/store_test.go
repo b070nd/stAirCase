@@ -2,6 +2,7 @@ package persistence_test
 
 import (
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"testing"
 	"time"
 
@@ -179,7 +180,7 @@ func TestAppendEventLog_first_entry_hash(t *testing.T) {
 	entry, err := s.AppendEventLog(run.ID, "state_emit", payload, "", "")
 	require.NoError(t, err)
 
-	assert.Equal(t, persistence.ComputeEventHashV2("state_emit", payload, "", ""), entry.EventHash, "the first entry is the version 2 hash of its event type and payload")
+	assert.Equal(t, chain.HashV2("state_emit", payload, "", ""), entry.EventHash, "the first entry is the version 2 hash of its event type and payload")
 	assert.Equal(t, 2, entry.HashVersion)
 }
 
@@ -193,7 +194,7 @@ func TestAppendEventLog_chain_extends_correctly(t *testing.T) {
 	e2, err := s.AppendEventLog(run.ID, "state_emit", "payload2", e1.EventHash, "gitabc")
 	require.NoError(t, err)
 
-	assert.Equal(t, persistence.ComputeEventHashV2("state_emit", "payload2", e1.EventHash, "gitabc"), e2.EventHash,
+	assert.Equal(t, chain.HashV2("state_emit", "payload2", e1.EventHash, "gitabc"), e2.EventHash,
 		"second chain entry hash must include prevHash and gitCommitHash")
 }
 

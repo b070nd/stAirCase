@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"github.com/b070nd/stAirCase/src/internal/plan"
 	"net/http"
 	"net/http/httptest"
@@ -821,7 +822,7 @@ func TestAudit_verify_chain_versions(t *testing.T) {
 	prev := ""
 	for i, typ := range []string{"run_started", "yield_decided"} {
 		e := domain.RunEventLog{ID: int64(i + 1), RunID: 1, EventType: typ, Payload: fmt.Sprintf(`{"n":%d}`, i), Timestamp: time.Now().UTC()}
-		e.EventHash = persistence.ComputeEventHash(e.Payload, prev, "")
+		e.EventHash = chain.HashV1(e.Payload, prev, "")
 		prev = e.EventHash
 		old = append(old, e)
 	}
@@ -832,7 +833,7 @@ func TestAudit_verify_chain_versions(t *testing.T) {
 	prev = ""
 	for i, typ := range []string{"run_started", "yield_decided"} {
 		e := domain.RunEventLog{ID: int64(i + 1), RunID: 1, EventType: typ, Payload: fmt.Sprintf(`{"n":%d}`, i), Timestamp: time.Now().UTC(), HashVersion: 2}
-		e.EventHash = persistence.ComputeEventHashV2(e.EventType, e.Payload, prev, "")
+		e.EventHash = chain.HashV2(e.EventType, e.Payload, prev, "")
 		prev = e.EventHash
 		cur = append(cur, e)
 	}

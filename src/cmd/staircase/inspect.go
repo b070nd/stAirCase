@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
-	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -131,7 +131,7 @@ var inspectLogCmd = &cobra.Command{
 		prevHash := ""
 		chainOK := true
 		for _, l := range logs {
-			expected, verr := persistence.ExpectedEventHash(l, prevHash)
+			expected, verr := chain.Expected(l, prevHash)
 			intact := verr == nil && l.EventHash == expected
 			if !intact {
 				chainOK = false

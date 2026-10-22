@@ -25,7 +25,7 @@ exported and anchored checkpoint, fail.
   event type, payload, previous hash and commit hash, each as an 8-byte big-endian length
   and its bytes. Existing entries are version 1 (a database column with default 1; an
   exported entry without the field is version 1) and verify exactly as before.
-- One function, `persistence.VerifyEntries`, decides for the store, `audit verify` and
+- One function, `chain.Verify`, decides for the store, `audit verify` and
   `inspect log`. A chain may mix versions. An unknown version is refused, and an entry
   cannot be downgraded: the stored hash is only valid under the version it was computed
   under.
