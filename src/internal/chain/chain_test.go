@@ -91,3 +91,27 @@ func TestExpected_refuses_a_version_it_does_not_know(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "chain version 9")
 }
+
+// TestCheck: every entry is judged against the hash stored on the one before it, so a broken entry is named and the entries after
+// it are still judged; Verify names the first.
+func TestCheck_judges_each_entry_and_verify_names_the_first(t *testing.T) {
+	entries := readFixture(t)
+	for _, err := range chain.Check(entries) {
+		require.NoError(t, err)
+	}
+	tampered := append([]domain.RunEventLog(nil), entries...)
+	tampered[3].Payload += " "
+	tampered[9].Payload += " "
+	got := chain.Check(tampered)
+	require.Len(t, got, len(entries))
+	for i, err := range got {
+		if i == 3 || i == 9 {
+			require.Error(t, err, "entry %d", i+1)
+		} else {
+			assert.NoError(t, err, "entry %d is judged on its own, against the hash stored before it", i+1)
+		}
+	}
+	err := chain.Verify(tampered)
+	require.Error(t, err)
+	assert.Equal(t, got[3].Error(), err.Error(), "Verify names the first")
+}

@@ -12,19 +12,19 @@ import (
 )
 
 // policyBound is a run bound under terms whose digest is "T", under a signed policy "P".
-func policyBound() *chain {
-	return (&chain{}).
+func policyBound() *events {
+	return (&events{}).
 		add("run_bound", map[string]any{"base_sha": "b", "branch": "refs/heads/staircase/run-1", "worktree": "w", "terms_sha256": "T"}).
 		add("policy_snapshot", map[string]any{"digest": "P", "signed": true})
 }
 
 // checkedTree adds the phase_checked entry of tree.
-func (c *chain) checkedTree(tree string, passed bool) *chain {
+func (c *events) checkedTree(tree string, passed bool) *events {
 	return c.add("phase_checked", map[string]any{"tree": tree, "passed": passed, "checks": []map[string]any{{"command": "go test", "exit_code": 0}}})
 }
 
 // authorized adds delivery_authorized naming the entry just before it; set overrides a key of its payload.
-func (c *chain) authorized(set ...any) *chain {
+func (c *events) authorized(set ...any) *events {
 	p := map[string]any{"phase_checked": fmt.Sprintf("e%d", len(c.events)), "tree": "t1", "files": map[string]string{"docs/a.md": "1"},
 		"terms_sha256": "T", "policy": "P", "mode": ModePolicy}
 	for i := 0; i+1 < len(set); i += 2 {
@@ -34,7 +34,7 @@ func (c *chain) authorized(set ...any) *chain {
 }
 
 // ready is a policy run that approved a file and whose checks passed on tree t1.
-func ready() *chain {
+func ready() *events {
 	return policyBound().edit("docs/a.md").decided(1, "policy", true, "paths", []string{"docs/a.md"}).checkedTree("t1", true)
 }
 
@@ -43,7 +43,7 @@ func ready() *chain {
 // resume or new review follows it, and only the commit-naming and evidence events do.
 func TestReplay_refuses_a_delivery_authorization_no_run_can_have_written(t *testing.T) {
 	for name, tc := range map[string]struct {
-		c     *chain
+		c     *events
 		entry int
 		why   string
 	}{
@@ -69,7 +69,7 @@ func TestReplay_refuses_a_delivery_authorization_no_run_can_have_written(t *test
 		"an offered review after it":                {ready().authorized().add("awaiting_review", map[string]any{"tree": "t1"}), 7, "follows delivery_authorized"},
 		"the owner's decision on a review after it": {ready().authorized().add("review_accepted", nil), 7, "follows delivery_authorized"},
 		"a new policy after it":                     {ready().authorized().add("policy_snapshot", map[string]any{"digest": "P", "signed": true}), 7, "follows delivery_authorized"},
-		"an unreadable authorization":               {&chain{events: append(ready().events, domain.RunEventLog{EventType: "delivery_authorized", Payload: "["})}, 6, "unreadable"},
+		"an unreadable authorization":               {&events{events: append(ready().events, domain.RunEventLog{EventType: "delivery_authorized", Payload: "["})}, 6, "unreadable"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := replay(tc.c.events)
@@ -119,10 +119,10 @@ func TestReplay_a_delivery_authorization_is_followed_by_the_commit_and_the_evide
 // the launch's end, the run's path and a rollback read; everything else, and anything unknown, is refused by name.
 func TestReplay_after_an_authorization_only_what_a_delivery_writes_is_read(t *testing.T) {
 	commit := map[string]any{"commit": "c1", "base": "b", "tree": "t1"}
-	launched := func() *chain {
+	launched := func() *events {
 		return policyBound().claim(1, "g1").edit("docs/a.md").decided(1, "policy", true).checkedTree("t1", true).authorized()
 	}
-	allowed := map[string]*chain{
+	allowed := map[string]*events{
 		"commit_prepared":    ready().authorized().add("commit_prepared", commit),
 		"check_ran":          ready().authorized().add("check_ran", map[string]any{"command": "go test"}),
 		"certificate_issued": ready().authorized().add("certificate_issued", commit),

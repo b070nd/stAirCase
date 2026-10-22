@@ -71,19 +71,32 @@ func Expected(e domain.RunEventLog, prevHash string) (string, error) {
 	return "", fmt.Errorf("entry id=%d uses chain version %d, which this version of stAirCase does not know", e.ID, e.HashVersion)
 }
 
-// Verify recomputes every hash of a run's entries, oldest first, and names the first one that does not match: the single check
-// that the store, `staircase audit verify` and `staircase inspect log` share.
-func Verify(entries []domain.RunEventLog) error {
+// Check judges every entry on its own: its hash must be the one it should carry given the hash stored on the entry before it. The
+// result has one element for each entry, nil where the entry is intact. A broken entry does not hide the ones after it, which is
+// what the commands that show a chain want; Verify is the single answer the commands that rely on one want.
+func Check(entries []domain.RunEventLog) []error {
+	out := make([]error, len(entries))
 	prevHash := ""
 	for i, e := range entries {
 		want, err := Expected(e, prevHash)
+		switch {
+		case err != nil:
+			out[i] = err
+		case e.EventHash != want:
+			out[i] = fmt.Errorf("hash mismatch at entry %d (id=%d, %s): stored=%s computed=%s", i+1, e.ID, e.EventType, e.EventHash, want)
+		}
+		prevHash = e.EventHash
+	}
+	return out
+}
+
+// Verify recomputes every hash of a run's entries, oldest first, and names the first one that does not match: the single check
+// that the store, `staircase audit verify` and `staircase inspect log` share.
+func Verify(entries []domain.RunEventLog) error {
+	for _, err := range Check(entries) {
 		if err != nil {
 			return err
 		}
-		if e.EventHash != want {
-			return fmt.Errorf("hash mismatch at entry %d (id=%d, %s): stored=%s computed=%s", i+1, e.ID, e.EventType, e.EventHash, want)
-		}
-		prevHash = e.EventHash
 	}
 	return nil
 }

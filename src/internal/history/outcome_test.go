@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func (c *chain) ended(status string) *chain {
+func (c *events) ended(status string) *events {
 	return c.add("run_path", map[string]any{"phases": []string{"PRE_FLIGHT", "BRANCH_RESTORE"}, "status": status})
 }
 
-func (c *chain) offered() *chain { return c.offeredFiles(map[string]string{"a": "x"}) }
+func (c *events) offered() *events { return c.offeredFiles(map[string]string{"a": "x"}) }
 
 // offeredFiles offers a review of those approved files; none: an empty change.
-func (c *chain) offeredFiles(files map[string]string) *chain {
+func (c *events) offeredFiles(files map[string]string) *events {
 	c.add("phase_checked", map[string]any{"tree": "t", "passed": true})
 	return c.add("awaiting_review", map[string]any{"tree": "t", "files": files, "phase_checked": fmt.Sprintf("e%d", len(c.events))})
 }
@@ -22,12 +22,12 @@ func (c *chain) offeredFiles(files map[string]string) *chain {
 // TestOutcome_maps_each_history_to_one_outcome (V11-C01 scope 6): one outcome per run, read from its history alone, with the
 // reason the chain gives for it.
 func TestOutcome_maps_each_history_to_one_outcome(t *testing.T) {
-	approved := func() *chain { return bound().edit("a").decided(1, "evidence", true) }
-	delivered := func() *chain {
+	approved := func() *events { return bound().edit("a").decided(1, "evidence", true) }
+	delivered := func() *events {
 		return approved().add("commit_prepared", map[string]any{"commit": "c"}).add("certificate_issued", map[string]any{"commit": "c"})
 	}
 	for name, tc := range map[string]struct {
-		c   *chain
+		c   *events
 		out Outcome
 		why string
 	}{
@@ -92,9 +92,9 @@ func TestOutcome_maps_each_history_to_one_outcome(t *testing.T) {
 // with an error, did not stop when asked or was lost says so, in the class's own words, and is never reported as a failed check or
 // a rejected review. A run that failed for those reasons keeps them first.
 func TestOutcome_names_the_lifecycle_class_of_a_launch_that_ended_badly(t *testing.T) {
-	approved := func() *chain { return bound().edit("a").decided(1, "evidence", true) }
+	approved := func() *events { return bound().edit("a").decided(1, "evidence", true) }
 	for name, tc := range map[string]struct {
-		c   *chain
+		c   *events
 		out Outcome
 		why []string
 	}{

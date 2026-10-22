@@ -1,7 +1,7 @@
 // Package history is the one replay of a run's audit chain (ADR 0010): what a verified chain says a run bound, proposed,
 // decided, parked, adopted, offered and delivered, read in one walk. A chain that no run can have written has no history; it is
-// refused with a GrammarError that names the entry. The package reads only verified chains (Read) and does nothing else: no git,
-// no files.
+// refused with a GrammarError that names the entry. The package decides only from verified chains (Read); ReadRows shows a chain as
+// stored, marked, for the commands that display one. It touches no git and no files.
 package history
 
 import (
@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
@@ -688,3 +689,42 @@ func (h History) Delivers(event, commit string) bool {
 
 // Holds reports whether entry is on the chain.
 func (h History) Holds(entry string) bool { return entry != "" && h.entries[entry] }
+
+// Rows are a run's entries as they are stored, for the commands that show a chain, and what checking their hashes said of each.
+// Nothing decides from them: the history of a run is Read, which refuses a chain that does not verify.
+type Rows struct {
+	Entries []domain.RunEventLog
+	// Broken has one element for each entry: nil where its hash is the one it should carry, else why not. A broken entry does not
+	// hide the ones after it.
+	Broken []error
+}
+
+// Intact says whether every hash matched.
+func (r Rows) Intact() bool {
+	for _, err := range r.Broken {
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// First is the first broken entry's error, nil when the chain is intact.
+func (r Rows) First() error {
+	for _, err := range r.Broken {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReadRows reads a run's entries as stored and checks them in the same read, so what is shown and what is said of it are one chain.
+// It fails only when the rows cannot be listed: a tampered chain is returned, marked, so it can be shown.
+func ReadRows(store *persistence.Store, runID int64) (Rows, error) {
+	entries, err := store.ListEventLogs(runID)
+	if err != nil {
+		return Rows{}, err
+	}
+	return Rows{Entries: entries, Broken: chain.Check(entries)}, nil
+}
