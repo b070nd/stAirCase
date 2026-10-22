@@ -168,7 +168,23 @@ func relativeTo(root, full string) string {
 	return filepath.ToSlash(rel)
 }
 
+// askedRel is the path as the agent named it, relative to root with slashes and no resolving: the boundary is judged on it first, so a
+// path that is out of reach is refused whether or not anything is there (and on a file system that tells letter cases apart, "AUTH.JSON"
+// is refused as "auth.json" is, not reported missing).
+func askedRel(root, p string) string {
+	p = filepath.ToSlash(p)
+	if filepath.IsAbs(p) {
+		if rel, err := filepath.Rel(root, p); err == nil {
+			p = filepath.ToSlash(rel)
+		}
+	}
+	return strings.TrimPrefix(path.Clean(p), "./")
+}
+
 func readFile(env *orchestrator.AgentEnv, root, path string) string {
+	if env.OutOfReach(askedRel(root, path)) {
+		return "error: " + path + outOfReachNote
+	}
 	full, err := inside(root, path)
 	switch {
 	case errors.Is(err, errEscape):
@@ -198,6 +214,9 @@ func readFile(env *orchestrator.AgentEnv, root, path string) string {
 }
 
 func listDir(env *orchestrator.AgentEnv, root, path string) string {
+	if rel := askedRel(root, orDefault(path, ".")); rel != "." && env.OutOfReach(rel+"/_") {
+		return "error: " + path + outOfReachNote
+	}
 	full, err := inside(root, orDefault(path, "."))
 	switch {
 	case errors.Is(err, errEscape):

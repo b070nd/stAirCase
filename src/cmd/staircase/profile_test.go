@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -189,7 +190,13 @@ func TestSession_checks_see_the_projects_environment(t *testing.T) {
 	git("commit", "-q", "-m", "ignore vendor")
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, "vendor"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "vendor", "autoload.php"), []byte("<?php\n"), 0o644))
-	require.NoError(t, profile.Save(ws, id, profile.Profile{Checks: []string{"test -f vendor/autoload.php && test -f HEALTH.md"}, Visible: []string{"vendor"}}))
+	// Where the machine's engine can keep the environment read-only (the macOS sandbox) the check runs in it; the Linux engines refuse a
+	// declared environment until they are built, so there the check runs with no sandbox (the paths are linked, nothing enforces).
+	mode := "off"
+	if runtime.GOOS == "darwin" {
+		mode = "auto"
+	}
+	require.NoError(t, profile.Save(ws, id, profile.Profile{Checks: []string{"test -f vendor/autoload.php && test -f HEALTH.md"}, Visible: []string{"vendor"}, Sandbox: mode}))
 
 	cli.yes = true
 	require.NoError(t, claudeSession(nil, []string{"again"}))
