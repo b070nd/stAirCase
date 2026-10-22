@@ -5,8 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"io/fs"
 	"maps"
 	"os"
@@ -64,6 +67,54 @@ func newApprovals(repo *GitRepo, baseSHA string) (*approvals, error) {
 		return nil, fmt.Errorf("load base commit %s: %w", baseSHA, err)
 	}
 	return &approvals{repo: repo, base: c, files: map[string]*approvedFile{}}, nil
+}
+
+// recordCeiling is the most one entry of the chain holds; a test lowers it to reach the refusal with a small change.
+var recordCeiling = chain.MaxPayload
+
+// recordTooBig says why approving next, on top of what is approved, would make a record the chain cannot hold, or "" when it would
+// not (ADR 0014, section 1). Two entries grow with a change: the decision on this proposal, which lists its files twice (their digests
+// and their paths), and the review of the whole change, which lists every approved file with its digest. Both are estimated from the
+// paths, without hashing a byte: a path costs its quoted self and a digest, and the rest of the record is a fixed allowance. The
+// estimate is of the size the entry will have, so a refusal here is one the write would have made at the end of the run.
+func (a *approvals) recordTooBig(next map[string]*approvedFile) string {
+	var proposed, approved []string
+	for p := range next {
+		proposed = append(proposed, p)
+	}
+	approved = slices.Clone(proposed)
+	for p := range a.files {
+		if _, again := next[p]; !again {
+			approved = append(approved, p)
+		}
+	}
+	decision, review := recordBytes(proposed, approved)
+	switch {
+	case decision > recordCeiling:
+		return fmt.Sprintf("the decision on this proposal would be %d bytes and an entry of the audit chain holds at most %d", decision, recordCeiling)
+	case review > recordCeiling:
+		return fmt.Sprintf("the review of the whole change would be %d bytes and an entry of the audit chain holds at most %d", review, recordCeiling)
+	}
+	return ""
+}
+
+// recordBytes estimates the decision on a proposal of these files and the review of a change of these files (a path costs its
+// quoted self and a digest; the rest of the record is a fixed allowance).
+func recordBytes(proposed, approved []string) (decision, review int) {
+	const allowance = 600            // the tree, the entries it names, the counts, the keys
+	entry := func(path string) int { // "path":"<digest>",
+		q, _ := json.Marshal(path)
+		return len(q) + 1 + 66 + 1
+	}
+	decision, review = allowance, allowance
+	for _, p := range proposed {
+		q, _ := json.Marshal(p)
+		decision += entry(p) + len(q) + 1 // its digest and its path in the list
+	}
+	for _, p := range approved {
+		review += entry(p)
+	}
+	return decision, review
 }
 
 // errBadPath marks a refusal caused by the proposed path itself.
@@ -313,6 +364,18 @@ func (a *approvals) notApplied(p string) bool {
 
 // violation is a reason finalize refuses to commit, recorded as an audit event.
 type violation struct{ event, file, detail string }
+
+// recorded is the event that records the violation on the chain.
+func (v violation) recorded() history.Event {
+	f := history.Violation{Detail: v.detail, File: v.file}
+	switch v.event {
+	case "run_branch_moved":
+		return history.RunBranchMoved(f)
+	case "unapproved_worktree_change":
+		return history.UnapprovedWorktreeChange(f)
+	}
+	return history.ApprovalContentMismatch(f)
+}
 
 // verify compares the worktree with the approved state: HEAD is still the
 // base commit (the agent made no commits of its own), every approved path

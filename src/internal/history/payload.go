@@ -24,6 +24,9 @@ type Bound struct {
 	AwayCommands    *DeclaredCommands `json:"away_commands,omitempty"`
 	AwayTools       *DeclaredTools    `json:"away_tools,omitempty"`
 	TermsSHA256     string            `json:"terms_sha256,omitempty"` // the saved options' digest; absent before ADR 0010
+	// ValidatorModels are the reviewer models the run asked, in the order it asked them (ADR 0014, section 3). Where the field is
+	// present the replay requires the votes that every decision by `validator:` rests on; chains without it read as before.
+	ValidatorModels []string `json:"validator_models,omitempty"`
 	// A hosted session resumed after its earlier run was decided (ADR 0008): the session, and the run it follows.
 	ResumesSession string `json:"resumes_session,omitempty"`
 	ResumesRun     int64  `json:"resumes_run,omitempty"`
@@ -241,14 +244,17 @@ type AgentSession struct {
 	Mode  string `json:"mode"`
 }
 
-// StateEmit is one model step's usage.
+// StateEmit is one model step's usage. Its fields are in the order of their keys, which is how the agent host has always written it.
 type StateEmit struct {
 	ActiveAgent string `json:"active_agent"`
 	State       struct {
-		Model string `json:"model"`
-		In    int    `json:"input_tokens"`
-		Out   int    `json:"output_tokens"`
+		Model        string `json:"model"`
+		In           int    `json:"input_tokens"`
+		Out          int    `json:"output_tokens"`
+		Content      string `json:"content,omitempty"` // the start of the reply
+		HasToolCalls bool   `json:"has_tool_calls"`
 	} `json:"state"`
+	Type string `json:"type"`
 }
 
 // ShellRan is an approved command that ran.
@@ -258,12 +264,12 @@ type ShellRan struct {
 	Sandboxed bool   `json:"sandboxed"`
 }
 
-// Check is one check's result, as phase_checked records it.
+// Check is one check's result, as phase_checked records it. Its fields are in the order of their keys, as runs have always written it.
 type Check struct {
 	Command      string `json:"command"`
 	ExitCode     int    `json:"exit_code"`
-	Sandboxed    bool   `json:"sandboxed"`
 	OutputSHA256 string `json:"output_sha256"`
+	Sandboxed    bool   `json:"sandboxed"`
 }
 
 // PhaseChecked is an away run's checks on the exact approved tree (ADR 0006).

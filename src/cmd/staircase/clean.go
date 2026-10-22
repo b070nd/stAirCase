@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -170,12 +171,12 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 		}
 		for _, r := range runs {
 			lines = append(lines, archiveLine{"run", r})
-			events, err := store.ListEventLogs(r.ID)
+			rows, err := history.ReadRows(store, r.ID) // archived as stored: the archive is a copy, not a judgement
 			if err != nil {
 				fmt.Printf("   ⚠️  Archiving run %d: %v\n", r.ID, err)
 				return
 			}
-			for _, e := range events {
+			for _, e := range rows.Entries {
 				seen[e.ID] = true
 				lines = append(lines, archiveLine{"event", e})
 			}

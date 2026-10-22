@@ -41,7 +41,8 @@ type deciders struct {
 	askHuman      func(req domain.YieldRequest, signText string) domain.YieldResponse // signText: what a person signs, up to the verb
 	display       *monitor.Display
 	tracker       *monitor.Tracker
-	audit         func(event string, fields any) error
+	audit         func(history.Event) error
+	entry         string // the chain entry of the request being decided: the votes on it name it
 
 	// What ends a decision: waitCtx the run's cancellation and its time limit (for every
 	// decision in the loop, automatic or a person's), ctx cancellation alone (for the
@@ -51,6 +52,15 @@ type deciders struct {
 	parked              int  // proposals parked while away
 	total, autoApproved int  // proposals so far, and those the policy approved (limits)
 	taskApproved        bool // something was approved as part of the task: a person reviews the result
+}
+
+// vote puts a reviewer model's verdict on the proposal being decided on the chain.
+func (d *deciders) vote(v history.ValidatorVoted) error {
+	if d.audit == nil {
+		return nil
+	}
+	v.RequestEntry = d.entry
+	return d.audit(v)
 }
 
 // under sets what the terms decide about who decides: the agreed task (approving in scope or on evidence needs someone to have
@@ -128,10 +138,14 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		next, err := d.approvals.derive(req.ProposedEdits)
 		if err != nil {
 			if errors.Is(err, errBadPath) {
-				_ = d.audit("approval_path_escape", map[string]any{"agent": req.AgentName, "detail": err.Error()})
+				_ = d.audit(history.ApprovalPathEscape{Agent: req.AgentName, Detail: err.Error()})
 			}
 			d.display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", req.AgentName, req.ActionType, err))
 			return ruling{resp: domain.Decide(false, "refused by the orchestrator: "+err.Error()), source: "orchestrator", refused: true}
+		}
+		if why := d.approvals.recordTooBig(next); why != "" { // it would fail the run at its end: refuse it now, with the reason
+			d.display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (too large to record)", req.AgentName, req.ActionType))
+			return ruling{resp: domain.Decide(false, "refused by the orchestrator: this change is too large to record: "+why+". Stop adding files; what is already approved stands."), source: "orchestrator", refused: true}
 		}
 		rl.next = next
 		rl.files = slices.Sorted(maps.Keys(next))
@@ -220,7 +234,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		rl.resp, rl.source = domain.Decide(true, "inside the agreed task"), "task"
 		return rl
 	}
-	note, resp, decided := d.validator.decide(ctx, *req, rl.next, d.approvals, d.tracker)
+	note, resp, decided := d.validator.decide(ctx, *req, rl.next, d.approvals, d.tracker, d.vote)
 	if decided {
 		d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → %v (%s)", req.AgentName, req.ActionType, resp.Approved, resp.Feedback))
 		rl.resp, rl.source = resp, "validator:"+d.validator.Name()
@@ -277,7 +291,7 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 		decided.Lines += changedLines(map[string]*approvedFile{p: base}, map[string]*approvedFile{p: f})
 	}
 	decided.Files = digest(d.approvals.files) // what was offered, approved or not
-	if err := d.audit("yield_decided", decided); err != nil {
+	if err := d.audit(decided); err != nil {
 		return false, fmt.Errorf("audit final review: %w", err)
 	}
 	return resp.Approved, nil
@@ -360,7 +374,7 @@ func (d *deciders) onEvidence(ctx context.Context, req *domain.YieldRequest, rl 
 		return d.human(req, rl)
 	}
 	if d.validator != nil {
-		note, resp, decided := d.validator.decide(ctx, *req, rl.next, d.approvals, d.tracker)
+		note, resp, decided := d.validator.decide(ctx, *req, rl.next, d.approvals, d.tracker, d.vote)
 		switch {
 		case decided && !resp.Approved:
 			d.display.AddActivity(fmt.Sprintf("%-14s REVIEW %s → false (%s)", req.AgentName, req.ActionType, resp.Feedback))

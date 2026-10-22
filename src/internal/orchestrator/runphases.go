@@ -248,7 +248,7 @@ func (s *runState) finish(runErr error) error {
 	for i, p := range r.path {
 		phases[i] = string(p)
 	}
-	if err := r.audit(run.ID, "run_path", history.Ended{Phases: phases, Status: s.finalStatus}); err != nil {
+	if err := r.log(run.ID).Append(history.Ended{Phases: phases, Status: s.finalStatus}); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
 	if s.worktree != "" {
@@ -387,7 +387,7 @@ func (s *runState) startAgent() error {
 	s.usage = make(chan Usage)
 	done := make(chan error, 1)
 	s.agentDone = done
-	s.host = &agentHost{store: r.store, runID: run.ID, projectID: s.caseRec.ProjectID, aesKey: s.aesKey, debug: s.debugLog}
+	s.host = newAgentHost(r.store, run.ID, s.caseRec.ProjectID, s.aesKey, s.debugLog)
 	agentCtx, cancelAgent := context.WithCancel(s.ctx)
 	s.cancelAgent = cancelAgent
 	s.deferred(cancelAgent)
@@ -469,7 +469,7 @@ func (s *runState) startAgent() error {
 	delivered := s.host.deliveredSecrets
 	s.dec = (&deciders{sign: signing, redact: func(str string) string { return redact(str, delivered()) }, signal: sig, evidence: s.evGate, approvals: s.appr, drift: s.sup, policy: s.snap.Engine, validator: s.val, askHuman: askHuman, waitCtx: s.waitCtx, ctx: s.ctx,
 		display: s.display, tracker: s.tracker,
-		audit: func(event string, fields any) error { return r.audit(run.ID, event, fields) }}).under(opts.Terms)
+		audit: r.log(run.ID).Append}).under(opts.Terms)
 	s.seg.resume(s.dec, s.val)
 	return nil
 }
@@ -487,7 +487,7 @@ func (s *runState) claimLaunch() error {
 		return fmt.Errorf("a generation for the agent's launch: %w", err)
 	}
 	claim := history.LaunchClaimed{Attempt: len(h.Launches) + 1, Generation: gen, Segment: h.Segment}
-	if err := s.r.audit(s.run.ID, "launch_claimed", claim); err != nil {
+	if err := s.r.log(s.run.ID).Append(claim); err != nil {
 		return fmt.Errorf("audit launch_claimed: %w", err)
 	}
 	s.launch = &claim
@@ -504,7 +504,7 @@ func (s *runState) endLaunch() {
 	s.launchEnded = true
 	s.endedAs(history.LaunchStopped) // stopped by the run, when nothing said otherwise
 	barrier.Hit(barrier.AgentEnded)
-	if err := s.r.audit(s.run.ID, "launch_ended", history.LaunchEnded{Attempt: s.launch.Attempt, Generation: s.launch.Generation,
+	if err := s.r.log(s.run.ID).Append(history.LaunchEnded{Attempt: s.launch.Attempt, Generation: s.launch.Generation,
 		Outcome: s.agentOutcome, Class: s.launchClass()}); err != nil {
 		obs.Log.Warn("audit launch_ended: a restart will find the launch with no outcome", "run_id", s.run.ID, "err", err)
 	}
@@ -539,7 +539,7 @@ func (s *runState) stopAgent() {
 		// Nothing more can be done in-process; the run ends without it.
 		s.endedAs(history.LaunchUnresponsive)
 		obs.Log.Error("agent did not stop after cancellation", "grace", lostGrace, "run_id", s.run.ID)
-		_ = s.r.audit(s.run.ID, "agent_unresponsive", map[string]any{"grace_seconds": lostGrace.Seconds()})
+		_ = s.r.log(s.run.ID).Append(history.AgentUnresponsive{GraceSeconds: lostGrace.Seconds()})
 	}
 }
 
@@ -596,7 +596,7 @@ func (s *runState) overBudget() bool {
 
 func (s *runState) driftHalt(reason string) {
 	s.sup.Halt(reason)
-	_ = s.r.audit(s.run.ID, "drift_halt", map[string]any{"reason": reason})
+	_ = s.r.log(s.run.ID).Append(history.DriftHalt{Reason: reason})
 	fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s - halting run #%d\n", tui.Safe(reason), s.run.ID)
 	s.cancelled()
 }
@@ -660,6 +660,7 @@ func (s *runState) decide(p proposal) bool {
 		trace.WithAttributes(
 			attribute.String("staircase.agent", req.AgentName),
 			attribute.String("staircase.action_type", req.ActionType)))
+	dec.entry = p.entry
 	rl := dec.decide(s.waitCtx, &req) // checks, models, signals and signing end with the run's limit too
 	barrier.Hit(barrier.DecisionMade)
 	// Record the decision, with the exact approved content, before the runtime can act on it: an approval that is not on
@@ -813,7 +814,7 @@ func (s *runState) finalize() error {
 		// The commit is named on the chain before any branch holds it: if that cannot be
 		// recorded, nothing is delivered, and a recovery after a crash knows this commit as
 		// the run's own by that name.
-		if err := r.audit(run.ID, "commit_prepared", map[string]any{"commit": prep.commit, "base": prep.base, "tree": prep.tree, "branch": s.runBranch}); err != nil {
+		if err := r.log(run.ID).Append(history.CommitPrepared{Commit: prep.commit, Base: prep.base, Tree: prep.tree, Branch: s.runBranch}); err != nil {
 			return fmt.Errorf("audit commit_prepared: %w", err)
 		}
 		barrier.Hit(barrier.CommitPrepared)
@@ -844,12 +845,12 @@ func (s *runState) finalize() error {
 	ev.policy, ev.initiator, ev.byPolicy = s.snap.Digest, s.initiator, authorized != ""
 	if err := r.certify(run.ID, hash, s.baseSHA, chainHead, opts.Plan, s.gr, ev); err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
-		_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})
+		_ = r.log(run.ID).Append(history.CertificateFailed{Commit: hash, Error: err.Error()})
 		s.evidenceErrs = append(s.evidenceErrs, "certificate: "+err.Error())
 	}
 	barrier.Hit(barrier.EvidencePublished)
 	if len(s.evidenceErrs) > 0 {
-		_ = r.audit(run.ID, "evidence_failed", map[string]any{"commit": hash, "errors": s.evidenceErrs})
+		_ = r.log(run.ID).Append(history.EvidenceFailed{Commit: hash, Errors: s.evidenceErrs})
 	}
 	return nil
 }

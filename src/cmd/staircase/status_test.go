@@ -113,3 +113,11 @@ func TestInspect_shows_each_runs_outcome(t *testing.T) {
 	assert.Contains(t, out, "outcome")
 	assert.Contains(t, out, "awaiting review")
 }
+
+// TestStatusLines_say_what_the_reviewer_models_did: the votes on the chain are in the status the morning commands print.
+func TestStatusLines_say_what_the_reviewer_models_did(t *testing.T) {
+	lines := strings.Join(statusLines(orchestrator.Status{Outcome: history.OutcomeAwaitingReview, Votes: 6, VotedProposals: 3, UnsettledProposals: 2}), "\n")
+	assert.Contains(t, lines, "6 vote(s) of the reviewer models on 3 proposal(s)")
+	assert.Contains(t, lines, "did not settle 2")
+	assert.NotContains(t, strings.Join(statusLines(orchestrator.Status{Outcome: history.OutcomeAwaitingReview}), "\n"), "reviewers")
+}

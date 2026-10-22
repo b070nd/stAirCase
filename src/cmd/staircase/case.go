@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -245,8 +245,7 @@ so it can be run again. A RUNNING run must be stopped first.`,
 		if u, err := user.Current(); err == nil {
 			actor = u.Username
 		}
-		payload, _ := json.Marshal(map[string]any{"type": "rolled_back", "actor": actor, "branch": branch})
-		if _, err := store.AppendEventLogChained(lastRun.ID, "rolled_back", string(payload), ""); err != nil {
+		if err := history.NewWriter(store, lastRun.ID, history.Settings{}).Append(history.RolledBack{Actor: actor, Branch: branch}); err != nil {
 			return fmt.Errorf("audit rollback: %w", err)
 		}
 		if err := store.UpdateCaseStatus(caseID, persistence.CaseStatusPending); err != nil {

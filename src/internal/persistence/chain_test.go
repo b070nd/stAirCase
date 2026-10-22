@@ -2,10 +2,10 @@ package persistence_test
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
+	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,30 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// TestChainVectors: the conformance vectors of docs/spec/audit-chain-vectors.json
-// (also checked by audit_chain_vectors.py, which shares no code with this
-// package) are decided as the file says.
-func TestChainVectors(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "spec", "audit-chain-vectors.json"))
-	require.NoError(t, err)
-	var vectors map[string]struct {
-		Valid   bool                 `json:"valid"`
-		Entries []domain.RunEventLog `json:"entries"`
-	}
-	require.NoError(t, json.Unmarshal(raw, &vectors))
-	require.NotEmpty(t, vectors)
-	for name, v := range vectors {
-		t.Run(name, func(t *testing.T) {
-			err := persistence.VerifyEntries(v.Entries)
-			if v.Valid {
-				assert.NoError(t, err)
-			} else {
-				assert.Error(t, err)
-			}
-		})
-	}
-}
 
 // chainStore is a store with one run to write events to.
 func chainStore(t *testing.T) (*persistence.Store, *sql.DB, int64) {
@@ -80,7 +56,7 @@ func TestChain_covers_the_event_type(t *testing.T) {
 // entry cannot be passed off as an older version, nor as one that is unknown.
 func TestChain_old_entries_still_verify(t *testing.T) {
 	s, db, run := chainStore(t)
-	first := persistence.ComputeEventHash(`{"a":1}`, "", "")
+	first := chain.HashV1(`{"a":1}`, "", "")
 	mustExec(t, db, `INSERT INTO run_event_logs (run_id, event_type, payload, timestamp, event_hash, git_commit_hash, hash_version)
 		VALUES (?, 'run_started', '{"a":1}', ?, ?, '', 1)`, run, time.Now(), first)
 	_, err := s.AppendEventLogChained(run, "yield_decided", `{"b":2}`, "")
@@ -105,7 +81,7 @@ func TestChain_appended_entry_is_the_documented_hash(t *testing.T) {
 	_, err := s.AppendEventLogChained(run, "run_started", `{}`, "")
 	require.NoError(t, err)
 	logs, _ := s.ListEventLogs(run)
-	assert.Equal(t, persistence.ComputeEventHashV2("run_started", `{}`, "", ""), logs[0].EventHash)
+	assert.Equal(t, chain.HashV2("run_started", `{}`, "", ""), logs[0].EventHash)
 }
 
 func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
@@ -178,7 +154,7 @@ func TestListVerifiedEventLogs(t *testing.T) {
 	logs, err := s.ListVerifiedEventLogs(run)
 	require.NoError(t, err)
 	require.Len(t, logs, 3)
-	require.NoError(t, persistence.VerifyEntries(logs), "the slice returned is a verified one")
+	require.NoError(t, chain.Verify(logs), "the slice returned is a verified one")
 	mustExec(t, db, `UPDATE run_event_logs SET payload = '{"n":2}' WHERE id = ?`, logs[1].ID)
 	got, err := s.ListVerifiedEventLogs(run)
 	assert.Error(t, err)
@@ -229,4 +205,32 @@ func TestAppendEventLogChainedIf(t *testing.T) {
 	require.NoError(t, <-second)
 	assert.Equal(t, []string{"first", "second"}, order)
 	require.NoError(t, s.VerifyChain(run))
+}
+
+// A payload is stored whole or refused; it is never cut (ADR 0014). A chain row cut in the middle is still a row the
+// verifier accepts, so a cut payload would be an authoritative record of something the run did not write.
+func TestAppendEventLog_stores_a_payload_whole_up_to_the_ceiling(t *testing.T) {
+	s, _, runID := chainStore(t)
+	big := `{"x":"` + strings.Repeat("a", 200*1024) + `"}` // an offered review of ~2000 files is about this big
+	e, err := s.AppendEventLogChained(runID, "probe", big, "")
+	require.NoError(t, err)
+	assert.Equal(t, big, e.Payload)
+	logs, err := s.ListVerifiedEventLogs(runID)
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	assert.Equal(t, big, logs[0].Payload, "what was read is what was written")
+}
+
+func TestAppendEventLog_refuses_a_payload_over_the_ceiling(t *testing.T) {
+	s, _, runID := chainStore(t)
+	over := `{"x":"` + strings.Repeat("a", chain.MaxPayload) + `"}`
+	_, err := s.AppendEventLogChained(runID, "awaiting_review", over, "")
+	require.ErrorIs(t, err, chain.ErrPayloadTooLarge)
+	assert.Contains(t, err.Error(), "awaiting_review", "the error names the event")
+	assert.Contains(t, err.Error(), fmt.Sprint(len(over)), "the error names the size")
+	logs, err := s.ListEventLogs(runID)
+	require.NoError(t, err)
+	assert.Empty(t, logs, "nothing was written")
+	_, err = s.AppendEventLogChainedIf(runID, "awaiting_review", over, "", func() error { return nil })
+	require.ErrorIs(t, err, chain.ErrPayloadTooLarge, "the conditional append refuses too")
 }

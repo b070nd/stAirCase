@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
-	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -114,28 +114,21 @@ var inspectLogCmd = &cobra.Command{
 		}
 		fmt.Println()
 
-		logs, err := store.ListEventLogs(runID)
+		rows, err := history.ReadRows(store, runID)
 		if err != nil {
 			return err
 		}
+		logs := rows.Entries
 		if len(logs) == 0 {
 			fmt.Println("No event log entries.")
 			return nil
 		}
 
-		// Re-derive hash chain and flag any breaks.
-		// Each entry carries its own git_commit_hash - the value that was
-		// current when the entry was logged. Entries written before the
-		// teardown commit have "" here; entries written after have the real
-		// hash. Using the per-entry value is the only way to verify correctly.
-		prevHash := ""
-		chainOK := true
-		for _, l := range logs {
-			expected, verr := persistence.ExpectedEventHash(l, prevHash)
-			intact := verr == nil && l.EventHash == expected
-			if !intact {
-				chainOK = false
-			}
+		// Each entry is judged on its own against the hash stored before it (chain.Check), so one broken entry is marked and the
+		// ones after it are still judged. Each carries its own git_commit_hash, the value current when it was logged.
+		chainOK := rows.Intact()
+		for i, l := range logs {
+			intact := rows.Broken[i] == nil
 			mark := "✅"
 			if !intact {
 				mark = "❌ TAMPERED"
@@ -156,7 +149,6 @@ var inspectLogCmd = &cobra.Command{
 				}
 				fmt.Printf("     %s\n", snip)
 			}
-			prevHash = l.EventHash
 		}
 
 		fmt.Println()

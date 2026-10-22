@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"io"
 	"os"
 	"os/exec"
@@ -53,8 +54,7 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 		if !c.Sandboxed {
 			fmt.Fprintf(os.Stdout, "      (ran without a sandbox)\n")
 		}
-		_ = r.audit(runID, "check_ran", map[string]any{"command": command, "exit_code": c.ExitCode,
-			"sandboxed": c.Sandboxed, "output_sha256": c.OutputSHA256})
+		_ = r.log(runID).Append(history.CheckRan{Command: command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed})
 		out = append(out, c)
 	}
 	_ = exec.Command("git", "-C", repo.path, "worktree", "remove", "--force", dir).Run()

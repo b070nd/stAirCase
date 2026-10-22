@@ -192,8 +192,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 			return nil
 		}
 	}
-	return r.audit(runID, "certificate_issued", map[string]any{"commit": commit, "cal": p.CAL,
-		"envelope_sha256": sha256Hex(b)})
+	return r.log(runID).Append(history.CertificateIssued{Commit: commit, CAL: p.CAL, EnvelopeSHA256: sha256Hex(b)})
 }
 
 // NotesRef and LedgerNotesRef are the git notes a run attaches to its commit:

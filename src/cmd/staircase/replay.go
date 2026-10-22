@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"io"
 	"os"
 
@@ -38,8 +39,12 @@ replaying a tampered run log.`,
 // runReplay verifies the audit chain for runID then writes yield decisions to
 // out. Extracted for testability (CHECK 9.3.1, 9.3.2).
 func runReplay(out io.Writer, store *persistence.Store, runID int64) error {
-	// CHECK 9.3.2: refuse to replay a run whose audit chain has been tampered with.
-	if err := store.VerifyChain(runID); err != nil {
+	// A run is replayed from one read of its rows, and refused if that read does not verify.
+	rows, err := history.ReadRows(store, runID)
+	if err != nil {
+		return err
+	}
+	if err := rows.First(); err != nil {
 		return fmt.Errorf("audit chain verification failed for run #%d: %w", runID, err)
 	}
 
@@ -55,12 +60,7 @@ func runReplay(out io.Writer, store *persistence.Store, runID int64) error {
 	}
 	fmt.Fprintln(out)
 
-	logs, err := store.ListEventLogs(runID)
-	if err != nil {
-		return err
-	}
-
-	decisions := printYieldDecisions(out, logs)
+	decisions := printYieldDecisions(out, rows.Entries)
 
 	if decisions == 0 {
 		fmt.Fprintln(out, "No yield decisions recorded for this run.")
@@ -68,15 +68,6 @@ func runReplay(out io.Writer, store *persistence.Store, runID int64) error {
 		fmt.Fprintf(out, "\n%d yield decision(s) replayed. Audit chain intact.\n", decisions)
 	}
 	return nil
-}
-
-// yieldDecidedPayload mirrors the JSON shape written by the orchestrator.
-type yieldDecidedPayload struct {
-	Source     string `json:"source"`
-	Agent      string `json:"agent"`
-	ActionType string `json:"action_type"`
-	Approved   bool   `json:"approved"`
-	Feedback   string `json:"feedback,omitempty"`
 }
 
 // printYieldDecisions writes yield_decided entries from logs to out.
@@ -87,7 +78,7 @@ func printYieldDecisions(out io.Writer, logs []domain.RunEventLog) int {
 		if entry.EventType != "yield_decided" {
 			continue
 		}
-		var p yieldDecidedPayload
+		var p history.Decided
 		if err := json.Unmarshal([]byte(entry.Payload), &p); err != nil {
 			continue
 		}

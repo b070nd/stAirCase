@@ -83,12 +83,12 @@ func TestContract_every_policy_field_is_documented(t *testing.T) {
 	}
 }
 
-// eventNames are the audit event types the source writes: the literal given to the audit functions, the store's
-// chained append, and the kinds of end-of-run violation (which are audited under their own name).
+// eventNames are the audit event types the source writes: the name each event type of history carries, the literal given to the
+// store's chained append, and the kinds of end-of-run violation (which are audited under their own name).
 func eventNames(t *testing.T) []string {
 	var names = map[string]bool{}
 	re := []*regexp.Regexp{
-		regexp.MustCompile(`\baudit(?:Err|If)?\(\s*(?:[A-Za-z.]+\s*,\s*)?"([a-z_]+)"`),
+		regexp.MustCompile(`\) eventName\(\) string\s*\{\s*return "([a-z_]+)"`),
 		regexp.MustCompile(`AppendEventLogChained(?:If)?\(\s*[A-Za-z.]+\s*,\s*"([a-z_]+)"`),
 		regexp.MustCompile(`violation\{"([a-z_]+)"`),
 	}

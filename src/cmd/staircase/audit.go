@@ -35,6 +35,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"log"
 	"os"
 	"path/filepath"
@@ -276,7 +277,7 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 // verifyOne verifies a single AuditCheckpoint record's hash chain and signature.
 func verifyOne(cpPath string, lineNum int, cp AuditCheckpoint, pubKey []byte) error {
 	// ── 1. Hash chain ─────────────────────────────────────────────────────────
-	if chainErr := verifyHashChain(cp.Entries); chainErr != nil {
+	if chainErr := chain.Verify(cp.Entries); chainErr != nil {
 		log.Printf("❌ Hash chain invalid: %v", chainErr)
 		return fmt.Errorf("checkpoint %s record %d: hash chain invalid: %w", cpPath, lineNum, chainErr)
 	}
@@ -300,11 +301,4 @@ func verifyOne(cpPath string, lineNum int, cp AuditCheckpoint, pubKey []byte) er
 // byte sequence is identical regardless of platform or JSON library.
 func marshalEntries(entries []domain.RunEventLog) ([]byte, error) {
 	return json.Marshal(entries)
-}
-
-// verifyHashChain re-derives each entry's event_hash under the chain version
-// the entry names (persistence.VerifyEntries, the one place the algorithm
-// lives) and confirms it matches the stored value.
-func verifyHashChain(entries []domain.RunEventLog) error {
-	return persistence.VerifyEntries(entries)
 }

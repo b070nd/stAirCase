@@ -14,14 +14,14 @@ import (
 
 // chain builds bare events (no hashes, nothing in a store): what the fold reads and nothing about verification, which Read
 // leaves to the store (TestRead_*).
-type chain struct {
+type events struct {
 	events []domain.RunEventLog
 	sec    int
 }
 
 var t0 = time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 
-func (c *chain) add(typ string, p any) *chain {
+func (c *events) add(typ string, p any) *events {
 	b, _ := json.Marshal(p)
 	c.sec++
 	c.events = append(c.events, domain.RunEventLog{EventType: typ, Payload: string(b), EventHash: fmt.Sprintf("e%d", len(c.events)+1),
@@ -29,15 +29,15 @@ func (c *chain) add(typ string, p any) *chain {
 	return c
 }
 
-func bound() *chain {
-	return (&chain{}).add("run_bound", map[string]any{"base_sha": "b", "branch": "refs/heads/staircase/run-1", "worktree": "w"})
+func bound() *events {
+	return (&events{}).add("run_bound", map[string]any{"base_sha": "b", "branch": "refs/heads/staircase/run-1", "worktree": "w"})
 }
 
-func (c *chain) req(action string) *chain {
+func (c *events) req(action string) *events {
 	return c.add("yield_request", map[string]any{"action_type": action, "agent_name": "coder"})
 }
 
-func (c *chain) edit(files ...string) *chain {
+func (c *events) edit(files ...string) *events {
 	var edits []map[string]string
 	for _, f := range files {
 		edits = append(edits, map[string]string{"file": f, "replace_block": "x"})
@@ -45,7 +45,7 @@ func (c *chain) edit(files ...string) *chain {
 	return c.add("yield_request", map[string]any{"action_type": domain.ActionFileEdit, "proposed_edits": edits})
 }
 
-func (c *chain) decided(seq int, source string, approved bool, extra ...any) *chain {
+func (c *events) decided(seq int, source string, approved bool, extra ...any) *events {
 	p := map[string]any{"seq": seq, "source": source, "approved": approved, "action_type": domain.ActionFileEdit, "request_sha256": fmt.Sprintf("h%d", seq)}
 	for i := 0; i+1 < len(extra); i += 2 {
 		p[extra[i].(string)] = extra[i+1]
@@ -53,11 +53,11 @@ func (c *chain) decided(seq int, source string, approved bool, extra ...any) *ch
 	return c.add("yield_decided", p)
 }
 
-func (c *chain) final(seq int, approved bool, files map[string]string) *chain {
+func (c *events) final(seq int, approved bool, files map[string]string) *events {
 	return c.add("yield_decided", map[string]any{"seq": seq, "source": "operator", "approved": approved, "action_type": domain.ActionFinalReview, "files": files})
 }
 
-func (c *chain) replay(t *testing.T) History {
+func (c *events) replay(t *testing.T) History {
 	t.Helper()
 	h, err := replay(c.events)
 	require.NoError(t, err)
@@ -67,11 +67,11 @@ func (c *chain) replay(t *testing.T) History {
 // TestReplay_refuses_what_no_run_can_have_written: every grammar rule of ADR 0010, section 2, with the entry it names.
 func TestReplay_refuses_what_no_run_can_have_written(t *testing.T) {
 	for name, tc := range map[string]struct {
-		c     *chain
+		c     *events
 		entry int
 		why   string
 	}{
-		"a decision before the run began": {(&chain{}).req("file_edit").add("run_bound", nil), 1, "begins with"},
+		"a decision before the run began": {(&events{}).req("file_edit").add("run_bound", nil), 1, "begins with"},
 		"two bindings":                    {bound().add("run_bound", nil), 2, "more than once"},
 		"proposal numbers that repeat":    {bound().req("file_edit").req("file_edit").decided(2, "policy", true).decided(2, "policy", true), 5, "do not increase"},
 		"numbers going backwards":         {bound().req("file_edit").req("file_edit").decided(3, "policy", true).decided(1, "policy", true), 5, "do not increase"},
@@ -110,9 +110,9 @@ func TestReplay_refuses_what_no_run_can_have_written(t *testing.T) {
 		"two acknowledgements of one launch":        {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).ack(1, "g1").ack(1, "g1"), 5, "already acknowledged"},
 		"an acknowledgement a resume made already":  {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("run_resumed", map[string]any{"segment": 2, "ack_unknown": 1}).ack(1, "g1"), 5, "already acknowledged"},
 		"an acknowledgement after the certificate":  {bound().claim(1, "g1").launchEnded(1, "g1", LaunchUnknown).add("certificate_issued", nil).ack(1, "g1"), 5, "follows certificate_issued"},
-		"an unreadable decision":                    {&chain{events: append(bound().events, domain.RunEventLog{EventType: "yield_decided", Payload: "not json"})}, 2, "unreadable"},
-		"an unreadable binding":                     {&chain{events: []domain.RunEventLog{{EventType: "run_bound", Payload: "{"}}}, 1, "unreadable"},
-		"an unreadable offered review":              {&chain{events: append(bound().events, domain.RunEventLog{EventType: "awaiting_review", Payload: "["})}, 2, "unreadable"},
+		"an unreadable decision":                    {&events{events: append(bound().events, domain.RunEventLog{EventType: "yield_decided", Payload: "not json"})}, 2, "unreadable"},
+		"an unreadable binding":                     {&events{events: []domain.RunEventLog{{EventType: "run_bound", Payload: "{"}}}, 1, "unreadable"},
+		"an unreadable offered review":              {&events{events: append(bound().events, domain.RunEventLog{EventType: "awaiting_review", Payload: "["})}, 2, "unreadable"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := replay(tc.c.events)
@@ -128,13 +128,13 @@ func TestReplay_refuses_what_no_run_can_have_written(t *testing.T) {
 // TestReplay_accepts_what_runs_write: requests audited ahead of their decisions, a final review with no request, a final review
 // after commit_prepared (recovery asks it of a run that died before its branch moved), events and fields it does not know.
 func TestReplay_accepts_what_runs_write(t *testing.T) {
-	for name, c := range map[string]*chain{
+	for name, c := range map[string]*events{
 		"requests ahead of their decisions": bound().req("file_edit").req("file_edit").decided(1, "policy", true).decided(2, "operator", false),
 		"a final review needs no request":   bound().req("file_edit").decided(1, "policy", true).final(2, true, nil),
 		"recovery's final review after commit_prepared": bound().req("file_edit").decided(1, "task", true).add("commit_prepared", nil).
 			final(2, true, nil).add("run_recovered", nil),
 		"unknown events and fields":     bound().add("something_new", map[string]any{"x": 1}).add("yield_request", map[string]any{"action_type": "file_edit", "new_key": true}).decided(1, "policy", true),
-		"an unreadable unknown event":   &chain{events: append(bound().events, domain.RunEventLog{EventType: "from_the_future", Payload: "?"})},
+		"an unreadable unknown event":   &events{events: append(bound().events, domain.RunEventLog{EventType: "from_the_future", Payload: "?"})},
 		"a truncated request":           bound().add("yield_request", map[string]any{"truncated": true, "action_type": "file_edit", "bytes": 9, "sha256": "s"}).decided(1, "policy", true),
 		"an adoption after the review":  bound().edit("a").decided(1, "parked", false).add("awaiting_review", nil).edit("a").decided(2, "operator", true, "adopts", 1),
 		"the old recovery final review": bound().req("file_edit").decided(1, "task", true).add("recovery_final_review", map[string]any{"approved": true}).add("run_recovered", nil),
@@ -170,7 +170,7 @@ func TestReplay_pairs_each_decision_with_its_request(t *testing.T) {
 
 // TestReplay_reads_the_run: the binding, policy, initiator, session, usage, shells, entries and the chain head.
 func TestReplay_reads_the_run(t *testing.T) {
-	c := (&chain{}).add("run_bound", map[string]any{"base_sha": "b", "branch": "x", "worktree": "w", "plan_digest": "p", "blueprint_hash": "bp",
+	c := (&events{}).add("run_bound", map[string]any{"base_sha": "b", "branch": "x", "worktree": "w", "plan_digest": "p", "blueprint_hash": "bp",
 		"harness": "claude-code", "topology_version": 3, "terms_sha256": "t", "away_commands": map[string]any{"commands": []string{"make"}, "sha256": "d"}}).
 		add("initiator_signed", map[string]any{"principal": "dev@example.com", "signature": "c2ln"}).
 		add("policy_snapshot", map[string]any{"digest": "abc", "signed": true}).
@@ -217,7 +217,7 @@ func TestReplay_approvals_and_what_recovery_reads(t *testing.T) {
 
 	other := map[string]string{"a": "2"}
 	for name, tc := range map[string]struct {
-		c        *chain
+		c        *events
 		reviewed bool
 		err      bool
 	}{
@@ -336,19 +336,19 @@ func TestReplay_delivery(t *testing.T) {
 	assert.Equal(t, "", bound().replay(t).Sealed)
 }
 
-func (c *chain) claim(attempt int, generation string) *chain {
+func (c *events) claim(attempt int, generation string) *events {
 	return c.add("launch_claimed", map[string]any{"attempt": attempt, "generation": generation, "segment": 1})
 }
 
-func (c *chain) launchEnded(attempt int, generation, outcome string) *chain {
+func (c *events) launchEnded(attempt int, generation, outcome string) *events {
 	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome})
 }
 
-func (c *chain) ack(attempt int, generation string) *chain {
+func (c *events) ack(attempt int, generation string) *events {
 	return c.add("launch_acknowledged", map[string]any{"attempt": attempt, "generation": generation})
 }
 
-func (c *chain) launchClassed(attempt int, generation, outcome, class string) *chain {
+func (c *events) launchClassed(attempt int, generation, outcome, class string) *events {
 	return c.add("launch_ended", map[string]any{"attempt": attempt, "generation": generation, "outcome": outcome, "class": class})
 }
 
@@ -424,7 +424,7 @@ func TestReplay_an_acknowledged_lost_launch_is_not_parked(t *testing.T) {
 // was stopped by the run has none. The class never touches the run's checks or its acceptance.
 func TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks(t *testing.T) {
 	for name, tc := range map[string]struct {
-		c    *chain
+		c    *events
 		want string
 	}{
 		"exited":                      {bound().claim(1, "g").launchEnded(1, "g", LaunchExited), ""},
@@ -453,7 +453,7 @@ func TestLaunchClass_names_a_lifecycle_failure_apart_from_the_checks(t *testing.
 // TestLaunchClass_refuses_a_class_the_outcome_cannot_have: a chain that names a class its outcome does not fit, or one nobody
 // defined, is not a chain this version reads.
 func TestLaunchClass_refuses_a_class_the_outcome_cannot_have(t *testing.T) {
-	for name, tc := range map[string]*chain{
+	for name, tc := range map[string]*events{
 		"a class nobody defined":            bound().claim(1, "g").launchClassed(1, "g", LaunchFailed, "oops"),
 		"a rejection that exited":           bound().claim(1, "g").launchClassed(1, "g", LaunchExited, ClassRejected),
 		"a host exit that was stopped":      bound().claim(1, "g").launchClassed(1, "g", LaunchStopped, ClassHostExit),
@@ -479,4 +479,87 @@ func TestAttempts_are_the_claimed_launches(t *testing.T) {
 	h := bound().claim(1, "g1").launchEnded(1, "g1", LaunchExited).add("run_resumed", map[string]any{"segment": 2}).replay(t)
 	assert.Equal(t, 1, h.Attempts(), "a resumed segment whose agent was never claimed was not started")
 	assert.Equal(t, 2, bound().add("run_resumed", map[string]any{"segment": 2}).replay(t).Attempts(), "no launch was ever claimed on this chain: its segments")
+}
+
+// TestReplay_reads_the_votes: a vote is read with the request it names, and the summary tells the proposals the panel settled from
+// those it did not.
+func TestReplay_reads_the_votes(t *testing.T) {
+	vote := func(entry, model, verdict string) map[string]any {
+		return map[string]any{"model": model, "request_entry": entry, "verdict": verdict, "reason": "r"}
+	}
+	c := panelRun(3)
+	r1, r2, r3 := c.events[1].EventHash, c.events[2].EventHash, c.events[3].EventHash
+	c = c.add("validator_voted", vote(r1, "a", VoteApprove)).add("validator_voted", vote(r1, "b", VoteApprove)).
+		add("validator_voted", vote(r2, "a", VoteReject)).add("validator_voted", vote(r2, "b", VoteApprove)).
+		add("validator_voted", vote(r3, "a", VoteApprove)).add("validator_voted", vote(r3, "b", VoteError))
+	h := c.replay(t)
+	require.Len(t, h.Votes, 6)
+	assert.Len(t, h.VotesOn(r2), 2)
+	assert.Equal(t, "b", h.VotesOn(r3)[1].Model)
+	votes, proposals, unsettled := h.VoteSummary()
+	assert.Equal(t, []int{6, 3, 2}, []int{votes, proposals, unsettled})
+}
+
+// panelRun is a run that asked the models "a" and "b", with n requests waiting.
+func panelRun(n int) *events {
+	c := (&events{}).add("run_bound", map[string]any{"base_sha": "b", "branch": "refs/heads/staircase/run-1", "worktree": "w", "validator_models": []string{"a", "b"}})
+	for range n {
+		c.req("file_edit")
+	}
+	return c
+}
+
+func (c *events) vote(request int, model, verdict string) *events {
+	return c.add("validator_voted", map[string]any{"model": model, "request_entry": c.events[request].EventHash, "verdict": verdict, "reason": "r"})
+}
+
+func (c *events) panelDecided(request, seq int, source string, approved bool) *events {
+	return c.add("yield_decided", map[string]any{"seq": seq, "source": source, "agent": "coder", "action_type": "file_edit", "approved": approved,
+		"request_sha256": "r", "base_sha": "b", "request_entry": c.events[request].EventHash})
+}
+
+// TestReplay_a_decision_by_the_reviewer_models_rests_on_their_votes (ADR 0014, section 3): where a run declared its panel, a decision by
+// `validator:` needs one vote from each model on its request, all agreeing with it; what no run can have written is refused with the
+// entry that breaks the rule. Chains that declared no panel read as before.
+func TestReplay_a_decision_by_the_reviewer_models_rests_on_their_votes(t *testing.T) {
+	const panel = "validator:a+b"
+	accepted := map[string]*events{
+		"both approve":                             panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, panel, true),
+		"both reject":                              panelRun(1).vote(1, "a", VoteReject).vote(1, "b", VoteReject).panelDecided(1, 1, panel, false),
+		"a split, a person decided":                panelRun(1).vote(1, "a", VoteReject).vote(1, "b", VoteApprove).panelDecided(1, 1, "operator", true),
+		"a model failed, a person decided":         panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteError).panelDecided(1, 1, "operator", true),
+		"all approved, sampled for a person":       panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, "operator", true),
+		"no panel asked (two rejections in a row)": panelRun(1).panelDecided(1, 1, "operator", false),
+		"two proposals, each on its own votes": panelRun(2).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).vote(2, "a", VoteReject).vote(2, "b", VoteReject).
+			panelDecided(1, 1, panel, true).panelDecided(2, 2, panel, false),
+		"a chain from before the votes": bound().req("file_edit").panelDecided(1, 1, "validator:a+b", true),
+	}
+	for name, c := range accepted {
+		t.Run("accepts "+name, func(t *testing.T) { c.replay(t) })
+	}
+	refused := map[string]struct {
+		c      *events
+		entry  int
+		reason string
+	}{
+		"no votes at all":              {panelRun(1).panelDecided(1, 1, panel, true), 3, "has no vote on it"},
+		"one model missing":            {panelRun(1).vote(1, "a", VoteApprove).panelDecided(1, 1, panel, true), 4, "b has no vote"},
+		"a vote against the decision":  {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteReject).panelDecided(1, 1, panel, true), 5, "b voted reject"},
+		"approved on a failed model":   {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteError).panelDecided(1, 1, panel, true), 5, "b voted error"},
+		"another panel's name":         {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, "validator:a", true), 5, "run's panel is validator:a+b"},
+		"a model that is not on it":    {panelRun(1).vote(1, "c", VoteApprove), 3, "not on the run's panel"},
+		"a model that voted twice":     {panelRun(1).vote(1, "a", VoteApprove).vote(1, "a", VoteApprove), 4, "voted twice"},
+		"a vote on no waiting request": {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, panel, true).vote(1, "a", VoteApprove), 6, "names no request that waits"},
+		"a verdict that is none":       {panelRun(1).vote(1, "a", "maybe"), 3, "not approve, reject or error"},
+		"votes of a run with no panel": {bound().req("file_edit").vote(1, "a", VoteApprove), 3, "declared no panel"},
+	}
+	for name, tc := range refused {
+		t.Run("refuses "+name, func(t *testing.T) {
+			_, err := replay(tc.c.events)
+			var ge *GrammarError
+			require.ErrorAs(t, err, &ge)
+			assert.Equal(t, tc.entry, ge.Index, "the entry that breaks the rule")
+			assert.Contains(t, ge.Reason, tc.reason)
+		})
+	}
 }

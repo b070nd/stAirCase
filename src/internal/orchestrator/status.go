@@ -25,6 +25,9 @@ type Status struct {
 	// LostLaunches is how many of those launches have no established end: the process was lost, or the agent did not stop when asked.
 	LostLaunches int
 	Parked       int // proposals parked for the owner and not adopted
+	// Votes, VotedProposals and UnsettledProposals are the reviewer models' verdicts on the chain, the proposals they were on, and the
+	// proposals the panel did not settle (the models disagreed, or one gave no verdict) and a person decided.
+	Votes, VotedProposals, UnsettledProposals int
 	// Failures are the launches that did not end well, each with its lifecycle class (rejected, host exit, storage trouble, cleanup
 	// failure, uncertain dispatch). They are about the agent's process, never about its checks or an acceptance.
 	Failures []history.Launch
@@ -65,6 +68,7 @@ func (r *Runner) StatusOf(runID int64) (Status, error) {
 	}
 	st.Failures = h.Failures()
 	st.Attempts, st.LostLaunches, st.Parked, st.Elapsed = h.Attempts(), h.Lost(), len(h.Parked()), h.Elapsed
+	st.Votes, st.VotedProposals, st.UnsettledProposals = h.VoteSummary()
 	for _, u := range h.Usage {
 		st.InputTokens += u.State.In
 		st.OutputTokens += u.State.Out

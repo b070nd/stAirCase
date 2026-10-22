@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 
 	"github.com/b070nd/stAirCase/src/internal/signal"
 )
@@ -24,7 +25,7 @@ type Signal struct {
 const signalThreshold = 0.5
 
 // escalate returns why a person must decide the change, or "".
-func (s *Signal) escalate(ctx context.Context, before, after map[string]*approvedFile, audit func(string, any) error) string {
+func (s *Signal) escalate(ctx context.Context, before, after map[string]*approvedFile, audit func(history.Event) error) string {
 	change, err := changeFiles(before, after)
 	if err != nil {
 		return "signal: " + err.Error() + " - a person decides"
@@ -33,15 +34,12 @@ func (s *Signal) escalate(ctx context.Context, before, after map[string]*approve
 		return s.Model + " unavailable (no key) - a person decides"
 	}
 	res, err := s.Eval.Evaluate(ctx, map[string]any{"stories": s.brief, "change": change}, signal.ReviewQuestions)
-	rated := map[string]any{"model": s.Model}
 	if err != nil {
-		rated["error"] = err.Error()
-		_ = audit("signal_rated", rated)
+		_ = audit(history.SignalFailed{Model: s.Model, Error: err.Error()})
 		return fmt.Sprintf("%s unavailable (%v) - a person decides", s.Model, err)
 	}
 	risky, serves := res.Answers["risky"].Probability, res.Answers["serves_story"].Probability
-	rated["risky"], rated["serves_story"], rated["kind"], rated["cost_usd"] = risky, serves, res.Answers["kind"].Choice, res.Cost
-	_ = audit("signal_rated", rated)
+	_ = audit(history.SignalRated{Model: s.Model, Risky: risky, ServesStory: serves, Kind: res.Answers["kind"].Choice, CostUSD: res.Cost})
 	switch {
 	case risky >= signalThreshold:
 		return fmt.Sprintf("%s rates this change risky (%.2f) - a person decides", s.Model, risky)

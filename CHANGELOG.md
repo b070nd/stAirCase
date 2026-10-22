@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **The reviewer models' votes are on the audit chain.** With `--validator`, each model of the panel that is asked about a proposal
+  now has its verdict written as its own entry (`validator_voted`) before the decision: the model, the request it judged, approve,
+  reject or error, its reason and the digest of its whole reply. Until now the chain held only the outcome and a line of text, and
+  nothing at all of a disagreement a person settled or of a model that failed. Old chains read as they did, and an older stAirCase
+  reads a chain with the new entries and ignores them. The votes are not signed (a model has no key); the page on approvals says
+  so. A run that asks a panel also names the models on `run_bound` (`validator_models`), and the replay then holds it to
+  them: a decision by the reviewer models needs one vote from each, on its request, all agreeing with it, a vote from a model that is
+  not on the panel is refused, and a split or a failed model can only be followed by a person's decision. A chain written before
+  this reads as it did. What to do: nothing ([approvals](docs/approvals.md#letting-a-model-review-changes-the-validator), [audit](docs/audit.md#what-a-run-can-have-written)).
+
 - **Delivery by policy, chosen in the run's terms (`--deliver policy`, `--deliver-path`).** An away run can now be started with
   the delivery mode `policy` and a delivery scope. The terms refuse it unless the run is away, has no `--validator`, names a delivery
   scope, signs (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own);
@@ -187,6 +197,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A change of several hundred files no longer makes its run unreadable.** The audit chain cut every entry at 64 KiB without a
+  word, and an entry cut in the middle still hashes and verifies. The entries that list a change's files (a decision on a proposal
+  of 700 files or more, the review an away run offers) pass that size, so the run's history was refused as "its payload is
+  unreadable" and the run could not be decided, resumed or certified. An entry now holds up to 1 MiB (about 10,000 files), and one
+  over that is refused with an error that names the entry and its size; nothing is cut. What an agent proposes is still limited to
+  64 KiB and recorded as a short note of what was left out, as before. Chains already written read as they did (the hash covers
+  whatever bytes were written). A proposal that would make the record of the change too large (the decision on it, or the review of
+  all the files approved so far) is refused up front, as a decision by the orchestrator that says why, so a run does not do all its
+  work and then fail at its last step; what was approved before it stands. What to do: nothing. A change of many thousands of files is
+  refused with that reason instead of being recorded in a way nobody can read.
 - **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
   approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
   `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.

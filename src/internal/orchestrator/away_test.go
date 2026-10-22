@@ -16,6 +16,7 @@ import (
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/domain"
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/orchestrator/runtest"
@@ -603,4 +604,33 @@ func TestAway_a_resumed_run_whose_earlier_segment_approved_files_is_not_nothing(
 	rv, err := orchestrator.NewRunner(r.Store, r.WsDir).ReviewOf(r.Run.ID)
 	require.NoError(t, err)
 	assert.Contains(t, rv.Files, "src/one.txt")
+}
+
+// TestAway_a_review_of_a_large_change_is_offered_whole (ADR 0014): the entries that hold the files of a change grow with the change.
+// One that was cut at 64 KiB made history.Read refuse the run ("its payload is unreadable"), and a run nobody can read cannot be decided.
+func TestAway_a_review_of_a_large_change_is_offered_whole(t *testing.T) {
+	const files = 800 // about 100 bytes of path and digest each: the offered review and the decision on them are over 64 KiB
+	r := runtest.Run(t, runtest.Options{
+		Setup: inSrc(&operator{approve: true}),
+		Run:   awayOpts(),
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			var edits []domain.ProposedEdit
+			for i := range files {
+				edits = append(edits, domain.ProposedEdit{File: fmt.Sprintf("src/generated/pkg%04d/file.go", i),
+					SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "package p\n"})
+			}
+			ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionFileEdit, ProposedEdits: edits})
+			require.True(t, ap.Approved, ap.Feedback)
+			return ap.Apply(env.Worktree)
+		})})
+	require.NoError(t, r.Err)
+	require.Equal(t, persistence.RunStatusAwaitingReview, r.Run.Status)
+
+	runner := orchestrator.NewRunner(r.Store, r.WsDir)
+	rv, err := runner.ReviewOf(r.Run.ID)
+	require.NoError(t, err, "the chain reads")
+	assert.Len(t, rv.Files, files)
+	st, err := runner.StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, history.OutcomeAwaitingReview, st.Outcome, st.Why)
 }

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -134,7 +135,7 @@ func testDeciders(t *testing.T, terms Terms, policyJSON string) (*deciders, *[]d
 	tracker := monitor.NewTracker(1, 1, "p", "main")
 	d := (&deciders{approvals: appr, drift: policy.NewSupervisor([]string{"src/**"}, plan.Limits{MaxScopeViolations: 9}), policy: engine,
 		redact: func(s string) string { return s }, display: monitor.NewDisplay(tracker, 0), tracker: tracker,
-		audit: func(string, any) error { return nil },
+		audit: func(history.Event) error { return nil },
 		askHuman: func(req domain.YieldRequest, _ string) domain.YieldResponse {
 			asked = append(asked, req)
 			return domain.Decide(true, "approved by the person")

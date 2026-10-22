@@ -298,7 +298,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		}
 		decided := yieldDecided(hist.LastDecided+1, "operator", req, resp, bound.BaseSHA, nil, "") // as a finished run's (ADR 0010, Q21)
 		decided.Files = digest(a.files)                                                            // what was put to the person, approved or not
-		if err := r.audit(runID, "yield_decided", decided); err != nil {
+		if err := r.log(runID).Append(decided); err != nil {
 			return fmt.Errorf("record the final review: %w", err)
 		}
 		if !resp.Approved {
@@ -415,12 +415,15 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 		status = persistence.RunStatusSuccess
 	}
 	if !hasEvent(r.store, runID, delivered, hash) {
-		if err := r.audit(runID, delivered, map[string]any{"commit": hash, "proposals": len(kept), "final_review": op.Reviewed,
-			"forced": opts.Force, "evidence_errors": evidenceErrs}); err != nil {
+		var event history.Event = history.RunRecovered{Commit: hash, Proposals: len(kept), FinalReview: op.Reviewed, Forced: opts.Force, EvidenceErrors: evidenceErrs}
+		if delivered == "review_delivered" {
+			event = history.ReviewDelivered{Commit: hash, Proposals: len(kept), FinalReview: op.Reviewed, Forced: opts.Force, EvidenceErrors: evidenceErrs}
+		}
+		if err := r.log(runID).Append(event); err != nil {
 			evidenceErrs = append(evidenceErrs, "audit record: "+err.Error())
 		}
 	} else if res.Repaired {
-		if err := r.audit(runID, "recovery_repaired", map[string]any{"commit": hash, "evidence_errors": evidenceErrs}); err != nil {
+		if err := r.log(runID).Append(history.RecoveryRepaired{Commit: hash, EvidenceErrors: evidenceErrs}); err != nil {
 			evidenceErrs = append(evidenceErrs, "audit record: "+err.Error())
 		}
 	}

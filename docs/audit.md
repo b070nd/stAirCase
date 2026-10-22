@@ -18,7 +18,7 @@ Events you will see:
 
 | Event | Meaning |
 |---|---|
-| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
+| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), the reviewer models it asked when it has a panel (`validator_models`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
 | `yield_request` | an agent proposed a change or a command |
 | `yield_decided` | the decision: who decided (`policy`, `operator`, `validator:<model>`, …), the reason, the `yield_request` entry it answers (`request_entry`), and for an approved change the hash of the exact approved content. A final review (`action_type` `final_review`, a finished run's or a recovery's) answers no request and holds the digest of the whole change put to the person |
 | `shell_exec_rejected` | a shell command was refused because the run did not allow shell commands |
@@ -35,6 +35,7 @@ Events you will see:
 | `initiator_signed` | the person who started the run signed a request naming the run, base commit and plan: who, and the SSH signature (only when the run was started with a key) |
 | `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed and the digest of its output |
 | `shell_ran` | an approved shell command ran: the agent, the command and whether it ran in the sandbox |
+| `validator_voted` | one reviewer model's verdict on one proposal, written before the decision it went into: the model, the `yield_request` entry it judged (`request_entry`), `approve`, `reject` or `error` (it failed or gave no verdict), its reason, and the digest of its whole reply. Every model that was asked has one, whether the panel agreed or not ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)). Votes are not signed: they are as trustworthy as the workspace that wrote them |
 | `signal_rated` | a decision model was asked about a change that was not decided by a person: the model, the probabilities it gave that the change is risky and that it serves a story, the kind of change and the cost, or the error when it could not answer. It can only send the change to a person |
 | `recovery_final_review` | the final review of a recovered run, as versions before [ADR 0010](adr/0010-one-replay-of-the-audit-chain.md) recorded it; recovery now records it as a `yield_decided` final review |
 | `run_recovered` | `staircase recover` committed what the run had approved: the commit, how many proposals, whether a final review was given |
@@ -101,6 +102,12 @@ refuses a chain that breaks any of these rules, and names the entry that breaks 
 - Launches are numbered from 1, one after the other. A launch's outcome names its attempt and generation. No agent is
   launched, and the run is not resumed, while an earlier launch has no outcome. No agent is launched after
   `commit_prepared`, and no outcome is written after the chain ended.
+- A run that asked reviewer models names them on `run_bound` (`validator_models`). Its chain holds a vote
+  (`validator_voted`) only from one of those models, on a request that waits for its decision, once for each model. A decision
+  by `validator:<models>` rests on one vote from each model on its request, every one agreeing with it, and is by the whole
+  panel; a split, or a model that failed, can only be followed by a person's decision. Votes that no decision by the models
+  used (a sampled review) are allowed. A chain written before the field is read as it always was
+  ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)).
 
 A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
 often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or

@@ -30,6 +30,13 @@ func statusLines(st orchestrator.Status) []string {
 		}
 		out = append(out, "launches   "+strings.Join(each, "; ")+" (about the agent, not its checks or any acceptance)")
 	}
+	if st.Votes > 0 {
+		line := fmt.Sprintf("reviewers  %d vote(s) of the reviewer models on %d proposal(s)", st.Votes, st.VotedProposals)
+		if st.UnsettledProposals > 0 {
+			line += fmt.Sprintf("; the models did not settle %d (they disagreed, or one gave no verdict): a person decided", st.UnsettledProposals)
+		}
+		out = append(out, line+" (inspect log shows each)")
+	}
 	elapsed := st.Elapsed.Round(time.Second)
 	switch {
 	case st.TimeUnknown != "":
