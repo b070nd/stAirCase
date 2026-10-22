@@ -121,3 +121,15 @@ func ExportedCertify(r *Runner, runID int64, commit, base, chainHead, repoPath s
 	}
 	return r.certify(runID, commit, base, chainHead, nil, repo, evidence{})
 }
+
+// SetRecordCeilingForTest lowers the size of the entry the guard against a record too big to hold measures against.
+func SetRecordCeilingForTest(n int) (restore func()) {
+	old := recordCeiling
+	recordCeiling = n
+	return func() { recordCeiling = old }
+}
+
+// ExportedRecordBytes is the guard's estimate of the decision on a proposal and of the review of a change.
+func ExportedRecordBytes(proposed, approved []string) (decision, review int) {
+	return recordBytes(proposed, approved)
+}

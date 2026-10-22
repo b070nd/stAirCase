@@ -133,6 +133,10 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 			d.display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", req.AgentName, req.ActionType, err))
 			return ruling{resp: domain.Decide(false, "refused by the orchestrator: "+err.Error()), source: "orchestrator", refused: true}
 		}
+		if why := d.approvals.recordTooBig(next); why != "" { // it would fail the run at its end: refuse it now, with the reason
+			d.display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (too large to record)", req.AgentName, req.ActionType))
+			return ruling{resp: domain.Decide(false, "refused by the orchestrator: this change is too large to record: "+why+". Stop adding files; what is already approved stands."), source: "orchestrator", refused: true}
+		}
 		rl.next = next
 		rl.files = slices.Sorted(maps.Keys(next))
 		for _, e := range req.ProposedEdits {

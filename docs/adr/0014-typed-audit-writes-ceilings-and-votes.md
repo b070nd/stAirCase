@@ -1,7 +1,7 @@
 # ADR 0014: Typed audit writes, entries that are never cut, and reviewer votes on the chain
 
-- Status: proposed (2026-10-22). Built so far: section 1 (the entry that is never cut, the two ceilings; the early refusal of a
-  proposal that would make the offered review too big is still to come) and section 2 (one `history.Writer`, every event a type, the
+- Status: proposed (2026-10-22). Built so far: section 1 (the entry that is never cut, the two ceilings, the early refusal of a
+  proposal that would make the record too big) and section 2 (one `history.Writer`, every event a type, the
   agent host's path merged into it, the fixture reproduced byte for byte). Sections 3 and 4 follow, and the status changes to
   accepted when the last of them is built.
 - Related: ADR 0004 (audit chain version 2), ADR 0010 (one replay of the audit chain, Q3 and Q13, "writers fill typed structs"),

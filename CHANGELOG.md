@@ -193,8 +193,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   unreadable" and the run could not be decided, resumed or certified. An entry now holds up to 1 MiB (about 10,000 files), and one
   over that is refused with an error that names the entry and its size; nothing is cut. What an agent proposes is still limited to
   64 KiB and recorded as a short note of what was left out, as before. Chains already written read as they did (the hash covers
-  whatever bytes were written). What to do: nothing. A run of a very large change now fails with that error instead of being
-  recorded in a way nobody can read.
+  whatever bytes were written). A proposal that would make the record of the change too large (the decision on it, or the review of
+  all the files approved so far) is refused up front, as a decision by the orchestrator that says why, so a run does not do all its
+  work and then fail at its last step; what was approved before it stands. What to do: nothing. A change of many thousands of files is
+  refused with that reason instead of being recorded in a way nobody can read.
 - **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
   approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
   `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.
