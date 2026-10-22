@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"io/fs"
 	"maps"
 	"os"
@@ -313,6 +314,18 @@ func (a *approvals) notApplied(p string) bool {
 
 // violation is a reason finalize refuses to commit, recorded as an audit event.
 type violation struct{ event, file, detail string }
+
+// recorded is the event that records the violation on the chain.
+func (v violation) recorded() history.Event {
+	f := history.Violation{Detail: v.detail, File: v.file}
+	switch v.event {
+	case "run_branch_moved":
+		return history.RunBranchMoved(f)
+	case "unapproved_worktree_change":
+		return history.UnapprovedWorktreeChange(f)
+	}
+	return history.ApprovalContentMismatch(f)
+}
 
 // verify compares the worktree with the approved state: HEAD is still the
 // base commit (the agent made no commits of its own), every approved path

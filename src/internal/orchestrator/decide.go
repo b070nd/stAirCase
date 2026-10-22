@@ -41,7 +41,7 @@ type deciders struct {
 	askHuman      func(req domain.YieldRequest, signText string) domain.YieldResponse // signText: what a person signs, up to the verb
 	display       *monitor.Display
 	tracker       *monitor.Tracker
-	audit         func(event string, fields any) error
+	audit         func(history.Event) error
 
 	// What ends a decision: waitCtx the run's cancellation and its time limit (for every
 	// decision in the loop, automatic or a person's), ctx cancellation alone (for the
@@ -128,7 +128,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 		next, err := d.approvals.derive(req.ProposedEdits)
 		if err != nil {
 			if errors.Is(err, errBadPath) {
-				_ = d.audit("approval_path_escape", map[string]any{"agent": req.AgentName, "detail": err.Error()})
+				_ = d.audit(history.ApprovalPathEscape{Agent: req.AgentName, Detail: err.Error()})
 			}
 			d.display.AddActivity(fmt.Sprintf("%-14s REFUSE %s (%s)", req.AgentName, req.ActionType, err))
 			return ruling{resp: domain.Decide(false, "refused by the orchestrator: "+err.Error()), source: "orchestrator", refused: true}
@@ -277,7 +277,7 @@ func (d *deciders) finalReview(baseSHA string, delivered []string) (bool, error)
 		decided.Lines += changedLines(map[string]*approvedFile{p: base}, map[string]*approvedFile{p: f})
 	}
 	decided.Files = digest(d.approvals.files) // what was offered, approved or not
-	if err := d.audit("yield_decided", decided); err != nil {
+	if err := d.audit(decided); err != nil {
 		return false, fmt.Errorf("audit final review: %w", err)
 	}
 	return resp.Approved, nil

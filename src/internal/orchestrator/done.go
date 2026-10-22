@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -30,7 +31,7 @@ func (e *AgentEnv) Done(ctx context.Context) string {
 	}
 	dir, cleanup, err := snapshot(e.Worktree)
 	if err != nil {
-		e.host.audit("done_checked", map[string]any{"error": err.Error()})
+		e.host.audit(history.DoneCheckFailed{Error: err.Error()})
 		return "" // staircase's own failure: sending the agent back would not help
 	}
 	defer cleanup()
@@ -43,7 +44,7 @@ func (e *AgentEnv) Done(ctx context.Context) string {
 			why = append(why, fmt.Sprintf("check %q failed (exit %d):\n%s", command, c.ExitCode, strings.TrimSpace(tail)))
 		}
 	}
-	e.host.audit("done_checked", map[string]any{"attempt": e.doneAttempts, "failed": failed})
+	e.host.audit(history.DoneChecked{Attempt: e.doneAttempts, Failed: failed})
 	if len(failed) == 0 {
 		return ""
 	}

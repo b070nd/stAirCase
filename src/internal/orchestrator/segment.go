@@ -159,7 +159,7 @@ func (firstSegment) checkout(s *runState) error {
 	if len(opts.AwayTools) > 0 { // and the tools
 		bound.AwayTools = &history.DeclaredTools{Tools: opts.AwayTools, SHA256: declaredDigest(opts.AwayTools)}
 	}
-	if err := r.audit(run.ID, "run_bound", bound); err != nil {
+	if err := r.log(run.ID).Append(bound); err != nil {
 		return fmt.Errorf("audit run_bound: %w", err)
 	}
 	if opts.SignKey != "" { // the person who starts the run proves who they are, before any work is done
@@ -173,16 +173,16 @@ func (firstSegment) checkout(s *runState) error {
 			return fmt.Errorf("sign as the run's initiator: %w", err)
 		}
 		s.initiator = &certificate.Initiator{Principal: opts.SignAs, Signature: base64.StdEncoding.EncodeToString(sig)}
-		if err := r.audit(run.ID, "initiator_signed", map[string]any{"principal": opts.SignAs, "signature": s.initiator.Signature}); err != nil {
+		if err := r.log(run.ID).Append(history.InitiatorSigned{Principal: opts.SignAs, Signature: s.initiator.Signature}); err != nil {
 			return fmt.Errorf("audit initiator_signed: %w", err)
 		}
 	}
 	if opts.Agreed != "" {
-		agreed := map[string]any{"by": opts.Agreed}
+		agreed := history.TaskAgreed{By: opts.Agreed}
 		if opts.Plan != nil {
-			agreed["plan_digest"] = opts.Plan.Digest
+			agreed.PlanDigest = opts.Plan.Digest
 		}
-		if err := r.audit(run.ID, "task_agreed", agreed); err != nil {
+		if err := r.log(run.ID).Append(agreed); err != nil {
 			return fmt.Errorf("audit task_agreed: %w", err)
 		}
 	}
@@ -210,7 +210,7 @@ func (g continuedSegment) checkout(s *runState) error {
 		AckDrift: cont.ackDrift, Elapsed: int(cont.elapsed.Seconds()), Context: cont.contextKind,
 		JournalDropped: cont.journalDropped, WithdrewReview: cont.withdrawn, AckUnknown: cont.ackUnknown,
 	}
-	if err := r.audit(run.ID, "run_resumed", resumed); err != nil {
+	if err := r.log(run.ID).Append(resumed); err != nil {
 		return fmt.Errorf("audit run_resumed: %w", err)
 	}
 	// Only now, with the chain saying so, are the never-consumed lines dropped; a crash in between drops them next time.
@@ -239,7 +239,7 @@ func (firstSegment) policy(s *runState) (*policy.Snapshot, error) {
 	}
 	// The policy this run decides under, on the chain, so evidence made later (a
 	// recovery) names it and not whatever policy.json holds by then.
-	if err := r.audit(run.ID, "policy_snapshot", map[string]any{"digest": snap.Digest, "signed": snap.Signed}); err != nil {
+	if err := r.log(run.ID).Append(history.PolicySnapshot{Digest: snap.Digest, Signed: snap.Signed}); err != nil {
 		return nil, fmt.Errorf("audit policy_snapshot: %w", err)
 	}
 	return snap, nil

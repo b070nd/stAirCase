@@ -241,14 +241,17 @@ type AgentSession struct {
 	Mode  string `json:"mode"`
 }
 
-// StateEmit is one model step's usage.
+// StateEmit is one model step's usage. Its fields are in the order of their keys, which is how the agent host has always written it.
 type StateEmit struct {
 	ActiveAgent string `json:"active_agent"`
 	State       struct {
-		Model string `json:"model"`
-		In    int    `json:"input_tokens"`
-		Out   int    `json:"output_tokens"`
+		Model        string `json:"model"`
+		In           int    `json:"input_tokens"`
+		Out          int    `json:"output_tokens"`
+		Content      string `json:"content,omitempty"` // the start of the reply
+		HasToolCalls bool   `json:"has_tool_calls"`
 	} `json:"state"`
+	Type string `json:"type"`
 }
 
 // ShellRan is an approved command that ran.
@@ -258,12 +261,12 @@ type ShellRan struct {
 	Sandboxed bool   `json:"sandboxed"`
 }
 
-// Check is one check's result, as phase_checked records it.
+// Check is one check's result, as phase_checked records it. Its fields are in the order of their keys, as runs have always written it.
 type Check struct {
 	Command      string `json:"command"`
 	ExitCode     int    `json:"exit_code"`
-	Sandboxed    bool   `json:"sandboxed"`
 	OutputSHA256 string `json:"output_sha256"`
+	Sandboxed    bool   `json:"sandboxed"`
 }
 
 // PhaseChecked is an away run's checks on the exact approved tree (ADR 0006).

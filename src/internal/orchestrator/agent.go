@@ -2,11 +2,10 @@ package orchestrator
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"io"
 	"io/fs"
 	"os"
@@ -163,7 +162,7 @@ func writeAtomic(full string, content []byte, mode os.FileMode) error {
 // resumed in this segment. A later continuation resumes the session only if the chain names it. An agent calls this as soon as
 // it knows the id.
 func (e *AgentEnv) RecordSession(agent, id, mode string) {
-	e.host.audit("agent_session", map[string]any{"agent": agent, "id": id, "mode": mode})
+	e.host.audit(history.AgentSession{Agent: agent, ID: id, Mode: mode})
 }
 
 // Propose submits a yield and blocks until the orchestrator decides. When the
@@ -172,7 +171,7 @@ func (e *AgentEnv) Propose(ctx context.Context, req domain.YieldRequest) Approva
 	req.Type = "yield_request"
 	reject := func(why string) Approval { return Approval{Feedback: why} }
 	if req.ActionType == domain.ActionShellExec && !e.AllowShell {
-		e.host.audit("shell_exec_rejected", req)
+		e.host.audit(history.ShellExecRejected{YieldRequest: req})
 		return reject("shell_exec disabled - restart with --allow-shell-exec to enable")
 	}
 	p := proposal{req: req, reply: make(chan decision, 1)}
@@ -213,7 +212,7 @@ func (e *AgentEnv) ProposeWorktreeChanges(ctx context.Context, agent, reasoning 
 // sandbox, then asks for a decision on the files it changed (see
 // ProposeWorktreeChanges).
 func (e *AgentEnv) ShellRan(ctx context.Context, agent, command string, sandboxed bool) Approval {
-	e.host.audit("shell_ran", map[string]any{"agent": agent, "command": command, "sandboxed": sandboxed})
+	e.host.audit(history.ShellRan{Agent: agent, Command: command, Sandboxed: sandboxed})
 	return e.Propose(ctx, domain.YieldRequest{AgentName: agent, ActionType: domain.ActionFileEdit,
 		ReasoningTrace: "files changed by the approved command: " + command, ReviewAfter: true, Sandboxed: sandboxed, ConfidenceScore: 0.9})
 }
@@ -244,7 +243,9 @@ func (a Approval) Refusal() string {
 // Emit reports one step's usage. It waits for the monitor, so the budget
 // counts every step, and gives up only when the run ends.
 func (e *AgentEnv) Emit(ctx context.Context, u Usage) {
-	e.host.audit("state_emit", map[string]any{"type": "state_emit", "active_agent": u.Agent, "state": u})
+	step := history.StateEmit{ActiveAgent: u.Agent, Type: "state_emit"}
+	step.State.Model, step.State.In, step.State.Out, step.State.Content, step.State.HasToolCalls = u.Model, u.InputTokens, u.OutputTokens, u.Content, u.HasToolCalls
+	e.host.audit(step)
 	select {
 	case e.usage <- u:
 	case <-ctx.Done():
@@ -269,6 +270,7 @@ type agentHost struct {
 	aesKey    []byte
 
 	debug io.Writer // --debug: every audited message, scrubbed, one per line
+	w     *history.Writer
 
 	// storageFailed is set when a record of the run could not be written to the chain; the launch's class says so.
 	storageFailed atomic.Bool
@@ -277,46 +279,28 @@ type agentHost struct {
 	delivered []string // secret values (and JSON-escaped forms) handed to the agent
 }
 
-// audit appends v to the run's chain with every delivered secret scrubbed. A failure is logged: for events
-// that are only a record (usage, a command that ran) the run goes on. A request that a decision will
-// follow uses auditRequest, which reports it.
-func (h *agentHost) audit(event string, v any) { _, _ = h.auditErr(event, v) }
+// newAgentHost is the host of one run's in-process agent. Its writer is the chain's, set for what an agent supplies (ADR 0014): the
+// values delivered to the agent are scrubbed from every entry, an entry over 64 KiB is written as a note of what it left out, and a
+// failure to write marks the run's launch as a storage failure.
+func newAgentHost(store *persistence.Store, runID, projectID int64, aesKey []byte, debug io.Writer) *agentHost {
+	h := &agentHost{store: store, runID: runID, projectID: projectID, aesKey: aesKey, debug: debug}
+	h.w = history.NewWriter(store, runID, history.Settings{
+		Plain: true, Cap: maxAuditPayload, Debug: debug,
+		Scrub:  func(b []byte) []byte { return crypto.ScrubBytes(b, h.deliveredSecrets()) },
+		OnFail: func(string, error) { h.storageFailed.Store(true) },
+	})
+	return h
+}
+
+// audit appends e to the run's chain with every delivered secret scrubbed. A failure is logged: for events that are only a record
+// (usage, a command that ran) the run goes on. A request that a decision will follow uses auditRequest, which reports it.
+func (h *agentHost) audit(e history.Event) { _ = h.w.Append(e) }
 
 // auditRequest records a proposal's request before anything is decided about it. Recovery reads the decision
 // together with its request, so when the request cannot be recorded the proposal must not be decided at
 // all: the caller refuses it.
 func (h *agentHost) auditRequest(req domain.YieldRequest) (entry string, err error) {
-	return h.auditErr("yield_request", req)
-}
-
-// auditErr appends v as event and returns the new entry's hash.
-func (h *agentHost) auditErr(event string, v any) (string, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		obs.Log.Warn("audit marshal", "event", event, "err", err)
-		return "", err
-	}
-	payload := string(crypto.ScrubBytes(b, h.deliveredSecrets()))
-	if len(payload) > maxAuditPayload { // a cut payload would be neither JSON nor, perhaps, UTF-8: say what was dropped instead
-		sum := sha256.Sum256([]byte(payload))
-		// the kind of request is kept: the decision that follows is matched to its request by it
-		var kind struct {
-			ActionType string `json:"action_type"`
-		}
-		_ = json.Unmarshal(b, &kind)
-		payload = fmt.Sprintf(`{"truncated":true,"action_type":%q,"bytes":%d,"sha256":%q}`, kind.ActionType, len(payload), hex.EncodeToString(sum[:]))
-	}
-	if h.debug != nil {
-		_, _ = fmt.Fprintf(h.debug, "%s %s %s\n", time.Now().UTC().Format(time.RFC3339Nano), event, payload)
-	}
-	e, err := h.store.AppendEventLogChained(h.runID, event, payload, "")
-	if err != nil {
-		obs.Log.Warn("append audit event", "event", event, "err", err)
-		h.storageFailed.Store(true)
-		return "", err
-	}
-	obs.AuditChainLength.Inc()
-	return e.EventHash, nil
+	return h.w.AppendHash(history.Request{YieldRequest: req})
 }
 
 func (h *agentHost) deliveredSecrets() []string {

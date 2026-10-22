@@ -56,7 +56,7 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	if attempt != nil { // delivery by policy: every condition, from the verified history, or the owner decides
 		var auth history.DeliveryAuthorized
 		if auth, refused = r.judgeDelivery(runID, appr, tree, parked, attempt); refused == "" {
-			if err := r.audit(runID, "delivery_authorized", auth); err != nil {
+			if err := r.log(runID).Append(auth); err != nil {
 				return persistence.RunStatusFailed, "", fmt.Errorf("audit delivery_authorized: %w", err)
 			}
 			barrier.Hit(barrier.DeliveryAuthorized)
@@ -68,7 +68,7 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	if err != nil {
 		return persistence.RunStatusFailed, "", err
 	}
-	if err := r.audit(runID, "awaiting_review", history.AwaitingReview{Tree: tree, Files: digest(appr.files), PhaseChecked: checked, Parked: parked, DeliveryRefused: refused}); err != nil {
+	if err := r.log(runID).Append(history.AwaitingReview{Tree: tree, Files: digest(appr.files), PhaseChecked: checked, Parked: parked, DeliveryRefused: refused}); err != nil {
 		return persistence.RunStatusFailed, "", fmt.Errorf("audit awaiting_review: %w", err)
 	}
 	if refused != "" {
@@ -95,7 +95,7 @@ func (r *Runner) checkTree(ctx context.Context, runID int64, appr *approvals, ga
 	}
 	results, failed := gate.runChecks(ctx, nil)
 	passed = failed == "" && len(results) > 0
-	if err := r.audit(runID, "phase_checked", map[string]any{"tree": tree, "checks": checkEvidence(results), "passed": passed, "failed": failed}); err != nil {
+	if err := r.log(runID).Append(history.PhaseChecked{Tree: tree, Checks: checkEvidence(results), Passed: passed, Failed: failed}); err != nil {
 		return "", false, "", fmt.Errorf("audit phase_checked: %w", err)
 	}
 	return tree, passed, failed, nil
@@ -230,20 +230,20 @@ func (r *Runner) Decide(ctx context.Context, runID int64, o DecideOptions) (Reco
 	}
 	if o.Accept && len(rv.Files) == 0 { // an empty change: accepting it delivers nothing, and says so
 		if rv.Decided == "" {
-			if err := r.audit(runID, "review_accepted", history.ReviewDecided{AwaitingReview: rv.Entry, Tree: rv.Tree, Feedback: o.Feedback, Empty: true}); err != nil {
+			if err := r.log(runID).Append(history.ReviewAccepted{AwaitingReview: rv.Entry, Tree: rv.Tree, Feedback: o.Feedback, Empty: true}); err != nil {
 				return RecoverResult{}, fmt.Errorf("record the acceptance: %w", err)
 			}
 		}
 		return RecoverResult{}, r.store.FinishRun(runID, persistence.RunStatusFailed, time.Now(), "")
 	}
 	if !o.Accept {
-		if err := r.audit(runID, "review_rejected", history.ReviewDecided{AwaitingReview: rv.Entry, Feedback: o.Feedback}); err != nil {
+		if err := r.log(runID).Append(history.ReviewRejected{AwaitingReview: rv.Entry, Feedback: o.Feedback}); err != nil {
 			return RecoverResult{}, fmt.Errorf("record the rejection: %w", err)
 		}
 		return RecoverResult{}, r.store.FinishRun(runID, persistence.RunStatusFailed, time.Now(), "")
 	}
 	if rv.Decided == "" {
-		if err := r.audit(runID, "review_accepted", history.ReviewDecided{AwaitingReview: rv.Entry, Tree: rv.Tree, Feedback: o.Feedback}); err != nil {
+		if err := r.log(runID).Append(history.ReviewAccepted{AwaitingReview: rv.Entry, Tree: rv.Tree, Feedback: o.Feedback}); err != nil {
 			return RecoverResult{}, fmt.Errorf("record the acceptance: %w", err)
 		}
 	}

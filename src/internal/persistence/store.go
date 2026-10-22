@@ -1217,9 +1217,9 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 // AppendEventLogChained atomically reads the run's last event hash and appends
 // a new entry chained to it. The read+insert is serialized by appendMu so that
 // concurrent callers within the process cannot both observe the same prevHash
-// and fork the chain. This is the method production callers must use; the
-// lower-level AppendEventLog (explicit prevHash) is retained for tests and
-// external verifiers. Single-process serialization is sufficient because the
+// and fork the chain. These are the methods history.Writer uses, and the only ones anything else
+// should: the lower-level AppendEventLog (explicit prevHash) is what they insert with, and tests
+// use it to build chains. Single-process serialization is sufficient because the
 // no_concurrent_run gate guarantees only one run writes a given workspace's
 // event log at a time.
 func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommitHash string) (*domain.RunEventLog, error) {

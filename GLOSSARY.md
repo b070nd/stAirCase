@@ -15,6 +15,11 @@ delivers from rows that were not verified. Only display commands show raw rows.
 **Event**: one entry of the chain. It has a type (`yield_decided`, `run_bound` and so on) and a JSON payload, and it is named by
 its hash, its **entry**.
 
+**Writer**: the one way an event gets on the chain (`history.Writer`, ADR 0014). Every event is a typed value that carries its own
+name, and the writer encodes it, scrubs what was delivered to the agent, refuses an entry too big for the chain and appends it. The
+agent host's writer also notes an oversize request as what it left out. The acceptance of a story, written inside the transaction that
+accepts it, is the one entry that does not pass through it.
+
 **Proposal**: something an agent asks to do: change files (`file_edit`), run a command (`shell_exec`) or call an outside tool
 (`tool_call`). It is audited as a `yield_request` and numbered by the decision that answers it (`seq`).
 

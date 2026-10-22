@@ -104,7 +104,7 @@ func (r *Runner) recordLostLaunchEnd(runID int64, h history.History) (out histor
 	if o == nil {
 		return h, false, nil
 	}
-	if err := r.audit(runID, "launch_ended", history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}); err != nil {
+	if err := r.log(runID).Append(history.LaunchEnded{Attempt: o.Attempt, Generation: o.Generation, Outcome: history.LaunchUnknown, Class: history.ClassUncertainDispatch}); err != nil {
 		return h, false, fmt.Errorf("record the outcome of launch %d as unknown: %w", o.Attempt, err)
 	}
 	h2, err := history.Read(r.store, runID)
@@ -116,7 +116,7 @@ func (r *Runner) recordLostLaunchEnd(runID int64, h history.History) (out histor
 func (r *Runner) writeAcknowledgement(runID int64, h history.History) (history.History, error) {
 	barrier.Hit(barrier.LaunchOutcomeSet)
 	l := h.Launches[len(h.Launches)-1]
-	if err := r.audit(runID, "launch_acknowledged", history.LaunchAcknowledged{Attempt: l.Attempt, Generation: l.Generation}); err != nil {
+	if err := r.log(runID).Append(history.LaunchAcknowledged{Attempt: l.Attempt, Generation: l.Generation}); err != nil {
 		return h, fmt.Errorf("record the acknowledgement of launch %d: %w", l.Attempt, err)
 	}
 	return history.Read(r.store, runID)

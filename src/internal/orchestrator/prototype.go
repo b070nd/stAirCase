@@ -200,7 +200,7 @@ func (r *Runner) Adopt(ctx context.Context, runID int64, seq int, shown string) 
 	if err != nil {
 		return rv, err
 	}
-	if err := r.audit(runID, "phase_checked", map[string]any{"tree": tree, "checks": checkEvidence(results), "passed": true, "failed": ""}); err != nil {
+	if err := r.log(runID).Append(history.PhaseChecked{Tree: tree, Checks: checkEvidence(results), Passed: true}); err != nil {
 		return rv, fmt.Errorf("audit phase_checked: %w", err)
 	}
 	checked, err := r.store.GetLastEventHash(runID)
@@ -213,7 +213,7 @@ func (r *Runner) Adopt(ctx context.Context, runID int64, seq int, shown string) 
 			stillParked++
 		}
 	}
-	if err := r.audit(runID, "awaiting_review", map[string]any{"tree": tree, "files": digest(st.a.files), "phase_checked": checked, "parked": stillParked}); err != nil {
+	if err := r.log(runID).Append(history.AwaitingReview{Tree: tree, Files: digest(st.a.files), PhaseChecked: checked, Parked: stillParked}); err != nil {
 		return rv, fmt.Errorf("audit awaiting_review: %w", err)
 	}
 	return r.ReviewOf(runID)
@@ -223,7 +223,7 @@ func (r *Runner) Adopt(ctx context.Context, runID int64, seq int, shown string) 
 func (r *Runner) recordAdoption(runID int64, st *approvedNow, parked domain.YieldRequest, seq int, next map[string]*approvedFile) error {
 	req := domain.YieldRequest{Type: "yield_request", AgentName: "staircase", ActionType: domain.ActionFileEdit, ProposedEdits: parked.ProposedEdits,
 		ReasoningTrace: fmt.Sprintf("the owner adopted parked proposal %d after a prototype", seq), Adopts: seq}
-	if err := r.audit(runID, "yield_request", req); err != nil {
+	if err := r.log(runID).Append(history.Request{YieldRequest: req}); err != nil {
 		return fmt.Errorf("record the adopted request: %w", err)
 	}
 	entry, err := r.store.GetLastEventHash(runID) // the run's lock is held: nothing else writes in between

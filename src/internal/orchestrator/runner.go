@@ -472,27 +472,17 @@ func (r *Runner) driftScope(caseID int64, pl *plan.Plan) (scope []string, maxFil
 	return scope, maxFiles, nil
 }
 
-// audit appends event to the run's chain; its payload is fields with the
-// event's type.
-func (r *Runner) audit(runID int64, event string, fields any) error {
-	return r.auditIf(runID, event, fields, func() error { return nil })
-}
-
-// auditIf appends an event unless proceed (called under the chain's append lock, right before the
-// insert) says not to: then nothing is written and proceed's error is returned.
-func (r *Runner) auditIf(runID int64, event string, fields any, proceed func() error) error {
-	payload, err := history.Encode(event, fields)
-	if err != nil {
-		return err
-	}
-	_, err = r.store.AppendEventLogChainedIf(runID, event, payload, "", proceed)
-	return err
+// log is the writer of a run's chain: the orchestrator's events go on it through history.Writer, typed (ADR 0014).
+func (r *Runner) log(runID int64) *history.Writer {
+	return history.NewWriter(r.store, runID, history.Settings{})
 }
 
 // reportDrift audits the run's drift report and summarizes it.
 func (r *Runner) reportDrift(runID int64, sup *policy.Supervisor) {
 	rep := sup.Report()
-	_ = r.audit(runID, "drift_report", map[string]any{"report": rep})
+	if raw, err := json.Marshal(rep); err == nil {
+		_ = r.log(runID).Append(history.DriftReport{Report: raw})
+	}
 	if len(rep.Scope) == 0 && rep.Violations == 0 && rep.Halted == "" {
 		return
 	}
@@ -514,11 +504,7 @@ func (r *Runner) verifyWorktree(runID int64, appr *approvals, display *monitor.D
 		return false, err
 	}
 	for _, v := range violations {
-		event := map[string]any{"detail": v.detail}
-		if v.file != "" {
-			event["file"] = v.file
-		}
-		_ = r.audit(runID, v.event, event)
+		_ = r.log(runID).Append(v.recorded())
 		obs.Log.Error("worktree does not match the approvals - refusing to commit",
 			"event", v.event, "file", v.file, "detail", v.detail, "run_id", runID)
 		display.AddActivity(fmt.Sprintf("%-14s ABORT  %s: %s", "finalize", v.file, v.detail))

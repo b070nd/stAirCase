@@ -78,20 +78,20 @@ func (d deliveryRun) build(t *testing.T) deliveryCase {
 		t.Fatal(err)
 	}
 	r := &Runner{store: s}
-	must := func(event string, fields any) {
+	must := func(e history.Event) {
 		t.Helper()
-		if err := r.audit(run.ID, event, fields); err != nil {
+		if err := r.log(run.ID).Append(e); err != nil {
 			t.Fatal(err)
 		}
 	}
-	must("run_bound", history.Bound{BaseSHA: "base", Branch: "refs/heads/staircase/run-1", TermsSHA256: "T"})
-	must("policy_snapshot", history.PolicySnapshot{Digest: "P", Signed: !d.unsigned})
+	must(history.Bound{BaseSHA: "base", Branch: "refs/heads/staircase/run-1", TermsSHA256: "T"})
+	must(history.PolicySnapshot{Digest: "P", Signed: !d.unsigned})
 	if !d.noInit {
 		sig := "c2ln" // not a signature
 		if !d.forgedInit {
 			sig = signedRequest(t, run.ID, "base", "", "dev@example.com")
 		}
-		must("initiator_signed", history.InitiatorSigned{Principal: "dev@example.com", Signature: sig})
+		must(history.InitiatorSigned{Principal: "dev@example.com", Signature: sig})
 	}
 	decisions := d.decisions
 	if decisions == nil {
@@ -99,7 +99,7 @@ func (d deliveryRun) build(t *testing.T) deliveryCase {
 	}
 	files := map[string]string{}
 	for i, dc := range decisions {
-		must("yield_request", domain.YieldRequest{AgentName: "coder", ActionType: dc.action})
+		must(history.Request{YieldRequest: domain.YieldRequest{AgentName: "coder", ActionType: dc.action}})
 		dd := history.Decided{Seq: i + 1, Source: dc.source, ActionType: dc.action, Approved: dc.approved, Paths: dc.paths, RequestSHA256: "r"}
 		if dc.approved && dc.action == domain.ActionFileEdit {
 			dd.Files = map[string]string{}
@@ -110,7 +110,7 @@ func (d deliveryRun) build(t *testing.T) deliveryCase {
 		if dc.source == "parked" {
 			dd.ParkedWhy = "it needs a person's decision"
 		}
-		must("yield_decided", dd)
+		must(dd)
 	}
 	tree := d.checkTree
 	if tree == "" {
@@ -121,7 +121,7 @@ func (d deliveryRun) build(t *testing.T) deliveryCase {
 	if d.failed {
 		failed = "true: exit 1"
 	}
-	must("phase_checked", history.PhaseChecked{Tree: tree, Checks: checks, Passed: !d.failed, Failed: failed})
+	must(history.PhaseChecked{Tree: tree, Checks: checks, Passed: !d.failed, Failed: failed})
 	h, err := history.Read(s, run.ID)
 	if err != nil {
 		t.Fatal(err)

@@ -1,7 +1,8 @@
 // Package history is the one replay of a run's audit chain (ADR 0010): what a verified chain says a run bound, proposed,
 // decided, parked, adopted, offered and delivered, read in one walk. A chain that no run can have written has no history; it is
 // refused with a GrammarError that names the entry. The package decides only from verified chains (Read); ReadRows shows a chain as
-// stored, marked, for the commands that display one. It touches no git and no files.
+// stored, marked, for the commands that display one. It is also the one way an entry is written (Writer, ADR 0014): every event is
+// a type here, and a payload's keys are those of its type. It touches no git and no files.
 package history
 
 import (

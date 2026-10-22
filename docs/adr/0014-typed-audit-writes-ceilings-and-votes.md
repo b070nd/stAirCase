@@ -1,7 +1,9 @@
 # ADR 0014: Typed audit writes, entries that are never cut, and reviewer votes on the chain
 
-- Status: proposed (2026-10-22). Section 1 is built with the fix that came first; sections 2 to 4 are built in the order of the work
-  and the status changes to accepted when the last of them is.
+- Status: proposed (2026-10-22). Built so far: section 1 (the entry that is never cut, the two ceilings; the early refusal of a
+  proposal that would make the offered review too big is still to come) and section 2 (one `history.Writer`, every event a type, the
+  agent host's path merged into it, the fixture reproduced byte for byte). Sections 3 and 4 follow, and the status changes to
+  accepted when the last of them is built.
 - Related: ADR 0004 (audit chain version 2), ADR 0010 (one replay of the audit chain, Q3 and Q13, "writers fill typed structs"),
   ADR 0012 (delivering by policy, the grammar after `delivery_authorized`), ADR 0002 (change certificate).
 
@@ -36,10 +38,13 @@ write time stays as the backstop.
 
 ### 2. One writer, typed events
 
-Events are written through one `history.Writer`, whose `Append` takes a typed event. The string-and-`any` form is deleted and has no
-replacement, so a new event needs a type first. All thirty-two event types have one, including the nine that had none. A golden
+Events are written through one `history.Writer`, whose `Append` takes a typed event (`AppendHash` returns the new entry's hash and
+`AppendIf` checks a condition under the append lock). The string-and-`any` form is deleted and has no replacement, so a new event
+needs a type first. All thirty-eight event types have one, including the twelve that had none. A golden
 test runs on what the writer produces, and a fixture chain written by the code before this change is reproduced byte for byte: no
-hash changes. Scrubbing and the debug sink stay where they are, as settings of the writer the agent host uses.
+hash changes. Scrubbing and the debug sink stay where they are, as settings of the writer the agent host uses, which also writes the value as it
+marshals (`Plain`), as it always has. One entry does not pass through the writer: the acceptance of a story (`story_accepted`), which
+is written inside the transaction that accepts it.
 
 ### 3. Reviewer votes
 

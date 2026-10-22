@@ -45,7 +45,7 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 		"policy_snapshot":      {`{"digest":"d","signed":true}`, &PolicySnapshot{}},
 		"initiator_signed":     {`{"principal":"dev@example.com","signature":"c2ln"}`, &InitiatorSigned{}},
 		"agent_session":        {`{"agent":"claude-code","id":"s","mode":"started"}`, &AgentSession{}},
-		"state_emit":           {`{"active_agent":"coder","state":{"model":"m","input_tokens":1,"output_tokens":2}}`, &StateEmit{}},
+		"state_emit":           {`{"active_agent":"coder","state":{"model":"m","input_tokens":1,"output_tokens":2,"content":"done","has_tool_calls":false},"type":"state_emit"}`, &StateEmit{}},
 		"shell_ran":            {`{"agent":"coder","command":"make","sandboxed":true}`, &ShellRan{}},
 		"phase_checked": {`{"tree":"t","checks":[{"command":"go test","exit_code":0,"sandboxed":true,"output_sha256":"o"}],"passed":true,
 			"failed":""}`, &PhaseChecked{}},

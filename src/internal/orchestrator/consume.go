@@ -58,7 +58,7 @@ func (r *Runner) consume(live context.Context, runID int64, seq int, req domain.
 	var err error
 	if rl.resp.Approved {
 		expired := false
-		err = r.auditIf(runID, "yield_decided", record(journaled), func() error {
+		err = r.log(runID).AppendIf(record(journaled), func() error {
 			barrier.Hit(barrier.AuditAppend)
 			if err := live.Err(); err != nil {
 				expired = true
@@ -68,10 +68,10 @@ func (r *Runner) consume(live context.Context, runID int64, seq int, req domain.
 		})
 		if expired { // the run ended while this waited for the chain: not consumed, recorded as a rejection
 			expire()
-			err = r.audit(runID, "yield_decided", record(journaled))
+			err = r.log(runID).Append(record(journaled))
 		}
 	} else {
-		err = r.audit(runID, "yield_decided", record(journaled))
+		err = r.log(runID).Append(record(journaled))
 	}
 	if err != nil {
 		return &consumeError{err: err}

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"maps"
 	"os"
 	"os/exec"
@@ -94,10 +95,10 @@ func (g *evidenceGate) state(next map[string]*approvedFile) (string, func(), err
 }
 
 // checkEvidence is how a check result appears in a decision's record.
-func checkEvidence(results []certificate.Check) []map[string]any {
-	out := make([]map[string]any, len(results))
+func checkEvidence(results []certificate.Check) []history.Check {
+	out := make([]history.Check, len(results))
 	for i, c := range results {
-		out[i] = map[string]any{"command": c.Command, "exit_code": c.ExitCode, "sandboxed": c.Sandboxed, "output_sha256": c.OutputSHA256}
+		out[i] = history.Check{Command: c.Command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed}
 	}
 	return out
 }
