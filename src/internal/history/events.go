@@ -182,3 +182,24 @@ type RolledBack struct {
 }
 
 func (RolledBack) eventName() string { return "rolled_back" }
+
+// The verdicts of a reviewer model (ValidatorVoted.Verdict).
+const (
+	VoteApprove = "approve"
+	VoteReject  = "reject"
+	VoteError   = "error" // the model gave none: it failed, or its reply was not a verdict
+)
+
+// ValidatorVoted is validator_voted: one reviewer model's verdict on one proposal, written before the decision it went into. Every
+// model of the panel that was asked has one, whether they agreed or not and whether it gave a verdict or failed, so what a decision
+// by `validator:` rested on can be read back (ADR 0014, section 3). The reason is the model's own, and the digest is that of its
+// whole reply.
+type ValidatorVoted struct {
+	Model        string `json:"model"`
+	RequestEntry string `json:"request_entry"`
+	Verdict      string `json:"verdict"`
+	Reason       string `json:"reason"`
+	ReplySHA256  string `json:"reply_sha256,omitempty"`
+}
+
+func (ValidatorVoted) eventName() string { return "validator_voted" }

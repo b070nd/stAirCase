@@ -480,3 +480,22 @@ func TestAttempts_are_the_claimed_launches(t *testing.T) {
 	assert.Equal(t, 1, h.Attempts(), "a resumed segment whose agent was never claimed was not started")
 	assert.Equal(t, 2, bound().add("run_resumed", map[string]any{"segment": 2}).replay(t).Attempts(), "no launch was ever claimed on this chain: its segments")
 }
+
+// TestReplay_reads_the_votes: a vote is read with the request it names, and the summary tells the proposals the panel settled from
+// those it did not.
+func TestReplay_reads_the_votes(t *testing.T) {
+	vote := func(entry, model, verdict string) map[string]any {
+		return map[string]any{"model": model, "request_entry": entry, "verdict": verdict, "reason": "r"}
+	}
+	c := bound().req("file_edit").req("file_edit").req("file_edit")
+	r1, r2, r3 := c.events[1].EventHash, c.events[2].EventHash, c.events[3].EventHash
+	c = c.add("validator_voted", vote(r1, "a", VoteApprove)).add("validator_voted", vote(r1, "b", VoteApprove)).
+		add("validator_voted", vote(r2, "a", VoteReject)).add("validator_voted", vote(r2, "b", VoteApprove)).
+		add("validator_voted", vote(r3, "a", VoteApprove)).add("validator_voted", vote(r3, "b", VoteError))
+	h := c.replay(t)
+	require.Len(t, h.Votes, 6)
+	assert.Len(t, h.VotesOn(r2), 2)
+	assert.Equal(t, "b", h.VotesOn(r3)[1].Model)
+	votes, proposals, unsettled := h.VoteSummary()
+	assert.Equal(t, []int{6, 3, 2}, []int{votes, proposals, unsettled})
+}

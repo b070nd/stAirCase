@@ -552,3 +552,10 @@ approve and rejected only if all of them reject; when they disagree, you decide 
 see each model's reason. The decision is recorded as made by all of them
 (`validator:<model>+<model>`), also in the change certificate. `--validator` works
 with `run`, `claude`, `codex` and `review`.
+
+Each model's verdict is on the audit chain as its own entry (`validator_voted`) before
+the decision: approve, reject, or error when the model failed or gave no verdict, with
+its reason and the digest of its reply. That includes the disagreements you settled and
+the models that failed, so what a decision by the panel rested on can be read back with
+`staircase inspect log`. The votes are not signed: a model has no key of its own, so
+they are as trustworthy as the workspace that wrote them.

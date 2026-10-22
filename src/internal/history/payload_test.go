@@ -51,6 +51,7 @@ func TestPayloads_keep_the_keys_runs_write(t *testing.T) {
 			"failed":""}`, &PhaseChecked{}},
 		"awaiting_review":                          {`{"tree":"t","files":{"a":"1"},"phase_checked":"e","parked":2}`, &AwaitingReview{}},
 		"awaiting_review, policy delivery refused": {`{"tree":"t","files":{"a":"1"},"phase_checked":"e","parked":1,"delivery_refused":"condition 3: 1 proposal(s) parked"}`, &AwaitingReview{}},
+		"validator_voted":                          {`{"model":"a/one","request_entry":"e","verdict":"reject","reason":"leaks a token","reply_sha256":"d"}`, &ValidatorVoted{}},
 		"delivery_authorized":                      {`{"phase_checked":"e","tree":"t","files":{"a":"1"},"terms_sha256":"T","policy":"P","mode":"policy"}`, &DeliveryAuthorized{}},
 		"review_rejected":                          {`{"awaiting_review":"e","feedback":"no"}`, &ReviewDecided{}},
 		"review_accepted":                          {`{"awaiting_review":"e","tree":"t","feedback":"ok"}`, &ReviewDecided{}},

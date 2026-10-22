@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **The reviewer models' votes are on the audit chain.** With `--validator`, each model of the panel that is asked about a proposal
+  now has its verdict written as its own entry (`validator_voted`) before the decision: the model, the request it judged, approve,
+  reject or error, its reason and the digest of its whole reply. Until now the chain held only the outcome and a line of text, and
+  nothing at all of a disagreement a person settled or of a model that failed. Old chains read as they did, and an older stAirCase
+  reads a chain with the new entries and ignores them. The votes are not signed (a model has no key); the page on approvals says
+  so. What to do: nothing ([approvals](docs/approvals.md#letting-a-model-review-changes-the-validator), [audit](docs/audit.md)).
+
 - **Delivery by policy, chosen in the run's terms (`--deliver policy`, `--deliver-path`).** An away run can now be started with
   the delivery mode `policy` and a delivery scope. The terms refuse it unless the run is away, has no `--validator`, names a delivery
   scope, signs (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own);

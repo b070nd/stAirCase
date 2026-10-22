@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
@@ -145,7 +146,7 @@ func (v *Validator) review(ctx context.Context, model string, before, after map[
 // no validator runs or the proposal is not a file edit). A nil validator
 // decides nothing.
 func (v *Validator) decide(ctx context.Context, req domain.YieldRequest,
-	next map[string]*approvedFile, appr *approvals, tracker *monitor.Tracker) (why string, resp domain.YieldResponse, decided bool) {
+	next map[string]*approvedFile, appr *approvals, tracker *monitor.Tracker, vote func(history.ValidatorVoted) error) (why string, resp domain.YieldResponse, decided bool) {
 	if v == nil || req.ActionType != domain.ActionFileEdit || appr == nil {
 		return "", resp, false
 	}
@@ -165,6 +166,23 @@ func (v *Validator) decide(ctx context.Context, req domain.YieldRequest,
 		vd, llmResp, err := v.review(ctx, m, before, next)
 		if llmResp.InputTokens+llmResp.OutputTokens > 0 {
 			tracker.Record("validator", m, llmResp.InputTokens, llmResp.OutputTokens)
+		}
+		// Every model that was asked has a vote on the chain before the decision that rests on it, a failure and a disagreement included
+		// (ADR 0014, section 3). A vote that cannot be recorded leaves the decision to a person.
+		voted := history.ValidatorVoted{Model: m}
+		if llmResp.Message.Content != "" {
+			voted.ReplySHA256 = sha256Hex([]byte(llmResp.Message.Content))
+		}
+		switch {
+		case err != nil:
+			voted.Verdict, voted.Reason = history.VoteError, err.Error()
+		case *vd.Approve:
+			voted.Verdict, voted.Reason = history.VoteApprove, vd.Reason
+		default:
+			voted.Verdict, voted.Reason = history.VoteReject, vd.Reason
+		}
+		if verr := vote(voted); verr != nil {
+			return "validator: the vote of " + m + " could not be recorded (" + verr.Error() + ") - a human decides", resp, false
 		}
 		if err != nil {
 			return "validator unavailable (" + err.Error() + ") - a human decides", resp, false

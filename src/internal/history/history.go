@@ -39,6 +39,9 @@ type History struct {
 
 	Launches []Launch // every agent launch, in chain order
 
+	// Votes are the reviewer models' verdicts, in chain order (validator_voted), each with the chain position it was written at.
+	Votes []Vote
+
 	Review *Review // the last review an away run offered
 	// Authorized is the delivery_authorized entry of a run that delivers by policy: set once the run decided to deliver without a
 	// person. Nothing is decided on the chain after it.
@@ -72,6 +75,44 @@ type Decision struct {
 	Index   int      // its position on the chain, from 1
 	Entry   string   // its entry hash
 	Request *Request // the request it used up; nil for a final review
+}
+
+// Vote is one reviewer model's verdict as the chain holds it.
+type Vote struct {
+	ValidatorVoted
+	Index int    // its position on the chain, from 1
+	Entry string // its entry hash
+}
+
+// VotesOn are the votes on the proposal whose request is at this entry, in the order the models were asked.
+func (h History) VotesOn(requestEntry string) []Vote {
+	var out []Vote
+	for _, v := range h.Votes {
+		if v.RequestEntry == requestEntry {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// VoteSummary counts the reviewer models' votes: all of them, the proposals they were on, and the proposals the panel did not settle
+// (the models disagreed, or one gave no verdict), which went to a person.
+func (h History) VoteSummary() (votes, proposals, unsettled int) {
+	verdicts := map[string]map[string]bool{}
+	for _, v := range h.Votes {
+		votes++
+		if verdicts[v.RequestEntry] == nil {
+			verdicts[v.RequestEntry] = map[string]bool{}
+		}
+		verdicts[v.RequestEntry][v.Verdict] = true
+	}
+	for _, seen := range verdicts {
+		proposals++
+		if seen[VoteError] || (seen[VoteApprove] && seen[VoteReject]) {
+			unsettled++
+		}
+	}
+	return votes, proposals, unsettled
 }
 
 // Review is an offered review: the awaiting_review entry, the checks it names, and what the owner decided since.
@@ -334,6 +375,13 @@ func replay(events []domain.RunEventLog) (History, error) {
 				return h, err
 			}
 			pending = append(pending, r)
+		case "validator_voted":
+			var v Vote
+			if err := read(&v.ValidatorVoted); err != nil {
+				return h, err
+			}
+			v.Index, v.Entry = n, e.EventHash
+			h.Votes = append(h.Votes, v)
 		case "yield_decided":
 			d := Decision{Index: n, Entry: e.EventHash}
 			if err := read(&d.Decided); err != nil {

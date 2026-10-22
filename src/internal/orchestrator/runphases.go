@@ -660,6 +660,7 @@ func (s *runState) decide(p proposal) bool {
 		trace.WithAttributes(
 			attribute.String("staircase.agent", req.AgentName),
 			attribute.String("staircase.action_type", req.ActionType)))
+	dec.entry = p.entry
 	rl := dec.decide(s.waitCtx, &req) // checks, models, signals and signing end with the run's limit too
 	barrier.Hit(barrier.DecisionMade)
 	// Record the decision, with the exact approved content, before the runtime can act on it: an approval that is not on

@@ -53,6 +53,7 @@ var events = map[string][]func() any{
 	"approval_content_mismatch":  {func() any { return &history.ApprovalContentMismatch{} }},
 	"run_branch_moved":           {func() any { return &history.RunBranchMoved{} }},
 	"unapproved_worktree_change": {func() any { return &history.UnapprovedWorktreeChange{} }},
+	"validator_voted":            {func() any { return &history.ValidatorVoted{} }},
 	"signal_rated":               {func() any { return &history.SignalRated{} }, func() any { return &history.SignalFailed{} }},
 	"check_ran":                  {func() any { return &history.CheckRan{} }},
 	"done_checked":               {func() any { return &history.DoneChecked{} }, func() any { return &history.DoneCheckFailed{} }},
@@ -60,6 +61,10 @@ var events = map[string][]func() any{
 	"evidence_failed":            {func() any { return &history.EvidenceFailed{} }},
 	"rolled_back":                {func() any { return &history.RolledBack{} }},
 }
+
+// addedAfterTheFixture are the events written by code that came after the fixture was captured: no writer of the code before ADR 0014
+// produced them, so their bytes are pinned by a test of their own.
+var addedAfterTheFixture = map[string]bool{"validator_voted": true}
 
 func fixtureEntries(t *testing.T) []domain.RunEventLog {
 	raw, err := os.ReadFile(filepath.Join("..", "chain", "testdata", "fixture_chain.json"))
@@ -138,7 +143,7 @@ func TestWriter_reproduces_the_fixture(t *testing.T) {
 		assert.True(t, reproduced, "entry %d (%s) is not reproduced: %s\n%v", e.ID, e.EventType, e.Payload, tried)
 	}
 	for name := range events {
-		assert.True(t, seen[name], "the fixture has no entry of %s", name)
+		assert.True(t, seen[name] || addedAfterTheFixture[name], "the fixture has no entry of %s", name)
 	}
 }
 
@@ -207,4 +212,12 @@ func TestWriter_if(t *testing.T) {
 	require.NoError(t, err)
 	last, _ := store.ListEventLogs(runID)
 	assert.Equal(t, last[len(last)-1].EventHash, h, "AppendHash returns the new entry")
+}
+
+// TestWriter_validator_voted pins the bytes of the vote: an event that no writer of the code before ADR 0014 produced.
+func TestWriter_validator_voted(t *testing.T) {
+	got := write(t, history.Settings{}, history.ValidatorVoted{Model: "a/one", RequestEntry: "e", Verdict: history.VoteApprove, Reason: "fine", ReplySHA256: "d"})
+	assert.Equal(t, `{"model":"a/one","reason":"fine","reply_sha256":"d","request_entry":"e","type":"validator_voted","verdict":"approve"}`, got)
+	got = write(t, history.Settings{}, history.ValidatorVoted{Model: "b/two", RequestEntry: "e", Verdict: history.VoteError, Reason: "unreachable"})
+	assert.Equal(t, `{"model":"b/two","reason":"unreachable","request_entry":"e","type":"validator_voted","verdict":"error"}`, got, "a model that gave no reply has no digest")
 }

@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"strings"
 	"sync"
 	"testing"
@@ -207,4 +208,75 @@ func TestValidator_two_models_must_agree(t *testing.T) {
 	assert.Contains(t, op.seen[0].Review, "disagree")
 	assert.Contains(t, op.seen[0].Review, "leaks a token")
 	assert.Contains(t, op.seen[0].Review, "looks fine")
+}
+
+// TestValidator_every_vote_is_on_the_chain (ADR 0014, section 3): each model of the panel that was asked has its verdict on the chain
+// before the decision it went into, for a unanimous approval, a disagreement a person settled and a model that failed, in the order the
+// models were asked and naming the request they judged.
+func TestValidator_every_vote_is_on_the_chain(t *testing.T) {
+	yes, no := func(r string) string { return `{"approve": true, "reason": "` + r + `"}` }, func(r string) string { return `{"approve": false, "reason": "` + r + `"}` }
+	p := &panel{replies: map[string][]string{
+		"a/one": {yes("fine"), no("leaks a token"), yes("also fine")},
+		"b/two": {yes("ok"), yes("looks fine"), "I could not say"},
+	}}
+	r := runtest.Run(t, runtest.Options{
+		Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+			scoped(&operator{approve: true}, `{"rules":[]}`)(s, wsDir, projectID)
+			cases, _ := s.ListCasesByProject(projectID)
+			stories, _ := s.ListUserStoriesByCase(cases[0].ID)
+			_ = s.SetUserStoryScope(stories[0].ID, `{"allow":["**"]}`)
+		},
+		Run: orchestrator.RunOptions{ValidatorChat: p, Terms: orchestrator.Terms{ValidatorModels: []string{"a/one", "b/two"}}},
+		Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+			for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
+				ap := env.Propose(ctx, domain.YieldRequest{AgentName: "coder", ActionType: "file_edit",
+					ProposedEdits: []domain.ProposedEdit{{File: f, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "x\n"}}})
+				if ap.Approved {
+					require.NoError(t, ap.Apply(env.Worktree))
+				}
+			}
+			return nil
+		})})
+	require.NoError(t, r.Err)
+
+	type seen struct{ request, model, verdict, reason, reply string }
+	var order []string // event types, to see each vote sit between its request and its decision
+	var votes []seen
+	var requests []string
+	for _, e := range r.Events {
+		switch e.EventType {
+		case "yield_request":
+			requests = append(requests, e.EventHash)
+			order = append(order, "request")
+		case "validator_voted":
+			var v history.ValidatorVoted
+			require.NoError(t, json.Unmarshal([]byte(e.Payload), &v))
+			votes = append(votes, seen{v.RequestEntry, v.Model, v.Verdict, v.Reason, v.ReplySHA256})
+			order = append(order, "vote")
+		case "yield_decided":
+			order = append(order, "decided")
+		}
+	}
+	require.Len(t, requests, 3)
+	want := []seen{
+		{requests[0], "a/one", history.VoteApprove, "fine", ""}, {requests[0], "b/two", history.VoteApprove, "ok", ""},
+		{requests[1], "a/one", history.VoteReject, "leaks a token", ""}, {requests[1], "b/two", history.VoteApprove, "looks fine", ""},
+		{requests[2], "a/one", history.VoteApprove, "also fine", ""}, {requests[2], "b/two", history.VoteError, "validator reply is not a JSON verdict", ""},
+	}
+	require.Len(t, votes, len(want))
+	for i, w := range want {
+		assert.Equal(t, w.request, votes[i].request, "vote %d names the request it judged", i)
+		assert.Equal(t, w.model, votes[i].model, "vote %d", i)
+		assert.Equal(t, w.verdict, votes[i].verdict, "vote %d", i)
+		assert.Equal(t, w.reason, votes[i].reason, "vote %d", i)
+		assert.Len(t, votes[i].reply, 64, "vote %d keeps the digest of the model's whole reply", i)
+	}
+	assert.Equal(t, []string{"request", "vote", "vote", "decided", "request", "vote", "vote", "decided", "request", "vote", "vote", "decided", "decided"},
+		order[:13], "votes sit between a request and its decision; the final review is last")
+	h, err := history.Read(r.Store, r.Run.ID)
+	require.NoError(t, err)
+	assert.Len(t, h.VotesOn(requests[1]), 2)
+	st, err := orchestrator.NewRunner(r.Store, r.WsDir).StatusOf(r.Run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []int{6, 3, 2}, []int{st.Votes, st.VotedProposals, st.UnsettledProposals}, "the status counts the votes and the proposals a person settled")
 }
