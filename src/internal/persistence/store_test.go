@@ -481,18 +481,6 @@ func TestAppendEventLog_stores_git_commit_hash(t *testing.T) {
 	assert.Equal(t, "deadbeef", logs[1].GitCommitHash)
 }
 
-func TestAppendEventLog_payload_capped_at_store_level(t *testing.T) {
-	s := newTestStore(t)
-	_, _, caseID := scaffold(t, s)
-	topo, _ := s.CreateSwarmTopology(mustGetProjectID(t, s, caseID), "sup", "memory", "langgraph")
-	run, _ := s.CreateRun(caseID, topo.Version, "main")
-
-	bigPayload := string(make([]byte, 128*1024)) // 128 KiB - above the 64 KiB cap
-	entry, err := s.AppendEventLog(run.ID, "state_emit", bigPayload, "", "")
-	require.NoError(t, err)
-	assert.LessOrEqual(t, len(entry.Payload), 64*1024, "store must cap payload at 64 KiB")
-}
-
 // ─── VerifyChain / CHECK 9.1.2-9.1.3 ─────────────────────────────────────────
 
 func TestVerifyChain_intact_chain_returns_nil(t *testing.T) {

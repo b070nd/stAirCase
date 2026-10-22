@@ -187,6 +187,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **A change of several hundred files no longer makes its run unreadable.** The audit chain cut every entry at 64 KiB without a
+  word, and an entry cut in the middle still hashes and verifies. The entries that list a change's files (a decision on a proposal
+  of 700 files or more, the review an away run offers) pass that size, so the run's history was refused as "its payload is
+  unreadable" and the run could not be decided, resumed or certified. An entry now holds up to 1 MiB (about 10,000 files), and one
+  over that is refused with an error that names the entry and its size; nothing is cut. What an agent proposes is still limited to
+  64 KiB and recorded as a short note of what was left out, as before. Chains already written read as they did (the hash covers
+  whatever bytes were written). What to do: nothing. A run of a very large change now fails with that error instead of being
+  recorded in a way nobody can read.
 - **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
   approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
   `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.

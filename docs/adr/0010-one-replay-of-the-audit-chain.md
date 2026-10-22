@@ -104,3 +104,6 @@ uses them. The integration tests stay as they are and keep proving the callers.
 - A payload key cannot be renamed by accident: its golden test fails.
 - Old chains replay as before, except where a rule above was a bug fix. That is the case for recovery after a continued final
   review, adoption with interleaved requests, and the acknowledged drift halt.
+
+Update (2026-10-22, ADR 0014): "writers fill typed structs" is enforced. Every event is written through one `history.Writer`, and the
+string-and-`any` form of writing is gone.

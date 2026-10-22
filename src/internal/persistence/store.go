@@ -1184,10 +1184,14 @@ func (s *Store) GetLastEventHash(runID int64) (string, error) {
 	return hash, err
 }
 
-// maxEventLogPayload is the store-level defence-in-depth cap on payload size.
-// The IPC server caps at 64 KiB before calling AppendEventLog; this second
-// guard protects callers that bypass the IPC layer (e.g. tests, future CLIs).
-const maxEventLogPayload = 64 * 1024 // 64 KiB
+// MaxEventPayload is the most one chain entry holds (ADR 0014). Payloads an agent supplies are capped lower, at 64 KiB, by
+// the agent host before they get here; this is the ceiling for what the orchestrator writes itself, such as the offered review
+// of a large change.
+const MaxEventPayload = 1 << 20
+
+// ErrPayloadTooLarge is returned, with the event and its size, for a payload over MaxEventPayload. The entry is not written: a
+// payload cut short would still hash and verify, and so stand as a record of something the run never wrote.
+var ErrPayloadTooLarge = errors.New("the audit entry is too large")
 
 // ComputeEventHash is the single source of truth for the SOC2 chain-hash
 // algorithm: SHA-256(payload ‖ prevHash ‖ gitCommitHash).
@@ -1266,8 +1270,8 @@ func VerifyEntries(entries []domain.RunEventLog) error {
 // changes from "" to the real commit hash at teardown, so a single run-level
 // value cannot be used for verification of all entries.
 func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCommitHash string) (*domain.RunEventLog, error) {
-	if len(payload) > maxEventLogPayload {
-		payload = payload[:maxEventLogPayload]
+	if len(payload) > MaxEventPayload {
+		return nil, fmt.Errorf("%w: %s is %d bytes and an entry holds at most %d", ErrPayloadTooLarge, eventType, len(payload), MaxEventPayload)
 	}
 	eventHash := ComputeEventHashV2(eventType, payload, prevHash, gitCommitHash)
 	now := time.Now()

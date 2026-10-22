@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -229,4 +231,32 @@ func TestAppendEventLogChainedIf(t *testing.T) {
 	require.NoError(t, <-second)
 	assert.Equal(t, []string{"first", "second"}, order)
 	require.NoError(t, s.VerifyChain(run))
+}
+
+// A payload is stored whole or refused; it is never cut (ADR 0014). A chain row cut in the middle is still a row the
+// verifier accepts, so a cut payload would be an authoritative record of something the run did not write.
+func TestAppendEventLog_stores_a_payload_whole_up_to_the_ceiling(t *testing.T) {
+	s, _, runID := chainStore(t)
+	big := `{"x":"` + strings.Repeat("a", 200*1024) + `"}` // an offered review of ~2000 files is about this big
+	e, err := s.AppendEventLogChained(runID, "probe", big, "")
+	require.NoError(t, err)
+	assert.Equal(t, big, e.Payload)
+	logs, err := s.ListVerifiedEventLogs(runID)
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	assert.Equal(t, big, logs[0].Payload, "what was read is what was written")
+}
+
+func TestAppendEventLog_refuses_a_payload_over_the_ceiling(t *testing.T) {
+	s, _, runID := chainStore(t)
+	over := `{"x":"` + strings.Repeat("a", persistence.MaxEventPayload) + `"}`
+	_, err := s.AppendEventLogChained(runID, "awaiting_review", over, "")
+	require.ErrorIs(t, err, persistence.ErrPayloadTooLarge)
+	assert.Contains(t, err.Error(), "awaiting_review", "the error names the event")
+	assert.Contains(t, err.Error(), fmt.Sprint(len(over)), "the error names the size")
+	logs, err := s.ListEventLogs(runID)
+	require.NoError(t, err)
+	assert.Empty(t, logs, "nothing was written")
+	_, err = s.AppendEventLogChainedIf(runID, "awaiting_review", over, "", func() error { return nil })
+	require.ErrorIs(t, err, persistence.ErrPayloadTooLarge, "the conditional append refuses too")
 }
