@@ -219,6 +219,10 @@ func checkFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&cli.terms.ProtectedPaths, "protect", nil,
 		"A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, "+
 			"whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more")
+	cmd.Flags().StringArrayVar(&cli.terms.Visible, "visible", nil,
+		"A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in "+
+			"the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more "+
+			"(default: the project's profile)")
 }
 
 // validatorFlag adds --validator and --signal to cmd.

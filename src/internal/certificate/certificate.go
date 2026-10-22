@@ -113,6 +113,9 @@ type Check struct {
 	ExitCode     int    `json:"exitCode"` // -1: it could not run
 	Sandboxed    bool   `json:"sandboxed"`
 	OutputSHA256 string `json:"outputSha256"`
+	// Environment names the directories of the user's checkout that the check saw, read-only, in the checkout of the commit it ran
+	// in (a project's declared environment, such as vendor/): it ran on more than the approved bytes.
+	Environment []string `json:"environment,omitempty"`
 }
 
 // New is a statement about commit.

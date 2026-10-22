@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -688,4 +690,142 @@ func TestRun_a_clean_checkout_records_and_prints_nothing_new(t *testing.T) {
 func sha256Of(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+// TestRun_a_check_sees_the_declared_environment (spec: real use): a check that needs a directory the repository ignores (composer's
+// vendor/) cannot pass in a checkout of the commit. With the directory declared as the run's environment the check passes, the record
+// of the check and the certificate say it ran with it, and the user's checkout is not touched; without it, the same check fails.
+func TestRun_a_check_sees_the_declared_environment(t *testing.T) {
+	run := func(visible []string) (runtest.Result, string) {
+		var r runtest.Result
+		var source string
+		out := stdoutOf(t, func() {
+			r = runtest.Run(t, runtest.Options{
+				Base: map[string]runtest.File{".gitignore": {Content: "vendor/\n", Mode: 0o644}, "src/a.php": {Content: "<?php\n", Mode: 0o644}},
+				Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+					require.NoError(t, crypto.GenerateSigningKey(wsDir))
+					p, err := s.GetProject(projectID)
+					require.NoError(t, err)
+					source = p.SourcePath
+					require.NoError(t, os.MkdirAll(filepath.Join(source, "vendor", "bin"), 0o755))
+					require.NoError(t, os.WriteFile(filepath.Join(source, "vendor", "autoload.php"), []byte("<?php\n"), 0o644))
+				},
+				Run: orchestrator.RunOptions{Terms: orchestrator.Terms{Checks: []string{"test -f vendor/autoload.php"}, Visible: visible, Sandbox: "off"}},
+				Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+					ap := env.ProposeEdit(ctx, "coder", "add", domain.ProposedEdit{File: "src/b.php", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "<?php\n"})
+					if ap.Approved {
+						return ap.Apply(env.Worktree)
+					}
+					return nil
+				})})
+		})
+		_ = out
+		return r, source
+	}
+	checks := func(r runtest.Result) []map[string]any {
+		var out []map[string]any
+		for _, e := range r.Events {
+			if e.EventType == "check_ran" {
+				var m map[string]any
+				require.NoError(t, json.Unmarshal([]byte(e.Payload), &m))
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+
+	r, _ := run(nil)
+	require.Len(t, checks(r), 1)
+	assert.EqualValues(t, 1, checks(r)[0]["exit_code"], "without the environment the check cannot see vendor/")
+	assert.Nil(t, checks(r)[0]["environment"])
+
+	r, source := run([]string{"vendor"})
+	require.NoError(t, r.Err)
+	require.Len(t, checks(r), 1)
+	assert.EqualValues(t, 0, checks(r)[0]["exit_code"], "with it the check passes")
+	assert.Equal(t, []any{"vendor"}, checks(r)[0]["environment"], "the record says the check ran with it")
+	assert.FileExists(t, filepath.Join(source, "vendor", "autoload.php"), "the user's checkout is untouched")
+	assert.NoFileExists(t, filepath.Join(source, "src", "b.php"))
+
+	raw, err := os.ReadFile(filepath.Join(r.WsDir, "audit", fmt.Sprintf("run-%d.certificate.json", r.Run.ID)))
+	require.NoError(t, err)
+	var env struct {
+		Payload string `json:"payload"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &env))
+	statement, err := base64.StdEncoding.DecodeString(env.Payload)
+	require.NoError(t, err)
+	assert.Contains(t, string(statement), `"environment":["vendor"]`, "the certificate says the checks ran with a declared environment")
+}
+
+// TestRun_a_declared_environment_is_judged_before_anything_is_made: a path that does not exist in the checkout, one the repository
+// tracks, and one outside the repository refuse the run before it makes a record or a worktree.
+func TestRun_a_declared_environment_is_judged_before_anything_is_made(t *testing.T) {
+	for name, tc := range map[string]struct {
+		visible []string
+		why     string
+	}{
+		"it does not exist": {[]string{"vendor"}, "does not exist"},
+		"it is tracked":     {[]string{"src"}, "is tracked"},
+		"it is outside":     {[]string{"../elsewhere"}, "inside the repository"},
+		"it is a pattern":   {[]string{"vendor/*"}, "not a pattern"},
+		"it is git's own":   {[]string{".git"}, "git directory"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := runtest.Run(t, runtest.Options{
+				Base:  map[string]runtest.File{"src/a.php": {Content: "<?php\n", Mode: 0o644}},
+				Run:   orchestrator.RunOptions{Terms: orchestrator.Terms{Checks: []string{"true"}, Visible: tc.visible, Sandbox: "off"}},
+				Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error { return nil })})
+			require.Error(t, r.Err)
+			assert.Contains(t, r.Err.Error(), tc.why)
+			assert.Empty(t, r.Events, "nothing was written")
+		})
+	}
+}
+
+// TestRun_the_environment_reaches_a_docker_sandbox_read_only (simulated Docker): with a docker sandbox the declared directory is a
+// read-only mount of the container the check runs in; the image is not pulled. A stand-in `docker` that logs its arguments stands for
+// the real one, which is tested where an image exists.
+func TestRun_the_environment_reaches_a_docker_sandbox_read_only(t *testing.T) {
+	bin := t.TempDir()
+	logFile := filepath.Join(bin, "docker.log")
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\necho \"$*\" >> "+logFile+"\n[ \"$1 $2\" = \"image inspect\" ] && echo sha256:fake\nexit 0\n"), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	var source string
+	var r runtest.Result
+	_ = stdoutOf(t, func() {
+		r = runtest.Run(t, runtest.Options{
+			Base: map[string]runtest.File{".gitignore": {Content: "vendor/\n", Mode: 0o644}, "src/a.php": {Content: "<?php\n", Mode: 0o644}},
+			Setup: func(s *persistence.Store, wsDir string, projectID int64) {
+				require.NoError(t, crypto.GenerateSigningKey(wsDir))
+				p, err := s.GetProject(projectID)
+				require.NoError(t, err)
+				source = p.SourcePath
+				require.NoError(t, os.MkdirAll(filepath.Join(source, "vendor"), 0o755))
+			},
+			Run: orchestrator.RunOptions{Terms: orchestrator.Terms{Checks: []string{"vendor/bin/phpunit"}, Visible: []string{"vendor"}, Sandbox: "docker:image=php:8.2"}},
+			Agent: orchestrator.AgentFunc(func(ctx context.Context, env *orchestrator.AgentEnv) error {
+				ap := env.ProposeEdit(ctx, "coder", "add", domain.ProposedEdit{File: "src/b.php", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "<?php\n"})
+				if ap.Approved {
+					return ap.Apply(env.Worktree)
+				}
+				return nil
+			})})
+	})
+	require.NoError(t, r.Err)
+	b, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	realSource, err := filepath.EvalSymlinks(source)
+	require.NoError(t, err)
+	assert.Regexp(t, regexp.MustCompile(regexp.QuoteMeta("-v "+filepath.Join(realSource, "vendor")+":")+`\S+/vendor:ro`), string(b), "the environment is a read-only mount")
+	assert.Contains(t, string(b), "--pull never")
+	var ran bool
+	for _, e := range r.Events {
+		if e.EventType == "check_ran" {
+			ran = true
+			assert.Contains(t, e.Payload, `"sandboxed":true`)
+			assert.Contains(t, e.Payload, `"environment":["vendor"]`)
+		}
+	}
+	assert.True(t, ran)
 }

@@ -34,7 +34,7 @@ Events you will see:
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
 | `policy_snapshot` | the digest of the `policy.json` the run decided under, and whether its signature was valid (written before the first proposal) |
 | `initiator_signed` | the person who started the run signed a request naming the run, base commit and plan: who, and the SSH signature (only when the run was started with a key) |
-| `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed and the digest of its output |
+| `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed, the digest of its output, and the declared environment it saw when the run had one (`environment`: see [a project's profile](profile.md)) |
 | `shell_ran` | an approved shell command ran: the agent, the command and whether it ran in the sandbox |
 | `validator_voted` | one reviewer model's verdict on one proposal, written before the decision it went into: the model, the `yield_request` entry it judged (`request_entry`), `approve`, `reject` or `error` (it failed or gave no verdict), its reason, and the digest of its whole reply. Every model that was asked has one, whether the panel agreed or not ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)). Votes are not signed: they are as trustworthy as the workspace that wrote them |
 | `signal_rated` | a decision model was asked about a change that was not decided by a person: the model, the probabilities it gave that the change is risky and that it serves a story, the kind of change and the cost, or the error when it could not answer. It can only send the change to a person |

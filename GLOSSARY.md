@@ -105,6 +105,10 @@ no run can have written has no history. It is refused with the entry that breaks
 change may touch, the checks and the sandbox. It is kept in the workspace, never in the client's repository, and a run resolves it into its terms
 when it starts: a flag wins over it, its digest is bound with the terms, and a continuation keeps the profile it started with.
 
+**Environment**: the directories of the user's checkout that the repository ignores and a run's checks need (a project's `vendor/`), declared in
+its terms and shown to the checks, read-only, in the checkout of the commit they run in. It is never in the agent's worktree and never part of the
+approved bytes; a check that saw it says so in its record and in the certificate.
+
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
 - how changes are approved;

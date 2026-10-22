@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -78,7 +79,7 @@ func parseDocker(mode string) (dockerSpec, error) {
 }
 
 // dockerCommand is Command in a container. cleanup removes the container too, since killing the docker client leaves it running.
-func dockerCommand(ctx context.Context, root, cwd, tmp, command, mode string) (*exec.Cmd, func(), error) {
+func dockerCommand(ctx context.Context, root, cwd, tmp, command, mode string, overlays []Overlay) (*exec.Cmd, func(), error) {
 	s, err := parseDocker(mode)
 	if err != nil {
 		return nil, nil, err
@@ -95,6 +96,9 @@ func dockerCommand(ctx context.Context, root, cwd, tmp, command, mode string) (*
 		"--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "512",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-v", root + ":" + root, "-v", tmp + ":" + tmp, "-w", cwd, "-e", "TMPDIR=" + tmp, "-e", "HOME=" + tmp}
+	for _, o := range overlays { // the user's own directory, read-only, where the checkout has none
+		args = append(args, "-v", o.Source+":"+filepath.Join(root, filepath.FromSlash(o.Target))+":ro")
+	}
 	if s.memory != "" {
 		args = append(args, "--memory", s.memory, "--memory-swap", s.memory) // no swap beyond the limit
 	}

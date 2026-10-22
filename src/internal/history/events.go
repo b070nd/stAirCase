@@ -152,6 +152,8 @@ type CheckRan struct {
 	ExitCode     int    `json:"exit_code"`
 	OutputSHA256 string `json:"output_sha256"`
 	Sandboxed    bool   `json:"sandboxed"`
+	// Environment names the declared directories the check saw, read-only; absent when it saw none.
+	Environment []string `json:"environment,omitempty"`
 }
 
 func (CheckRan) eventName() string { return "check_ran" }

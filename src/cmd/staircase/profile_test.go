@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/history"
@@ -39,9 +41,10 @@ func TestProfile_set_and_show(t *testing.T) {
 	assert.Contains(t, out.String(), "has no profile")
 
 	profileProtect, profileSensitive, profileScope, profileChecks, profileSandbox, profileClear = []string{"phpunit.xml"}, []string{"contracts/**"}, []string{"app/**"}, []string{"vendor/bin/phpunit"}, "", nil
+	profileVisible = []string{"vendor"}
 	out.Reset()
-	require.NoError(t, setProfile(&out, ws, id, map[string]bool{"protect": true, "sensitive": true, "scope": true, "check": true}))
-	for _, want := range []string{"protect", "phpunit.xml", "contracts/**", "app/**", "vendor/bin/phpunit"} {
+	require.NoError(t, setProfile(&out, ws, id, map[string]bool{"protect": true, "sensitive": true, "scope": true, "check": true, "visible": true}))
+	for _, want := range []string{"protect", "phpunit.xml", "contracts/**", "app/**", "vendor/bin/phpunit", "visible", "vendor"} {
 		assert.Contains(t, out.String(), want)
 	}
 	assert.FileExists(t, profile.Path(ws, id))
@@ -67,7 +70,7 @@ func TestProfile_set_and_show(t *testing.T) {
 func TestApplyProfile_precedence(t *testing.T) {
 	ws, id := profileWorkspace(t)
 	require.NoError(t, profile.Save(ws, id, profile.Profile{Checks: []string{"make test"}, Protect: []string{"Makefile.test"}, Sandbox: "required",
-		Scope: []string{"src/**"}, Sensitive: []string{"contracts/**"}}))
+		Scope: []string{"src/**"}, Sensitive: []string{"contracts/**"}, Visible: []string{"vendor"}}))
 	t.Cleanup(func() { explicitFlags = map[string]bool{} })
 
 	var l launch
@@ -77,6 +80,7 @@ func TestApplyProfile_precedence(t *testing.T) {
 	assert.Equal(t, []string{"Makefile.test"}, l.terms.ProtectedPaths)
 	assert.Equal(t, "required", l.terms.Sandbox)
 	assert.Equal(t, []string{"src/**"}, l.allow)
+	assert.Equal(t, []string{"vendor"}, l.terms.Visible)
 	assert.Equal(t, []string{"contracts/**"}, l.terms.SensitivePaths)
 	want, _, _ := profile.Load(ws, id)
 	assert.Equal(t, want.Digest(), l.terms.ProfileSHA256)
@@ -85,8 +89,10 @@ func TestApplyProfile_precedence(t *testing.T) {
 	l.terms.Checks = []string{"go test ./..."}
 	l.terms.Sandbox = "off"
 	l.allow = []string{"docs/**"}
-	explicitFlags = map[string]bool{"check": true, "sandbox": true, "allow": true}
+	l.terms.Visible = []string{"generated"}
+	explicitFlags = map[string]bool{"check": true, "sandbox": true, "allow": true, "visible": true}
 	require.NoError(t, applyProfile(&l, ws, id))
+	assert.Equal(t, []string{"generated"}, l.terms.Visible, "a flag wins here too")
 	assert.Equal(t, []string{"go test ./..."}, l.terms.Checks, "a flag on the command line wins")
 	assert.Equal(t, "off", l.terms.Sandbox)
 	assert.Equal(t, []string{"docs/**"}, l.allow)
@@ -151,4 +157,51 @@ func mustHistory(t *testing.T, s *persistence.Store, run int64) history.History 
 	h, err := history.Read(s, run)
 	require.NoError(t, err)
 	return h
+}
+
+// TestSession_checks_see_the_projects_environment (spec: real use): the project's profile declares its ignored vendor/ directory as the
+// environment; the check that needs it passes on the commit, in the macOS sandbox where there is one, the record says the check saw
+// it, and verify says so; the checkout, vendor/ included, is untouched.
+func TestSession_checks_see_the_projects_environment(t *testing.T) {
+	repo, ws, git := sessionRepo(t)
+	t.Cleanup(func() { explicitFlags = map[string]bool{}; cli.yes = false })
+	require.NoError(t, claudeSession(nil, []string{"first"})) // makes the project
+	db, err := persistence.InitDB(ws)
+	require.NoError(t, err)
+	projects, err := persistence.NewStore(db).ListAllProjects()
+	require.NoError(t, err)
+	id := projects[0].ID
+	require.NoError(t, db.Close())
+
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("vendor/\n"), 0o644))
+	git("add", ".gitignore")
+	git("commit", "-q", "-m", "ignore vendor")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "vendor"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "vendor", "autoload.php"), []byte("<?php\n"), 0o644))
+	require.NoError(t, profile.Save(ws, id, profile.Profile{Checks: []string{"test -f vendor/autoload.php && test -f HEALTH.md"}, Visible: []string{"vendor"}}))
+
+	cli.yes = true
+	require.NoError(t, claudeSession(nil, []string{"again"}))
+	assert.Equal(t, "ok\n", git("show", "staircase/run-2:HEALTH.md"))
+	assert.FileExists(t, filepath.Join(repo, "vendor", "autoload.php"), "the user's vendor/ is untouched")
+	assert.Equal(t, "", strings.TrimSpace(git("status", "--porcelain")), "the checkout is clean: the environment lives in a throwaway checkout")
+
+	db, err = persistence.InitDB(ws)
+	require.NoError(t, err)
+	defer db.Close()
+	logs, err := persistence.NewStore(db).ListEventLogs(2)
+	require.NoError(t, err)
+	var seen bool
+	for _, e := range logs {
+		if e.EventType == "check_ran" {
+			assert.Contains(t, e.Payload, `"exit_code":0`, "the check that needs vendor/ passes")
+			assert.Contains(t, e.Payload, `"environment":["vendor"]`)
+			seen = true
+		}
+	}
+	require.True(t, seen)
+	verifyMinCAL, verifyKey, verifyFile = 0, "", ""
+	out, err := captureStdout(t, func() error { return verifyHandler(nil, []string{"staircase/run-2"}) })
+	require.NoError(t, err)
+	assert.Contains(t, out, "with the declared environment vendor")
 }

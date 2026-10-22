@@ -224,6 +224,7 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -302,6 +303,7 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -521,6 +523,7 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -707,6 +710,7 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -859,11 +863,12 @@ Flags:
 
 ```
       --check stringArray       A command (such as the tests) run on the commit a run makes; repeat for more
-      --clear stringArray       Remove a field: protect, sensitive, scope, checks, sandbox (repeatable)
+      --clear stringArray       Remove a field: protect, sensitive, scope, visible, checks, sandbox (repeatable)
       --protect stringArray     Paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person
       --sandbox string          Where approved commands and checks run: auto, required, off or docker:image=<ref>
       --scope stringArray       Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift
       --sensitive stringArray   Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)
+      --visible stringArray     Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root
 ```
 
 ## staircase project profile show
@@ -1126,6 +1131,7 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 
@@ -1166,6 +1172,7 @@ Flags:
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --skip-gates                 Bypass quality gate pre-flight (use with care)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
 ```
 
 ## staircase seal
@@ -1206,6 +1213,7 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 

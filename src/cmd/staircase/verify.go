@@ -303,7 +303,11 @@ func verifyCommit(commit string) error {
 		if !c.Sandboxed {
 			where = "without a sandbox"
 		}
-		fmt.Printf("   check passed %s: %s\n", where, tui.Safe(c.Command))
+		with := ""
+		if len(c.Environment) > 0 { // it ran on more than the approved bytes: the user's own directories, read-only
+			with = ", with the declared environment " + tui.Safe(strings.Join(c.Environment, ", "))
+		}
+		fmt.Printf("   check passed %s%s: %s\n", where, with, tui.Safe(c.Command))
 	}
 	if sg := p.Signed; sg != nil {
 		fmt.Printf("   %d decision(s) signed with SSH keys", sg.Decisions)

@@ -58,6 +58,10 @@ func applyProfile(l *launch, wsDir string, projectID int64) error {
 		l.profileScope = true
 		fill("scope", true)
 	}
+	if len(p.Visible) > 0 && !explicitFlags["visible"] && len(l.terms.Visible) == 0 {
+		l.terms.Visible = slices.Clone(p.Visible)
+		fill("visible", true)
+	}
 	if len(p.Sensitive) > 0 { // a profile only adds to what needs a person: no flag takes it away
 		l.terms.SensitivePaths = slices.Clone(p.Sensitive)
 		fill("sensitive", true)
@@ -103,8 +107,8 @@ need a person and never take any away.`,
 }
 
 var (
-	profileProtect, profileSensitive, profileScope, profileChecks, profileClear []string
-	profileSandbox                                                              string
+	profileProtect, profileSensitive, profileScope, profileVisible, profileChecks, profileClear []string
+	profileSandbox                                                                              string
 )
 
 var projectProfileShowCmd = &cobra.Command{
@@ -139,6 +143,7 @@ func init() {
 	projectProfileSetCmd.Flags().StringArrayVar(&profileProtect, "protect", nil, "Paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileSensitive, "sensitive", nil, "Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileScope, "scope", nil, "Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift")
+	projectProfileSetCmd.Flags().StringArrayVar(&profileVisible, "visible", nil, "Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileChecks, "check", nil, "A command (such as the tests) run on the commit a run makes; repeat for more")
 	projectProfileSetCmd.Flags().StringVar(&profileSandbox, "sandbox", "", "Where approved commands and checks run: auto, required, off or docker:image=<ref>")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileClear, "clear", nil, "Remove a field: "+strings.Join(profile.Fields, ", ")+" (repeatable)")
@@ -181,6 +186,7 @@ func showProfile(w io.Writer, wsDir string, id int64) error {
 	show("protect", pr.Protect)
 	show("sensitive", pr.Sensitive)
 	show("scope", pr.Scope)
+	show("visible", pr.Visible)
 	show("checks", pr.Checks)
 	if pr.Sandbox != "" {
 		fmt.Fprintf(w, "  %-10s %s\n", "sandbox", pr.Sandbox)
@@ -204,6 +210,8 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 			pr.Sensitive = nil
 		case "scope":
 			pr.Scope = nil
+		case "visible":
+			pr.Visible = nil
 		case "checks":
 			pr.Checks = nil
 		case "sandbox":
@@ -221,6 +229,9 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 	if named["scope"] {
 		pr.Scope = profileScope
 	}
+	if named["visible"] {
+		pr.Visible = profileVisible
+	}
 	if named["check"] {
 		pr.Checks = profileChecks
 	}
@@ -228,7 +239,7 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 		pr.Sandbox = profileSandbox
 	}
 	if len(named) == 0 {
-		return errors.New("nothing to set: name a field (--protect, --sensitive, --scope, --check, --sandbox) or --clear one")
+		return errors.New("nothing to set: name a field (--protect, --sensitive, --scope, --visible, --check, --sandbox) or --clear one")
 	}
 	if err := profile.Save(wsDir, id, pr); err != nil {
 		return err

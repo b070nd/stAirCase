@@ -78,6 +78,15 @@ stAirCase is at **1.0**: its six interfaces follow semantic versioning ([compati
    never pulled for you (`docker pull` it first). It covers what stAirCase runs: the built-in agent's commands and
    every check, including an away run's evidence. Claude Code's and Codex's own commands still run in their own
    sandboxes, not in the container.
+
+   **A project's environment** (`--visible vendor`, or `visible` in the [profile](profile.md)) makes a directory your repository
+   ignores, such as composer's `vendor/`, visible to the checks: they run in a checkout of the commit, which holds tracked files only, so
+   without it a check that needs `vendor/` cannot pass. It is shown read-only (a read-only mount in the container; in the macOS sandbox a
+   link whose target the sandbox forbids writing; a run refuses where the engine cannot guarantee that, which today is bubblewrap and
+   Landlock). It is **not** in the agent's worktree, the agent's tools and approved shell commands never see it, and it is never part
+   of what is approved: a check that passes with it passed on more than the approved bytes, so the record of the check and the change
+   certificate name it, and `staircase verify` says so. Its content is yours, as it is now: stAirCase does not digest it. With
+   `--sandbox off` the directories are linked and nothing stops a check writing to them.
 3. **Give stories a scope** so changes elsewhere come to you (`staircase story scope`).
 4. **Set a budget cap** per project (`staircase project config set --budget-cap`).
 5. **Let checks do the tedious part.** `--check` runs your tests, and security

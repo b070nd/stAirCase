@@ -121,3 +121,24 @@ func testDockerCancelled(t *testing.T) {
 		t.Errorf("a container is left: %s", out)
 	}
 }
+
+// TestDocker_the_environment_is_a_read_only_mount: with a real Docker (skipped where the image is not on the machine; run it on a proper
+// environment), a command sees the user's directory where the checkout has none, and cannot change it.
+func TestDocker_the_environment_is_a_read_only_mount(t *testing.T) {
+	needDocker(t)
+	source, root := userCheckout(t)
+	overlays := []Overlay{{Source: filepath.Join(source, "vendor"), Target: "vendor"}}
+	out, sandboxed, err := run(t, root, "test -f vendor/autoload.php && ! (echo x > vendor/new.txt) 2>/dev/null && ! rm vendor/autoload.php 2>/dev/null", "docker:image="+testImage, overlays)
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if !sandboxed {
+		t.Error("a container is a sandbox")
+	}
+	if _, err := os.Stat(filepath.Join(source, "vendor", "new.txt")); err == nil {
+		t.Error("a write through the mount reached the user's directory")
+	}
+	if _, err := os.Stat(filepath.Join(source, "vendor", "autoload.php")); err != nil {
+		t.Errorf("the user's file is gone: %v", err)
+	}
+}

@@ -6,7 +6,7 @@ the repository would put stAirCase into your client's code. A **profile** keeps 
 
 ```bash
 staircase project profile set 3 --protect "phpunit.xml" --protect "tests/**" \
-  --sensitive "contracts/**" --scope "app/code/**" --check "vendor/bin/phpunit"
+  --sensitive "contracts/**" --scope "app/code/**" --visible vendor --check "vendor/bin/phpunit"
 staircase project profile show 3
 staircase project profile set 3 --clear checks          # take a field away
 ```
@@ -21,6 +21,7 @@ you are in.
 | `protect` | paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person, and is parked while you are away |
 | `sensitive` | more paths a change to which always needs a person, on top of the built-in list (CI, build, dependency and secret files). A contract file belongs here. A profile can add to the list and never take from it |
 | `scope` | where a change may land: a file elsewhere comes to a person as drift. For `claude`, `codex` and `gemini` it is the default for `--allow`; for `run` it narrows the stories' scope |
+| `visible` | ignored directories or files of your checkout that the checks need, such as `vendor/` or `generated/`: literal paths from the repository's root. Checks see them, read-only, in the checkout of the commit they run in ([what that is and is not](safety.md)) |
 | `checks` | commands, such as the tests, run on the commit a run makes |
 | `sandbox` | where approved commands and checks run: `auto`, `required`, `off` or `docker:image=<ref>` |
 
@@ -38,5 +39,12 @@ The profile is a file in the workspace (`profiles/project-<id>.json`, next to th
 be read stops the run: starting under less than the project asks is the one wrong answer. It is not signed (the policy file can be; a
 signed profile is not built yet).
 
-Instructions for the agent, the directories checks may see (`vendor/`) and files the agent must not read are further fields to come; this
-page lists a field when it exists.
+**The environment.** A check runs in a throwaway checkout of the commit, and a checkout holds tracked files only: a directory your
+repository ignores is not in it, so a check that needs composer's `vendor/` could not pass. `visible` (or `--visible` for one run)
+declares such directories. The environment applies to the checks, wherever they run: after the commit, when the agent says it is done,
+and as evidence for an approval. It is shown read-only, it is not in the agent's worktree and not part of what is approved, and the
+record of a check and the change certificate say that the check saw it. A declared path that does not exist in your checkout, or that
+git tracks, refuses the run before anything is made. Bubblewrap and Landlock are not supported for it yet, and a run on either refuses;
+use the macOS sandbox, `--sandbox docker:image=<image>` (the image is never pulled for you) or `--sandbox off`.
+
+Instructions for the agent and files the agent must not read are further fields to come; this page lists a field when it exists.

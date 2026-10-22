@@ -26,6 +26,13 @@ const (
 // (Credentials) or the paths in hide (such as the stAirCase workspace),
 // except root itself. cleanup removes the temp folder.
 func Command(ctx context.Context, root, cwd, command, mode string, hide ...string) (cmd *exec.Cmd, sandboxed bool, cleanup func(), err error) {
+	return CommandWith(ctx, root, cwd, command, mode, nil, hide...)
+}
+
+// CommandWith is Command with overlays: paths of the user's checkout that the command sees, read-only, inside root (a project's
+// environment, such as its vendor directory, which a checkout of a commit does not hold). It refuses, rather than run, where the engine
+// cannot guarantee that the command cannot write through them.
+func CommandWith(ctx context.Context, root, cwd, command, mode string, overlays []Overlay, hide ...string) (cmd *exec.Cmd, sandboxed bool, cleanup func(), err error) {
 	tmp, err := os.MkdirTemp("", "staircase-shell-")
 	if err != nil {
 		return nil, false, func() {}, err
@@ -37,7 +44,7 @@ func Command(ctx context.Context, root, cwd, command, mode string, hide ...strin
 			cleanup()
 			return nil, false, func() {}, err
 		}
-		dcmd, stop, err := dockerCommand(ctx, root, cwd, real, command, mode)
+		dcmd, stop, err := dockerCommand(ctx, root, cwd, real, command, mode, overlays)
 		if err != nil {
 			cleanup()
 			return nil, false, func() {}, err
@@ -46,8 +53,15 @@ func Command(ctx context.Context, root, cwd, command, mode string, hide ...strin
 		return dcmd, true, func() { stop(); removeTmp() }, nil
 	}
 	var wrap []string
+	var engineName string
 	if mode != Off {
-		if wrap, err = sandboxWrapper(root, tmp, hidden(hide)); err != nil && mode == Required {
+		if wrap, engineName, err = sandboxWrapper(root, tmp, hidden(hide)); err != nil && mode == Required {
+			cleanup()
+			return nil, false, func() {}, err
+		}
+	}
+	if len(overlays) > 0 {
+		if err := linkOverlays(root, engineName, overlays); err != nil {
 			cleanup()
 			return nil, false, func() {}, err
 		}
@@ -135,13 +149,13 @@ var only string
 // sandboxWrapper is the command line that puts a command in the sandbox for
 // this machine, writable only in root and tmp, the hide paths unreadable
 // (root stays readable inside them), or an error when there is none.
-func sandboxWrapper(root, tmp string, hide []string) ([]string, error) {
+func sandboxWrapper(root, tmp string, hide []string) ([]string, string, error) {
 	var err error
 	if root, err = filepath.EvalSymlinks(root); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if tmp, err = filepath.EvalSymlinks(tmp); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	why := []string{}
 	for _, e := range engines[runtime.GOOS] {
@@ -150,14 +164,14 @@ func sandboxWrapper(root, tmp string, hide []string) ([]string, error) {
 		}
 		w, err := e.wrap(root, tmp, hide)
 		if err == nil {
-			return w, nil
+			return w, e.name, nil
 		}
 		why = append(why, err.Error())
 	}
 	if len(why) == 0 {
 		why = append(why, "none for "+runtime.GOOS)
 	}
-	return nil, errors.New("no sandbox: " + strings.Join(why, "; "))
+	return nil, "", errors.New("no sandbox: " + strings.Join(why, "; "))
 }
 
 func sandboxExec(root, tmp string, hide []string) ([]string, error) {

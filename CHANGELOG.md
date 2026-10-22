@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Checks can see a project's environment, such as composer's `vendor/` (`--visible`, `visible` in the profile).** A check runs in a
+  throwaway checkout of the commit, which holds tracked files only, so a check that needs a directory your repository ignores could not
+  pass, with the sandbox on or off. You can now declare those directories: the checks (after the commit, when the agent says it is done,
+  and as evidence for an approval) see them read-only, in the macOS sandbox as a link the sandbox forbids writing through and in a
+  `docker:` sandbox as a read-only mount. A path that does not exist in your checkout or that git tracks refuses the run before
+  anything is made, and so does an engine that cannot keep it read-only (bubblewrap and Landlock, for now). The environment is not in
+  the agent's worktree and not part of what is approved; the record of a check (`check_ran`, `phase_checked`) and the change certificate
+  name it (`environment`, an optional field of a check), and `staircase verify` says so. What to do: nothing, unless a check needs an
+  ignored directory ([profile](docs/profile.md), [safety](docs/safety.md)).
+
 - **A project profile: what is true of a client's repository for every run, kept in your workspace.** `staircase project profile set` and
   `show` hold, per project, the paths that define a check (`--protect`), further paths that always need a person (`--sensitive`, for a
   contract file, say, added to the built-in list and never taking from it), the scope a change may touch (`--scope`), the checks and the

@@ -15,12 +15,14 @@ func TestNormalize_cleans_sorts_and_refuses(t *testing.T) {
 		Scope:   []string{"app/code/**", "app/code/**"},
 		Checks:  []string{" vendor/bin/phpunit ", "vendor/bin/phpcs", "vendor/bin/phpunit", ""},
 		Sandbox: " docker:image=php:8.2 ",
+		Visible: []string{"vendor", "./generated/", "vendor", "node_modules"},
 	}.Normalize()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a/b", "phpunit.xml", "tests/**/*.php"}, p.Protect)
 	assert.Equal(t, []string{"app/code/**"}, p.Scope)
 	assert.Equal(t, []string{"vendor/bin/phpunit", "vendor/bin/phpcs"}, p.Checks, "checks keep the order they run in")
 	assert.Equal(t, "docker:image=php:8.2", p.Sandbox)
+	assert.Equal(t, []string{"generated", "node_modules", "vendor"}, p.Visible)
 
 	for name, bad := range map[string]profile.Profile{
 		"an absolute path":          {Protect: []string{"/etc/passwd"}},
@@ -28,6 +30,9 @@ func TestNormalize_cleans_sorts_and_refuses(t *testing.T) {
 		"the root itself":           {Sensitive: []string{"."}},
 		"a broken pattern":          {Sensitive: []string{"src/[a-"}},
 		"a sandbox that is not one": {Sandbox: "gvisor"},
+		"a pattern as environment":  {Visible: []string{"vendor/*"}},
+		"git's own directory":       {Visible: []string{".git"}},
+		"an environment above":      {Visible: []string{"../vendor"}},
 	} {
 		_, err := bad.Normalize()
 		assert.Error(t, err, name)

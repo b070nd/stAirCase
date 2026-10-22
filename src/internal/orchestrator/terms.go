@@ -63,6 +63,10 @@ type Terms struct {
 	// ProfileSHA256 is the digest of the project's profile the run started under, "" when the project had none: what the run was told
 	// about its project is on the record.
 	ProfileSHA256 string `json:"profile_sha256,omitempty"`
+	// Visible is the run's environment: directories (or files) of the user's checkout, relative to its root, that the repository
+	// ignores and the checks need (composer's vendor/, generated code). Checks see them, read-only, in the checkout of the commit they
+	// run in. They are never in the agent's worktree and never part of what is approved.
+	Visible []string `json:"visible,omitempty"`
 	// Deliver is how the run's approved change reaches its branch (ADR 0012): DeliverReview (also when empty, and then absent
 	// from the saved form, so every run saved before the field existed reads as review) offers it to a person; DeliverPolicy
 	// delivers it, while nobody is there, when only rules of the owner's signed policy approved it.
@@ -137,6 +141,9 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	if t.SensitivePaths, err = cleanPaths("the profile's sensitive paths", t.SensitivePaths); err != nil {
 		return t, err
 	}
+	if t.Visible, err = visiblePaths(t.Visible); err != nil {
+		return t, err
+	}
 	if err := t.deliver(); err != nil {
 		return t, err
 	}
@@ -201,6 +208,27 @@ func (t *Terms) protect() error {
 	slices.Sort(paths)
 	t.ProtectedPaths = slices.Compact(paths)
 	return nil
+}
+
+// visiblePaths is the declared environment cleaned, sorted and without duplicates: literal paths inside the repository, never a pattern
+// and never the git directory.
+func visiblePaths(paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		clean, ok := repoPath(p)
+		if !ok {
+			return nil, fmt.Errorf("--visible %q: name a path inside the repository, from its root", p)
+		}
+		if strings.ContainsAny(clean, "*?[") {
+			return nil, fmt.Errorf("--visible %q names a directory or a file, not a pattern", p)
+		}
+		if clean == ".git" || strings.HasPrefix(clean, ".git/") {
+			return nil, fmt.Errorf("--visible %q: the git directory is not an environment", p)
+		}
+		out = append(out, clean)
+	}
+	slices.Sort(out)
+	return slices.Compact(out), nil
 }
 
 // cleanPaths is paths cleaned, sorted and without duplicates, refusing one that is outside the repository or not a well formed pattern.

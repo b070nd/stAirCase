@@ -38,7 +38,7 @@ func (e *AgentEnv) Done(ctx context.Context) string {
 	e.doneAttempts++
 	var failed, why []string
 	for _, command := range e.Checks {
-		c, tail := runCheck(ctx, dir, command, e.Sandbox, e.Workspace, e.CheckTimeout)
+		c, tail := runCheck(ctx, dir, command, e.Sandbox, e.Workspace, e.CheckTimeout, e.Environment)
 		if c.ExitCode != 0 {
 			failed = append(failed, command)
 			why = append(why, fmt.Sprintf("check %q failed (exit %d):\n%s", command, c.ExitCode, strings.TrimSpace(tail)))

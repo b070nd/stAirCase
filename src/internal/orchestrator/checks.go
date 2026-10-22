@@ -26,7 +26,7 @@ const defaultCheckTimeout = 15 * time.Minute
 // (mode as for approved commands), and returns their results for the
 // certificate. A check that fails is reported and recorded; it does not undo
 // the commit (staircase verify refuses it).
-func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, commit string, checks []string, mode string, timeout time.Duration) []certificate.Check {
+func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, commit string, checks []string, mode string, timeout time.Duration, overlays []sandbox.Overlay) []certificate.Check {
 	if len(checks) == 0 {
 		return nil
 	}
@@ -36,7 +36,7 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 		c := certificate.Check{Command: command, ExitCode: -1}
 		var tail string
 		if err == nil {
-			c, tail = runCheck(ctx, dir, command, mode, r.wsDir, timeout)
+			c, tail = runCheck(ctx, dir, command, mode, r.wsDir, timeout, overlays)
 		} else {
 			tail = "no checkout of the commit: " + err.Error()
 		}
@@ -48,7 +48,7 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 		if !c.Sandboxed {
 			fmt.Fprintf(os.Stdout, "      (ran without a sandbox)\n")
 		}
-		_ = r.log(runID).Append(history.CheckRan{Command: command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed})
+		_ = r.log(runID).Append(history.CheckRan{Command: command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed, Environment: c.Environment})
 		out = append(out, c)
 	}
 	if cleanup != nil {
@@ -59,14 +59,14 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 
 // runCheck runs one check in dir; it returns the result and the end of the
 // output, for the terminal only.
-func runCheck(ctx context.Context, dir, command, mode, workspace string, timeout time.Duration) (certificate.Check, string) {
-	c := certificate.Check{Command: command, ExitCode: -1}
+func runCheck(ctx context.Context, dir, command, mode, workspace string, timeout time.Duration, overlays []sandbox.Overlay) (certificate.Check, string) {
+	c := certificate.Check{Command: command, ExitCode: -1, Environment: environmentNames(overlays)}
 	if timeout <= 0 {
 		timeout = defaultCheckTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd, sandboxed, cleanup, err := sandbox.Command(ctx, dir, dir, command, mode, workspace)
+	cmd, sandboxed, cleanup, err := sandbox.CommandWith(ctx, dir, dir, command, mode, overlays, workspace)
 	if err != nil {
 		return c, err.Error()
 	}

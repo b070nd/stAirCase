@@ -67,7 +67,7 @@ meanings and the verification procedure, is
 | `policy` | string (SHA-256 of the policy the run decided under) | no |
 | `signed` | object `{decisions, signers}` (decisions people signed; informative) | no |
 | `attention` | object `{humanDecisions, medianSeconds, quickApprovals}` (how people decided; informative) | no |
-| `checks` | array of `{command, exitCode, sandboxed, outputSha256}` (commands run on the commit) | no |
+| `checks` | array of `{command, exitCode, sandboxed, outputSha256, environment}` (commands run on the commit); `environment` is optional and names the directories of the user's checkout the command saw, read-only, in the checkout of the commit it ran in (such as `vendor/`): the check ran on more than the approved bytes | no |
 | `delivery` | string, `policy` (the change was delivered by rules of the owner's signed policy with no person reviewing the whole change; absent otherwise) | no |
 
 ## Parsing rules

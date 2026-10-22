@@ -27,6 +27,9 @@ type Profile struct {
 	Sensitive []string `json:"sensitive,omitempty"`
 	// Scope are the paths a run's changes may touch; a change elsewhere comes to a person as drift.
 	Scope []string `json:"scope,omitempty"`
+	// Visible are directories or files of the user's checkout, relative to its root, that the repository ignores and the checks need
+	// (composer's vendor/): checks see them read-only (the project's environment). Literal paths, never patterns.
+	Visible []string `json:"visible,omitempty"`
 	// Checks are commands, such as the tests, run on the commit a run makes.
 	Checks []string `json:"checks,omitempty"`
 	// Sandbox is where approved commands and checks run: auto, required, off or docker:...
@@ -34,7 +37,7 @@ type Profile struct {
 }
 
 // Fields are the names of a profile's fields, as the commands say them.
-var Fields = []string{"protect", "sensitive", "scope", "checks", "sandbox"}
+var Fields = []string{"protect", "sensitive", "scope", "visible", "checks", "sandbox"}
 
 // Empty reports whether the profile says nothing.
 func (p Profile) Empty() bool { return p.Digest() == Profile{}.Digest() }
@@ -50,6 +53,9 @@ func (p Profile) Normalize() (Profile, error) {
 		return p, err
 	}
 	if p.Scope, err = paths("scope", p.Scope); err != nil {
+		return p, err
+	}
+	if p.Visible, err = literalPaths("visible", p.Visible); err != nil {
 		return p, err
 	}
 	var checks []string
@@ -76,6 +82,26 @@ func paths(field string, in []string) ([]string, error) {
 		}
 		if !engine.ValidGlob(clean) {
 			return nil, fmt.Errorf("%s %q is not a well formed pattern", field, raw)
+		}
+		out = append(out, clean)
+	}
+	slices.Sort(out)
+	return slices.Compact(out), nil
+}
+
+// literalPaths is paths that name one directory or file each: cleaned, inside the repository, no pattern, not the git directory.
+func literalPaths(field string, in []string) ([]string, error) {
+	var out []string
+	for _, raw := range in {
+		clean, ok := engine.CleanRepoPath(strings.TrimSpace(raw))
+		if !ok {
+			return nil, fmt.Errorf("%s %q: name a path inside the repository, from its root", field, raw)
+		}
+		if strings.ContainsAny(clean, "*?[") {
+			return nil, fmt.Errorf("%s %q names a directory or a file, not a pattern", field, raw)
+		}
+		if clean == ".git" || strings.HasPrefix(clean, ".git/") {
+			return nil, fmt.Errorf("%s %q: the git directory is not an environment", field, raw)
 		}
 		out = append(out, clean)
 	}
