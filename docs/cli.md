@@ -124,6 +124,18 @@ List imported blueprints
 staircase blueprint list
 ```
 
+## staircase case briefing
+
+Show the exact text an agent is told for a compiled case
+
+```
+staircase case briefing <case-id>
+```
+
+Prints what the agent of a compiled case is told: the project's instructions (from its profile), then the task (the PRD, the stories with
+their scope, and the reviewers' lessons), then what the agent's own harness adds. It is the text the agents are given, composed by the same
+function. An away run puts its own brief first and a continuation adds the task as it stood: those depend on the run and are not shown.
+
 ## staircase case delete
 
 Flag a Case for deletion (removed on next 'staircase clean --aggressive')
@@ -862,13 +874,15 @@ staircase project profile set <project-id> [flags]
 Flags:
 
 ```
-      --check stringArray       A command (such as the tests) run on the commit a run makes; repeat for more
-      --clear stringArray       Remove a field: protect, sensitive, scope, visible, checks, sandbox (repeatable)
-      --protect stringArray     Paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person
-      --sandbox string          Where approved commands and checks run: auto, required, off or docker:image=<ref>
-      --scope stringArray       Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift
-      --sensitive stringArray   Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)
-      --visible stringArray     Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root
+      --check stringArray          A command (such as the tests) run on the commit a run makes; repeat for more
+      --clear stringArray          Remove a field: protect, sensitive, scope, visible, instructions, checks, sandbox (repeatable)
+      --instructions string        What every agent on this project is told before its task (conventions, rules of the house), as text
+      --instructions-file string   The same, read from a file now (the profile keeps a copy in the workspace; the file stays where it is)
+      --protect stringArray        Paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person
+      --sandbox string             Where approved commands and checks run: auto, required, off or docker:image=<ref>
+      --scope stringArray          Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift
+      --sensitive stringArray      Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)
+      --visible stringArray        Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root
 ```
 
 ## staircase project profile show

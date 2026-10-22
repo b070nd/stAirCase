@@ -22,6 +22,7 @@ you are in.
 | `sensitive` | more paths a change to which always needs a person, on top of the built-in list (CI, build, dependency and secret files). A contract file belongs here. A profile can add to the list and never take from it |
 | `scope` | where a change may land: a file elsewhere comes to a person as drift. For `claude`, `codex` and `gemini` it is the default for `--allow`; for `run` it narrows the stories' scope |
 | `visible` | ignored directories or files of your checkout that the checks need, such as `vendor/` or `generated/`: literal paths from the repository's root. Checks see them, read-only, in the checkout of the commit they run in ([what that is and is not](safety.md)) |
+| `instructions` | what every agent on the project is told before its task, as text of at most 32 KiB: the house's conventions ("patches only, never edit `vendor/`", the copyright header). Set with `--instructions "..."` or `--instructions-file <file>` (the profile keeps a copy; the file may go) |
 | `checks` | commands, such as the tests, run on the commit a run makes |
 | `sandbox` | where approved commands and checks run: `auto`, `required`, `off` or `docker:image=<ref>` |
 
@@ -47,4 +48,11 @@ record of a check and the change certificate say that the check saw it. A declar
 git tracks, refuses the run before anything is made. Bubblewrap and Landlock are not supported for it yet, and a run on either refuses;
 use the macOS sandbox, `--sandbox docker:image=<image>` (the image is never pulled for you) or `--sandbox off`.
 
-Instructions for the agent and files the agent must not read are further fields to come; this page lists a field when it exists.
+**Instructions.** The project's instructions reach every agent, Claude Code, Codex, Gemini, OpenCode or the built-in runtime, in the same
+place: after an away run's own brief and before the task. Nothing about them is in your repository, so no `CLAUDE.md` is needed there.
+`staircase case briefing <case-id>` prints the exact text an agent of a compiled case is told, composed by the function the agents
+use. The instructions are saved with the run's terms, their digest is bound on `run_bound` (`instructions_sha256`), and a continuation
+tells its agent the same words. They are **instructions to a model, not enforcement**: an agent can ignore them. What must hold belongs
+in `protect`, `sensitive` and `scope`, which a person decides.
+
+Files the agent must not read are a further field to come; this page lists a field when it exists.

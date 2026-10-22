@@ -175,6 +175,9 @@ func (firstSegment) checkout(s *runState) error {
 	if opts.Plan != nil {
 		bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
 	}
+	if opts.Instructions != "" { // what the project told the agent is bound before it starts
+		bound.InstructionsSHA256, bound.InstructionsBytes = sha256Hex([]byte(opts.Instructions)), len(opts.Instructions)
+	}
 	bound.ValidatorModels = opts.ValidatorModels // the panel the replay holds every decision by the reviewer models to (ADR 0014)
 	if opts.Away {                               // the brief the agent is given is bound before it starts
 		bound.AwayBrief = &history.AwayBrief{Version: AwayBriefVersion, SHA256: sha256Hex([]byte(AwayBrief))}

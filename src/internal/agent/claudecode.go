@@ -166,12 +166,12 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		env.RecordSession("claude-code", c.Host.SessionID, mode)
 		args = append(slices.Clone(c.Host.Args), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 			flag, c.Host.SessionID)
-		if sp := strings.TrimSpace(c.Host.SystemPrompt + "\n\n" + env.Brief); sp != "" {
+		if sp := strings.TrimSpace(c.Host.SystemPrompt + "\n\n" + env.Brief + "\n\n" + instructionsBlock(env)); sp != "" {
 			args = append(args, "--append-system-prompt", sp)
 		}
 	} else {
 		sid, resumed := sessionFor(env, "claude-code")
-		args = []string{"-p", briefing(c.Prompt, env, ""), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+		args = []string{"-p", BriefingFor("claude-code", c.Prompt, env, ""), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 			"--output-format", "json"}
 		if resumed {
 			args = append(args, "--resume", sid)

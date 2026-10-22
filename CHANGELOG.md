@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **A project's instructions reach every agent, and nothing goes into the repository.** `staircase project profile set <id>
+  --instructions "..."` (or `--instructions-file`) keeps the conventions of a client's project (the copyright header, "patches only,
+  never edit `vendor/`") in your workspace. Every run of the project tells its agent those words, whichever agent it is (Claude Code,
+  Codex, Gemini, OpenCode or the built-in runtime), in one place: after an away run's brief and before the task. The text is saved with
+  the run's terms, its digest is bound on `run_bound`, and a continuation tells the same words. `staircase case briefing <case-id>`
+  prints the exact text an agent of a compiled case is told. They are instructions to a model, not enforcement, and the profile page
+  says so. What to do: nothing, unless you want them ([profile](docs/profile.md)).
+
 - **Checks can see a project's environment, such as composer's `vendor/` (`--visible`, `visible` in the profile).** A check runs in a
   throwaway checkout of the commit, which holds tracked files only, so a check that needs a directory your repository ignores could not
   pass, with the sandbox on or off. You can now declare those directories: the checks (after the commit, when the agent says it is done,

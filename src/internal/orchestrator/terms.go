@@ -63,6 +63,9 @@ type Terms struct {
 	// ProfileSHA256 is the digest of the project's profile the run started under, "" when the project had none: what the run was told
 	// about its project is on the record.
 	ProfileSHA256 string `json:"profile_sha256,omitempty"`
+	// Instructions are the project's, given to the agent before its task, whichever agent it is (the project's profile). Text: bound
+	// by the terms' digest, saved with them, so a continuation tells its agent the same words.
+	Instructions string `json:"instructions,omitempty"`
 	// Visible is the run's environment: directories (or files) of the user's checkout, relative to its root, that the repository
 	// ignores and the checks need (composer's vendor/, generated code). Checks see them, read-only, in the checkout of the commit they
 	// run in. They are never in the agent's worktree and never part of what is approved.
@@ -144,6 +147,9 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	if t.Visible, err = visiblePaths(t.Visible); err != nil {
 		return t, err
 	}
+	if len(t.Instructions) > maxInstructions {
+		return t, fmt.Errorf("the project's instructions are %d bytes and an agent is told at most %d", len(t.Instructions), maxInstructions)
+	}
 	if err := t.deliver(); err != nil {
 		return t, err
 	}
@@ -209,6 +215,9 @@ func (t *Terms) protect() error {
 	t.ProtectedPaths = slices.Compact(paths)
 	return nil
 }
+
+// maxInstructions is the most a project may tell its agents (as the profile's limit).
+const maxInstructions = 32 << 10
 
 // visiblePaths is the declared environment cleaned, sorted and without duplicates: literal paths inside the repository, never a pattern
 // and never the git directory.

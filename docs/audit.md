@@ -18,7 +18,7 @@ Events you will see:
 
 | Event | Meaning |
 |---|---|
-| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), the reviewer models it asked when it has a panel (`validator_models`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
+| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), the reviewer models it asked when it has a panel (`validator_models`), the digest and length of the project's instructions the agent was told (`instructions_sha256`, `instructions_bytes`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
 | `source_dirty` | the checkout the run started from held changes that are not in the commit it works on, so the agent did not have them: the number of tracked changes, the number of untracked files and a digest of their names. Written right after `run_bound`, only when there were some; ignored paths are never counted |
 | `yield_request` | an agent proposed a change or a command |
 | `yield_decided` | the decision: who decided (`policy`, `operator`, `validator:<model>`, …), the reason, the `yield_request` entry it answers (`request_entry`), and for an approved change the hash of the exact approved content. A final review (`action_type` `final_review`, a finished run's or a recovery's) answers no request and holds the digest of the whole change put to the person |

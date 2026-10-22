@@ -2,6 +2,7 @@ package profile_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/profile"
@@ -80,4 +81,16 @@ func TestDigest_is_of_the_normalized_profile(t *testing.T) {
 	a, _ := profile.Profile{Protect: []string{"b", "a"}}.Normalize()
 	b, _ := profile.Profile{Protect: []string{"a", "b", "a"}}.Normalize()
 	assert.Equal(t, a.Digest(), b.Digest())
+}
+
+func TestNormalize_instructions_are_trimmed_and_bounded(t *testing.T) {
+	p, err := profile.Profile{Instructions: "  Patches only.\n\n"}.Normalize()
+	require.NoError(t, err)
+	assert.Equal(t, "Patches only.", p.Instructions)
+	_, err = profile.Profile{Instructions: strings.Repeat("x", profile.MaxInstructions+1)}.Normalize()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at most")
+	blank, err := profile.Profile{Instructions: " \n"}.Normalize()
+	require.NoError(t, err)
+	assert.True(t, blank.Empty(), "blank instructions say nothing")
 }

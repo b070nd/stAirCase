@@ -109,6 +109,9 @@ when it starts: a flag wins over it, its digest is bound with the terms, and a c
 its terms and shown to the checks, read-only, in the checkout of the commit they run in. It is never in the agent's worktree and never part of the
 approved bytes; a check that saw it says so in its record and in the certificate.
 
+**Briefing**: the one text an agent is told, composed in one place for every agent: an away run's brief, the project's instructions, the task (the
+PRD, the stories and the reviewers' lessons), what a continuation adds, and what the agent's own harness needs. `staircase case briefing` shows it.
+
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
 - how changes are approved;

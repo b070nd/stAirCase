@@ -1,16 +1,24 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/b070nd/stAirCase/src/internal/agent"
 	"github.com/b070nd/stAirCase/src/internal/domain"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
+	"github.com/b070nd/stAirCase/src/internal/plan"
 	"github.com/b070nd/stAirCase/src/internal/profile"
+	"github.com/b070nd/stAirCase/src/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -57,6 +65,10 @@ func applyProfile(l *launch, wsDir string, projectID int64) error {
 		l.allow = slices.Clone(p.Scope)
 		l.profileScope = true
 		fill("scope", true)
+	}
+	if p.Instructions != "" && l.terms.Instructions == "" { // no flag carries them: the profile is where a project's words live
+		l.terms.Instructions = p.Instructions
+		fill("instructions", true)
 	}
 	if len(p.Visible) > 0 && !explicitFlags["visible"] && len(l.terms.Visible) == 0 {
 		l.terms.Visible = slices.Clone(p.Visible)
@@ -108,7 +120,7 @@ need a person and never take any away.`,
 
 var (
 	profileProtect, profileSensitive, profileScope, profileVisible, profileChecks, profileClear []string
-	profileSandbox                                                                              string
+	profileSandbox, profileInstructions, profileInstructionsFile                                string
 )
 
 var projectProfileShowCmd = &cobra.Command{
@@ -144,6 +156,8 @@ func init() {
 	projectProfileSetCmd.Flags().StringArrayVar(&profileSensitive, "sensitive", nil, "Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileScope, "scope", nil, "Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileVisible, "visible", nil, "Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root")
+	projectProfileSetCmd.Flags().StringVar(&profileInstructions, "instructions", "", "What every agent on this project is told before its task (conventions, rules of the house), as text")
+	projectProfileSetCmd.Flags().StringVar(&profileInstructionsFile, "instructions-file", "", "The same, read from a file now (the profile keeps a copy in the workspace; the file stays where it is)")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileChecks, "check", nil, "A command (such as the tests) run on the commit a run makes; repeat for more")
 	projectProfileSetCmd.Flags().StringVar(&profileSandbox, "sandbox", "", "Where approved commands and checks run: auto, required, off or docker:image=<ref>")
 	projectProfileSetCmd.Flags().StringArrayVar(&profileClear, "clear", nil, "Remove a field: "+strings.Join(profile.Fields, ", ")+" (repeatable)")
@@ -188,6 +202,14 @@ func showProfile(w io.Writer, wsDir string, id int64) error {
 	show("scope", pr.Scope)
 	show("visible", pr.Visible)
 	show("checks", pr.Checks)
+	if pr.Instructions != "" {
+		sum := sha256.Sum256([]byte(pr.Instructions))
+		first, _, _ := strings.Cut(pr.Instructions, "\n")
+		if len(first) > 70 {
+			first = first[:70] + "..."
+		}
+		fmt.Fprintf(w, "  %-10s %d bytes, sha256 %.12s: %s\n", "instructions", len(pr.Instructions), hex.EncodeToString(sum[:]), tui.Safe(first))
+	}
 	if pr.Sandbox != "" {
 		fmt.Fprintf(w, "  %-10s %s\n", "sandbox", pr.Sandbox)
 	}
@@ -212,6 +234,8 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 			pr.Scope = nil
 		case "visible":
 			pr.Visible = nil
+		case "instructions":
+			pr.Instructions = ""
 		case "checks":
 			pr.Checks = nil
 		case "sandbox":
@@ -232,6 +256,19 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 	if named["visible"] {
 		pr.Visible = profileVisible
 	}
+	if named["instructions"] && named["instructions-file"] {
+		return errors.New("give the instructions once: --instructions (text) or --instructions-file")
+	}
+	if named["instructions"] {
+		pr.Instructions = profileInstructions
+	}
+	if named["instructions-file"] {
+		b, err := os.ReadFile(profileInstructionsFile)
+		if err != nil {
+			return fmt.Errorf("--instructions-file: %w", err)
+		}
+		pr.Instructions = string(b)
+	}
 	if named["check"] {
 		pr.Checks = profileChecks
 	}
@@ -239,10 +276,53 @@ func setProfile(w io.Writer, wsDir string, id int64, named map[string]bool) erro
 		pr.Sandbox = profileSandbox
 	}
 	if len(named) == 0 {
-		return errors.New("nothing to set: name a field (--protect, --sensitive, --scope, --visible, --check, --sandbox) or --clear one")
+		return errors.New("nothing to set: name a field (--protect, --sensitive, --scope, --visible, --instructions, --check, --sandbox) or --clear one")
 	}
 	if err := profile.Save(wsDir, id, pr); err != nil {
 		return err
 	}
 	return showProfile(w, wsDir, id)
+}
+
+var caseBriefingCmd = &cobra.Command{
+	Use:   "briefing <case-id>",
+	Short: "Show the exact text an agent is told for a compiled case",
+	Long: `Prints what the agent of a compiled case is told: the project's instructions (from its profile), then the task (the PRD, the stories with
+their scope, and the reviewers' lessons), then what the agent's own harness adds. It is the text the agents are given, composed by the same
+function. An away run puts its own brief first and a continuation adds the task as it stood: those depend on the run and are not shown.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseID("case-id", args[0])
+		if err != nil {
+			return err
+		}
+		return showBriefing(cmd.OutOrStdout(), viper.GetString("STAIRCASE_DIR"), id)
+	},
+}
+
+func init() { caseCmd.AddCommand(caseBriefingCmd) }
+
+func showBriefing(w io.Writer, wsDir string, caseID int64) error {
+	pl, err := plan.Load(filepath.Join(wsDir, "tmp", fmt.Sprintf("plan_case%d.json", caseID)))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("case #%d is not compiled - run 'staircase compile %d' first", caseID, caseID)
+	case err != nil:
+		return fmt.Errorf("plan for case #%d: %w", caseID, err)
+	}
+	db, err := persistence.InitDB(wsDir)
+	if err != nil {
+		return fmt.Errorf("workspace: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	c, err := persistence.NewStore(db).GetCase(caseID)
+	if err != nil || c == nil {
+		return fmt.Errorf("case #%d not found", caseID)
+	}
+	p, _, err := profile.Load(wsDir, c.ProjectID)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, agent.BriefingFor(pl.Harness, pl.Brief(), &orchestrator.AgentEnv{Instructions: p.Instructions}, pl.RepoContext))
+	return err
 }

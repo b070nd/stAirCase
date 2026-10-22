@@ -30,6 +30,9 @@ type Profile struct {
 	// Visible are directories or files of the user's checkout, relative to its root, that the repository ignores and the checks need
 	// (composer's vendor/): checks see them read-only (the project's environment). Literal paths, never patterns.
 	Visible []string `json:"visible,omitempty"`
+	// Instructions are what every agent that works on the project is told before its task: conventions, rules of the house. Text, at
+	// most MaxInstructions bytes. They are instructions to a model, never enforcement.
+	Instructions string `json:"instructions,omitempty"`
 	// Checks are commands, such as the tests, run on the commit a run makes.
 	Checks []string `json:"checks,omitempty"`
 	// Sandbox is where approved commands and checks run: auto, required, off or docker:...
@@ -37,7 +40,10 @@ type Profile struct {
 }
 
 // Fields are the names of a profile's fields, as the commands say them.
-var Fields = []string{"protect", "sensitive", "scope", "visible", "checks", "sandbox"}
+var Fields = []string{"protect", "sensitive", "scope", "visible", "instructions", "checks", "sandbox"}
+
+// MaxInstructions is the most a project may tell its agents: they are read by a model on every run, and kept on the record of each.
+const MaxInstructions = 32 << 10
 
 // Empty reports whether the profile says nothing.
 func (p Profile) Empty() bool { return p.Digest() == Profile{}.Digest() }
@@ -57,6 +63,9 @@ func (p Profile) Normalize() (Profile, error) {
 	}
 	if p.Visible, err = literalPaths("visible", p.Visible); err != nil {
 		return p, err
+	}
+	if p.Instructions = strings.TrimSpace(p.Instructions); len(p.Instructions) > MaxInstructions {
+		return p, fmt.Errorf("instructions are %d bytes and a project may tell its agents at most %d", len(p.Instructions), MaxInstructions)
 	}
 	var checks []string
 	for _, c := range p.Checks {
