@@ -8,7 +8,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
-// Outcome is how a run stands, as its history says (V11-C01 scope 6): one of six, for the owner who comes back to it. It is
+// Outcome is how a run stands, as its history says (V11-C01 scope 6): one of seven, for the owner who comes back to it. It is
 // derived from the verified chain alone, never from the run's status column or its summary file, and it is shown, not stored.
 type Outcome string
 
@@ -28,6 +28,9 @@ const (
 	OutcomeDelivered Outcome = "delivered"
 	// OutcomeDeliveredIncomplete: the run's commit is on its branch, and some of its evidence could not be written.
 	OutcomeDeliveredIncomplete Outcome = "delivered with incomplete evidence"
+	// OutcomeNoChange: the run succeeded without a commit and without parked proposals: nothing was approved or parked, so there is
+	// nothing to deliver and nothing waits.
+	OutcomeNoChange Outcome = "no change"
 )
 
 // Outcome is how the run stands and why, in the chain's own terms. A later event decides over an earlier one: a delivery over
@@ -70,15 +73,21 @@ func (h History) Outcome() (Outcome, string) {
 	if h.Sealed == "commit_prepared" {
 		return OutcomeBlocked, fmt.Sprintf("its commit %.12s was named but not delivered: staircase recover finishes it", h.Delivered[0].Commit)
 	}
+	if h.Sealed == "delivery_authorized" {
+		return OutcomeBlocked, fmt.Sprintf("its delivery by policy was authorized (tree %.12s) but its commit was never named: staircase recover %s finishes it", h.Authorized.Tree, h.ref())
+	}
 	parked := len(h.Parked())
 	checkFailed := e.checked > e.segStart && !e.check.Passed
 	rejected := slices.ContainsFunc(h.Decisions, func(d Decision) bool {
 		return d.ActionType == domain.ActionFinalReview && !d.Approved && d.Index > e.segStart
 	})
+	nothing := len(h.Approvals()) == 0 && parked == 0 // nothing the run could have delivered or offered
 	halted := "halted for drift: " + e.haltReason
 	switch e.ended.Status {
 	case domain.RunStatusFailed:
 		switch {
+		case checkFailed && nothing:
+			return OutcomeFailed, "no proposal was approved or parked, and its checks fail on the unchanged tree (" + e.check.Failed + "): nothing was delivered"
 		case checkFailed:
 			return OutcomeFailed, "its checks failed on the approved tree: " + e.check.Failed
 		case rejected:
@@ -100,6 +109,12 @@ func (h History) Outcome() (Outcome, string) {
 	case domain.RunStatusSuccess:
 		if parked > 0 {
 			return OutcomeBlocked, fmt.Sprintf("%d proposal(s) parked for you, and nothing approved to review", parked)
+		}
+		if nothing {
+			if e.checked > e.segStart && e.check.Passed {
+				return OutcomeNoChange, "no proposal was approved or parked, and its checks pass on the unchanged tree: there is nothing to deliver"
+			}
+			return OutcomeNoChange, "no proposal was approved or parked, and its chain records no check of the unchanged tree: there is nothing to deliver"
 		}
 		return OutcomeFailed, "it ended without a change"
 	case "": // a chain from before run_path said how the segment ended
@@ -127,7 +142,7 @@ func (h History) ref() string {
 }
 
 // lostLaunch says why a run whose agent's last launch has no established end waits for its owner, or "" when it does not: it is
-// parked until a person acknowledges the launch (staircase resume --ack-unknown), or, past MaxLostLaunches, refused for good and
+// parked until a person acknowledges the launch (staircase acknowledge, or staircase resume --ack-unknown), or, past MaxLostLaunches, refused for good and
 // only recovered. It applies to a run that can be continued: not one that is delivered, being delivered or past its end. An open
 // claim is also what a run working right now looks like; only the run's process lock tells them apart, which the status reads
 // (orchestrator.StatusOf), not the chain.
@@ -143,7 +158,7 @@ func (h History) lostLaunch() string {
 		return fmt.Sprintf("refused: the end of its agent could not be established %d times (its process was lost, or it did not stop when asked), the most a run allows (%d), so it is not launched again: recover what it approved with staircase recover %s", lost, MaxLostLaunches, h.ref())
 	}
 	if p := h.LaunchParked(); p > 0 {
-		return fmt.Sprintf("launch %d of its agent has no established end (%s: %s), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), ClassPhrase(h.Launches[n-1].lostClass()), h.ref(), h.ref())
+		return fmt.Sprintf("launch %d of its agent has no established end (%s: %s), so nobody knows what the agent did: check what it could have done, then say you looked with staircase acknowledge %s (it launches nothing) and resume it, or continue it at once with staircase resume %s --ack-unknown, or recover what it approved with staircase recover %s", p, h.Launches[n-1].how(), ClassPhrase(h.Launches[n-1].lostClass()), h.ref(), h.ref(), h.ref())
 	}
 	return ""
 }

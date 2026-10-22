@@ -25,10 +25,23 @@ versions, and Gemini CLI and OpenCode are experimental (see below for what has b
 | **Verifier results** | `checks` in the certificate: command, exit code, sandboxed, output digest (`--check`) | Existing fields keep their meaning. Linking full test reports as in-toto test-result attestations is planned, as an addition. |
 | **Policy file** | `policy.json`: rules that approve or reject proposals, and limits ([approvals](approvals.md)) | A valid policy file keeps its meaning. `staircase policy test` shows what a policy decides on your past runs before you rely on a change. |
 
-One change of meaning in the policy file's surroundings, so that you are not surprised: the paths where a run's checks are defined
-are protected for **every** run that has checks, not only away runs ([approvals](approvals.md#checks-the-agent-cannot-weaken)). A
-change to one goes to a person whatever the policy says, so a policy rule that approved an edit of such a path before now sends it
-to a person. The policy file itself is read as before.
+### How the six contracts change
+
+A minor release may add a decider that sends more proposals to a person (a guard, a protected path, a sensitive path). It never lets a rule, a
+signal or a model approve what a person decided before. The policy file's syntax and the meaning of each rule stay as they are; what a rule
+can reach narrows. Every such addition is listed in the CHANGELOG under Changed with what to do. For example, since the release after 1.1.0 the paths where a
+run's checks are defined are protected in every run that has checks ([approvals](approvals.md#checks-the-agent-cannot-weaken)), and a file edit
+that touches a sensitive path always goes to a person ([approvals](approvals.md#who-decides-in-order)): a rule that approved an edit of such
+a path now sends it to a person. The bar sits before the policy, so it also sends a person an edit that a `reject` rule would have
+rejected: the person may approve it, and while you are away it is parked, not rejected.
+
+Delivery by policy (`--deliver policy`, [away](away.md#while-you-are-away)) is opt-in per run and changes nothing for a run that does not
+choose it; it suits work whose correctness a rule of your signed policy already decided, and everything else still goes to a person. It
+adds one optional field to the change certificate, `delivery: "policy"`, present only on a certificate of such a delivery. The predicate
+type stays `#v1`, the level is the one the certificate computes (delivery by policy is not a cap), the
+[test vectors](spec/vectors) are unchanged, and a verifier written before the field existed ignores it and accepts the certificate as
+before; a verifier whose own policy refuses unattended delivery can read the field and refuse. The audit chain gains the event
+`delivery_authorized`; chains and certificates made before it read exactly as they did.
 
 Everything else, including the command-line output, the workspace layout, the
 database and the agents' prompts, can change in any version.
@@ -42,7 +55,7 @@ records [why](audit.md#launch-failure-classes), apart from its checks.
 | | Claude Code | Codex CLI | Gemini CLI | OpenCode |
 |---|---|---|---|---|
 | Native resume (`staircase resume`) | yes | yes | yes | no (`--fresh-context` only) |
-| Its own sandbox confines its commands | yes (counted as sandboxed on the chain) | yes (Codex's workspace-write; not counted as sandboxed) | no | no |
+| Its own sandbox confines its commands | yes (counted as sandboxed on the chain) | writes and network only: Codex's `workspace-write` allows writes in the worktree and temporary folders and no network, and does not restrict reads; not counted as sandboxed | no: Gemini's sandbox is off unless asked for, and stAirCase does not ask | no |
 | MCP gate (an MCP tool call is decided like a command) | yes | no (refused) | no (refused) | no (refused) |
 | Hooks call staircase for every tool call | yes | yes | yes | no: a plugin generated for the run |
 | Host mode (runs for a runner that started it) | yes | no | no | no |
@@ -57,7 +70,7 @@ tests drive, not against the real program.
 
 | Scenario | Codex CLI | Claude Code | Gemini CLI | OpenCode |
 |---|---|---|---|---|
-| Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158 | 2.1.236 (2026-10-05, headless, model haiku, its credential passed with `--pass-env`) | 0.46.0 (2026-10-06, headless, model gemini-3.5-flash-lite, its key passed with `--pass-env`) | 1.18.35 (2026-10-07, headless, model openai/gpt-4.1-mini, its own OpenAI login, two runs for $0.0125) |
+| Version exercised | 0.159 (2026-09-30), earlier 0.155 and 0.158; newest stable checked against source: Codex 0.163.0, Gemini CLI 0.64.0 (flags only) | 2.1.236 (2026-10-05, headless, model haiku, its credential passed with `--pass-env`) | 0.46.0 (2026-10-06, headless, model gemini-3.5-flash-lite, its key passed with `--pass-env`) | 1.18.35 (2026-10-07, headless, model openai/gpt-4.1-mini, its own OpenAI login, two runs for $0.0125) |
 | Its hooks run, and a file write is governed (the one tool a real run exercised) | yes (real run) | yes (real run: `make smoke-claude`) | yes (real run: `./demo/smoke.sh gemini`) | yes (real run: `./demo/smoke.sh opencode`) |
 | Session refused when its hooks never ran | stand-in only | refused when SessionStart never arrives (the session is not governed, nothing is kept); SessionStart firing in headless `-p` with `--settings` was probed on 2.1.236 (real), the refusal itself is tested with a synthetic host | stand-in only | stand-in only |
 | A hook answer that is empty, cut off or not a decision, a hook call that is unreadable or for an unregistered event, a hook program that is missing, crashes or is killed | shared bridge tests only (`staircase hook`, each agent's reply shape): the hook turns each into a block (exit 2); no Codex host was simulated | shared bridge tests, and a synthetic Claude Code host (`hook_host_test.go`, a fake that follows the documented behaviour: only exit 2 or a deny stops a tool): not a real run | shared bridge tests only | not applicable: the plugin asks the run itself |

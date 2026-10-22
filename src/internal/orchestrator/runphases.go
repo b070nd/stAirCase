@@ -759,12 +759,27 @@ func (s *runState) finalize() error {
 		}
 	}
 	stillGoing()
-	// An away run that proposed something is offered for review, whether or not anything was approved: a run whose every proposal was
-	// parked offers an empty change with its parked proposals, never a SUCCESS with nothing offered (V11-C01 acceptance 4).
+	// An away run that approved or parked something is offered for review: a run whose every proposal was parked offers an empty
+	// change with its parked proposals, never a SUCCESS with nothing offered (V11-C01 acceptance 4). One that approved and parked
+	// nothing (a hosted session excepted) has its checks run on the unchanged tree instead (checkUnchanged).
 	parked := s.parkedTotal()
+	authorized := "" // the tree a delivery by policy authorized
 	if opts.Away && s.finalStatus == persistence.RunStatusSuccess && appr != nil && (len(appr.files) > 0 || parked > 0) {
+		var byPolicy *deliveryAttempt
+		if opts.Deliver == DeliverPolicy { // judged again from the chain and the saved terms, not from this value
+			byPolicy = &deliveryAttempt{taskApproved: s.dec.taskApproved, unreviewed: s.val != nil && s.val.unreviewed,
+				atBase: func() bool {
+					return s.gr != nil && gitOut(s.gr.path, "rev-parse", "--verify", "-q", "refs/heads/"+s.runBranch) == s.baseSHA
+				}}
+		}
 		var err error
-		if s.finalStatus, err = r.awaitReview(ctx, run.ID, appr, s.evGate, parked); err != nil {
+		if s.finalStatus, authorized, err = r.awaitReview(ctx, run.ID, appr, s.evGate, parked, byPolicy); err != nil {
+			return err
+		}
+	} else if opts.Away && !opts.Hosted && s.finalStatus == persistence.RunStatusSuccess && appr != nil && len(appr.files) == 0 && parked == 0 {
+		// Nothing approved and nothing parked: nothing to offer. Whether the project is whole without a change is still worth saying.
+		var err error
+		if s.finalStatus, err = r.checkUnchanged(ctx, run.ID, appr, s.evGate, s.dec.total); err != nil {
 			return err
 		}
 	}
@@ -789,6 +804,9 @@ func (s *runState) finalize() error {
 	prep, err := appr.prepare(commitMessage(run.ID, s.caseID, opts.Plan, chainHead))
 	if err != nil {
 		return err
+	}
+	if authorized != "" && (prep == nil || prep.tree != authorized) { // exactly the tree whose checks passed, or nothing
+		return fmt.Errorf("delivery by policy was authorized for tree %.12s, and the commit to make is not that tree: nothing is delivered (staircase recover %d refuses it too)", authorized, run.ID)
 	}
 	hash := ""
 	if prep != nil {
@@ -823,7 +841,7 @@ func (s *runState) finalize() error {
 		fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not attached to the commit: %v\n", err)
 		s.evidenceErrs = append(s.evidenceErrs, "ledger note: "+err.Error())
 	}
-	ev.policy, ev.initiator = s.snap.Digest, s.initiator
+	ev.policy, ev.initiator, ev.byPolicy = s.snap.Digest, s.initiator, authorized != ""
 	if err := r.certify(run.ID, hash, s.baseSHA, chainHead, opts.Plan, s.gr, ev); err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
 		_ = r.audit(run.ID, "certificate_failed", map[string]any{"commit": hash, "error": err.Error()})

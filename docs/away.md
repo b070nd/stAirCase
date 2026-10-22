@@ -18,13 +18,38 @@ staircase decide
 - **What needs you is parked, not asked.** A change without evidence, one outside the scope, a sensitive file, a guard hit, a change
   to where your checks are defined or a shell command would come to you; while you are away it is parked: the agent is told at once that it is kept for you and to go on with what
   it can do without it. The parked proposal is on the audit chain with why it needed you. It is never applied by itself.
+- **A sensitive path is parked whatever your policy says.** An edit of a CI or build file, a dependency file, an `.env` or shell file,
+  a `CODEOWNERS` file or Gemini's repository settings (`.gemini/`) is parked even when a rule of your policy approves it, as in a run you watch
+  ([who decides, in order](approvals.md#who-decides-in-order)). The reason on the parked proposal names the path.
 - **The checks cannot be weakened.** The script a check runs, the tests a test runner is given and `make`'s `Makefile` are protected
   with the run's terms, and so is what you name with `--protect` (for `go test ./...`, `--protect "**/*_test.go"`). A change to them
   is parked whatever your policy says, so the agent cannot make a failing check pass by editing or deleting the test it runs
   ([checks the agent cannot weaken](approvals.md#checks-the-agent-cannot-weaken)).
+- **Delivery by policy: rules you signed deliver a change to the run branch without your review.** `--deliver policy` with
+  `--deliver-path <glob>` (repeatable) is for work whose correctness you already decided in a rule: in practice documentation,
+  changelog entries, generated or formatted files, and the places you name with a rule's `paths`. The terms refuse it unless the run
+  is away, has no `--validator`, names a delivery scope, signs (`--sign-approvals`) and declares where its checks are defined
+  (`--protect`, or checks that name a file of their own), and a run whose policy is not signed (`staircase policy sign`) is refused
+  when it starts. The agreement says "no person reviews the whole change".
+  When the agent stops and your checks pass, the run delivers on its own **only if all seven of these hold**, read from the run's
+  verified history and never from live state: (1) the terms say policy and the policy was signed; (2) every change was approved by a
+  rule of that policy, none by the agreed task, by evidence, by a reviewer model or by a person; (3) nothing was parked, because
+  one parked proposal sends the whole run to you (it may be what the approved part depends on); (4) every approved path is inside
+  your delivery scope and is neither a sensitive path nor one that holds a check's definition, even if a rule approves it; (5) the
+  checks passed on exactly the approved tree and the run branch is still where the run started; (6) the protected paths are
+  declared; (7) you signed as the initiator, so the certificate names who armed unattended delivery. The run then records
+  `delivery_authorized` on the audit chain and commits like a run you watch, with its ledger and certificate. If any condition
+  fails, or is in doubt, nothing is committed: the run ends awaiting your review and `staircase decide` shows which condition sent
+  it to you. That is a normal outcome, not an error. Changes approved on evidence, which is most code in an ordinary away run, still
+  wait for your review.
+  The mode moves only the run branch: it never pushes, publishes, releases or deploys. The certificate keeps the level it computes,
+  says that every approved change was approved by a rule of your signed policy (its digest) and that no person reviewed the whole
+  change, and has the optional field `delivery: policy`, so a verifier's own policy can refuse such certificates. A run killed after
+  `delivery_authorized` is finished by `staircase recover`, never continued ([ADR 0012](adr/0012-delivering-by-policy.md)).
 - **The end is checked, not announced.** When the agent stops, your checks run once more on the whole approved change. A change that
   does not pass ends the run failed. One that passes ends it **awaiting review**, with nothing committed and the run branch where it
-  started. The process exits; nothing has to keep running.
+  started (a run delivering by policy that meets every condition commits instead, as above). The process exits; nothing has to keep
+  running.
 
 ## Declared commands
 
@@ -87,11 +112,13 @@ parked, not launched again blindly, because nobody knows what the agent did, out
 partial** (not as running, unless its process still holds the run) with the command to continue it after you looked:
 
 ```text
-outcome    blocked or partial: launch 1 of its agent has no established end (its process was lost), so nobody knows what the agent did: check what it could have done, then continue it with staircase resume 12 --ack-unknown, or recover what it approved with staircase recover 12
+outcome    blocked or partial: launch 1 of its agent has no established end (its process was lost), so nobody knows what the agent did: check what it could have done, then say you looked with staircase acknowledge 12 (it launches nothing) and resume it, or continue it at once with staircase resume 12 --ack-unknown, or recover what it approved with staircase recover 12
 attempts   1 (times the agent was launched: the run, then each continuation); 1 launch(es) ended without an established end
 ```
 
-Once you acknowledge it with `--ack-unknown` the run goes on and counts one more attempt. A run whose launches ended without an
+`staircase acknowledge 12` records, on the audit chain, that you looked at that exact launch, and launches nothing; a later `staircase resume 12`
+(or a hosted runner's own resume, which never acknowledges by itself) then goes on. `staircase resume 12 --ack-unknown` does both at once.
+Either way the run goes on and counts one more attempt. A run whose launches ended without an
 established end 3 times is **refused**: no acknowledgement continues it, and the status points to `staircase recover 12`.
 
 ## A run that parked everything
@@ -103,7 +130,25 @@ the change you decide on. Accepting the empty change itself delivers nothing: no
 `decide` says so, and the run's outcome reads failed ("you accepted a review of an empty change: nothing was delivered"). Reject it
 to say you want none of it. If the project's checks fail on the unchanged tree itself, the empty change is still offered, and says so
 (`checks   FAILED on this unchanged tree`), so the parked proposals are not lost: one of them may be what fixes the checks, and adopting
-it requires the checks to pass with it. A run that proposed nothing at all is not offered; its outcome says it ended without a change.
+it requires the checks to pass with it.
+
+## A run that did nothing
+
+An away run in which no proposal was approved or parked has no change to offer, so it is not offered for review. It is not a silent
+success either: the checks run once on the unchanged tree and the result is recorded (`phase_checked`). The agent may have made proposals
+that were refused (a path outside the repository, a rule that rejects), so the message says how many it made, never "none".
+
+- **Your checks fail on the unchanged tree.** The run ends **failed**: `staircase` exits non-zero and keeps the worktree. It says
+  "Nothing to review, and your checks fail: no proposal was approved or parked (the agent made 2), and your checks fail on the unchanged
+  tree (what failed). Nothing was committed. Read what the agent did with `staircase inspect log 12`." Either the project is broken at
+  its base or the task needed changes the agent could not make.
+- **Your checks pass.** The run stays a success, with no commit, and says "Nothing to review: no proposal was approved or parked (the
+  agent made 2), and your checks pass on the unchanged tree. If you expected a change, read what the agent said with `staircase inspect
+  log 12`." Its outcome is **no change**.
+
+A run whose earlier segment approved files is not a run that did nothing: it is offered for review as always. A hosted session
+(`staircase host`) is a conversation the runner ends, so it is not checked at its end. Accepting an empty review (above) still ends
+failed.
 
 ## How each run stands
 
@@ -114,7 +159,8 @@ Every run has one **outcome**, read from its verified audit chain alone (never f
 | **running** | its last segment has not ended: it is working, or its process died, which a crash cannot record (`resume` or `recover` it) |
 | **awaiting review** | it offered its change, checked on the exact tree, and you have not finished deciding; a run that parked everything and approved nothing offers an empty change |
 | **blocked or partial** | it stopped short and waits for you: its agent's last launch has no established end (see below), drift supervision halted it, it was stopped (cancelled, out of time or budget), or its commit was named and never delivered |
-| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree, its review was rejected, you accepted an empty change, or it failed |
+| **failed** | it ended without a delivery and nothing about it waits: its checks failed on the approved tree (or, when nothing was approved or parked, on the unchanged tree), its review was rejected, you accepted an empty change, or it failed |
+| **no change** | it succeeded without a commit and without parked proposals: no proposal was approved or parked, and its checks pass on the unchanged tree, so there is nothing to deliver (a hosted session is not checked, and its reason says so) |
 | **delivered** | its commit is on the run branch and its evidence is complete |
 | **delivered with incomplete evidence** | its commit is on the run branch, and some of its ledger, certificate or notes could not be written (the reason is shown) |
 
@@ -138,4 +184,4 @@ column and `staircase inspect log 12` shows the status above the events.
 - Adopting a parked proposal ([ADR 0007](adr/0007-prototype-bridging.md)) is recorded as what a live approval would have written, so the
   delivered commit verifies and rebuilds like any other; it is refused, with nothing recorded, when your checks fail with it.
 - Not yet: a run that requires signed decisions cannot be away (the review in `decide` is not signed); a prototype in which the agent
-  continues on top of a parked change; work of several dependent tasks; delivery by policy without your review.
+  continues on top of a parked change; work of several dependent tasks.

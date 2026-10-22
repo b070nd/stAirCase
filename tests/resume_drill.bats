@@ -265,3 +265,49 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
   one_commit
   sound
 }
+
+acks() { sc inspect log 1 | grep -c "^. #[0-9]* *launch_acknowledged" || true; }   # entry lines only: a payload names its type too
+
+@test "an acknowledgement killed between the launch's end and its acknowledgement is finished by the next call, once" {
+  first launch-claimed
+  cd "$WORK/app"
+  hold launch-outcome-set "$STAIRCASE_BIN" acknowledge 1
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" ' ]  # the first event is on the chain
+  [ "$(acks)" = 0 ]                                         # the second is not
+  run parked                                                # still parked, and the refusal names the command
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"staircase acknowledge 1"* ]]
+  [ "$(resumed_events)" = 0 ]
+  run sc acknowledge 1                                      # finishes it: only the acknowledgement is written
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [[ "$output" == *"Launch 1 of run #1 is acknowledged"* ]]
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" ' ]
+  [ "$(acks)" = 1 ]
+  run sc acknowledge 1                                      # a second call does nothing
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"acknowledged already"* ]]
+  [ "$(acks)" = 1 ]
+  [ "$(resumed_events)" = 0 ]                               # the command resumed and launched nothing
+  run parked                                                # the continuation proceeds without the flag
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/c.txt)" = "c content" ]
+  one_commit
+  sound
+}
+
+@test "a resume --ack-unknown killed between the two events leaves the run parked, and the flag finishes it" {
+  first launch-claimed
+  cd "$WORK/app"
+  hold launch-outcome-set "$STAIRCASE_BIN" resume 1 --fresh-context --ack-unknown
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" ' ]
+  [ "$(acks)" = 0 ]
+  [ "$(resumed_events)" = 0 ]
+  run parked
+  [ "$status" -ne 0 ]
+  run resume
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(acks)" = 1 ]
+  [ "$(outcomes)" = '"outcome":"unknown_after_restart" "outcome":"exited" ' ]
+  one_commit
+  sound
+}

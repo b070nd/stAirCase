@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -59,5 +60,61 @@ func TestTerms_read_as_runs_saved_them(t *testing.T) {
 	}
 	if _, err := loadTerms(t.TempDir(), 1, bound(""), ""); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("no saved terms: %v", err)
+	}
+}
+
+// TestTerms_delivery_mode_in_the_saved_form (ADR 0012): the saved form of terms that deliver by review is byte for byte what it was
+// before the field existed (no new key), a run saved before the field existed reads as review, and a policy delivery is saved,
+// bound and read back whole.
+func TestTerms_delivery_mode_in_the_saved_form(t *testing.T) {
+	ws := t.TempDir()
+	write := func(b string) history.History {
+		t.Helper()
+		if err := saveRunFile(savedOptionsPath(ws, 1), []byte(b)); err != nil {
+			t.Fatal(err)
+		}
+		return history.History{Bound: history.Bound{TermsSHA256: sha256Hex([]byte(b))}}
+	}
+
+	// the golden form: every key a review run writes, in the order it writes them, and no delivery key
+	review := Terms{Agreed: "dev@example.com", Away: true, ApproveOnEvidence: true, ApproveInScope: true, Checks: []string{"go test ./..."},
+		ProtectedPaths: []string{"tests/**"}}
+	got, err := json.Marshal(savedTerms{termsVersion, review})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const golden = `{"version":1,"agreed":"dev@example.com","approve_in_scope":true,"approve_on_evidence":true,"checks":["go test ./..."],` +
+		`"away":true,"protected_paths":["tests/**"]}`
+	if string(got) != golden {
+		t.Errorf("saved form of a review run changed:\n got %s\nwant %s", got, golden)
+	}
+
+	// a run saved before the field existed
+	old, err := loadTerms(ws, 1, write(golden), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.Deliver != "" || old.DeliverPaths != nil {
+		t.Errorf("a run saved before the field existed must read as review: %+v", old)
+	}
+
+	// a policy delivery round trip
+	policy := review
+	policy.Deliver, policy.DeliverPaths, policy.SignKey = DeliverPolicy, []string{"docs/**"}, "/k"
+	b, err := json.Marshal(savedTerms{termsVersion, policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"deliver":"policy"`, `"deliver_paths":["docs/**"]`} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("saved form lacks %s: %s", key, b)
+		}
+	}
+	back, err := loadTerms(ws, 1, write(string(b)), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(back, policy) {
+		t.Errorf("read %+v\nwant %+v", back, policy)
 	}
 }

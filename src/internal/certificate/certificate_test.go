@@ -100,3 +100,25 @@ func TestInitiatorText(t *testing.T) {
 		assert.NotEqual(t, string(base), string(other), name)
 	}
 }
+
+// TestPredicate_delivery_is_an_optional_field (ADR 0012, section 4): a change delivered by policy says so in one optional field, which
+// a certificate of any other delivery does not have, so every certificate issued before it is byte for byte what it was; the field
+// is signed with the rest and survives opening.
+func TestPredicate_delivery_is_an_optional_field(t *testing.T) {
+	plain, err := json.Marshal(statement().Predicate)
+	require.NoError(t, err)
+	assert.NotContains(t, string(plain), "delivery")
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	s := statement()
+	s.Predicate.Delivery = "policy"
+	env, err := certificate.Sign(s, priv)
+	require.NoError(t, err)
+	got, err := certificate.Open(env, pub)
+	require.NoError(t, err)
+	assert.Equal(t, "policy", got.Predicate.Delivery)
+	b, err := json.Marshal(got.Predicate)
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"delivery":"policy"`)
+}

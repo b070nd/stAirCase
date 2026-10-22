@@ -40,7 +40,7 @@ func TestApproveInScope_approves_the_agreed_task_not_every_step(t *testing.T) {
 		"file_edit:operator", // sensitive
 		"file_edit:task", "final_review:operator"}, sources(t, r))
 	require.Len(t, op.seen, 4)
-	assert.Contains(t, op.seen[2].Review, "sensitive path src/run.sh")
+	assert.Contains(t, op.seen[2].Review, "src/run.sh, a sensitive path: a person decides, whatever the policy says")
 	got, err := r.OnBranch("src/f.txt")
 	require.NoError(t, err)
 	assert.Equal(t, "x\n", got)

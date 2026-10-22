@@ -40,6 +40,7 @@ Events you will see:
 | `run_recovered` | `staircase recover` committed what the run had approved: the commit, how many proposals, whether a final review was given |
 | `phase_checked` | an away run's agent stopped: the checks ran once more on the exact approved tree; the tree, each check's result, whether all passed ([ADR 0006](adr/0006-away-mode.md)) |
 | `awaiting_review` | an away run's approved tree passed its checks and waits for the owner: the tree, the approved files' digests, the `phase_checked` entry it rests on, how many proposals were parked |
+| `delivery_authorized` | an away run that delivers by policy found every condition of delivering without a person met, and says on what ([ADR 0012](adr/0012-delivering-by-policy.md)): the `phase_checked` entry whose checks passed, the tree, the digest of exactly the approved files, the digests of the terms the run was bound to and of the signed policy whose rules approved them, and the mode (`policy`). It follows the latest `phase_checked` of the same tree, once; only what a delivery writes follows it (`commit_prepared`, `certificate_issued`, `certificate_failed`, `check_ran`, `evidence_failed`, `run_recovered`, `recovery_repaired`, `launch_ended`, `run_path`, and a later `rolled_back`), and a chain holding any other event type after it, an unknown one included, is refused. A run that is killed after it is finished by `staircase recover`, never continued. A run that falls back to the owner writes no such event: its `awaiting_review` entry carries `delivery_refused`, the condition that sent it to the owner |
 | `review_accepted`, `review_rejected` | the owner's decision on an away run (`staircase decide`), naming the `awaiting_review` entry it was made on |
 | `review_delivered` | an accepted away run was committed, without starting its agent: the commit and how many proposals |
 | `recovery_repaired` | a later `recover` finished the evidence (ledger, certificate, notes) of a commit that was already made, and which parts were still missing |
@@ -114,8 +115,16 @@ leaves a claim with no outcome. Nobody can know what that agent did before it di
 
 `staircase resume` (and a resumed hosted session) that finds such a claim first records its outcome as
 `unknown_after_restart`. Then it **parks** the run: it refuses to launch the agent again and says why. Look at what
-the agent may have done, then continue with `staircase resume <run> --ack-unknown`. The acknowledgement is recorded
-on `run_resumed` (`ack_unknown`, the attempt it acknowledged). An agent that did not stop when asked
+the agent may have done, then say you looked with `staircase acknowledge <run>`, or continue at once with
+`staircase resume <run> --ack-unknown`.
+
+`staircase acknowledge <run>` launches nothing. Under the run's lock it writes the launch's end (`unknown_after_restart`) if the
+launch is still open, then `launch_acknowledged`, naming the attempt and the generation of the launch it acknowledges, so it
+cannot be reused to cover a later loss. A second call changes nothing, and a run with no open or lost launch is refused. A
+continuation, a hosted runner's resume included, then treats that launch as acknowledged. A hosted resume never acknowledges by
+itself. `--ack-unknown` is the same operation followed by the resume; `run_resumed` records the attempt it acknowledged
+(`ack_unknown`), as it always has. The replay accepts `launch_acknowledged` only after a launch that ended `unknown_after_restart`
+or `unresponsive`, once per launch. An agent that did not stop when asked
 (`unresponsive`) parks the run the same way. Its end was not established either.
 
 A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
@@ -123,8 +132,8 @@ and `staircase recover <run>` still commits what the run had approved. The time 
 against its time limit.
 
 The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or
-partial, with the exact `staircase resume <run> --ack-unknown` command and the `staircase recover <run>` one, or refused when it
-has lost 3 launches. Its attempts are the launches claimed, lost ones included.
+partial, with the exact `staircase acknowledge <run>`, `staircase resume <run> --ack-unknown` and `staircase recover <run>`
+commands, or refused when it has lost 3 launches. An acknowledgement never lifts that limit. Its attempts are the launches claimed, lost ones included.
 
 ### Launch failure classes
 
@@ -155,11 +164,15 @@ Two logs help a person find out why a run went wrong, and neither is part of the
 
 Both are held to the same rules:
 
-- **A bound.** A log stops growing at **8 MiB**, markers included. Where it stops it says so
-  (`[staircase: this log reached its bound of 8388608 bytes; output after this point is dropped]`) and, when the process ends, how much
-  it dropped (`[staircase: dropped N bytes in all]`). Opened again by a resumed session, it counts what it already holds. A full
-  log loses nothing that matters to the run: the audit chain, the certificate and the ledger are written elsewhere and are never short
-  of a record because a log is full.
+- **A bound, and the newest output kept.** A log and its numbered previous file together never exceed **8 MiB**, markers included.
+  When a log reaches half of that (4 MiB) it moves to the previous file (`<name>.log.1`, replacing an older one) and continues in a
+  fresh file, so the oldest output is what is dropped and the end of a long session survives. Each fresh file starts with a line
+  saying how often the log rotated and how much it dropped so far (`[staircase: rotated N times, dropped M bytes so far; ...]`), and
+  when the process ends the log says so once more (`[staircase: rotated N times, dropped M bytes in all]`). A log that is already
+  at half of its bound when a resumed session opens it is rotated at once, so the continuation's output is kept. A log from before
+  rotation, longer than half of the bound, keeps its newest half as the previous file. Rotation cuts at a line end where it can, and a
+  secret is scrubbed before it is cut, so one that falls across a rotation is still gone. A log loses nothing that matters to the run:
+  the audit chain, the certificate and the ledger are written elsewhere and are never short of a record because a log rotated.
 - **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the
   environment variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret is
   shown as `<REDACTED>`.
@@ -257,6 +270,15 @@ A fully evidenced commit has `"outcome": "certified"`.
 With `--require-evidence` the run also exits non-zero in that case, so a script or CI
 job cannot mistake it for a complete result. The run is not relabelled as failed or
 undelivered: the commit exists, and its hash is in the record.
+
+### Writing a note
+
+Git drops notes that are added at the same moment, without an error. So every write of a certificate or ledger note, and the one
+`staircase sign` makes, holds a lock on the repository (a lock file in its git directory, shared by every worktree), stores the
+file's exact bytes, reads the note back and writes it again a bounded number of times. A note that cannot be confirmed is an
+evidence failure, never a success. **On Windows that lock excludes nothing:** the build compiles, but its lock calls are
+no-ops, so two deliveries or a `sign` at the same moment in one repository can still lose a note there. The read-back narrows that window but does not close it; on
+Windows, do not run two writers in one repository at once.
 
 ## Keeping evidence: clean, archive and legal hold
 

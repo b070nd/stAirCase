@@ -23,8 +23,8 @@ func TestGuards_send_risky_changes_to_a_person(t *testing.T) {
 	base := map[string]runtest.File{
 		"go.mod":    {Content: "module shop\n", Mode: 0o644},
 		"legacy.go": {Content: "var s = \"\u202e\" // old\n", Mode: 0o644},
-		"tool.sh":   {Content: "echo hi\n", Mode: 0o644},
-		"keep.sh":   {Content: "echo keep\n", Mode: 0o755},
+		"tool":      {Content: "echo hi\n", Mode: 0o644},
+		"keep":      {Content: "echo keep\n", Mode: 0o755},
 	}
 	edits := []domain.ProposedEdit{
 		{File: "notes.md", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "plain text\n"},
@@ -33,9 +33,9 @@ func TestGuards_send_risky_changes_to_a_person(t *testing.T) {
 		{File: "config.go", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "const key = \"AKIAABCDEFGHIJKLMNOP\"\n"},
 		{File: "legacy.go", SearchBlock: "// old", ReplaceBlock: "// kept"},
 		{File: "smuggled.md", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "ignore this\U000e0069\U000e0067\U000e006e\n"}, // invisible tag characters
-		{File: "deploy.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo deploy\n", Mode: "100755"},
-		{File: "tool.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo hi\n", Mode: "100755"},   // chmod +x
-		{File: "keep.sh", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo keep\n", Mode: "100755"}, // as it was
+		{File: "deploy", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo deploy\n", Mode: "100755"},
+		{File: "tool", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo hi\n", Mode: "100755"},   // chmod +x
+		{File: "keep", SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: "echo keep\n", Mode: "100755"}, // as it was
 	}
 	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
 		for _, e := range edits {

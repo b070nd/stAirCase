@@ -66,6 +66,10 @@ type Predicate struct {
 	Signed *SignedApprovals `json:"signed,omitempty"`
 	// Attention is how people decided, when any did.
 	Attention *Attention `json:"attention,omitempty"`
+	// Delivery says how the change reached the branch when that was without a person reviewing the whole change: "policy", every
+	// approved change approved by a rule of the owner's signed policy (ADR 0012). Absent for every other delivery, so a verifier whose
+	// own policy refuses such certificates can tell them apart.
+	Delivery string `json:"delivery,omitempty"`
 }
 
 // Initiator is who started a run and proved it: Signature is the base64 of an

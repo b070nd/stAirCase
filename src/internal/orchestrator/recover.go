@@ -231,6 +231,17 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 	if opts.accepted != nil && want != opts.accepted.tree {
 		return res, fmt.Errorf("the approved changes of run #%d derive tree %.12s, not the tree %.12s that was offered for review", runID, want, opts.accepted.tree)
 	}
+	// A delivery by policy that was authorized is finished without a person only as authorized: the tree that was checked, and no
+	// approval that needs a person's review. Nothing is decided on the chain after the authorization, so a review could not be
+	// recorded either; anything else is refused (ADR 0012, section 7).
+	if au := hist.Authorized; au != nil {
+		switch {
+		case want != au.Tree:
+			return res, fmt.Errorf("run #%d authorized delivery by policy for tree %.12s, but its approved changes derive tree %.12s: nothing is delivered", runID, au.Tree, want)
+		case needReview || opts.accepted != nil:
+			return res, fmt.Errorf("run #%d authorized delivery by policy, but part of its change was not approved by a rule of the policy: nothing is delivered", runID)
+		}
+	}
 	branch := strings.TrimPrefix(bound.Branch, "refs/heads/")
 	fingerprint := approvalsOf(hist.Approvals())
 
@@ -369,7 +380,7 @@ func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) 
 
 	// The evidence. Every step is safe to do again, so a recover after a crash or a
 	// failure repairs what is missing on the same commit.
-	ev := evidence{recovered: opts.accepted == nil, policy: policyDigest(hist), initiator: initiatorOf(hist)}
+	ev := evidence{recovered: opts.accepted == nil, policy: policyDigest(hist), initiator: initiatorOf(hist), byPolicy: hist.Authorized != nil}
 	delivered := "run_recovered"
 	if opts.accepted != nil { // the run reached its end: its worktree was checked and its checks ran on this tree
 		ev.checks, ev.awayReviewed, delivered = opts.accepted.checks, true, "review_delivered"

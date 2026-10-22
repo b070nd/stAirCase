@@ -8,6 +8,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Delivery by policy, chosen in the run's terms (`--deliver policy`, `--deliver-path`).** An away run can now be started with
+  the delivery mode `policy` and a delivery scope. The terms refuse it unless the run is away, has no `--validator`, names a delivery
+  scope, signs (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own);
+  a policy that is not signed (`staircase policy sign`) refuses the run when it starts. The agreement says the mode, the scope, the
+  policy's digest and "no person reviews the whole change". Review stays the default and is not in the saved terms: a run saved before
+  the field existed reads as review.
+  The delivery itself: when the agent stops and your checks pass, the run commits to its branch with no person only if seven
+  conditions hold, read from its verified history (the terms say policy and the policy was signed; every change was approved by a rule
+  of that policy and none by the agreed task, evidence, a reviewer model or a person; nothing was parked; every path is inside your
+  delivery scope and neither sensitive nor protected; the checks passed on exactly the approved tree and the run branch is still at its
+  base; the protected paths are declared; you signed as the initiator). It then writes the new audit event `delivery_authorized`
+  and commits like a run you watch. If any condition fails or is in doubt, nothing is committed: the run ends awaiting your review
+  and `staircase decide` names the condition. Only the run branch moves; nothing is pushed. The certificate keeps the level it
+  computes, says no person reviewed the whole change, and has a new optional field `delivery: policy` (the predicate type stays
+  version 1; verifiers ignore fields they do not know). A run killed after the authorization is finished with `staircase recover`
+  and cannot be resumed. Old chains and old certificates are unchanged. What to do: nothing, unless you start a run with
+  `--deliver policy`; then read the seven conditions first. Delivery by policy suits work whose correctness a rule of your signed
+  policy already decided (documentation, changelog entries, generated or formatted files, the areas a rule's `paths` name); code
+  approved on evidence still waits for your review.
+  ADR 0012 is accepted: only what rules of your signed policy approved is delivered, never what evidence or the agreed task
+  alone approved ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
+
+- **Policy rules can look at the change itself.** A rule in `policy.json` gains five optional conditions: `paths` (every changed file
+  matches one of these globs, in any letter case), `max_lines`, `max_files`, `new_files_only` and `no_deletions`. They are checked
+  against the files and line counts the orchestrator derives from the proposal, never against what the agent says. A reject rule with
+  only these conditions is not a blanket deny. No rule shape ever matches a shell command or a tool call. The file's `version` stays
+  1: a file that uses the new fields is refused by an older stAirCase (it fails closed instead of reading the rule without them),
+  and a file without them decides exactly as before. `staircase policy test` and the scenarios use the same conditions
+  ([approvals](docs/approvals.md#approving-automatically-with-rules)). Expression conditions (CEL) are deferred, with the findings
+  recorded ([ADR 0013](docs/adr/0013-cel-conditions-in-policy-rules.md)).
+
+- **`staircase acknowledge <run>`: say you looked at a run whose agent was lost, without launching anything.** A run whose agent's
+  launch has no established end stays parked until a person acknowledges it. The new command records that acknowledgement on the audit
+  chain (`launch_acknowledged`, naming the exact attempt and generation, so it cannot cover a later loss) and writes the launch's end
+  first if it is still open; a second call changes nothing, and a run with no open or lost launch is refused. A hosted runner's
+  `--resume` still never acknowledges by itself, its refusal now names the command, and once you ran it the runner's own resume
+  proceeds in its own session. `staircase resume --ack-unknown` is this same operation followed by the resume. The limit of 3 lost
+  launches stays: an acknowledgement does not lift it, and `staircase recover` still works. Chains written before read as before. What to
+  do: nothing, unless a hosted run was parked; then look at what its agent may have done and run `staircase acknowledge <run>`
+  ([audit](docs/audit.md#lost-launches), [hosting](docs/hosting.md#when-the-runner-resumes-a-session)).
+
 - **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
   (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
   level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.
@@ -52,10 +93,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Changed
 
-- **Protection of the checks' definition paths applies to every run with checks, not only away runs.** A change to a path where a
-  run's checks are defined goes to a person whatever the policy says, in a run you watch as well. A policy rule that approved an edit
-  of such a path before now sends it to a person ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken),
-  [compatibility](docs/compatibility.md#the-six-contracts)).
+- **`staircase policy test` shows which past decisions would now go to a person.** It loads the terms each replayed run saved and
+  checks the paths of every past decision against the paths that hold the run's checks' definitions and the sensitive list, which
+  go to a person whatever a rule says. What a rule, the agreed task, a reviewer model or evidence decided there without a person is
+  listed in a section of its own (a Makefile edit approved in a run whose check was `make check`, a CI file), and a person's own
+  decision on such a path is no longer counted as a difference the policy makes. Decisions of the orchestrator, drift and guards stay
+  skipped, and history those paths do not reach reports as before. What to do: run it before you upgrade, and add `--protect` or a
+  rule's `paths` condition where the list shows an area you want a person on ([approvals](docs/approvals.md#approving-automatically-with-rules)).
+
+- **Logs keep their newest output.** The debug log (`--debug`) and a hosted session's log used to keep the first 8 MiB and drop
+  everything after, so a long session that died left its beginning and lost its end. A log that reaches 4 MiB now moves to a numbered
+  previous file (`<name>.log.1`, replacing an older one) and continues in a fresh file, so the two together never exceed 8 MiB and
+  the newest output survives. A log already at its bound when a continued run reopens it is rotated, so the continuation is not
+  blind. The markers now read "rotated N times, dropped M bytes". What to
+  do: read `<name>.log.1` too for the earlier output
+  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
+
+- **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
+  checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that
+  says nothing was committed and where to read what the agent did; before, it ended successful and silent. If they pass, it stays
+  successful and says so. The message counts every proposal the agent made, refused ones included, instead of calling them none.
+  A hosted session is not checked. What to do: nothing, unless a script treated this exit code 0 as done
+  ([away](docs/away.md#a-run-that-did-nothing)).
+
+- **A seventh outcome, "no change".** A successful run without a commit and without parked proposals is called no change instead
+  of failed, so a run's status and its outcome agree. A run that approved nothing and parked nothing and whose checks fail on the
+  unchanged tree is failed, and its reason says so. Accepting an empty review still ends failed
+  ([away](docs/away.md#how-each-run-stands)).
+
+- **The capabilities table says what each agent's sandbox covers.** Codex's `workspace-write` sandbox confines its commands' writes
+  (to the worktree and temporary folders) and network, not their reads, and is still not counted as sandboxed; Gemini's sandbox is off
+  unless asked for, and stAirCase does not ask. `staircase doctor` and [compatibility](docs/compatibility.md#what-each-adapter-supports)
+  show the new words; no behaviour changes.
+
+- **Check-defining paths are protected in every run that has checks, and sensitive paths always go to a person.** A change to a path
+  where a run's checks are defined (the script a check runs, the tests given to `bats` or `pytest`, `Makefile` for `make`,
+  `package.json` for `npm`, and anything you name with `--protect`) now always goes to a person, and is parked while away, whatever
+  your policy says. So does a file edit that touches a sensitive path: CI and build files (`.github/`, `Makefile`, `Dockerfile`),
+  dependency files, `.env` files, shell scripts (`*.sh`), and now `CODEOWNERS` files at any depth and Gemini's repository settings
+  (`.gemini/`). If a rule of your `policy.json` approved such an edit before, that edit now reaches a person; the rule itself is
+  unchanged and still decides everything else. The bar sits before the policy, so it also sends a person the edits that a policy
+  `reject` rule would have rejected: the person may approve them, and while you are away they are parked, not rejected. The reason
+  shown names the path. Why: an agent that can edit the test a check runs
+  can make the check pass, and one that can edit a CI, build or review-ownership file can change what runs or who must review. What
+  to do: nothing, unless a rule you rely on covered such a path; then name the paths you accept to be protected with `--protect`
+  (check paths only; a sensitive path has no allowance yet). This follows the rule in
+  [compatibility](docs/compatibility.md#how-the-six-contracts-change): a minor release may send more proposals to a person, never fewer
+  ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken), [the six contracts](docs/compatibility.md#the-six-contracts)).
 
 - **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
   shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
@@ -88,7 +172,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   `empty` on `review_accepted`.
 
 - **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** The debug log (`--debug`) and a hosted session's
-  log (`host/<session>.log`) stop growing at 8 MiB, say where they stopped and, at the end, how much they dropped. Both are scrubbed of
+  log (`host/<session>.log`) are bounded (they rotate and keep their newest output: see "Logs keep their newest output") and say how much
+  they dropped. Both are scrubbed of
   every secret handed to an agent, including the environment variables named with `--pass-env`, which were not scrubbed before. The
   stderr tail of a failed agent (Claude Code, Codex, Gemini, OpenCode) is no longer part of the error the run ends with, which a
   runner may keep (Cloudroom keeps stderr tails in its records); it is shown at the terminal or in the host log, and in the debug log,
@@ -99,6 +184,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   written before read as before; their outcome is inferred from their other events.
 - **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
   run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
+
+### Fixed
+
+- **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
+  approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
+  `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.
+- **The session commands look at the case's newest run.** For a case with several runs they read the oldest, so the "waits for your
+  review" hint and the run branch named could be those of an earlier run.
+- **Cost estimates know Claude Haiku 5.5.** The price table had no entry for it, so it counted at the unpriced ceiling; it now counts
+  at 0.50 / 2.50 USD per million tokens (the rate above 100k-token prompts, so a budget cap never counts too little).
+- **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes that are added at the same
+  moment without an error (six parallel adds lost notes in 8 of 8 trials), and a commit without its certificate fails verification
+  later. Writing a note now holds a lock on the repository, stores the file's exact bytes, reads the note back, and writes it again
+  a bounded number of times, and `staircase sign` writes its signed certificate the same way. A note that cannot be confirmed is
+  reported as an evidence failure (the run's summary and `evidence_failed` name it), never as written. The lock does nothing on
+  Windows ([audit](docs/audit.md#writing-a-note)). Nothing to do; a commit that already lost its note keeps lacking it.
+- **Built with Go 1.26.10.** `govulncheck` reports GO-2026-6809 (`crypto/x509`, intermediate certificates a CA has compromised) against
+  Go 1.26.9, and the audit anchor check (`audit.AnchorRecord`) reaches it. Go 1.26.10 fixes it. Build from a checkout with Go 1.26.10
+  or later; the release archives and Homebrew carry the fix once a release is cut from this version.
 
 ## [1.1.0] - 2026-10-18
 

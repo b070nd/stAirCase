@@ -74,6 +74,9 @@ decisions() { sc inspect log 1 | grep -c "yield_decided" || true; }
 on_branch() { git -C "$WORK/app" show "staircase/run-1:$1" 2>/dev/null; }
 note() { git -C "$WORK/app" notes --ref="$1" show "$(git -C "$WORK/app" rev-parse staircase/run-1)" 2>/dev/null; }
 
+# predicate: the run branch's certificate (a DSSE envelope in a git note), its in-toto predicate as JSON
+predicate() { note staircase | jq -r '.payload' | base64 -d | jq '.predicate'; }
+
 # the approved changes verify and rebuild like any other
 sound() {
   run sc verify staircase/run-1 --min-cal 2
@@ -302,4 +305,113 @@ FAKE
   [ "$(on_branch src/b.txt)" = "b content" ]
   [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
   sound
+}
+
+# An away run that approved and parked nothing has its checks run on the unchanged tree (ticket 02). Killed between that check and
+# the run's path entry, the run is not delivered, not lost: recover finds nothing approved, and resume (the agent's launch has no
+# recorded end, so after looking) goes on and ends it by the same check.
+@test "away run that did nothing, killed between its check of the unchanged tree and its path entry: resume ends it" {
+  cat >"$WORK/bin/claude" <<'FAKE'
+#!/bin/bash
+settings=""
+while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+cmd="$(sed -n 's/.*"command": *"\([^"]*\)".*/\1/p' "$settings" | head -1)"
+printf '%s' '{"hook_event_name":"SessionStart","cwd":"'"$PWD"'"}' | sh -c "$cmd" >/dev/null
+FAKE
+  chmod +x "$WORK/bin/claude"
+  cd "$WORK/app"
+  hold nothing-checked "$STAIRCASE_BIN" claude --yes --away --allow "src/**" --check "test -f README.md" "do nothing"
+  [ "$(sc inspect log 1 | grep -c phase_checked)" = 1 ]
+  [ "$(sc inspect log 1 | grep -c run_path)" = 0 ]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nothing to recover"* ]] || { echo "$output"; false; }
+  run sc resume 1 --fresh-context --ack-unknown
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [[ "$output" == *"Nothing to review: no proposal was approved or parked"* ]] || { echo "$output"; false; }
+  [ "$(sc inspect log 1 | grep -c phase_checked)" = 2 ]
+  run sc inspect runs
+  [[ "$output" == *"no change"* ]] || { echo "$output"; false; }
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]
+}
+
+# Delivery by policy (ADR 0012): an away run whose approvals were all rules of the signed policy commits without a person. The policy
+# is signed, the initiator signs, the checks name no file of their own so the protected paths are declared.
+by_policy() {
+  ssh-keygen -q -t ed25519 -N "" -C drill@example.com -f "$WORK/id" >/dev/null
+  sc policy sign >/dev/null
+  cd "$WORK/app"
+  hold "$1" "$STAIRCASE_BIN" claude --yes --away --allow "src/**" --check "test -f README.md" --protect "tests/**" \
+    --deliver policy --deliver-path "src/**" --sign-approvals "$WORK/id" --sign-as drill@example.com "write two files"
+}
+
+@test "delivery by policy killed after its authorization: no commit yet, resume is refused, recover delivers one" {
+  by_policy delivery-authorized
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 1 ]
+  [ "$(sc inspect log 1 | grep -c commit_prepared)" = 0 ]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]   # nothing was committed
+  run sc resume 1 --fresh-context --ack-unknown
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"recover"* ]] || { echo "$output"; false; }
+  run sc recover 1 --force
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+  [ -n "$(note staircase)" ] && [ -n "$(note staircase-ledger)" ]
+  sound
+  [ -z "$(git -C "$WORK/app" remote)" ]   # nothing to push to, and nothing pushed
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]                     # delivered: nothing left to recover
+  [ "$(git rev-list --count main..staircase/run-1)" = 1 ]
+}
+
+# killed at a later point of a delivery by policy, a fresh recover leaves one commit with the approved bytes and one certificate
+policy_killed_at() {
+  by_policy "$1"
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 1 ]
+  run sc recover 1 --force
+  # killed once the evidence was written, the run only lacked its record: recover repairs it or finds it done
+  [ "$status" -eq 0 ] || [ "$1" = evidence-published ] || { echo "$1: $output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
+  [ "$(git -C "$WORK/app" notes --ref=staircase list | wc -l | tr -d ' ')" = 1 ]
+  [ "$(predicate | jq -r '.delivery')" = policy ]   # the decoder sees the field when it is there
+  sound
+}
+
+@test "delivery by policy killed with its commit named, the branch not moved: one commit, one certificate" {
+  policy_killed_at commit-prepared
+}
+
+@test "delivery by policy killed with the branch moved, no evidence: one commit, one certificate" {
+  policy_killed_at git-cas
+}
+
+@test "delivery by policy killed once its evidence is written: one commit, one certificate" {
+  policy_killed_at evidence-published
+}
+
+# killed after the final checks are on the chain and before delivery_authorized: nothing authorized the delivery, so nothing is
+# delivered by policy; the approved changes are recovered like any other interrupted run's, once
+@test "delivery by policy killed after its final checks, before its authorization: one commit, one certificate, not delivered by policy" {
+  by_policy phase-checked
+  [ "$(sc inspect log 1 | grep -c phase_checked)" = 1 ]
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 0 ]
+  [ "$(git rev-parse main)" = "$(git rev-parse staircase/run-1)" ]   # nothing was committed
+  run sc recover 1 --force
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+  [ "$(on_branch src/a.txt)" = "a content" ]
+  [ "$(on_branch src/b.txt)" = "b content" ]
+  [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
+  [ "$(git -C "$WORK/app" notes --ref=staircase list | wc -l | tr -d ' ')" = 1 ]
+  [ "$(sc inspect log 1 | grep -c delivery_authorized)" = 0 ]   # recovery does not authorize a delivery
+  [ "$(predicate | jq -r '.delivery // "absent"')" = absent ]   # a recovered run is not a delivery by policy
+  [ "$(predicate | jq -r '.cal')" -le 2 ]
+  sound
+  run sc recover 1 --force
+  [ "$status" -ne 0 ]                     # delivered: nothing left to recover
+  [ "$(git -C "$WORK/app" rev-list --count main..staircase/run-1)" = 1 ]
 }

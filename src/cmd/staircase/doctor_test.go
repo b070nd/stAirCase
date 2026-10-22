@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"github.com/b070nd/stAirCase/src/internal/persistence"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -118,6 +119,18 @@ func TestDoctor_finds_interrupted_runs(t *testing.T) {
 	assert.Contains(t, out, "staircase recover "+strconv.FormatInt(running, 10)+" (or continue it: staircase resume "+strconv.FormatInt(running, 10)+") --force")
 	assert.Contains(t, out, "run #"+strconv.FormatInt(killed, 10)+" was interrupted with 1 approved change(s): staircase recover "+strconv.FormatInt(killed, 10))
 	assert.Equal(t, 2, strings.Count(out, "was interrupted"), "only the two that can be recovered")
+}
+
+// TestDoctor_does_not_call_a_rejected_run_interrupted (owner decision 13): an away run whose review the owner rejected ends FAILED
+// with approved changes in its journal and no commit, which is what an interrupted run looks like. It was decided against, not
+// interrupted, so doctor must not send the owner to recover it.
+func TestDoctor_does_not_call_a_rejected_run_interrupted(t *testing.T) {
+	_, _ = awaySession(t)
+	assert.Positive(t, orchestrator.JournaledApprovals(viper.GetString("STAIRCASE_DIR"), 1), "control: the run did journal an approval")
+	decideReject = true
+	require.NoError(t, decideHandler(nil, []string{"1"}))
+	out, _ := captureStdout(t, func() error { return doctorHandler(nil, nil) })
+	assert.NotContains(t, out, "was interrupted", "the owner rejected this run: nothing to recover:\n%s", out)
 }
 
 // TestDoctor_legal_hold: a legal hold in the workspace is said out loud.

@@ -240,8 +240,17 @@ treated like a clean stop any more:
 - A continuation that finds a claim with no outcome records it as `unknown_after_restart` (under the run's lock, the one write it
   makes before its other checks) and refuses: the run is **parked**. `--ack-unknown` continues it, and `run_resumed` records the
   acknowledged attempt (`ack_unknown`). An `unresponsive` launch parks the same way.
-- A run with 3 launches whose end was not established (`MaxLostLaunches`) is not launched again, acknowledged or not. Recovery is
-  unchanged and still commits what the run approved.
+- A person can acknowledge the open or lost launch **without continuing** (`staircase acknowledge <run>`, owner decision 6, amended
+  2026-10-20). Under the run's lock it writes the launch's end (`unknown_after_restart`) if the launch is still open, then
+  `launch_acknowledged`, naming the attempt and its generation, so the acknowledgement cannot cover a later loss. It launches
+  nothing. A continuation treats an acknowledged lost launch as acknowledged, and `--ack-unknown` is this same operation followed by
+  the resume (`run_resumed` still records `ack_unknown`). **A hosted `--resume` never acknowledges by itself**: the acknowledgement
+  attests that a person looked, and a person needs a way to attest that does not start a different agent session. Its refusal names
+  the command. The replay accepts `launch_acknowledged` only after a launch whose outcome is `unknown_after_restart` or
+  `unresponsive`, for the last launch, once, and before the chain ends. The kill drill between the two events is in
+  `tests/resume_drill.bats` (barrier `launch-outcome-set`): the next call writes only the missing acknowledgement.
+- A run with 3 launches whose end was not established (`MaxLostLaunches`) is not launched again, acknowledged or not (an
+  acknowledgement does not lift the bound). Recovery is unchanged and still commits what the run approved.
 - The replay refuses a launch while another has no outcome, a resume while a launch has no outcome, an outcome that names no open
   launch, an attempt out of order, a launch after `commit_prepared` and an outcome after the chain ended. The time between a lost
   launch and the restart that records it is not active time.

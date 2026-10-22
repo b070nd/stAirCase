@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -227,6 +228,9 @@ func (firstSegment) policy(s *runState) (*policy.Snapshot, error) {
 	snap, err := policy.LoadSnapshot(r.wsDir)
 	if err != nil {
 		return nil, fmt.Errorf("load policy: %w", err)
+	}
+	if s.opts.Deliver == DeliverPolicy && !snap.Signed { // an edited policy file must not arm delivery without a person (ADR 0012)
+		return nil, errors.New("--deliver policy needs a signed policy: only rules you signed may approve what is delivered without review; sign yours with 'staircase policy sign'")
 	}
 	if len(snap.Raw) > 0 { // the exact bytes it decides under, for a continuation
 		if err := saveRunFile(savedPolicyPath(r.wsDir, run.ID), snap.Raw); err != nil {

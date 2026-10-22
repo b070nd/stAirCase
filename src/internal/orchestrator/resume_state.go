@@ -147,6 +147,9 @@ func (r *Runner) loadContinuation(runID int64, withdrawReview bool) (*continuati
 		}
 		withdrawn = hist.Review.Entry
 	}
+	if hist.Sealed == "delivery_authorized" {
+		return nil, notContinuable("run #%d authorized its delivery by policy and has not made its commit: it is finished, not continued, with `staircase recover %d`", runID, runID)
+	}
 	if hist.Sealed != "" {
 		return nil, notContinuable("run #%d already made its commit (%s is on its chain): recover it with `staircase recover %d`", runID, hist.Sealed, runID)
 	}

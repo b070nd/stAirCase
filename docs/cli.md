@@ -14,6 +14,29 @@ Global flag, accepted by every command:
 
 The workspace directory can also be set with the `STAIRCASE_DIR` environment variable.
 
+## staircase acknowledge
+
+Say you looked at a run whose agent was lost, without launching anything
+
+```
+staircase acknowledge <run-id>
+```
+
+A run whose agent's launch has no established end (its process was killed, crashed or lost
+its machine, or the agent did not stop when asked) is parked: nobody knows what the agent did,
+outside the worktree included, so it is not launched again blindly. acknowledge records, on the
+run's audit chain, that a person looked: it writes the launch's end (unknown_after_restart) if the
+launch is still open, then the acknowledgement, naming the exact launch (its attempt and
+generation), so it cannot cover a later loss. It launches nothing and continues nothing.
+
+Afterwards the run can be continued: with staircase resume, or by a hosted runner's own resume
+(a hosted resume never acknowledges by itself, because the acknowledgement attests that a person
+looked). staircase resume --ack-unknown does both in one step.
+
+A run with no open or lost launch is refused, and calling it again on an acknowledged launch
+changes nothing. Acknowledging does not lift the limit: a run whose launches were lost 3 times
+is not launched again; recover what it approved with staircase recover.
+
 ## staircase attach
 
 Stop plain git commits in this checkout while an agent works in it (use staircase seal)
@@ -188,6 +211,8 @@ Flags:
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
+      --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
+      --deliver-path stringArray   A path or pattern (from the repository's root) where --deliver policy may deliver, such as docs/**: a change anywhere else waits for your review. Repeat for more
       --model string               Model for Claude Code (default: its own)
       --pass-env stringArray       Name of an environment variable Claude Code may inherit, to give it its own credential (for example CLAUDE_CODE_OAUTH_TOKEN); it, and any command it runs, can read the value. Repeat for more
       --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
@@ -265,6 +290,8 @@ Flags:
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
+      --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
+      --deliver-path stringArray   A path or pattern (from the repository's root) where --deliver policy may deliver, such as docs/**: a change anywhere else waits for your review. Repeat for more
       --model string               Model for Codex (default: its own)
       --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -481,6 +508,8 @@ Flags:
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
+      --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
+      --deliver-path stringArray   A path or pattern (from the repository's root) where --deliver policy may deliver, such as docs/**: a change anywhere else waits for your review. Repeat for more
       --model string               Model for Gemini CLI (default: its own)
       --pass-env stringArray       Name of an environment variable Gemini may inherit, to give it its own credential (for example GEMINI_API_KEY); it, and any command it runs, can read the value. Repeat for more
       --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
@@ -666,6 +695,8 @@ Flags:
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
+      --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
+      --deliver-path stringArray   A path or pattern (from the repository's root) where --deliver policy may deliver, such as docs/**: a change anywhere else waits for your review. Repeat for more
       --model string               Model for OpenCode (default: its own)
       --protect stringArray        A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more
       --require-evidence           Fail the run (exit non-zero) when the commit it made has no signed change certificate and ledger; the commit stays on its branch and is reported as delivered without evidence
@@ -708,7 +739,17 @@ approve. Run it before you put a new rule into policy.json.
 
 Shell commands, proposals refused by the orchestrator and proposals that drift
 or a guard sent to a person are never the policy's to decide, so they stay as
-they were. The replay applies the rules only, not the per-run limits.
+they were. The replay applies the rules only, not the per-run limits. A rule's
+conditions on paths, lines, files, new files and deletions are checked against
+the edits each proposal recorded, so line counts and new files are estimates
+here; --scenarios checks them exactly.
+
+The replay also applies the paths only a person may change, whatever the policy says:
+the paths that hold the checks' definitions (from the terms each run saved) and the
+sensitive paths. A change that a rule, the agreed task, a reviewer model or evidence
+approved or rejected there, with no person, is listed in its own section as one that
+would now go to a person, and a person's earlier decision on such a path is not
+counted as a difference the policy makes.
 
 With --scenarios <file> it asserts instead. Each scenario in the file (JSON: a
 base tree, an optional scope, and proposals with the outcome you expect:
@@ -993,8 +1034,10 @@ Every launch of the agent is claimed on the audit chain before its process start
 its outcome is recorded when it stops. A run whose last launch has no outcome (its
 process was killed, crashed or lost its machine) is not launched again blindly: resume
 records the outcome as unknown_after_restart, parks the run and says why. Check what the
-agent may have done, then continue with --ack-unknown. A run whose launches ended this
-way 3 times is not launched again at all; recover what it approved instead.
+agent may have done, then say you looked with "staircase acknowledge" (it launches nothing,
+and a hosted runner's own resume then proceeds) or continue at once with --ack-unknown,
+which does the same acknowledgement first. A run whose launches ended this way 3 times is
+not launched again at all, acknowledged or not; recover what it approved instead.
 
 A run that was started with an agent harness continues the harness's own session when it
 can: Claude Code, Gemini CLI and Codex have their session id on the audit chain and are
@@ -1007,7 +1050,7 @@ Flags:
 
 ```
       --ack-drift               Continue a run that was halted for drift, after reviewing it (recorded on the audit chain)
-      --ack-unknown             Continue a run parked because its last launch has no known outcome, after checking what its agent may have done (recorded on the audit chain)
+      --ack-unknown             Continue a run parked because its last launch has no known outcome, after checking what its agent may have done: acknowledges the launch like staircase acknowledge, then continues (recorded on the audit chain)
       --approval-port int       Decide from another terminal, a script or your browser through the local approval API on this port (0 = in this terminal)
       --approval-token string   Token for the approval API (default: a new one, printed)
       --debug                   Write every audited message of this segment, scrubbed, to the run's debug log

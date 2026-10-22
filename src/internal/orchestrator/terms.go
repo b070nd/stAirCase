@@ -53,7 +53,19 @@ type Terms struct {
 	// ProtectedPaths hold the checks' definitions (paths or ** patterns, from the repository's root): a change to one always
 	// needs a person, whatever the policy says, and is parked while away. Those the checks name are added (checkDefinitions).
 	ProtectedPaths []string `json:"protected_paths,omitempty"`
+	// Deliver is how the run's approved change reaches its branch (ADR 0012): DeliverReview (also when empty, and then absent
+	// from the saved form, so every run saved before the field existed reads as review) offers it to a person; DeliverPolicy
+	// delivers it, while nobody is there, when only rules of the owner's signed policy approved it.
+	Deliver string `json:"deliver,omitempty"`
+	// DeliverPaths are the delivery scope: the paths (or ** patterns, from the repository's root) a policy delivery may deliver.
+	DeliverPaths []string `json:"deliver_paths,omitempty"`
 }
+
+// The modes of Terms.Deliver.
+const (
+	DeliverReview = "review"
+	DeliverPolicy = "policy"
+)
 
 // termsVersion is the version of the saved form of Terms (options.json).
 const termsVersion = 1
@@ -108,7 +120,52 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	if err := t.protect(); err != nil {
 		return t, err
 	}
+	if err := t.deliver(); err != nil {
+		return t, err
+	}
 	return t, t.checkDeclared(harness)
+}
+
+// deliver judges the delivery mode (ADR 0012). Review is the default and is never saved. Policy delivery is unattended, so it
+// is refused unless everything it rests on is in the terms: an away run (nobody to ask), no reviewer model (a model's approval
+// is never a rule's), a delivery scope, the initiator's signature (the certificate names who armed it), and a complete
+// declaration of the protected paths (after protect: the checks name a file of their own, or --protect named some). Signed
+// decisions are refused with --away already. Whether the policy was signed is known only when the run starts (firstSegment.policy).
+func (t *Terms) deliver() error {
+	switch t.Deliver {
+	case "", DeliverReview:
+		t.Deliver = ""
+		if len(t.DeliverPaths) > 0 {
+			return errors.New("--deliver-path names where delivery by policy may deliver: add --deliver policy")
+		}
+		return nil
+	case DeliverPolicy:
+	default:
+		return fmt.Errorf("--deliver %q: review or policy", t.Deliver)
+	}
+	switch {
+	case !t.Away:
+		return errors.New("--deliver policy needs --away: it delivers while nobody is there to ask")
+	case len(t.ValidatorModels) > 0:
+		return errors.New("--deliver policy cannot be combined with --validator: only a rule of your policy may approve what is delivered, never a model")
+	case len(t.DeliverPaths) == 0:
+		return errors.New("--deliver policy needs --deliver-path: name where it may deliver (a path or pattern, from the repository's root)")
+	case t.SignKey == "":
+		return errors.New("--deliver policy needs --sign-approvals <key>: the certificate names who armed delivery without review")
+	case len(t.ProtectedPaths) == 0:
+		return errors.New("--deliver policy needs protected paths: your checks name no file of their own, so name where they are defined with --protect <path or pattern> (for go test ./... : --protect \"**/*_test.go\")")
+	}
+	var paths []string
+	for _, p := range t.DeliverPaths {
+		clean, ok := repoPath(p)
+		if !ok {
+			return fmt.Errorf("--deliver-path %q: name a path or pattern inside the repository, from its root", p)
+		}
+		paths = append(paths, clean)
+	}
+	slices.Sort(paths)
+	t.DeliverPaths = slices.Compact(paths)
+	return nil
 }
 
 // protect makes ProtectedPaths the declared paths, cleaned, and every path the checks name as their definition, sorted once.

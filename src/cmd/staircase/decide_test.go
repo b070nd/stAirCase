@@ -100,6 +100,18 @@ func TestDecide_the_inbox_shows_an_empty_change_as_empty(t *testing.T) {
 	assert.Contains(t, text, "#2 src/bad.txt")
 }
 
+// A run that was to deliver by policy and came to the owner says which condition sent it (ADR 0012); a run that offers its change as
+// a matter of course says nothing of delivery.
+func TestDecide_the_inbox_names_the_condition_that_refused_delivery_by_policy(t *testing.T) {
+	rv := sampleReview()
+	rv.DeliveryRefused = "condition 3 (nothing was parked): 1 proposal(s) were parked for you"
+	text := inboxTree([]orchestrator.Review{rv}, nil)
+	assert.Contains(t, text, "delivery")
+	assert.Contains(t, text, "condition 3 (nothing was parked)")
+	assert.Contains(t, text, "no person reviewed")
+	assert.NotContains(t, inboxTree([]orchestrator.Review{sampleReview()}, nil), "delivery   ")
+}
+
 // An empty change whose checks failed on the unchanged tree is shown as failed, never as "passed".
 func TestDecide_the_inbox_shows_failing_checks_of_an_empty_change(t *testing.T) {
 	rv := sampleReview()

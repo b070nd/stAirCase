@@ -51,7 +51,7 @@ rejection (`unconsumed` when its journal line was already written). The live run
 review.
 
 A run can be parked too: its last **launch** has no established end, so its agent is not launched again until a person
-acknowledges it.
+acknowledges it (`staircase acknowledge <run>`, which launches nothing, or `staircase resume --ack-unknown`).
 
 **Launch**: one start of a run's agent: by a new run, a continuation or a resumed hosted session. It is claimed on the chain
 (`launch_claimed`, its attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is
@@ -70,12 +70,23 @@ description shown by `staircase doctor`, never a grant.
 that passed on that tree (`awaiting_review`, resting on `phase_checked`). It is decided with `staircase decide`.
 
 **Outcome**: how a run stands, read from its history alone (`History.Outcome`): running, awaiting review, blocked or partial,
-failed, delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
+failed, no change (a successful run without a commit and without parked proposals: nothing was approved or parked, so nothing waits and
+nothing is delivered), delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
 then the review the last segment offered, then a parked or refused run (its last launch has no established end), then how the last segment ended (`run_path`, which records the status it ended with). A
 run's **status** (`Runner.StatusOf`) adds its attempts (the launches claimed on its chain: `History.Attempts`) and what it used of its time, tokens and estimated cost.
 
-**Sealed**: describes a chain after which nothing more may be decided. `commit_prepared` ends the agent's part.
-`certificate_issued`, `run_recovered` and `review_delivered` end the chain.
+**Delivery by policy**: the delivery mode in which an away run commits its approved change to the run branch with no person
+reviewing the whole change (ADR 0012). It happens only when seven conditions hold, each read from the run's verified history and
+its bound terms: the terms say policy and the policy was signed; every approval is a rule of that policy (never the agreed task,
+evidence, a reviewer model or a person); nothing was parked; every approved path is inside the delivery scope and neither
+sensitive nor protected; the checks passed on exactly the approved tree and the run branch is still at the base; the protected
+paths are declared; the initiator signed. The run then writes `delivery_authorized` and commits like a live run does. If any
+condition fails, or is in doubt, the run ends awaiting review and says which condition (`delivery_refused` on its
+`awaiting_review`): a normal outcome, not an error. It never pushes. The certificate keeps the level it computes, carries the
+optional field `delivery: policy` and a note that no person reviewed the whole change.
+
+**Sealed**: describes a chain after which nothing more may be decided. `delivery_authorized` ends the agent's part until the commit
+is named; `commit_prepared` ends the agent's part. `certificate_issued`, `run_recovered` and `review_delivered` end the chain.
 
 **History**: what one replay of a verified chain says about a run: its binding, every decision with its request, the parked and
 adopted proposals, the offered review, the continuation's counters, and what sealed it (`internal/history`, ADR 0010). A chain that
@@ -86,7 +97,10 @@ no run can have written has no history. It is refused with the entry that breaks
 - how changes are approved;
 - where commands and checks run, the checks, and the paths where they are defined (protected);
 - what signs;
-- what an away run may do without asking.
+- what an away run may do without asking;
+- how the approved change is delivered (the **delivery mode**: review, the default, which is not in the saved form, or policy, with
+  its delivery scope; ADR 0012). In policy mode no person reviews the whole change: only rules of the owner's signed policy may have
+  approved what is delivered.
 
 They are plain data (`orchestrator.Terms`), made only through `NewTerms`, which normalizes them once and refuses what no run can
 decide under. A run saves them as its `options.json`, bound by digest on `run_bound`. A continuation also keeps the saved plan and

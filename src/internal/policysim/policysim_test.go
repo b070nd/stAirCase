@@ -13,8 +13,8 @@ import (
 )
 
 const testPolicy = `{"rules":[
-  {"action_types":["file_edit"],"allowed_extensions":[".env"],"effect":"reject"},
-  {"action_types":["file_edit"],"allowed_extensions":[".md"],"effect":"approve"}],
+  {"action_types":["file_edit"],"allowed_extensions":[".env",".tmp"],"effect":"reject"},
+  {"action_types":["file_edit"],"allowed_extensions":[".md",".sh"],"effect":"approve"}],
  "limits":{"max_auto_approved":2}}`
 
 func writePolicy(t *testing.T, body string) string {
@@ -36,7 +36,9 @@ func TestRun_the_policy_decides_as_asserted(t *testing.T) {
 	res, err := policysim.Run(context.Background(), writePolicy(t, testPolicy), policysim.File{Scenarios: []policysim.Scenario{
 		{Name: "a rule approves docs", Proposals: []policysim.Proposal{one("docs/a.md", "hello\n", policysim.Approve)}},
 		{Name: "source code goes to a person", Proposals: []policysim.Proposal{one("src/x.go", "package x\n", policysim.Human)}},
-		{Name: "a rule rejects env files", Proposals: []policysim.Proposal{one(".env", "A=1\n", policysim.Reject)}},
+		{Name: "a rule rejects scratch files", Proposals: []policysim.Proposal{one("scratch.tmp", "A=1\n", policysim.Reject)}},
+		{Name: "a sensitive path goes to a person whatever a rule says", Proposals: []policysim.Proposal{
+			one("scripts/run.sh", "echo\n", policysim.Human), one(".env", "A=1\n", policysim.Human)}},
 		{Name: "the third automatic approval is a limit", Proposals: []policysim.Proposal{
 			one("docs/1.md", "1\n", policysim.Approve), one("docs/2.md", "2\n", policysim.Approve), one("docs/3.md", "3\n", policysim.Human)}},
 		{Name: "a guard escalates what a rule approves", Proposals: []policysim.Proposal{
@@ -53,6 +55,38 @@ func TestRun_the_policy_decides_as_asserted(t *testing.T) {
 	for _, r := range res {
 		assert.True(t, r.Pass, "%s #%d: %s (%s)", r.Scenario, r.Index, r.Detail, r.Reason)
 	}
+	assert.Len(t, res, 13)
+}
+
+// TestRun_typed_conditions_decide_through_the_real_deciders: the conditions on paths, size, new files
+// and deletions are checked against what the orchestrator derived from the edits, in a whole run.
+func TestRun_typed_conditions_decide_through_the_real_deciders(t *testing.T) {
+	pol := `{"version":1,"rules":[
+	  {"action_types":["file_edit"],"paths":["docs/**"],"effect":"approve"},
+	  {"action_types":["file_edit"],"paths":["notes/**"],"max_lines":2,"effect":"approve"},
+	  {"action_types":["file_edit"],"paths":["gen/**"],"new_files_only":true,"effect":"approve"},
+	  {"action_types":["file_edit"],"paths":["old/**"],"no_deletions":true,"effect":"approve"},
+	  {"action_types":["file_edit"],"paths":["few/**"],"max_files":1,"effect":"approve"}]}`
+	base := map[string]string{"gen/a.txt": "a\n", "old/a.txt": "a\n", "old/b.txt": "b\n"}
+	two := func(a, b string) policysim.Proposal {
+		return policysim.Proposal{Edits: []policysim.Edit{{File: a, Content: "1\n"}, {File: b, Content: "2\n"}}, Expect: policysim.Human}
+	}
+	res, err := policysim.Run(context.Background(), writePolicy(t, pol), policysim.File{Scenarios: []policysim.Scenario{
+		{Name: "docs are approved, a markdown file under .github goes to a person", Proposals: []policysim.Proposal{
+			one("docs/a.md", "x\n", policysim.Approve), one(".github/x.md", "x\n", policysim.Human), one("DOCS/b.md", "x\n", policysim.Approve)}},
+		{Name: "a small change only", Proposals: []policysim.Proposal{one("notes/a.md", "1\n2\n", policysim.Approve), one("notes/b.md", "1\n2\n3\n", policysim.Human)}},
+		{Name: "new files only", Base: base, Proposals: []policysim.Proposal{
+			one("gen/new.txt", "n\n", policysim.Approve),
+			{Edits: []policysim.Edit{{File: "gen/a.txt", Search: "a\n", Replace: "z\n"}}, Expect: policysim.Human}}},
+		{Name: "no deletions", Base: base, Proposals: []policysim.Proposal{
+			{Edits: []policysim.Edit{{File: "old/a.txt", Search: "a\n", Replace: "z\n"}}, Expect: policysim.Approve},
+			{Edits: []policysim.Edit{{File: "old/b.txt", Delete: true}}, Expect: policysim.Human}}},
+		{Name: "at most one file", Proposals: []policysim.Proposal{one("few/a", "1\n", policysim.Approve), two("few/b", "few/c")}},
+	}})
+	require.NoError(t, err)
+	for _, r := range res {
+		assert.True(t, r.Pass, "%s #%d: %s (%s)", r.Scenario, r.Index, r.Detail, r.Reason)
+	}
 	assert.Len(t, res, 11)
 }
 
@@ -62,7 +96,7 @@ func TestRun_expectations_fail_both_ways(t *testing.T) {
 	res, err := policysim.Run(context.Background(), writePolicy(t, testPolicy), policysim.File{Scenarios: []policysim.Scenario{
 		{Name: "a forbidden approval", Proposals: []policysim.Proposal{one("docs/a.md", "x\n", policysim.Human)}},           // the rule approves it
 		{Name: "an unintended refusal", Proposals: []policysim.Proposal{one("src/x.go", "package x\n", policysim.Approve)}}, // a person is asked
-		{Name: "an unintended reject", Proposals: []policysim.Proposal{one(".env", "A=1\n", policysim.Approve)}},
+		{Name: "an unintended reject", Proposals: []policysim.Proposal{one("scratch.tmp", "A=1\n", policysim.Approve)}},
 		{Name: "the wrong reason", Proposals: []policysim.Proposal{
 			{Edits: []policysim.Edit{{File: "notes.md", Content: "AKIAABCDEFGHIJKLMNOP\n"}}, Expect: policysim.Human, ReasonContains: "dependencies"}}},
 	}})

@@ -149,6 +149,13 @@ type LaunchEnded struct {
 	Class string `json:"class,omitempty"`
 }
 
+// LaunchAcknowledged is launch_acknowledged: a person's acknowledgement of a launch whose end was never established (ADR 0005,
+// amended), written without launching anything. It names the exact launch, so it cannot cover a later loss.
+type LaunchAcknowledged struct {
+	Attempt    int    `json:"attempt"`
+	Generation string `json:"generation"`
+}
+
 // The outcomes of a launch. The first three are established ends; the last two are not.
 const (
 	LaunchExited       = "exited"                // the agent ended by itself
@@ -273,6 +280,28 @@ type AwaitingReview struct {
 	Files        map[string]string `json:"files"`
 	PhaseChecked string            `json:"phase_checked"` // the entry of the checks it rests on
 	Parked       int               `json:"parked"`
+	// DeliveryRefused is, for a run that was to deliver by policy and fell back to the owner, the condition that sent it (ADR 0012,
+	// section 2): absent for a run that offers its change as a matter of course.
+	DeliveryRefused string `json:"delivery_refused,omitempty"`
+}
+
+// ModePolicy is the delivery mode of a delivery_authorized: the change was delivered by a rule of the owner's signed policy, with
+// no person reviewing the whole change (ADR 0012).
+const ModePolicy = "policy"
+
+// DeliveryAuthorized is delivery_authorized (ADR 0012): an away run in policy delivery mode found every condition of delivering
+// without a person met, and says on what: the phase_checked entry whose checks passed on Tree, the digest of exactly the approved
+// files, the digest of the terms the run was bound to, the digest of the signed policy whose rules approved them, and the mode.
+type DeliveryAuthorized struct {
+	PhaseChecked string            `json:"phase_checked"`
+	Tree         string            `json:"tree"`
+	Files        map[string]string `json:"files"`
+	TermsSHA256  string            `json:"terms_sha256"`
+	Policy       string            `json:"policy"`
+	Mode         string            `json:"mode"`
+
+	Index int    `json:"-"` // its position on the chain, from 1
+	Entry string `json:"-"` // its entry hash
 }
 
 // ReviewDecided is review_accepted or review_rejected: the owner's decision on an offered review.

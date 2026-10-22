@@ -11,6 +11,11 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
+// AttachNoteForTest drives the note writer a run uses for its certificate and ledger.
+func AttachNoteForTest(repoPath, ref, file, commit string) error {
+	return AttachNote(repoPath, ref, file, commit)
+}
+
 // ExportedTimePtr wraps the unexported timePtr helper.
 func ExportedTimePtr(t time.Time) *time.Time { return timePtr(t) }
 

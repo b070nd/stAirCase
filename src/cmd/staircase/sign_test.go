@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/certificate"
 	"github.com/b070nd/stAirCase/src/internal/crypto"
+	"github.com/b070nd/stAirCase/src/internal/wslock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,6 +63,35 @@ func TestSign_two_party(t *testing.T) {
 	require.NoError(t, signHandler(nil, []string{commit}))
 	verifySigners = signers(requesterAllowed)
 	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "below the required 4")
+}
+
+// TestSign_waits_for_the_repository_notes_lock: signing rewrites the certificate note, so it takes the same repository lock as a
+// delivery's note writer and waits for its turn; it does not write while another process holds the lock.
+func TestSign_waits_for_the_repository_notes_lock(t *testing.T) {
+	_, _, git := sessionRepo(t)
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	commit := strings.TrimSpace(git("rev-parse", "staircase/run-1"))
+	bobKey, _ := sshKey(t, "bob@example.com")
+	signKey, signPrincipal = bobKey, "bob@example.com"
+	before := git("notes", "--ref=staircase", "show", commit)
+
+	lockPath := filepath.Join(strings.TrimSpace(git("rev-parse", "--path-format=absolute", "--git-common-dir")), "staircase-notes.lock")
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	require.NoError(t, err)
+	defer func() { _ = lock.Close() }()
+	require.NoError(t, wslock.LockExclusive(lock.Fd()))
+
+	done := make(chan error, 1)
+	go func() { done <- signHandler(nil, []string{commit}) }()
+	select {
+	case err := <-done:
+		t.Fatalf("sign finished while another process held the notes lock: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	assert.Equal(t, before, git("notes", "--ref=staircase", "show", commit), "nothing was written while the lock was held")
+	require.NoError(t, wslock.Unlock(lock.Fd()))
+	require.NoError(t, <-done)
+	assert.NotEqual(t, before, git("notes", "--ref=staircase", "show", commit), "the signature was added once the lock was free")
 }
 
 // TestVerify_authenticated_initiator: a run started with --sign-approvals

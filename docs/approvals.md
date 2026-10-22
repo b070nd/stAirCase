@@ -36,14 +36,23 @@ screen does not show line by line.
 4. **Where your checks are defined.** A change to a protected path (see
    [below](#checks-the-agent-cannot-weaken)) goes to a person, whatever the rules say, and is
    parked while you are away.
-5. **Your policy** rules (`policy.json`) can approve or reject it automatically.
-6. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
-   that are not sensitive (see [below](#approving-the-task-not-every-step)); with
+5. **Sensitive paths.** A file edit that touches a sensitive path goes to a person,
+   whatever the rules say, in every run, and is parked while you are away. The
+   sensitive paths are CI and build files (`.github/`, `.gitlab/`, `.circleci/`,
+   `.husky/`, `Makefile`, `justfile`, `Dockerfile` and the like), dependency files
+   (`go.mod`, `package.json`, lock files), `.env` files, shell scripts (`*.sh`),
+   `CODEOWNERS` files at any depth, and Gemini's repository settings (`.gemini/`),
+   in any letter case. The reason names the path. A rule of your policy that
+   approved such an edit before now sends it to a person; nothing else about your
+   policy changes (see [compatibility](compatibility.md#how-the-six-contracts-change)).
+6. **Your policy** rules (`policy.json`) can approve or reject it automatically.
+7. **The agreed task**, with `--approve-in-scope`, approves in-scope file changes
+   (a sensitive path never gets here, see 5; see [below](#approving-the-task-not-every-step)); with
    `--approve-on-evidence` it approves them only when the evidence is there (see
    [below](#approving-on-evidence)).
-7. **A validator model** or a panel of them, if you turned one on, can decide
+8. **A validator model** or a panel of them, if you turned one on, can decide
    in-scope file changes.
-8. **A person** decides everything else.
+9. **A person** decides everything else.
 
 Shell commands always go to a person.
 
@@ -238,8 +247,24 @@ goes on to the validator or a person.
 | `action_types` | `file_edit` (files; shell commands are never auto-approved by a rule: the one exception is a command you declared for an away run with `--away-command`, see [away](away.md#declared-commands)) |
 | `allowed_extensions` | every file in the proposal has one of these extensions |
 | `agent_names` | the proposal comes from one of these agents |
-| `min_confidence` | the agent's confidence is at least this (0–1) |
+| `min_confidence` | the agent's confidence is at least this (0 to 1) |
+| `paths` | every changed file, a deleted one too, matches one of these globs, in any letter case. `docs/**` is everything under `docs/`; `**/*.md` is Markdown anywhere; `*.md` alone matches a root file only |
+| `max_lines` | the proposal adds or removes at most this many lines (0, or absent, is no limit) |
+| `max_files` | the proposal changes at most this many files (0, or absent, is no limit) |
+| `new_files_only` | every changed file is new: the run's base commit does not have it |
+| `no_deletions` | no changed file is deleted |
 | `effect` | `approve` (default) or `reject` |
+
+The last five are about the change itself, and stAirCase measures them: it derives the files and
+counts the lines from the edits, so a rule never trusts what an agent says it changed. Each is
+checked for every changed file; a proposal that changes no file satisfies them, as it satisfies
+`allowed_extensions`. No rule, whatever its fields, ever matches a shell command or a tool call.
+For example, `{ "action_types": ["file_edit"], "paths": ["docs/**"], "max_lines": 40, "no_deletions": true }`
+approves a small addition or edit under `docs/` and sends `.github/x.md`, or a deletion, to a person.
+
+A policy file that uses these fields keeps `"version": 1`, and an older stAirCase refuses it
+(it does not know the fields) instead of reading the rule without them. A file without them
+decides exactly as before.
 
 `limits.max_auto_approved` and `limits.max_total_yields` send every later proposal to
 a person once reached. The drift limits also live here - see
@@ -247,7 +272,9 @@ a person once reached. The drift limits also live here - see
 
 The file is strict: if it does not parse, or has a field stAirCase does not know,
 the run stops before it starts. A reject rule with no conditions at all would reject
-everything; it is refused unless you set `"allow_blanket_deny": true`.
+everything; it is refused unless you set `"allow_blanket_deny": true`. A reject rule whose
+only conditions are `paths`, `max_lines`, `max_files`, `new_files_only` or `no_deletions` is a
+targeted rule, not a blanket deny.
 
 Test a rule on your history before you use it. `staircase policy test` replays every
 proposal recorded in the workspace against a policy file and shows what it would have
@@ -268,7 +295,28 @@ staircase policy test new-policy.json
 
 Shell commands, refused proposals and proposals that drift or a guard sent to a person
 are never the policy's to decide, so they stay as they were. The replay applies the
-rules, not the per-run limits.
+rules, not the per-run limits. A rule's conditions on paths, lines, files, new files and
+deletions are checked against the edits each proposal recorded, so line counts and new
+files are estimates in the replay; scenarios (below) check them exactly.
+
+The replay also shows what an upgrade changes in your own history. The paths that hold a
+run's checks' definitions (read from the terms that run saved) and the
+sensitive paths (item 5 of the order above) go to a person whatever a rule says, so a past decision
+there that no person made (a rule, the agreed task, a reviewer model or evidence) is listed
+in a section of its own:
+
+```
+  3 would now go to a person, whatever the policy says
+
+⚠️  these were decided without a person, and a protected or sensitive path now sends them to one:
+  run #12: Makefile by coder (approved by policy; it changes Makefile, which holds the definition of a check: a person decides, whatever the policy says)
+  run #12: .github/workflows/ci.yml by coder (approved by policy; it changes .github/workflows/ci.yml, a sensitive path: a person decides, whatever the policy says)
+```
+
+A past approval of a Makefile edit in a run whose check was `make check`, or of a CI file,
+is reported this way. A person's own decision on such a path stays as it was and is not
+counted as a difference the policy makes. Run the report before you upgrade, and add
+`--protect` or a rule's `paths` condition where the list shows an area you want a person on.
 
 Replay shows history; it does not fail. To keep a policy from drifting, write the outcomes
 you require as scenarios and run them in CI:
@@ -331,7 +379,7 @@ of the agreed task, and recorded as decided by `task`. You still see:
 - **the whole change once, at the end**, before anything is committed. Rejecting it
   commits nothing.
 
-Your policy rules still come first. This works with `claude`, `codex` and `review`.
+Your policy rules still come first, except on sensitive paths, which a person always decides. This works with `claude`, `codex` and `review`.
 
 ## Approving on evidence
 
@@ -361,6 +409,13 @@ rejects rejects. Nothing is approved on the absence of evidence, which is why yo
 least one check or validator. Nothing is sampled for you either: you still see anything
 outside the scope, sensitive files, guard hits and shell commands, and **you approve the
 whole change once at the end**.
+
+A change approved on evidence is never delivered without you, not even by
+[delivery by policy](away.md#while-you-are-away): that mode delivers only what a rule of your signed
+policy approved, and sends a run that holds anything approved on evidence, the agreed task or a
+model, or anything parked, to your review. Delivery by policy suits work whose correctness a rule
+already decided (documentation, changelog entries, generated or formatted files, and the areas you
+name with a rule's `paths`); code that only passed its checks still waits for your review.
 
 ### Checks the agent cannot weaken
 
