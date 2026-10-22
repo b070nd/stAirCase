@@ -56,20 +56,13 @@ func (e *AgentEnv) Done(ctx context.Context) string {
 // copied over: the state a commit would have, where a check can write
 // without touching the worktree.
 func snapshot(worktree string) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "staircase-check-")
-	if err == nil {
-		err = os.Remove(dir) // git worktree add creates it
-	}
+	dir, cleanup, err := scratchCheckout(worktree, "HEAD", "staircase-check-")
 	if err != nil {
 		return "", nil, err
 	}
 	git := func(args ...string) ([]byte, error) {
 		return exec.Command("git", append([]string{"-C", worktree, "-c", "core.hooksPath=/dev/null"}, args...)...).Output()
 	}
-	if _, err := git("worktree", "add", "--detach", "--quiet", dir, "HEAD"); err != nil {
-		return "", nil, fmt.Errorf("checkout for the checks: %w", err)
-	}
-	cleanup := func() { _, _ = git("worktree", "remove", "--force", dir) }
 	status, err := git("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
 	if err != nil {
 		cleanup()

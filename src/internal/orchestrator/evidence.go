@@ -6,7 +6,6 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -50,28 +49,9 @@ func (g *evidenceGate) runChecks(ctx context.Context, next map[string]*approvedF
 // state checks out the base commit in a scratch directory and lays the approved
 // changes and next over it.
 func (g *evidenceGate) state(next map[string]*approvedFile) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "staircase-evidence-")
-	if err == nil {
-		err = os.Remove(dir) // git worktree add creates it
-	}
+	dir, cleanup, err := scratchCheckout(g.approvals.repo.path, g.approvals.base.Hash.String(), "staircase-evidence-")
 	if err != nil {
 		return "", nil, err
-	}
-	repo := g.approvals.repo.path
-	err = withWorktreeLock(repo, func() error {
-		out, err := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", "--quiet", dir, g.approvals.base.Hash.String()).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("checkout for the checks: %w: %s", err, strings.TrimSpace(string(out)))
-		}
-		return nil
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup := func() {
-		_ = withWorktreeLock(repo, func() error {
-			return exec.Command("git", "-C", repo, "worktree", "remove", "--force", dir).Run()
-		})
 	}
 	merged := maps.Clone(g.approvals.files)
 	maps.Copy(merged, next)

@@ -30,13 +30,7 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 	if len(checks) == 0 {
 		return nil
 	}
-	dir, err := os.MkdirTemp("", "staircase-check-")
-	if err == nil {
-		err = os.Remove(dir) // git worktree add creates it
-	}
-	if err == nil {
-		err = exec.Command("git", "-C", repo.path, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", "--quiet", dir, commit).Run()
-	}
+	dir, cleanup, err := scratchCheckout(repo.path, commit, "staircase-check-")
 	var out []certificate.Check
 	for _, command := range checks {
 		c := certificate.Check{Command: command, ExitCode: -1}
@@ -57,7 +51,9 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 		_ = r.log(runID).Append(history.CheckRan{Command: command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed})
 		out = append(out, c)
 	}
-	_ = exec.Command("git", "-C", repo.path, "worktree", "remove", "--force", dir).Run()
+	if cleanup != nil {
+		cleanup()
+	}
 	return out
 }
 
