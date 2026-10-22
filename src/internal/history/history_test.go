@@ -487,7 +487,7 @@ func TestReplay_reads_the_votes(t *testing.T) {
 	vote := func(entry, model, verdict string) map[string]any {
 		return map[string]any{"model": model, "request_entry": entry, "verdict": verdict, "reason": "r"}
 	}
-	c := bound().req("file_edit").req("file_edit").req("file_edit")
+	c := panelRun(3)
 	r1, r2, r3 := c.events[1].EventHash, c.events[2].EventHash, c.events[3].EventHash
 	c = c.add("validator_voted", vote(r1, "a", VoteApprove)).add("validator_voted", vote(r1, "b", VoteApprove)).
 		add("validator_voted", vote(r2, "a", VoteReject)).add("validator_voted", vote(r2, "b", VoteApprove)).
@@ -498,4 +498,68 @@ func TestReplay_reads_the_votes(t *testing.T) {
 	assert.Equal(t, "b", h.VotesOn(r3)[1].Model)
 	votes, proposals, unsettled := h.VoteSummary()
 	assert.Equal(t, []int{6, 3, 2}, []int{votes, proposals, unsettled})
+}
+
+// panelRun is a run that asked the models "a" and "b", with n requests waiting.
+func panelRun(n int) *events {
+	c := (&events{}).add("run_bound", map[string]any{"base_sha": "b", "branch": "refs/heads/staircase/run-1", "worktree": "w", "validator_models": []string{"a", "b"}})
+	for range n {
+		c.req("file_edit")
+	}
+	return c
+}
+
+func (c *events) vote(request int, model, verdict string) *events {
+	return c.add("validator_voted", map[string]any{"model": model, "request_entry": c.events[request].EventHash, "verdict": verdict, "reason": "r"})
+}
+
+func (c *events) panelDecided(request, seq int, source string, approved bool) *events {
+	return c.add("yield_decided", map[string]any{"seq": seq, "source": source, "agent": "coder", "action_type": "file_edit", "approved": approved,
+		"request_sha256": "r", "base_sha": "b", "request_entry": c.events[request].EventHash})
+}
+
+// TestReplay_a_decision_by_the_reviewer_models_rests_on_their_votes (ADR 0014, section 3): where a run declared its panel, a decision by
+// `validator:` needs one vote from each model on its request, all agreeing with it; what no run can have written is refused with the
+// entry that breaks the rule. Chains that declared no panel read as before.
+func TestReplay_a_decision_by_the_reviewer_models_rests_on_their_votes(t *testing.T) {
+	const panel = "validator:a+b"
+	accepted := map[string]*events{
+		"both approve":                             panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, panel, true),
+		"both reject":                              panelRun(1).vote(1, "a", VoteReject).vote(1, "b", VoteReject).panelDecided(1, 1, panel, false),
+		"a split, a person decided":                panelRun(1).vote(1, "a", VoteReject).vote(1, "b", VoteApprove).panelDecided(1, 1, "operator", true),
+		"a model failed, a person decided":         panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteError).panelDecided(1, 1, "operator", true),
+		"all approved, sampled for a person":       panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, "operator", true),
+		"no panel asked (two rejections in a row)": panelRun(1).panelDecided(1, 1, "operator", false),
+		"two proposals, each on its own votes": panelRun(2).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).vote(2, "a", VoteReject).vote(2, "b", VoteReject).
+			panelDecided(1, 1, panel, true).panelDecided(2, 2, panel, false),
+		"a chain from before the votes": bound().req("file_edit").panelDecided(1, 1, "validator:a+b", true),
+	}
+	for name, c := range accepted {
+		t.Run("accepts "+name, func(t *testing.T) { c.replay(t) })
+	}
+	refused := map[string]struct {
+		c      *events
+		entry  int
+		reason string
+	}{
+		"no votes at all":              {panelRun(1).panelDecided(1, 1, panel, true), 3, "has no vote on it"},
+		"one model missing":            {panelRun(1).vote(1, "a", VoteApprove).panelDecided(1, 1, panel, true), 4, "b has no vote"},
+		"a vote against the decision":  {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteReject).panelDecided(1, 1, panel, true), 5, "b voted reject"},
+		"approved on a failed model":   {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteError).panelDecided(1, 1, panel, true), 5, "b voted error"},
+		"another panel's name":         {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, "validator:a", true), 5, "run's panel is validator:a+b"},
+		"a model that is not on it":    {panelRun(1).vote(1, "c", VoteApprove), 3, "not on the run's panel"},
+		"a model that voted twice":     {panelRun(1).vote(1, "a", VoteApprove).vote(1, "a", VoteApprove), 4, "voted twice"},
+		"a vote on no waiting request": {panelRun(1).vote(1, "a", VoteApprove).vote(1, "b", VoteApprove).panelDecided(1, 1, panel, true).vote(1, "a", VoteApprove), 6, "names no request that waits"},
+		"a verdict that is none":       {panelRun(1).vote(1, "a", "maybe"), 3, "not approve, reject or error"},
+		"votes of a run with no panel": {bound().req("file_edit").vote(1, "a", VoteApprove), 3, "declared no panel"},
+	}
+	for name, tc := range refused {
+		t.Run("refuses "+name, func(t *testing.T) {
+			_, err := replay(tc.c.events)
+			var ge *GrammarError
+			require.ErrorAs(t, err, &ge)
+			assert.Equal(t, tc.entry, ge.Index, "the entry that breaks the rule")
+			assert.Contains(t, ge.Reason, tc.reason)
+		})
+	}
 }

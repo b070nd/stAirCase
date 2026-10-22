@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/chain"
@@ -380,6 +381,12 @@ func replay(events []domain.RunEventLog) (History, error) {
 			if err := read(&v.ValidatorVoted); err != nil {
 				return h, err
 			}
+			if s := firstOf(ended, agentEnded); s != "" {
+				return h, fail("a reviewer model voted after %s", s)
+			}
+			if err := voteRefused(h, pending, v.ValidatorVoted); err != "" {
+				return h, fail("%s", err)
+			}
 			v.Index, v.Entry = n, e.EventHash
 			h.Votes = append(h.Votes, v)
 		case "yield_decided":
@@ -409,6 +416,9 @@ func replay(events []domain.RunEventLog) (History, error) {
 				}
 				d.Request = pending[at]
 				pending = slices.Delete(pending, at, at+1)
+				if why := panelDecisionRefused(h, d); why != "" {
+					return h, fail("%s", why)
+				}
 			}
 			h.Decisions = append(h.Decisions, d)
 		case "phase_checked":
@@ -776,4 +786,53 @@ func ReadRows(store *persistence.Store, runID int64) (Rows, error) {
 		return Rows{}, err
 	}
 	return Rows{Entries: entries, Broken: chain.Check(entries)}, nil
+}
+
+// voteRefused says why v is not a vote a run can have written, or "" when it is: the run declared a panel, v is by a model on it,
+// it names a request waiting for its decision, and the model has not voted on that request already.
+func voteRefused(h History, pending []*Request, v ValidatorVoted) string {
+	switch {
+	case len(h.Bound.ValidatorModels) == 0:
+		return fmt.Sprintf("%s voted, and the run declared no panel of reviewer models", v.Model)
+	case !slices.Contains(h.Bound.ValidatorModels, v.Model):
+		return fmt.Sprintf("%s voted and is not on the run's panel (%s)", v.Model, strings.Join(h.Bound.ValidatorModels, ", "))
+	case v.Verdict != VoteApprove && v.Verdict != VoteReject && v.Verdict != VoteError:
+		return fmt.Sprintf("the vote of %s is %q, which is not approve, reject or error", v.Model, v.Verdict)
+	case !slices.ContainsFunc(pending, func(r *Request) bool { return r.Entry == v.RequestEntry }):
+		return fmt.Sprintf("the vote of %s names no request that waits for a decision", v.Model)
+	case slices.ContainsFunc(h.Votes, func(o Vote) bool { return o.RequestEntry == v.RequestEntry && o.Model == v.Model }):
+		return fmt.Sprintf("%s voted twice on the same proposal", v.Model)
+	}
+	return ""
+}
+
+// panelDecisionRefused says why d is not a decision by the reviewer models that a run can have written, or "" when it is: a decision
+// by `validator:` of a run that declared a panel is by that whole panel, and rests on one vote from each model on its request, every
+// one agreeing with it. A decision by a person after a split or a failed model is not one of these, and votes that no decision by the
+// panel used (the sampled review) are allowed.
+func panelDecisionRefused(h History, d Decision) string {
+	models := h.Bound.ValidatorModels
+	if len(models) == 0 || !strings.HasPrefix(d.Source, "validator:") {
+		return ""
+	}
+	if want := "validator:" + strings.Join(models, "+"); d.Source != want {
+		return fmt.Sprintf("proposal %d was decided by %s, and the run's panel is %s", d.Seq, d.Source, want)
+	}
+	want := VoteReject
+	if d.Approved {
+		want = VoteApprove
+	}
+	voted := map[string]string{}
+	for _, v := range h.VotesOn(d.RequestEntry) {
+		voted[v.Model] = v.Verdict
+	}
+	for _, m := range models {
+		switch got, ok := voted[m]; {
+		case !ok:
+			return fmt.Sprintf("proposal %d was decided by the reviewer models and %s has no vote on it", d.Seq, m)
+		case got != want:
+			return fmt.Sprintf("proposal %d was decided as %s by the reviewer models and %s voted %s", d.Seq, want, m, got)
+		}
+	}
+	return ""
 }

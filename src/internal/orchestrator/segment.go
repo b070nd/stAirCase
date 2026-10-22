@@ -150,7 +150,8 @@ func (firstSegment) checkout(s *runState) error {
 	if opts.Plan != nil {
 		bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
 	}
-	if opts.Away { // the brief the agent is given is bound before it starts
+	bound.ValidatorModels = opts.ValidatorModels // the panel the replay holds every decision by the reviewer models to (ADR 0014)
+	if opts.Away {                               // the brief the agent is given is bound before it starts
 		bound.AwayBrief = &history.AwayBrief{Version: AwayBriefVersion, SHA256: sha256Hex([]byte(AwayBrief))}
 	}
 	if len(opts.AwayCommands) > 0 { // so are the commands it may run without asking

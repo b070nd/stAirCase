@@ -18,7 +18,7 @@ Events you will see:
 
 | Event | Meaning |
 |---|---|
-| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
+| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), the reviewer models it asked when it has a panel (`validator_models`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
 | `yield_request` | an agent proposed a change or a command |
 | `yield_decided` | the decision: who decided (`policy`, `operator`, `validator:<model>`, …), the reason, the `yield_request` entry it answers (`request_entry`), and for an approved change the hash of the exact approved content. A final review (`action_type` `final_review`, a finished run's or a recovery's) answers no request and holds the digest of the whole change put to the person |
 | `shell_exec_rejected` | a shell command was refused because the run did not allow shell commands |
@@ -102,6 +102,12 @@ refuses a chain that breaks any of these rules, and names the entry that breaks 
 - Launches are numbered from 1, one after the other. A launch's outcome names its attempt and generation. No agent is
   launched, and the run is not resumed, while an earlier launch has no outcome. No agent is launched after
   `commit_prepared`, and no outcome is written after the chain ended.
+- A run that asked reviewer models names them on `run_bound` (`validator_models`). Its chain holds a vote
+  (`validator_voted`) only from one of those models, on a request that waits for its decision, once for each model. A decision
+  by `validator:<models>` rests on one vote from each model on its request, every one agreeing with it, and is by the whole
+  panel; a split, or a model that failed, can only be followed by a person's decision. Votes that no decision by the models
+  used (a sampled review) are allowed. A chain written before the field is read as it always was
+  ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)).
 
 A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
 often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or

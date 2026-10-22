@@ -13,7 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   reject or error, its reason and the digest of its whole reply. Until now the chain held only the outcome and a line of text, and
   nothing at all of a disagreement a person settled or of a model that failed. Old chains read as they did, and an older stAirCase
   reads a chain with the new entries and ignores them. The votes are not signed (a model has no key); the page on approvals says
-  so. What to do: nothing ([approvals](docs/approvals.md#letting-a-model-review-changes-the-validator), [audit](docs/audit.md)).
+  so. A run that asks a panel also names the models on `run_bound` (`validator_models`), and the replay then holds it to
+  them: a decision by the reviewer models needs one vote from each, on its request, all agreeing with it, a vote from a model that is
+  not on the panel is refused, and a split or a failed model can only be followed by a person's decision. A chain written before
+  this reads as it did. What to do: nothing ([approvals](docs/approvals.md#letting-a-model-review-changes-the-validator), [audit](docs/audit.md#what-a-run-can-have-written)).
 
 - **Delivery by policy, chosen in the run's terms (`--deliver policy`, `--deliver-path`).** An away run can now be started with
   the delivery mode `policy` and a delivery scope. The terms refuse it unless the run is away, has no `--validator`, names a delivery
