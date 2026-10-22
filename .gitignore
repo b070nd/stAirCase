@@ -23,8 +23,9 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
-# Built Go binaries under src/ (CHECK 2.2.3)
+# Built Go binaries under src/ (CHECK 2.2.3), and the one `go build` leaves in the CLI directory
 src/staircase
+/src/cmd/staircase/staircase
 
 # Note: tests/fixtures/repos/*.tar.gz are intentional test fixtures (pre-built
 # git repository snapshots required by the orchestrator integration tests).

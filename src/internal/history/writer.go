@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
 	"io"
 	"time"
 
@@ -34,8 +35,8 @@ type Settings struct {
 	OnFail func(event string, err error)
 }
 
-// Writer appends a run's events to its audit chain: the one way an entry gets there (ADR 0014). Story acceptance is the named
-// exception: persistence writes its entry inside the transaction that accepts the story.
+// Writer appends a run's events to its audit chain: the one way an entry gets there (ADR 0014). The acceptance of a story is the one
+// entry that is inserted by persistence, inside the transaction that accepts the story; its payload is still an event's (Prepare).
 type Writer struct {
 	store *persistence.Store
 	runID int64
@@ -118,4 +119,19 @@ func (w *Writer) insert(name, payload string, proceed func() error) (string, err
 	}
 	obs.AuditChainLength.Inc()
 	return log.EventHash, nil
+}
+
+// Prepare is the entry for e, for the one write that cannot go through a Writer: the entry that has to be inserted in the same
+// transaction as the change it records (the acceptance of a story). It is shaped and sized as the Writer would, and the caller
+// inserts it with the chain's own hash.
+func Prepare(e Event) (persistence.AuditEntry, error) {
+	name := e.eventName()
+	payload, err := Encode(name, e)
+	if err != nil {
+		return persistence.AuditEntry{}, fmt.Errorf("the payload of %s: %w", name, err)
+	}
+	if err := chain.CheckSize(name, payload); err != nil {
+		return persistence.AuditEntry{}, err
+	}
+	return persistence.AuditEntry{Type: name, Payload: payload}, nil
 }

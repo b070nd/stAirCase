@@ -44,8 +44,9 @@ Events are written through one `history.Writer`, whose `Append` takes a typed ev
 needs a type first. All thirty-eight event types have one, including the twelve that had none. A golden
 test runs on what the writer produces, and a fixture chain written by the code before this change is reproduced byte for byte: no
 hash changes. Scrubbing and the debug sink stay where they are, as settings of the writer the agent host uses, which also writes the value as it
-marshals (`Plain`), as it always has. One entry does not pass through the writer: the acceptance of a story (`story_accepted`), which
-is written inside the transaction that accepts it.
+marshals (`Plain`), as it always has. One entry is not appended by the writer: the acceptance of a story (`story_accepted`) is inserted by the store, inside the
+transaction that accepts the story, so that the story, the case and the chain change together. Its payload is still an event's
+(`history.Prepare` shapes and sizes it, and the store hashes it in), so its keys are a type's like every other entry's.
 
 ### 3. Reviewer votes
 
@@ -73,6 +74,25 @@ contract, and a verifier in CI has the certificate and ledger but not the chain.
   own.
 - **A threshold of the panel (a majority) in place of unanimity.** Not taken: the measured weakness of the reviewer models is that
   they agree on a wrong "safe", not that they disagree (docs/evaluation).
+
+## The Writer's interface: three designs
+
+The interface was designed three ways before it was built, each by an agent given one constraint, and the choice was made while
+building (the owner had asked for the whole plan on one branch), not by the owner's pick. It is recorded so that it can be reopened.
+
+- **Minimal.** Two entry points, `Append` returning the entry's hash and `AppendIf`, a sealed `Event`, and a `Settings` value for the
+  one caller that is different (the agent host). Its settings are what was built.
+- **Flexible.** Options and observers, an explicit `Store` interface with an in-memory fake, and a registry that marks each event
+  as folded or ignored by the replay. Not taken: nothing but the agent host varies the writer, a second store adapter is a seam with
+  nothing on the other side, and the registry is global state. One idea of it was kept, as a test: every event type must have a line in
+  the golden test (`TestEvents_every_event_type_is_in_the_golden_test`).
+- **Common caller.** A writer bound to its run, so that the commonest call is `Append(event) error` with no run number and no name,
+  and `AppendHash` and `AppendIf` for the two rare cases. Its call shape was taken, and the settings of the first design.
+
+What the designs found, and the build kept: the agent host writes the value as it marshals (no `type` key, the order of its fields),
+which the orchestrator never did, so the writer has a `Plain` setting; an event name chosen at run time (`run_recovered` or
+`review_delivered`) is two types and a choice at the one place it is made; and two events, `signal_rated` and `done_checked`, have
+two shapes each, so two types carry each of those names.
 
 ## Consequences
 

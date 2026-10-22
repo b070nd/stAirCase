@@ -54,6 +54,7 @@ var events = map[string][]func() any{
 	"run_branch_moved":           {func() any { return &history.RunBranchMoved{} }},
 	"unapproved_worktree_change": {func() any { return &history.UnapprovedWorktreeChange{} }},
 	"validator_voted":            {func() any { return &history.ValidatorVoted{} }},
+	"story_accepted":             {func() any { return &history.StoryAccepted{} }},
 	"signal_rated":               {func() any { return &history.SignalRated{} }, func() any { return &history.SignalFailed{} }},
 	"check_ran":                  {func() any { return &history.CheckRan{} }},
 	"done_checked":               {func() any { return &history.DoneChecked{} }, func() any { return &history.DoneCheckFailed{} }},
@@ -64,7 +65,7 @@ var events = map[string][]func() any{
 
 // addedAfterTheFixture are the events written by code that came after the fixture was captured: no writer of the code before ADR 0014
 // produced them, so their bytes are pinned by a test of their own.
-var addedAfterTheFixture = map[string]bool{"validator_voted": true}
+var addedAfterTheFixture = map[string]bool{"validator_voted": true, "story_accepted": true}
 
 func fixtureEntries(t *testing.T) []domain.RunEventLog {
 	raw, err := os.ReadFile(filepath.Join("..", "chain", "testdata", "fixture_chain.json"))
@@ -220,4 +221,15 @@ func TestWriter_validator_voted(t *testing.T) {
 	assert.Equal(t, `{"model":"a/one","reason":"fine","reply_sha256":"d","request_entry":"e","type":"validator_voted","verdict":"approve"}`, got)
 	got = write(t, history.Settings{}, history.ValidatorVoted{Model: "b/two", RequestEntry: "e", Verdict: history.VoteError, Reason: "unreachable"})
 	assert.Equal(t, `{"model":"b/two","reason":"unreachable","request_entry":"e","type":"validator_voted","verdict":"error"}`, got, "a model that gave no reply has no digest")
+}
+
+// TestPrepare_story_accepted: the acceptance of a story is inserted by the store, inside the transaction that accepts it, and its
+// payload is the event's, byte for byte what the store wrote before it was a type.
+func TestPrepare_story_accepted(t *testing.T) {
+	e, err := history.Prepare(history.StoryAccepted{StoryID: 7, Actor: "alice"})
+	require.NoError(t, err)
+	assert.Equal(t, "story_accepted", e.Type)
+	assert.Equal(t, `{"actor":"alice","story_id":7,"type":"story_accepted"}`, e.Payload)
+	_, err = history.Prepare(history.StoryAccepted{StoryID: 7, Actor: strings.Repeat("a", chain.MaxPayload)})
+	require.ErrorIs(t, err, chain.ErrPayloadTooLarge)
 }

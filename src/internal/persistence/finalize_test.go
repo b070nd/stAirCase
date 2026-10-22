@@ -1,6 +1,9 @@
 package persistence_test
 
 import (
+	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/chain"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -83,7 +86,7 @@ func TestAcceptUserStory_completes_case_with_audit(t *testing.T) {
 	second, err := s.CreateUserStory(caseID, "second")
 	require.NoError(t, err)
 
-	_, _, err = s.AcceptUserStory(first.ID, "alice")
+	_, _, err = s.AcceptUserStory(first.ID, storyEntry(first.ID, "alice"))
 	require.ErrorContains(t, err, "no successful run", "acceptance requires delivered work")
 
 	run, err := s.CreateRun(caseID, 1, "main")
@@ -92,12 +95,12 @@ func TestAcceptUserStory_completes_case_with_audit(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.FinishRun(run.ID, persistence.RunStatusSuccess, time.Now(), "c0ffee"))
 
-	runID, status, err := s.AcceptUserStory(first.ID, "alice")
+	runID, status, err := s.AcceptUserStory(first.ID, storyEntry(first.ID, "alice"))
 	require.NoError(t, err)
 	assert.Equal(t, run.ID, runID)
 	assert.Equal(t, persistence.CaseStatusPending, status, "one story is still outstanding")
 
-	_, status, err = s.AcceptUserStory(second.ID, "alice")
+	_, status, err = s.AcceptUserStory(second.ID, storyEntry(second.ID, "alice"))
 	require.NoError(t, err)
 	assert.Equal(t, persistence.CaseStatusCompleted, status)
 	c, err := s.GetCase(caseID)
@@ -112,7 +115,7 @@ func TestAcceptUserStory_completes_case_with_audit(t *testing.T) {
 	assert.Equal(t, "c0ffee", logs[2].GitCommitHash, "acceptance is bound to the delivered commit")
 	require.NoError(t, s.VerifyChain(run.ID))
 
-	_, _, err = s.AcceptUserStory(999999, "alice")
+	_, _, err = s.AcceptUserStory(999999, storyEntry(999999, "alice"))
 	require.ErrorContains(t, err, "not found")
 }
 
@@ -132,7 +135,7 @@ func TestAcceptUserStory_is_atomic(t *testing.T) {
 	_, err = db.Exec(`CREATE TRIGGER reject_case_update BEFORE UPDATE ON cases BEGIN SELECT RAISE(ABORT, 'injected case failure'); END`)
 	require.NoError(t, err)
 
-	_, _, err = s.AcceptUserStory(story.ID, "alice")
+	_, _, err = s.AcceptUserStory(story.ID, storyEntry(story.ID, "alice"))
 	require.ErrorContains(t, err, "injected case failure")
 	stories, err := s.ListUserStoriesByCase(caseID)
 	require.NoError(t, err)
@@ -179,4 +182,26 @@ func TestFinishRun_concurrent_runs_never_hit_sqlite_busy(t *testing.T) {
 	for err := range errs {
 		require.NoError(t, err)
 	}
+}
+
+// storyEntry is the entry history prepares for the acceptance of a story.
+func storyEntry(storyID int64, actor string) persistence.AuditEntry {
+	return persistence.AuditEntry{Type: "story_accepted", Payload: fmt.Sprintf(`{"actor":%q,"story_id":%d,"type":"story_accepted"}`, actor, storyID)}
+}
+
+func TestAcceptUserStory_refuses_an_entry_too_big_for_the_chain(t *testing.T) {
+	s := newTestStore(t)
+	_, projectID, caseID := scaffold(t, s)
+	_, err := s.CreateSwarmTopology(projectID, "sup", "memory", "langgraph")
+	require.NoError(t, err)
+	story, err := s.CreateUserStory(caseID, "only")
+	require.NoError(t, err)
+	run, err := s.CreateRun(caseID, 1, "main")
+	require.NoError(t, err)
+	require.NoError(t, s.FinishRun(run.ID, persistence.RunStatusSuccess, time.Now(), ""))
+	_, _, err = s.AcceptUserStory(story.ID, persistence.AuditEntry{Type: "story_accepted", Payload: strings.Repeat("a", chain.MaxPayload+1)})
+	require.ErrorIs(t, err, chain.ErrPayloadTooLarge)
+	stories, err := s.ListUserStoriesByCase(caseID)
+	require.NoError(t, err)
+	assert.Equal(t, persistence.StoryStatusPending, stories[0].Status, "nothing was accepted")
 }

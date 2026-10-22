@@ -203,3 +203,11 @@ type ValidatorVoted struct {
 }
 
 func (ValidatorVoted) eventName() string { return "validator_voted" }
+
+// StoryAccepted is story_accepted: a person accepted a user story after verifying the work a run delivered.
+type StoryAccepted struct {
+	Actor   string `json:"actor"`
+	StoryID int64  `json:"story_id"`
+}
+
+func (StoryAccepted) eventName() string { return "story_accepted" }

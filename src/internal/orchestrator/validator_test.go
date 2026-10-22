@@ -279,4 +279,9 @@ func TestValidator_every_vote_is_on_the_chain(t *testing.T) {
 	st, err := orchestrator.NewRunner(r.Store, r.WsDir).StatusOf(r.Run.ID)
 	require.NoError(t, err)
 	assert.Equal(t, []int{6, 3, 2}, []int{st.Votes, st.VotedProposals, st.UnsettledProposals}, "the status counts the votes and the proposals a person settled")
+	require.Len(t, st.Panel, 3)
+	assert.Equal(t, []string{"validator:a/one+b/two", "operator", "operator"}, []string{st.Panel[0].DecidedBy, st.Panel[1].DecidedBy, st.Panel[2].DecidedBy})
+	assert.Equal(t, []string{"a/one", "b/two"}, []string{st.Panel[1].Votes[0].Model, st.Panel[1].Votes[1].Model})
+	assert.Equal(t, history.VoteReject, st.Panel[1].Votes[0].Verdict)
+	assert.Equal(t, []string{"b.txt"}, st.Panel[1].Paths)
 }
