@@ -139,6 +139,30 @@ func sealHandler(_ *cobra.Command, _ []string) error {
 	return session(l, "review", by, "seal", []string{fmt.Sprintf("staged changes by %s: %s", by, msg)})
 }
 
+// hooksOutsideTheTree refuses a hooks directory that is inside the working tree and not under the git directory (a `core.hooksPath` of
+// `.husky`, say): the hook would be an untracked file in the client's code, and nothing of stAirCase belongs there.
+func hooksOutsideTheTree(root, hooks string) error {
+	common, err := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
+	if err != nil {
+		return err
+	}
+	inside := func(dir, of string) bool {
+		rel, err := filepath.Rel(of, dir)
+		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	}
+	evaluated := func(p string) string {
+		if e, err := filepath.EvalSymlinks(p); err == nil {
+			return e
+		}
+		return p
+	}
+	if inside(evaluated(hooks), evaluated(strings.TrimSpace(string(common)))) || !inside(evaluated(hooks), evaluated(root)) {
+		return nil
+	}
+	return fmt.Errorf("git's hooks directory for this checkout is %s, inside the working tree (core.hooksPath); attach would leave an untracked file in your repository. "+
+		"Point core.hooksPath at a directory outside it (or unset it) and run staircase attach again; staircase attach --off still removes a hook it installed", hooks)
+}
+
 // attachMarker names the hook staircase attach installs.
 const attachMarker = "# staircase attach"
 
@@ -158,6 +182,11 @@ func attachHandler(_ *cobra.Command, _ []string) error {
 	hook := filepath.Join(hooks, "pre-commit")
 	cur, err := os.ReadFile(hook)
 	ours := err == nil && strings.Contains(string(cur), attachMarker)
+	if !attachOff {
+		if err := hooksOutsideTheTree(root, hooks); err != nil {
+			return err
+		}
+	}
 	if attachOff {
 		if ours {
 			if err := os.Remove(hook); err != nil {

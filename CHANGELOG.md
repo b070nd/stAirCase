@@ -198,6 +198,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`staircase attach` no longer leaves a file in your code.** With `core.hooksPath` pointing into the working tree (a `.husky` folder),
+  it wrote its hook as an untracked file there, though nothing of stAirCase is meant to be in your repository. It now refuses and names
+  the setting; `attach --off` still works. The attach page also says that `seal` takes `--allow`, which it already did, and that
+  `--check` runs in a throwaway checkout even with `--sandbox off`, so a directory your repository ignores is not in it
+  ([attach](docs/attach.md)). What to do: nothing.
 - **A dependency counts as done only when a run of it was delivered.** The gate `deps.deps_completed` asked a status column ("a run of the
   upstream project is SUCCESS at its current topology"), so a run row with no history and no commit satisfied it. It now reads each
   run's verified history, the way the status commands do, and counts a run only when its outcome is delivered: a run that ended without

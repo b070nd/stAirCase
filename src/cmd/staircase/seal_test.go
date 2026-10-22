@@ -145,3 +145,34 @@ func TestReportRecovery_is_honest_about_the_evidence(t *testing.T) {
 	assert.Contains(t, adopted.String(), "made its own commit before it was interrupted")
 	assert.Contains(t, adopted.String(), "The certificate says the run did not finish")
 }
+
+// TestAttach_refuses_a_hooks_directory_inside_the_working_tree: with core.hooksPath pointing into the repository (husky's directory,
+// say) the hook would be an untracked file in the client's code. attach refuses, names the setting, leaves the tree as it was, and
+// --off still works. A hooks directory outside the tree is fine.
+func TestAttach_refuses_a_hooks_directory_inside_the_working_tree(t *testing.T) {
+	repo, _, git := sessionRepo(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".husky"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".husky", "keep"), []byte("x\n"), 0o644))
+	git("add", ".husky/keep")
+	git("commit", "-q", "-m", "husky")
+	git("config", "core.hooksPath", ".husky")
+
+	err := attachHandler(nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "core.hooksPath")
+	assert.Contains(t, err.Error(), "inside the working tree")
+	assert.Empty(t, strings.TrimSpace(git("status", "--porcelain")), "nothing was written into the repository")
+	_, statErr := os.Stat(filepath.Join(repo, ".husky", "pre-commit"))
+	assert.True(t, os.IsNotExist(statErr))
+
+	attachOff = true
+	t.Cleanup(func() { attachOff = false })
+	require.NoError(t, attachHandler(nil, nil), "detaching is always possible")
+	attachOff = false
+
+	outside := t.TempDir()
+	git("config", "core.hooksPath", outside)
+	require.NoError(t, attachHandler(nil, nil))
+	assert.FileExists(t, filepath.Join(outside, "pre-commit"))
+	assert.Empty(t, strings.TrimSpace(git("status", "--porcelain")))
+}
