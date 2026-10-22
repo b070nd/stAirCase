@@ -121,3 +121,26 @@ func TestStatusLines_say_what_the_reviewer_models_did(t *testing.T) {
 	assert.Contains(t, lines, "did not settle 2")
 	assert.NotContains(t, strings.Join(statusLines(orchestrator.Status{Outcome: history.OutcomeAwaitingReview}), "\n"), "reviewers")
 }
+
+// TestStatusLines_show_each_model_s_verdict (ADR 0014, section 3): the screens a person decides from list what every reviewer model
+// said about a proposal and who decided it. The reasons are the models' own words: control characters are made visible, they stay on
+// one line and they are cut short; and a long list is cut, saying how many more there are.
+func TestStatusLines_show_each_model_s_verdict(t *testing.T) {
+	panel := []history.Panelled{{Seq: 2, Paths: []string{"b.txt", "c.txt"}, DecidedBy: "operator", Approved: true, Votes: []history.Vote{
+		{ValidatorVoted: history.ValidatorVoted{Model: "a/one", Verdict: history.VoteReject, Reason: "leaks a token\n\x1b[2Jall clear " + strings.Repeat("x", 200)}},
+		{ValidatorVoted: history.ValidatorVoted{Model: "b/two", Verdict: history.VoteApprove, Reason: "looks fine"}}}}}
+	lines := strings.Join(statusLines(orchestrator.Status{Outcome: history.OutcomeAwaitingReview, Votes: 2, VotedProposals: 1, UnsettledProposals: 1, Panel: panel}), "\n")
+	assert.Contains(t, lines, "proposal 2 (b.txt and 1 more): a/one reject (leaks a token")
+	assert.Contains(t, lines, "b/two approve (looks fine) -> approved by operator")
+	assert.NotContains(t, lines, "\x1b", "an escape sequence in a model's reason is shown, not obeyed")
+	assert.Contains(t, lines, "...", "a long reason is cut")
+
+	var many []history.Panelled
+	for i := range 20 {
+		many = append(many, history.Panelled{Seq: i + 1, DecidedBy: "validator:a", Votes: []history.Vote{{ValidatorVoted: history.ValidatorVoted{Model: "a", Verdict: history.VoteApprove, Reason: "ok"}}}})
+	}
+	text := strings.Join(panelLines(many), "\n")
+	assert.Contains(t, text, "proposal 12:")
+	assert.NotContains(t, text, "proposal 13:")
+	assert.Contains(t, text, "and 8 more proposal(s) with votes")
+}

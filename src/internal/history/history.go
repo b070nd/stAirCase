@@ -96,6 +96,31 @@ func (h History) VotesOn(requestEntry string) []Vote {
 	return out
 }
 
+// Panelled is a proposal the reviewer models voted on: its number and paths, their votes in the order they were asked, and who
+// decided it in the end (the models together, or a person when they split or one failed).
+type Panelled struct {
+	Seq       int
+	Paths     []string
+	Votes     []Vote
+	DecidedBy string // the decision's source
+	Approved  bool
+}
+
+// Panelled lists the proposals that have votes, in the order they were decided. A proposal still waiting for its decision is not
+// among them.
+func (h History) Panelled() []Panelled {
+	var out []Panelled
+	for _, d := range h.Decisions {
+		if d.Request == nil {
+			continue
+		}
+		if votes := h.VotesOn(d.Request.Entry); len(votes) > 0 {
+			out = append(out, Panelled{Seq: d.Seq, Paths: d.Paths, Votes: votes, DecidedBy: d.Source, Approved: d.Approved})
+		}
+	}
+	return out
+}
+
 // VoteSummary counts the reviewer models' votes: all of them, the proposals they were on, and the proposals the panel did not settle
 // (the models disagreed, or one gave no verdict), which went to a person.
 func (h History) VoteSummary() (votes, proposals, unsettled int) {

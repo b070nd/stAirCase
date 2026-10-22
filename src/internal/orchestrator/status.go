@@ -28,6 +28,7 @@ type Status struct {
 	// Votes, VotedProposals and UnsettledProposals are the reviewer models' verdicts on the chain, the proposals they were on, and the
 	// proposals the panel did not settle (the models disagreed, or one gave no verdict) and a person decided.
 	Votes, VotedProposals, UnsettledProposals int
+	Panel                                     []history.Panelled // each proposal they voted on, with their votes, for the screens that show them
 	// Failures are the launches that did not end well, each with its lifecycle class (rejected, host exit, storage trouble, cleanup
 	// failure, uncertain dispatch). They are about the agent's process, never about its checks or an acceptance.
 	Failures []history.Launch
@@ -69,6 +70,7 @@ func (r *Runner) StatusOf(runID int64) (Status, error) {
 	st.Failures = h.Failures()
 	st.Attempts, st.LostLaunches, st.Parked, st.Elapsed = h.Attempts(), h.Lost(), len(h.Parked()), h.Elapsed
 	st.Votes, st.VotedProposals, st.UnsettledProposals = h.VoteSummary()
+	st.Panel = h.Panelled()
 	for _, u := range h.Usage {
 		st.InputTokens += u.State.In
 		st.OutputTokens += u.State.Out

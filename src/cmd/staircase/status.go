@@ -35,7 +35,8 @@ func statusLines(st orchestrator.Status) []string {
 		if st.UnsettledProposals > 0 {
 			line += fmt.Sprintf("; the models did not settle %d (they disagreed, or one gave no verdict): a person decided", st.UnsettledProposals)
 		}
-		out = append(out, line+" (inspect log shows each)")
+		out = append(out, line)
+		out = append(out, panelLines(st.Panel)...)
 	}
 	elapsed := st.Elapsed.Round(time.Second)
 	switch {
@@ -119,4 +120,43 @@ func outcomeOf(runner *orchestrator.Runner, runID int64) string {
 		return "unreadable history"
 	}
 	return string(st.Outcome)
+}
+
+// maxPanelLines is how many proposals the status lists with the models' votes; inspect log shows every entry.
+const maxPanelLines = 12
+
+// panelLines is each proposal the reviewer models voted on, with every model's verdict and reason, newest decisions last. The reasons
+// are the models' own words, shown with their control characters made visible and cut short.
+func panelLines(panel []history.Panelled) []string {
+	var out []string
+	for i, p := range panel {
+		if i == maxPanelLines {
+			out = append(out, fmt.Sprintf("           ... and %d more proposal(s) with votes: staircase inspect log shows each", len(panel)-i))
+			break
+		}
+		var votes []string
+		for _, v := range p.Votes {
+			reason := strings.Join(strings.Fields(v.Reason), " ")
+			if r := []rune(reason); len(r) > 80 {
+				reason = string(r[:80]) + "..."
+			}
+			votes = append(votes, tui.Safe(fmt.Sprintf("%s %s (%s)", v.Model, v.Verdict, reason)))
+		}
+		verdict := "rejected"
+		if p.Approved {
+			verdict = "approved"
+		}
+		out = append(out, fmt.Sprintf("           proposal %d%s: %s -> %s by %s", p.Seq, pathsOf(p.Paths), strings.Join(votes, "; "), verdict, tui.Safe(p.DecidedBy)))
+	}
+	return out
+}
+
+func pathsOf(paths []string) string {
+	switch len(paths) {
+	case 0:
+		return ""
+	case 1:
+		return " (" + tui.Safe(paths[0]) + ")"
+	}
+	return fmt.Sprintf(" (%s and %d more)", tui.Safe(paths[0]), len(paths)-1)
 }
