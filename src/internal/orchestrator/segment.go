@@ -175,6 +175,7 @@ func (firstSegment) checkout(s *runState) error {
 	if opts.Plan != nil {
 		bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
 	}
+	bound.ChangeSet = opts.ChangeSet
 	if opts.Instructions != "" { // what the project told the agent is bound before it starts
 		bound.InstructionsSHA256, bound.InstructionsBytes = sha256Hex([]byte(opts.Instructions)), len(opts.Instructions)
 	}

@@ -99,6 +99,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	}
 	p := certificate.Predicate{Run: runID, BaseCommit: baseSHA, Agents: assistants(pl), ChainHead: chainHead,
 		Decisions: map[string]int{}, CAL: 3, Checks: ev.checks, Ledger: ev.ledger, Policy: ev.policy, Initiator: ev.initiator}
+	p.ChangeSet = hist.Bound.ChangeSet
 	if pl != nil {
 		p.PlanDigest, p.Blueprint = pl.Digest, pl.BlueprintHash
 	}

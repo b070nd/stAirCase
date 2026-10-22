@@ -19,6 +19,7 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Governing sessions another program starts](hosting.md) | `staircase host claude`: a runner such as Cloudroom starts Claude Code through stAirCase, as an away run |
 | [Working while you are away](away.md) | `--away`: the agent works on evidence, parks what needs you, and the change waits for `staircase decide` |
 | [Models and API keys](models.md) | providers, storing keys, budget caps, record and replay |
+| [Change sets](changesets.md) | one piece of work across several repositories: the runs, the contract files, and one command that verifies them together |
 | [A project's profile](profile.md) | what is true of a client's repository for every run (protected and sensitive paths, scope, checks), kept in your workspace, never in the repository |
 | [Blueprints](blueprints.md) | keep your agent setup as files in its own repository |
 | [Drift supervision](drift.md) | keep runs on their stories with scope and limits |

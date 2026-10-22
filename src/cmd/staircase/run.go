@@ -65,6 +65,7 @@ func init() {
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	sandboxFlag(runCmd)
+	changeSetFlag(runCmd)
 	checkFlag(runCmd)
 	signFlags(runCmd)
 	runCmd.Flags().BoolVar(&cli.ackDrift, "ack-drift", false,
@@ -105,6 +106,9 @@ func runCase(l launch, caseID int64) error {
 	defer func() { _ = db.Close() }()
 	store := persistence.NewStore(db)
 
+	if err := checkChangeSet(&l, wsDir); err != nil {
+		return err
+	}
 	// What is true of the case's project for every run of it fills what the command line left out; the terms are judged after that,
 	// before anything is made (the run judges them again, with its plan's harness).
 	if l.terms.ProfileSHA256 == "" { // a session applied it already

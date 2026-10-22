@@ -70,6 +70,9 @@ type Predicate struct {
 	// approved change approved by a rule of the owner's signed policy (ADR 0012). Absent for every other delivery, so a verifier whose
 	// own policy refuses such certificates can tell them apart.
 	Delivery string `json:"delivery,omitempty"`
+	// ChangeSet is the id of the change set the run was made for (a piece of work across repositories), when it named one: anyone holding
+	// this certificate can find the others. It is the id and nothing more; the set's members change as runs join it.
+	ChangeSet string `json:"changeSet,omitempty"`
 }
 
 // Initiator is who started a run and proved it: Signature is the base64 of an

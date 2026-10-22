@@ -190,6 +190,77 @@ Show detailed status of a Case
 staircase case status <case-id>
 ```
 
+## staircase changeset ack
+
+Record that a repository accepts a member's change to a contract
+
+```
+staircase changeset ack <id> <project>:<path> --by <project> [flags]
+```
+
+Records that a person looked at the member run's change to the contract and that the project named by --by accepts it. The record is
+of the content the change produced: a later change to the file needs a new acknowledgement. Repeat the command for each other member.
+
+Flags:
+
+```
+      --by string   The project (id or name) that accepts the change
+```
+
+## staircase changeset add
+
+Make runs members of a change set (one run per project; a newer one replaces it)
+
+```
+staircase changeset add <id> <run-id>...
+```
+
+## staircase changeset contract
+
+Declare a file that several repositories depend on
+
+```
+staircase changeset contract <id> <project>:<path>
+```
+
+## staircase changeset create
+
+Make an empty change set
+
+```
+staircase changeset create <id>
+```
+
+## staircase changeset list
+
+List the workspace's change sets
+
+```
+staircase changeset list
+```
+
+## staircase changeset show
+
+Show a change set: its runs, contracts and acknowledgements
+
+```
+staircase changeset show <id>
+```
+
+## staircase changeset verify
+
+Check a whole change set: every run delivered, every certificate valid, every contract change acknowledged
+
+```
+staircase changeset verify <id> [flags]
+```
+
+Flags:
+
+```
+      --min-cal int   Fail a member whose certificate is below this change assurance level (1-4)
+```
+
 ## staircase claude
 
 Run Claude Code on a task in this repository, with every change decided by you
@@ -221,6 +292,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -302,6 +374,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -522,6 +595,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -711,6 +785,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -1173,6 +1248,7 @@ Flags:
       --allow-shell-exec           Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int          Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string      Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --debug                      Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/

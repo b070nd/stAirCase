@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Change sets: runs of several repositories under one id (`staircase changeset`, `--change-set`).** A change across a backend, a
+  middleware and a frontend is several runs, one per repository, and each stays what it always is: one repository, its own worktree,
+  audit chain and certificate. `staircase changeset create checkout-v2` makes the id; a run started with `--change-set checkout-v2`
+  carries it on its record (`run_bound`) and on its certificate (an optional `changeSet` field: older verifiers ignore it, and the
+  predicate version does not change). `changeset add` puts runs in the set (one per project), `changeset contract` declares the files
+  several repositories depend on, `changeset ack` records that another repository accepts a member's change to one, and
+  `staircase changeset verify checkout-v2` checks the whole set: every run delivered, every certificate signed by the workspace key,
+  about the run's commit, at the level asked (`--min-cal`) and naming the set, and no contract change without every other member's
+  acknowledgement of that exact content. The set is a file in your workspace, never in a repository. An acknowledgement is a record,
+  not a signature. What to do: nothing, unless you work across repositories ([change sets](docs/changesets.md)).
+
 - **A read boundary: files the agent must not read (`unreadable` in the profile, `--unreadable`).** A file your repository tracks, such as
   a Composer `auth.json`, is in the agent's worktree, and what an agent reads can go to your model provider. A project can now name
   paths that the agent must not read (`--unreadable-defaults` writes the usual list into the profile: `auth.json`, `.env` files,

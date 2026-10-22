@@ -28,6 +28,8 @@ type Bound struct {
 	// the project gave none. The text itself is in the saved terms, which the digest above binds.
 	InstructionsSHA256 string `json:"instructions_sha256,omitempty"`
 	InstructionsBytes  int    `json:"instructions_bytes,omitempty"`
+	// ChangeSet is the id of the change set the run was started for; absent when it named none. It goes on the run's certificate.
+	ChangeSet string `json:"change_set,omitempty"`
 	// ValidatorModels are the reviewer models the run asked, in the order it asked them (ADR 0014, section 3). Where the field is
 	// present the replay requires the votes that every decision by `validator:` rests on; chains without it read as before.
 	ValidatorModels []string `json:"validator_models,omitempty"`
