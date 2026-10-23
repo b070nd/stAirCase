@@ -607,12 +607,10 @@ func (s *Store) ListFlaggedCases() ([]domain.Case, error) {
 	return cs, rows.Err()
 }
 
-// PrunableEventLogs returns the run_event_logs rows retention may remove to keep
-// about keep rows: those of runs whose every row is among the oldest rows over
-// that number, oldest first. A run is removed whole or not at all, because the
-// front of a run's chain cut off leaves a chain nobody can verify; a run that is
-// still RUNNING, or has a row newer than the cut (a story accepted later), stays.
-// It can return fewer rows than are over keep, or none.
+// PrunableEventLogs returns the run_event_logs rows retention may remove to keep about keep rows: those of runs whose every row is among
+// the oldest rows over that number, oldest first. A run goes whole or not at all, because a chain with its front cut off cannot be
+// verified; a run still RUNNING, or with a row newer than the cut (a story accepted later), stays. It can return fewer rows than are
+// over keep, or none.
 func (s *Store) PrunableEventLogs(keep int64) ([]domain.RunEventLog, error) {
 	var total int64
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM run_event_logs`).Scan(&total); err != nil {
@@ -1059,12 +1057,10 @@ func caseStatusAfter(tx *sql.Tx, caseID int64, runStatus string) (string, error)
 // them. The store hashes it into the chain; it does not look inside.
 type AuditEntry struct{ Type, Payload string }
 
-// AcceptUserStory records an operator's acceptance of a story after they have
-// verified delivered work. It requires a successful run of the story's case and,
-// in one transaction, marks the story IMPLEMENTED, appends the given entry (the
-// story_accepted event, prepared by history) to that run's audit chain (bound to the run's commit), and recomputes
-// the case status. Returns the run the acceptance was recorded against and the
-// resulting case status.
+// AcceptUserStory records an operator's acceptance of a story after they verified delivered work. It needs a successful run of the
+// story's case and, in one transaction, marks the story IMPLEMENTED, appends the given entry (the story_accepted event, prepared by
+// history) to that run's audit chain, bound to the run's commit, and recomputes the case status. It returns the run the acceptance was
+// recorded against and the case status.
 func (s *Store) AcceptUserStory(storyID int64, entry AuditEntry) (runID int64, caseStatus string, err error) {
 	s.appendMu.Lock() // same serialization as AppendEventLogChained: no chain forks
 	defer s.appendMu.Unlock()
@@ -1216,14 +1212,10 @@ func (s *Store) AppendEventLog(runID int64, eventType, payload, prevHash, gitCom
 	}, nil
 }
 
-// AppendEventLogChained atomically reads the run's last event hash and appends
-// a new entry chained to it. The read+insert is serialized by appendMu so that
-// concurrent callers within the process cannot both observe the same prevHash
-// and fork the chain. These are the methods history.Writer uses, and the only ones anything else
-// should: the lower-level AppendEventLog (explicit prevHash) is what they insert with, and tests
-// use it to build chains. Single-process serialization is sufficient because the
-// no_concurrent_run gate guarantees only one run writes a given workspace's
-// event log at a time.
+// AppendEventLogChained atomically reads the run's last event hash and appends a new entry chained to it. appendMu serializes the read
+// and insert, so concurrent callers in this process cannot fork the chain. history.Writer uses these methods, and so should anything
+// else; the lower-level AppendEventLog (explicit prevHash) is what they insert with, and tests use it to build chains. One process is
+// enough because the no_concurrent_run gate allows only one run to write a workspace's event log at a time.
 func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommitHash string) (*domain.RunEventLog, error) {
 	s.appendMu.Lock()
 	defer s.appendMu.Unlock()
@@ -1234,12 +1226,10 @@ func (s *Store) AppendEventLogChained(runID int64, eventType, payload, gitCommit
 	return s.AppendEventLog(runID, eventType, payload, prevHash, gitCommitHash)
 }
 
-// AppendEventLogChainedIf is AppendEventLogChained for an entry that must not be written if a condition has
-// stopped holding: proceed is called while the append lock is held, immediately before the insert, and
-// when it returns an error nothing is written and (nil, that error) is returned. The check cannot be made
-// atomic with the insert itself, which is not interruptible (an interrupted insert could leave the caller
-// unsure whether the row exists): an insert that has begun is written. What the caller gets is "checked
-// under the lock, right before the write", with no wait for another writer in between.
+// AppendEventLogChainedIf is AppendEventLogChained for an entry that must not be written once a condition stops holding: proceed is
+// called under the append lock just before the insert, and if it returns an error nothing is written and (nil, that error) is returned.
+// The check cannot be atomic with the insert, which is not interruptible, so an insert that has begun is written. The caller gets
+// "checked under the lock, right before the write", with no wait for another writer in between.
 func (s *Store) AppendEventLogChainedIf(runID int64, eventType, payload, gitCommitHash string, proceed func() error) (*domain.RunEventLog, error) {
 	s.appendMu.Lock()
 	defer s.appendMu.Unlock()

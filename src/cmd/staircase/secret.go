@@ -64,13 +64,8 @@ rotated API key) and counts its version.`,
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		keyPath := filepath.Join(wsDir, crypto.KeyFile)
 
-		// Hold a shared advisory lock on the key file from LoadKey through
-		// CreateSecret.  Without this, a concurrent 'staircase secret rotate'
-		// could commit under the new key between our Encrypt call and the DB
-		// insert, stranding the new ciphertext (it would be encrypted under the
-		// now-superseded key).  The exclusive rotate lock (LOCK_NB) fails fast if
-		// we hold the shared lock - it does not wait, it refuses
-		// (CHECK 4.3.3 extension to write path).
+		// Hold a shared lock on the key file from LoadKey through CreateSecret. Otherwise a concurrent `secret rotate` could commit between
+		// Encrypt and the insert and leave this ciphertext under the old key. Rotate's exclusive lock refuses instead of waiting (CHECK 4.3.3).
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
 			return fmt.Errorf("open key for lock: %w", err)
@@ -180,12 +175,9 @@ var secretListCmd = &cobra.Command{
 	},
 }
 
-// secretRotateCmd re-encrypts all secrets under a fresh AES-256 key.
-// The old key file is replaced atomically (temp+rename) and every ciphertext
-// is updated in a single DB transaction, so a crash during rotation leaves
-// the workspace in a consistent state (either fully rotated or not at all).
-// An exclusive non-blocking flock on the key file fails fast if any concurrent
-// process (active run, secret set) already holds a shared lock (CHECK 4.3.3).
+// secretRotateCmd re-encrypts every secret under a new AES-256 key. The key file is replaced atomically and all ciphertexts are updated
+// in one transaction, so a crash leaves the workspace fully rotated or not at all. An exclusive non-blocking lock on the key file fails
+// fast if a run or `secret set` holds a shared one (CHECK 4.3.3).
 var secretRotateCmd = &cobra.Command{
 	Use:   "rotate",
 	Short: "Re-encrypt all secrets under a new AES-256 workspace key",

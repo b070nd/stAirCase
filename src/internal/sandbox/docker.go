@@ -13,12 +13,12 @@ import (
 	"strings"
 )
 
-// The docker engine (the sandbox specification's container mode): a command runs in a throwaway container that sees only the
-// worktree and its own temp folder, as the user, without network, capabilities or a writable system, and within the memory and CPU
-// limits given. It is chosen explicitly, never by "auto": the image is the user's choice, and it is never pulled implicitly.
+// The docker engine (the sandbox specification's container mode): a command runs in a throwaway container that sees only the worktree
+// and its own temp folder, as the user, with no network, capabilities or writable system, within the given memory and CPU limits. It is
+// chosen explicitly, never by "auto": the image is the user's choice and is never pulled implicitly.
 //
-// ponytail: its options travel as one mode string (docker:image=...,memory=...,cpus=...), the same string --sandbox, the run's saved
-// terms and the agent already carry, so a continued run gets the same container; a struct when a second engine needs options.
+// ponytail: options travel as one mode string (docker:image=...,memory=...,cpus=...), the same string --sandbox, the run's saved terms
+// and the agent already carry, so a continued run gets the same container. Use a struct when a second engine needs options.
 
 // DockerPrefix starts a docker mode.
 const DockerPrefix = "docker"

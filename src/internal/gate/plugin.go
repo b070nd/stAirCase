@@ -23,13 +23,9 @@ type pluginGateDef struct {
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
-// PluginGate is a Gate backed by an external script.
-// The script receives a JSON line on stdin and must write a JSON line to stdout.
-//
-// Subprocess sandbox (CHECK 11.3, 11.6):
-//   - env is cleared (cmd.Env = []string{}) so no host secrets or $STAIRCASE_DIR leak
-//   - cwd is a fresh tempdir, removed after execution
-//   - execution is bounded by a configurable timeout (CHECK 11.4)
+// PluginGate is a Gate backed by an external script: it reads a JSON line on stdin and writes one to stdout. It runs with an empty
+// environment (no host secrets, no $STAIRCASE_DIR), in a fresh temp directory removed afterwards, under a configurable timeout
+// (CHECK 11.3, 11.4, 11.6).
 type PluginGate struct{ def pluginGateDef }
 
 func (p *PluginGate) Name() string     { return p.def.Name }

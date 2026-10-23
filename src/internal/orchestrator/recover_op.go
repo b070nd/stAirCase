@@ -15,13 +15,10 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/wslock"
 )
 
-// A recovery is an operation with an identity. Before it touches git it writes what
-// it is about to do (which run, from which base, the tree the approvals produce, the
-// approvals in order, the chain head, whether a person had to review it); the commit
-// it makes names the operation in a trailer. A later recover knows a commit is its
-// own because that name, the base as sole parent and the expected tree all agree, not
-// because it looks about right: a commit anyone else made with the same tree and a
-// copied trailer is a conflict, and never skips the review.
+// A recovery is an operation with an identity. Before touching git it writes what it is about to do (run, base, the tree the approvals
+// produce, the approvals in order, the chain head, whether a person had to review); the commit it makes names the operation in a
+// trailer. A later recover knows a commit is its own because that name, the base as sole parent and the expected tree all agree. A
+// commit anyone else made with the same tree and a copied trailer is a conflict and never skips the review.
 
 type opApproval struct {
 	Seq           int    `json:"seq"`
@@ -116,15 +113,11 @@ func (o *recoveryOp) owns(repoPath, tip string) bool {
 	return gitOut(repoPath, "log", "-1", "--format=%(trailers:key="+recoveryTrailer+",valueonly)", tip) == o.Op
 }
 
-// runMadeCommit reports whether tip is the commit the run itself made before its
-// process died, and the chain head that commit names. It is that commit when it has
-// the base as its only parent and the approved tree, says it is this run's, names a
-// chain head that is on this run's audit chain, and, where a person's final review was
-// needed, the chain holds that review approving exactly these files. Above all the run
-// named this very commit (commit_prepared) on its audit chain before the branch moved:
-// a commit with the same parent, tree and message made by anyone else is another commit. Such a commit
-// holds exactly the approved bytes under the run's own audit record: a recovery that
-// kept it finishes the run's evidence instead of leaving a branch nothing can complete.
+// runMadeCommit reports whether tip is the commit the run itself made before its process died, and the chain head that commit names. It
+// is when the commit has the base as only parent and the approved tree, says it is this run's, names a chain head on this run's chain
+// and, where a person's final review was needed, the chain holds that review approving exactly these files. Above all, the run named
+// this very commit (commit_prepared) on its chain before the branch moved: a commit with the same parent, tree and message made by
+// anyone else is another commit. Keeping such a commit finishes the run's evidence instead of leaving a branch nothing can complete.
 func runMadeCommit(repoPath string, runID, caseID int64, base, tip string, a *approvals, h history.History, needReview bool) (string, bool) {
 	if gitOut(repoPath, "rev-list", "--parents", "-n", "1", tip) != tip+" "+base {
 		return "", false

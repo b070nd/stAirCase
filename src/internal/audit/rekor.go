@@ -1,19 +1,11 @@
-// Rekor transparency-log anchoring (B3 - external audit anchoring).
+// Rekor anchoring (B3): a signed checkpoint can still be deleted, or regenerated with its signature, by anyone holding the workspace
+// key. Anchoring it in a public Rekor transparency log adds an external append-only witness.
 //
-// A signed checkpoint record proves integrity, but a workspace-local file can
-// still be deleted or silently regenerated together with its signature by
-// anyone holding the workspace key. Anchoring the record in a public Rekor
-// transparency log adds an external, append-only witness: once anchored, the
-// record's existence at a point in time can be proven to a third party.
+// The entry type is `rekord`, not `hashedrekord`: plain Ed25519 signs the whole message, and hashedrekord needs ed25519ph. The artifact
+// is sent inline so the server can check the signature; the log stores its hash, the signature and the key.
 //
-// Entry type: `rekord` rather than `hashedrekord`, because plain Ed25519
-// signs the full message - hashedrekord verifies over a digest, which
-// requires ed25519ph. The artifact is sent inline so the server can check the
-// signature; the log then stores only its hash, the signature and the key.
-//
-// Scope (documented limitation): VerifyAnchor confirms the log entry exists,
-// its hash is the local record's and its signature is valid for the record.
-// Full Merkle inclusion-proof / signed-tree-head verification is future work.
+// Limit: VerifyAnchor confirms the entry exists, its hash is the local record's and its signature is valid. Merkle inclusion proofs and
+// signed tree heads are not checked yet.
 package audit
 
 import (
@@ -197,12 +189,9 @@ func LoadAnchors(path string) ([]Anchor, error) {
 	return out, sc.Err()
 }
 
-// VerifyAnchor confirms that a checkpoint record (identified by recordSHA256,
-// with content record) has a matching anchor in anchors, fetches the entry
-// from its Rekor log, and verifies the log's inlined artifact equals the local
-// record byte-for-byte, and that the key it was logged with is one of trusted:
-// an entry anyone can make with their own key proves only that the record
-// existed. Returns the matched anchor on success.
+// VerifyAnchor confirms that a checkpoint record (recordSHA256, content record) has a matching anchor in anchors, fetches the entry from
+// its Rekor log, and checks that the logged artifact equals the record byte for byte and was logged with one of the trusted keys (an
+// entry made with anyone's key proves only that the record existed). It returns the matched anchor.
 func VerifyAnchor(record []byte, recordSHA256 string, anchors []Anchor, trusted []ed25519.PublicKey) (Anchor, error) {
 	var match *Anchor
 	for i := range anchors {

@@ -19,12 +19,9 @@ const (
 	Off      = "off"      // no sandbox
 )
 
-// Command builds a command to run in cwd inside the worktree
-// root. In the sandbox (macOS sandbox-exec, Linux bwrap) it can write only in
-// root and in a temp folder of its own (its TMPDIR), and has no network, not
-// even to this machine. It cannot read credentials in the home folder
-// (Credentials) or the paths in hide (such as the stAirCase workspace),
-// except root itself. cleanup removes the temp folder.
+// Command builds a command to run in cwd inside the worktree root. In the sandbox (macOS sandbox-exec, Linux bwrap) it can write only
+// in root and its own temp folder (TMPDIR) and has no network. It cannot read credentials in the home folder (Credentials) or the paths
+// in hide (such as the stAirCase workspace), except root itself. cleanup removes the temp folder.
 func Command(ctx context.Context, root, cwd, command, mode string, hide ...string) (cmd *exec.Cmd, sandboxed bool, cleanup func(), err error) {
 	return CommandWith(ctx, root, cwd, command, mode, nil, hide...)
 }

@@ -1,31 +1,13 @@
-// Package approvalhttp exposes a local HTTP API for out-of-process HITL approval.
+// Package approvalhttp is a local HTTP API for approving out of process.
 //
-// # Overview
+//	GET  /v1/yields               list pending yields (JSON array)
+//	GET  /v1/yields/{id}          get one pending yield
+//	POST /v1/yields/{id}/approve  approve (body: {"feedback":"..."})
+//	POST /v1/yields/{id}/reject   reject  (body: {"feedback":"..."})
 //
-// When an operator configures an approval webhook URL (project.WebhookURL), the
-// old implementation POST-ed the yield synchronously and waited for the HTTP
-// response - meaning the entire swarm stalled while the webhook provider
-// processed the request.
-//
-// This package provides an inbound HTTP server that the operator's tooling can
-// call back on an asyncronous basis:
-//
-//	GET  /v1/yields           → list all pending yields (JSON array)
-//	GET  /v1/yields/{id}      → get a single pending yield
-//	POST /v1/yields/{id}/approve  → approve the yield (body: {"feedback":"…"})
-//	POST /v1/yields/{id}/reject   → reject  the yield (body: {"feedback":"…"})
-//
-// The swarm goroutine calls [Server.PendYield], receives a channel, then blocks
-// on that channel.  When the operator approves/rejects via HTTP the channel
-// receives the response and the swarm unblocks.
-//
-// # Lifecycle
-//
-//   - [NewServer] creates an idle server bound to the given address.
-//   - [Server.Start] starts the HTTP listener and registers a shutdown hook on
-//     the provided context.  All pending yields are auto-rejected on shutdown.
-//   - [Server.ListenAddr] returns the actual bound address (useful when port 0
-//     is passed for testing).
+// The swarm calls [Server.PendYield], gets a channel and blocks on it until the operator approves or rejects over HTTP. [NewServer]
+// makes an idle server, [Server.Start] starts the listener and auto-rejects all pending yields when its context ends, and
+// [Server.ListenAddr] returns the bound address (useful with port 0 in tests).
 package approvalhttp
 
 import (
@@ -80,12 +62,9 @@ type feedbackBody struct {
 	Signature     string `json:"signature"`
 }
 
-// MozillaTLSConfig returns a *tls.Config that matches the Mozilla TLS
-// "intermediate" compatibility profile: TLS 1.2 minimum, AEAD-only cipher
-// suites, X25519+P-256 key exchange.  Pass the result to [Server.StartTLS] to
-// enable HTTPS on the approval endpoint (CHECK 8.5).
-//
-// Reference: https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_(recommended)
+// MozillaTLSConfig returns a *tls.Config for Mozilla's "intermediate" profile: TLS 1.2 minimum, AEAD-only cipher suites, X25519 and
+// P-256. Pass it to [Server.StartTLS] to serve HTTPS (CHECK 8.5).
+// https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_(recommended)
 func MozillaTLSConfig() *tls.Config {
 	return &tls.Config{
 		MinVersion: tls.VersionTLS12,

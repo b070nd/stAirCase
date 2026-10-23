@@ -18,12 +18,9 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/policy"
 )
 
-// deciders are who may decide a run's proposals, asked in a fixed order: the
-// orchestrator refuses what cannot be applied as shown; drift supervision
-// halts the run or sends the proposal to a human; so does a change to a
-// check's definition (a protected path) or a sensitive path; the policy's limits send it
-// to a human, its rules decide it; the validator decides in-scope edits; a
-// human decides the rest.
+// deciders are who may decide a run's proposals, asked in a fixed order: the orchestrator refuses what cannot be applied as shown; drift
+// supervision halts the run or sends the proposal to a human, as does a change to a check's definition (protected path) or a sensitive
+// path; the policy's limits send it to a human and its rules decide it; the validator decides in-scope edits; a human decides the rest.
 type deciders struct {
 	approvals     *approvals // nil without a git repository
 	drift         *policy.Supervisor

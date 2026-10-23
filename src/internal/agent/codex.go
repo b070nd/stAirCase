@@ -26,20 +26,15 @@ var codexApp = []string{
 	"/Applications/ChatGPT.app/Contents/Resources/codex",
 }
 
-// Codex runs OpenAI's Codex CLI (`codex exec`) in the run's worktree as the
-// run's agent. Its hooks route every tool call through staircase:
+// Codex runs OpenAI's Codex CLI (`codex exec`) in the run's worktree. Hooks route every tool call through staircase:
 //
-//   - apply_patch edits become proposals decided before they are applied,
-//     and the approved bytes are written again afterwards;
-//   - shell commands run without a decision, in Codex's workspace-write
-//     sandbox (no network, writes only in the worktree and temp folders),
-//     and every file they change is reviewed afterwards: kept if approved,
-//     reverted if not;
+//   - apply_patch edits are decided before they are applied, then the approved bytes are written again;
+//   - shell commands run in Codex's workspace-write sandbox (no network), and every file they change is reviewed afterwards: kept if
+//     approved, reverted if not;
 //   - every other tool is refused.
 //
-// Codex skips a hook nobody has reviewed without saying so, so the run passes
-// --dangerously-bypass-hook-trust for its own hooks, and fails when the
-// SessionStart hook never arrives: then the session was not governed.
+// Codex skips a hook nobody reviewed without saying so, so the run passes --dangerously-bypass-hook-trust for its own hooks and fails
+// when the SessionStart hook never arrives: that session was not governed.
 type Codex struct {
 	Prompt  string
 	Model   string // optional -m

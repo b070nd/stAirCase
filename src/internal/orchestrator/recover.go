@@ -142,14 +142,11 @@ type RecoverResult struct {
 // ErrRecoveryRejected: the person refused the final review of a recovery.
 var ErrRecoveryRejected = errors.New("the recovered change was rejected in its final review")
 
-// Recover commits the proposals an interrupted run had approved. It trusts the
-// audit chain only after verifying it, a journal entry only when the chain also
-// records that approval, derives the files again from the base commit exactly as
-// the run did, and moves the run's branch only if it is still where the run
-// started. It writes a record of the operation before touching git, names it in the
-// commit, and so can finish its own work after a crash and tell it from a commit
-// anyone else made. The certificate says the run did not finish. The run's worktree
-// is left as it is.
+// Recover commits the proposals an interrupted run had approved. It trusts the audit chain only after verifying it, and a journal entry
+// only when the chain also records that approval. It derives the files again from the base commit as the run did, and moves the run's
+// branch only if it is still where the run started. It writes a record of the operation before touching git and names it in the commit,
+// so it can finish its own work after a crash and tell it from anyone else's commit. The certificate says the run did not finish. The
+// worktree is left as it is.
 func (r *Runner) Recover(ctx context.Context, runID int64, opts RecoverOptions) (RecoverResult, error) {
 	var res RecoverResult
 	if err := ctx.Err(); err != nil {

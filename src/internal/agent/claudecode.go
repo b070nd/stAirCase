@@ -27,13 +27,9 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
-// ClaudeCode runs Claude Code (`claude -p`) in the run's worktree as the run's
-// agent. Claude Code's own tools do the work, but hooks route every tool call
-// through staircase first: edits and shell commands become proposals the
-// orchestrator decides and audits, reads are confined to the worktree, and
-// every other tool is denied. After an approved edit, the approved bytes are
-// written again, so Claude Code's edit semantics cannot change what is
-// committed; finalize verify stays the backstop.
+// ClaudeCode runs Claude Code (`claude -p`) in the run's worktree. Hooks route every tool call through staircase: edits and shell
+// commands become proposals the orchestrator decides and audits, reads stay in the worktree, and every other tool is denied. After an
+// approved edit the approved bytes are written again, so Claude Code's edit semantics cannot change what is committed.
 type ClaudeCode struct {
 	Prompt  string
 	Model   string // optional --model

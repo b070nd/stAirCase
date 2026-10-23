@@ -101,12 +101,9 @@ func TestRecover_keeps_the_certificate_the_run_issued(t *testing.T) {
 	assert.Equal(t, 1, issued, "and it is on the chain once")
 }
 
-// TestRecover_does_not_adopt_a_copy_of_the_runs_commit: a commit someone else made with the
-// run's base as its only parent, the approved tree and the run's own message (its case,
-// its chain head), when no final review was needed, is the same bytes under another
-// name. The run named its commit on the audit chain before the branch moved
-// (commit_prepared), and that name is the identity: a copy is a conflict and the branch
-// is left alone.
+// TestRecover_does_not_adopt_a_copy_of_the_runs_commit: a commit someone else made with the run's base as only parent, the approved tree
+// and the run's own message is the same bytes under another name. The run named its commit on the chain (commit_prepared) before the
+// branch moved, and that name is the identity: a copy is a conflict and the branch is left alone.
 func TestRecover_does_not_adopt_a_copy_of_the_runs_commit(t *testing.T) {
 	r, commit := diedAfterTheCommit(t, orchestrator.RunOptions{}, true)
 	base := strings.TrimSpace(git(t, r.Repo, "rev-parse", commit+"^"))

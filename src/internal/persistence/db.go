@@ -29,21 +29,14 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		_ = os.Chmod(p, 0o600) // best effort; a missing file or Windows is fine
 	}
 
-	// Inject SQLite pragmas in the connection string so the driver applies them
-	// to EVERY pooled connection, not just the first one.
-	//   busy_timeout(5000) - wait out brief write locks instead of erroring.
-	//   journal_mode(WAL) & synchronous(FULL) - a commit is on disk before it returns.
-	//     A decision is acknowledged to the agent only after it is on the audit
-	//     chain, so that commit must survive a power cut (synchronous=NORMAL in WAL
-	//     mode may lose the last commits). The write rate is a few per proposal.
-	//   foreign_keys(1) - FK enforcement is per-connection in SQLite; a one-shot
-	//     `PRAGMA foreign_keys=ON` only covered the single connection it ran on,
-	//     leaving other pooled connections unenforced. Setting it in the DSN
-	//     guarantees every connection enforces referential integrity.
-	//   _txlock=immediate - transactions take the write lock at BEGIN, where
-	//     busy_timeout applies. A deferred transaction that reads, then writes
-	//     gets SQLITE_BUSY at once if another writer committed in between, so a
-	//     concurrent run could be recorded as failed after succeeding.
+	// The pragmas are in the connection string so every pooled connection gets them:
+	//   busy_timeout(5000)                    wait out brief write locks instead of failing.
+	//   journal_mode(WAL), synchronous(FULL)  a commit is on disk before it returns: a decision is acknowledged to the agent only after
+	//                                         it is on the audit chain, so it must survive a power cut.
+	//   foreign_keys(1)                       enforcement is per connection; a one-shot PRAGMA covered only one.
+	//   _txlock=immediate                     take the write lock at BEGIN, where busy_timeout applies. A deferred read-then-write
+	//                                         transaction gets SQLITE_BUSY at once if another writer committed in between, so a
+	//                                         concurrent run could be recorded as failed after succeeding.
 	connStr := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)&_txlock=immediate"
 
 	db, err := sql.Open("sqlite", connStr)
@@ -65,12 +58,8 @@ func InitDB(workspaceDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
 
-	// Apply additive migrations exactly once, tracked by zero-based index.
-	//
-	// On a brand-new database the base Schema DDL already incorporates every
-	// migration column, so we pre-seed schema_migrations with all indices to
-	// skip redundant ALTER TABLE calls.  On an existing database some rows will
-	// already be present; we only execute and record the missing ones.
+	// Apply additive migrations once, tracked by zero-based index. A brand-new database already has every migration column in the base
+	// schema, so all indices are pre-recorded; an existing one only runs and records the missing ones.
 	var recorded int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&recorded); err != nil {
 		return nil, fmt.Errorf("count schema_migrations: %w", err)

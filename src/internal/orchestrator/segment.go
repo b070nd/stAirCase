@@ -21,11 +21,10 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sshsig"
 )
 
-// segment is what a run's first segment and a continuation of it (ADR 0005) do differently; everything else is the same run.
-// The first starts from today's HEAD, makes the run's record, branch and worktree, and binds them on the chain under the terms it
-// saves. A continuation starts from the run's own base, record, branch and worktree, says on the chain that it goes on, and
-// carries over what the earlier segments left: the policy they decided under, the drift supervisor's decisions, the time and
-// model use spent, and the deciders' counts.
+// segment is what a run's first segment and a continuation of it (ADR 0005) do differently. The first starts from today's HEAD, makes
+// the run's record, branch and worktree, and binds them on the chain under the terms it saves. A continuation starts from the run's own
+// base, record, branch and worktree, says on the chain that it goes on, and carries over the policy, the drift supervisor's decisions,
+// the time and model use spent, and the deciders' counts.
 type segment interface {
 	init(s *runState)                 // where the state machine starts, and how a run that fails to get going ends
 	first() bool                      // the run's first segment: reconciled, gated, and checked for an earlier run's halt

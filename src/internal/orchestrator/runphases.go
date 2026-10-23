@@ -570,10 +570,9 @@ func (s *runState) processExited(procErr error) {
 	}
 }
 
-// keepStderr says where the stderr tail of a failed agent goes. The tail is a local diagnostic: it is not in the error the run ends
-// with (a caller logs that, a runner may keep it: Cloudroom persisted such tails into its records), and not on the audit chain, in
-// the certificate or in the ledger. It goes to the person at the terminal (for a hosted session, to the session's log) and to the
-// debug log, with the delivered secrets scrubbed.
+// keepStderr says where the stderr tail of a failed agent goes. It is a local diagnostic: not in the error the run ends with (a caller
+// logs that, a runner may keep it), and not on the audit chain, in the certificate or in the ledger. It goes to the person at the
+// terminal (a hosted session's log) and to the debug log, with delivered secrets scrubbed.
 func (s *runState) keepStderr(err error) {
 	var t interface{ StderrTail() string }
 	if !errors.As(err, &t) || t.StderrTail() == "" {

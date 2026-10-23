@@ -32,12 +32,8 @@ func setSecretFromStdin(t *testing.T, name, value string) error {
 	return secretSetCmd.RunE(secretSetCmd, []string{name})
 }
 
-// TestSecretRotate_a_crash_after_the_database_committed: the process dies
-// after the secrets were re-encrypted but before the key file was replaced
-// (real database, real files). Until the rotation is finished, nothing may
-// use the old key: a write would leave a secret under a key that the finished
-// rotation then drops (F101). `secret rotate` finishes it, and every secret,
-// old and new, then decrypts with the one key.
+// TestSecretRotate_a_crash_after_the_database_committed: the process dies after the secrets were re-encrypted but before the key file
+// was replaced. Nothing may use the old key until `secret rotate` finishes the job (F101); then every secret decrypts with the one key.
 func TestSecretRotate_a_crash_after_the_database_committed(t *testing.T) {
 	ws := t.TempDir()
 	viper.Set("STAIRCASE_DIR", ws)
@@ -132,12 +128,8 @@ func TestDrillRotateHelper(t *testing.T) {
 	}
 }
 
-// TestDrill_sigkill_during_secret_rotate: `secret rotate` runs as a real
-// process in a loop and is killed with SIGKILL at random moments, 150 times,
-// against a real database. After each kill the workspace must be usable again:
-// the key either loads and every secret decrypts under it, or it is refused as
-// "interrupted" and one `secret rotate` repairs it, after which every secret
-// decrypts. A secret must never be stranded (F101).
+// TestDrill_sigkill_during_secret_rotate kills a real `secret rotate` with SIGKILL at random moments, 150 times. After each kill the key
+// loads and every secret decrypts, or it is refused as "interrupted" and one `secret rotate` repairs it. No secret is stranded (F101).
 func TestDrill_sigkill_during_secret_rotate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drill: skipped in -short mode")

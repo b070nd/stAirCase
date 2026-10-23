@@ -39,12 +39,9 @@ func scriptBin(t *testing.T, body string) string {
 	return bin
 }
 
-// TestClaudeCode_host_hook_failures: a hook that cannot answer must not become "no
-// objection" in a host that carries on after a failed hook. Each case says what is
-// shown, and what is not: a program that is missing, crashes or is killed makes the
-// hook block, so the tool does not run; a host that gives up on a slow hook runs the
-// tool anyway, and what holds then is the end-of-run check: nothing unapproved is
-// committed. (That is not the same as the tool not running.)
+// TestClaudeCode_host_hook_failures: a hook that cannot answer must not become "no objection". A missing, crashing or killed hook
+// program blocks the tool. A host that gives up on a slow hook runs the tool anyway; then the end-of-run check holds: nothing unapproved
+// is committed.
 func TestClaudeCode_host_hook_failures(t *testing.T) {
 	t.Run("control: a working hook, an approved write", func(t *testing.T) {
 		r, log := hostRun(t, "", "")

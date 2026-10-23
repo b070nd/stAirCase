@@ -17,12 +17,8 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
-// GitRepo wraps a go-git repository and worktree, providing the small set of
-// git operations the orchestrator needs without shelling out to the system git
-// binary (CHECK 5.3.1).
-//
-// Exception: go-git v5 has no worktree API, so addWorktree/removeWorktree
-// shell out to git.
+// GitRepo wraps a go-git repository and worktree with the few git operations the orchestrator needs, without the system git binary
+// (CHECK 5.3.1). go-git v5 has no worktree API, so addWorktree and removeWorktree shell out to git.
 type GitRepo struct {
 	r    *gogit.Repository
 	w    *gogit.Worktree
@@ -89,11 +85,9 @@ func addWorktree(repo, path, branch, base string) error {
 
 var worktreeMu sync.Mutex
 
-// withWorktreeLock runs f with no other staircase creating or removing a
-// worktree of repo. Git is not safe against two `worktree add` at once (one can
-// fail reading another's half-written .git/worktrees/<name>/commondir), and
-// sessions in one repository do start together. The lock is a mutex for this
-// process and a flock on a file in the repository's git directory for others.
+// withWorktreeLock runs f with no other staircase creating or removing a worktree of repo. Git is not safe against two `worktree add` at
+// once (one can fail reading another's half-written .git/worktrees/<name>/commondir), and sessions in one repository do start together.
+// The lock is a mutex for this process and a flock on a file in the repository's git directory for others.
 func withWorktreeLock(repo string, f func() error) error {
 	worktreeMu.Lock()
 	defer worktreeMu.Unlock()

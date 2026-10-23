@@ -10,12 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestPrintGateReport_human_readable verifies that printGateReport writes a
-// structured, human-readable report containing the expected header fields,
-// column headers, and per-gate result rows.
-//
-// This test is only possible because printGateReport accepts io.Writer
-// (not *os.File). The io.Writer change was made explicitly to enable this.
+// TestPrintGateReport_human_readable checks the report's header, column headings and result rows.
 func TestPrintGateReport_human_readable(t *testing.T) {
 	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
 	report := gate.Report{

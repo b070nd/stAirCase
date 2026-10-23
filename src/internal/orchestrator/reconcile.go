@@ -19,17 +19,12 @@ type ReconcileResult struct {
 	OrphanBranches []string
 }
 
-// Reconcile detects orphan staircase/run-* branches
-// in sourcePath and stale RUNNING run records for caseID.
+// Reconcile detects orphan staircase/run-* branches in sourcePath and stale RUNNING run records for caseID. A run is stale after more
+// than 2 hours RUNNING, the same rule as [persistence.Store.KillStaleRuns].
 //
-// A run is considered stale if it has been RUNNING for more than 2 hours - the
-// same heuristic used by [persistence.Store.KillStaleRuns] in the normal path.
-//
-// Completed-run branches are delivery evidence, not orphans. Other inactive
-// branches are reported but never automatically deleted: they may contain
-// unmerged work or belong to another workspace with overlapping numeric IDs.
-// The former pruneBranches argument is retained for callers but no longer
-// authorizes deleting refs without an independent ownership/retention check.
+// Branches of completed runs are delivery evidence, not orphans. Other inactive branches are reported but never deleted: they may hold
+// unmerged work or belong to another workspace with overlapping IDs. The old pruneBranches argument is kept for callers and no longer
+// deletes anything.
 func (r *Runner) Reconcile(_ context.Context, caseID int64, sourcePath string, _ bool) (ReconcileResult, error) {
 	var result ReconcileResult
 

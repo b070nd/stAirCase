@@ -14,12 +14,9 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/history"
 )
 
-// What a run approved is known from two records that must agree: the audit chain
-// (what was decided, in order, tamper-evident) and the approval journal (the
-// requests themselves, which the chain only holds the hash of). Recovery commits
-// only what both say, and refuses when they do not fit together, because
-// certifying a prefix of what was approved would pass an incomplete change off as
-// the run's own.
+// What a run approved is known from two records that must agree: the audit chain (decisions, in order, tamper-evident) and the approval
+// journal (the requests themselves; the chain only holds their hash). Recovery commits only what both say and refuses when they do not
+// fit, because certifying a prefix would pass an incomplete change off as the run's own.
 
 // policyDigest is the digest of the policy the run recorded it loaded; "" when it recorded none.
 func policyDigest(h history.History) string {
@@ -43,14 +40,11 @@ type journalRead struct {
 	TornTail bool // the last line was cut short, as a crash does
 }
 
-// parseJournal reads JSON Lines. appendJournal writes a line and its newline in one
-// write, so what a crash cuts is the end of the last line: a last line without its
-// newline that is not complete JSON is a torn tail (never audited either, so never
-// released). Anything else that is not an entry is corruption, whatever it looks like:
-// a line that ends in a newline, complete JSON that is not an entry (`{}`, `null`, a
-// number that is not positive, no request), or an invalid line with others after it.
-// A repeated number is corruption too. Nor is every unterminated invalid line a cut one: only a line
-// that is a prefix of what appendJournal writes (see isCutJournalLine).
+// parseJournal reads JSON Lines. appendJournal writes a line and its newline in one write, so a crash cuts only the end of the last
+// line: a last line without its newline that is not complete JSON is a torn tail (never audited, so never released). Anything else that
+// is not an entry is corruption: a line ending in a newline, complete JSON that is not an entry (`{}`, `null`, a non-positive number, no
+// request), an invalid line with others after it, or a repeated number. An unterminated invalid line counts as cut only if it is a
+// prefix of what appendJournal writes (see isCutJournalLine).
 func parseJournal(raw []byte) (journalRead, error) {
 	var j journalRead
 	unterminated := len(raw) > 0 && raw[len(raw)-1] != '\n'
@@ -143,14 +137,11 @@ func isCutJournalLine(line []byte) bool {
 	}
 }
 
-// reconcile pairs what the chain approved with the journal's requests and returns
-// the proposals to commit, in the chain's order. It refuses unless every approval
-// the chain recorded has its request in the journal, unchanged: an approval that
-// was acknowledged to the agent but cannot be recovered means the recovered change
-// would be less than what the run approved. Journal entries the chain has no
-// approval for are what a crash leaves (written, not yet audited, so never
-// released) and are ignored only after the last decision the chain holds; anywhere
-// else they are corruption.
+// reconcile pairs what the chain approved with the journal's requests and returns the proposals to commit, in the chain's order. It
+// refuses unless every approval on the chain has its request in the journal, unchanged: an approval that was acknowledged to the agent
+// but cannot be recovered would make the recovered change less than what the run approved. Journal entries with no approval on the
+// chain are what a crash leaves (written, not yet audited, never released) and are ignored only after the chain's last decision;
+// anywhere else they are corruption.
 func reconcile(h history.History, j journalRead) ([]LedgerProposal, error) {
 	bySeq := map[int]journalEntry{}
 	for _, e := range j.Entries {

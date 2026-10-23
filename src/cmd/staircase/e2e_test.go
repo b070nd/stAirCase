@@ -1,17 +1,7 @@
 package main
 
-// End-to-end tests for the staircase CLI layer.
-//
-// These tests live in package main (whitebox) so they can call internal handler
-// functions directly without spawning a subprocess, making them runnable in
-// standard `go test` without a pre-built binary or a Python venv.
-//
-// Coverage targets (from docs/architecture.md §6 "What is not tested"):
-//   - cmd/staircase/* - all CLI command handlers
-//   - Full data-flow: persistence → gate → compile → inspect
-//
-// Tests that require Python (BootstrapVenv) are explicitly skipped so that CI
-// environments without Python3 remain green.
+// End-to-end tests for the CLI layer. They live in package main so they can call the handlers directly, without a built binary.
+// Tests that need Python are skipped.
 
 import (
 	"bytes"
@@ -392,14 +382,7 @@ func TestE2E_Inspect_EventLogChain(t *testing.T) {
 
 // ─── Scenario 7: Full workflow ────────────────────────────────────────────────
 
-// TestE2E_FullWorkflow_SetupCompileGate exercises the canonical pre-run
-// workflow end-to-end:
-//
-//  1. Workspace bootstrap (DB + key)
-//  2. Entity creation (vendor → project → case → stories → topology → agents)
-//  3. Compile (handler call → script + sidecar on disk)
-//  4. Gate check (report must not be blocking once runtime env is faked)
-//  5. Run creation + event log + status update
+// TestE2E_FullWorkflow_SetupCompileGate runs the usual pre-run workflow: workspace, entities, compile, gate check, run and event log.
 func TestE2E_FullWorkflow_SetupCompileGate(t *testing.T) {
 	wsDir, s := e2eWorkspace(t)
 

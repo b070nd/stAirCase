@@ -1,10 +1,7 @@
-// Package obs provides structured logging with automatic redaction of sensitive
-// fields (CHECK 10.1.2).
-//
-// Usage:
+// Package obs provides structured logging that redacts sensitive fields (CHECK 10.1.2).
 //
 //	obs.Log.Warn("stash pop failed", "err", err)
-//	obs.InitJSON(os.Stderr, slog.LevelInfo) // replace default discard handler
+//	obs.InitJSON(os.Stderr, slog.LevelInfo) // replaces the default discard handler
 package obs
 
 import (

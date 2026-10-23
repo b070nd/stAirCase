@@ -225,13 +225,8 @@ func (*topologyEdgesValidGate) Run(ctx Context) Result {
 
 // ─── topology.runtime_valid ───────────────────────────────────────────────────
 //
-// Three tiers:
-//   - implementedRuntimes  – langgraph is fully executable today → PASS
-//   - recognisedRuntimes   – crewai/autogen are spec'd for a future phase;
-//                            registered in the schema but the code-generator
-//                            raises NotImplementedError at runtime → WARN so
-//                            the operator knows before wasting a run
-//   - anything else        → BLOCK (truly unknown)
+// Three tiers: langgraph is fully executable (PASS); crewai and autogen are in the schema but their code generator raises
+// NotImplementedError (WARN, so the operator knows before wasting a run); anything else is BLOCK.
 
 var implementedRuntimes = map[string]bool{"langgraph": true}
 

@@ -45,10 +45,10 @@ func (r Report) OK() bool {
 	return true
 }
 
-// Verify checks every member of the set against what the workspace knows and the repositories hold: the run was delivered (its own verified
-// history says so), its certificate is signed by the workspace key, is about the run's commit, reaches minCAL, records no failed check and
-// names this set, and every contract of the project that the run changed was acknowledged, for exactly the content it produced, by every
-// other member. Nothing is repaired or recorded. A problem is a finding, so it is in the report; an error is a failure to look.
+// Verify checks every member against what the workspace knows and the repositories hold: the run was delivered (by its own verified
+// history), its certificate is signed by the workspace key, is about the run's commit, reaches minCAL, records no failed check and names
+// this set, and every contract the run changed was acknowledged, for exactly that content, by every other member. It changes nothing. A
+// problem is a finding in the report; an error is a failure to look.
 func Verify(store *persistence.Store, wsDir string, s Set, minCAL int) (Report, error) {
 	r := Report{Set: s.ID}
 	if len(s.Members) == 0 {

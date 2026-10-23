@@ -13,8 +13,8 @@ import (
 
 // visibleOverlays is a run's environment as the sandbox shows it to a check: for each declared path, where it is in the user's checkout
 // and where it appears. It judges the declaration when the run starts, so a run is refused before it makes anything: a path that does
-// not exist in the checkout, one the repository tracks (it is in every checkout of a commit already, and an environment is for what is
-// ignored), and an engine that cannot keep it read-only.
+// not exist, one the repository tracks (it is in every checkout already; an environment is for what is ignored), and an engine that
+// cannot keep it read-only.
 func visibleOverlays(sourceRoot string, t Terms) ([]sandbox.Overlay, error) {
 	if len(t.Visible) == 0 {
 		return nil, nil

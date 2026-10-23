@@ -18,13 +18,10 @@ const (
 
 // Graph runs a compiled plan in-process; it is an orchestrator.Agent.
 //
-// The supervisor goes first. A step is one agent's tool loop, run until the
-// model answers without calling a tool. The answer's last "ROUTE: <next>" line
-// picks the next step among the agent's outgoing edges - by condition label,
-// else by target name - and the supervisor may always choose END. Without a
-// valid route, an agent with a single next step takes it, a worker returns to
-// the supervisor, and the supervisor ends the run. All agents share one
-// conversation, which starts with the PRD and the repository context.
+// The supervisor goes first. A step is one agent's tool loop, run until the model answers without a tool call. The answer's last
+// "ROUTE: <next>" line picks the next step among the agent's outgoing edges (by condition label, else target name); the supervisor may
+// always choose END. Without a valid route, an agent with one next step takes it, a worker returns to the supervisor, and the supervisor
+// ends the run. All agents share one conversation, which starts with the PRD and the repository context.
 type Graph struct {
 	Plan   plan.Plan
 	Model  llm.Model // tests set it; nil means the providers

@@ -17,16 +17,12 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
-// Gemini runs Google's Gemini CLI (`gemini -p`) in the run's worktree as the
-// run's agent, built from its documentation (geminicli.com/docs/hooks):
-// BeforeTool hooks route every tool call through staircase like Claude Code's
-// PreToolUse, so edits and commands are decided before they run and every
-// other tool is refused.
+// Gemini runs Google's Gemini CLI (`gemini -p`) in the run's worktree, built from its hooks documentation (geminicli.com/docs/hooks).
+// BeforeTool hooks route every tool call through staircase, so edits and commands are decided before they run and every other tool is
+// refused.
 //
-// Gemini lets a call run when a hook fails in any way but exit code 2 or
-// answers with something that is not JSON, and it cannot be told to ignore
-// the user's and the repository's own hooks; so the hook bridge exits 2 on
-// every failure, and a session whose SessionStart hook never arrives fails.
+// Gemini lets a call run when a hook fails in any way except exit code 2, or answers with something that is not JSON, and it cannot
+// ignore the user's own hooks. So the hook bridge exits 2 on every failure, and a session whose SessionStart hook never arrives fails.
 type Gemini struct {
 	Prompt  string
 	Model   string // optional -m
