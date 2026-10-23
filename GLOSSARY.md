@@ -15,14 +15,14 @@ delivers from rows that were not verified. Only display commands show raw rows.
 **Event**: one entry of the chain. It has a type (`yield_decided`, `run_bound` and so on) and a JSON payload, and it is named by
 its hash, its **entry**.
 
-**Vote**: one reviewer model's verdict on one proposal, audited as a `validator_voted` before the decision it went into (ADR 0014).
-It is approve, reject, or error when the model failed or gave no verdict. Every model of the panel that was asked has one, whether the
-panel agreed or not. Votes are not signed.
+**Vote**: one reviewer model's verdict on one proposal, audited as `validator_voted` before the decision it went into (ADR 0014). It is
+approve, reject, or error when the model failed or gave no verdict. Every model of the panel that was asked has one, whether the panel agreed
+or not. Votes are not signed.
 
-**Writer**: the one way an event gets on the chain (`history.Writer`, ADR 0014). Every event is a typed value that carries its own
-name, and the writer encodes it, scrubs what was delivered to the agent, refuses an entry too big for the chain and appends it. The
-agent host's writer also notes an oversize request as what it left out. The acceptance of a story is the one entry the store inserts itself,
-inside the transaction that accepts it; its payload is still an event's.
+**Writer**: the one way an event gets onto the chain (`history.Writer`, ADR 0014). Every event is a typed value that carries its own name.
+The writer encodes it, scrubs what was delivered to the agent, refuses an entry too big for the chain, and appends it. The agent host's
+writer also notes an oversize request as left out. Accepting a story is the one entry the store inserts itself, inside the transaction that
+accepts it; its payload is still an event's.
 
 **Proposal**: something an agent asks to do: change files (`file_edit`), run a command (`shell_exec`) or call an outside tool
 (`tool_call`). It is audited as a `yield_request` and numbered by the decision that answers it (`seq`).
@@ -62,15 +62,14 @@ review.
 A run can be parked too: its last **launch** has no established end, so its agent is not launched again until a person
 acknowledges it (`staircase acknowledge <run>`, which launches nothing, or `staircase resume --ack-unknown`).
 
-**Launch**: one start of a run's agent: by a new run, a continuation or a resumed hosted session. It is claimed on the chain
-(`launch_claimed`, its attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is
-written once the agent stopped. A **lost** launch has no established end: no outcome, `unknown_after_restart` (a restart found the
-claim open) or `unresponsive`. A run with 3 lost launches is not launched again. A launch that did not end well has a **class**
-(`rejected`, `host_exit`, `storage`, `cleanup`, `uncertain_dispatch`) beside its outcome: about the agent's process, never a check
-result or an acceptance.
+**Launch**: one start of a run's agent, by a new run, a continuation or a resumed hosted session. It is claimed on the chain
+(`launch_claimed`, with an attempt number and generation) before the agent's process starts, and its outcome (`launch_ended`) is written once
+the agent stopped. A **lost** launch has no established end: no outcome, `unknown_after_restart` (a restart found the claim open) or
+`unresponsive`. A run with 3 lost launches is not launched again. A launch that did not end well also has a **class** (`rejected`,
+`host_exit`, `storage`, `cleanup`, `uncertain_dispatch`). The class is about the agent's process, never a check result or an acceptance.
 
-**Capabilities**: what an adapter declares it supports (native resume, its own sandbox, an MCP gate, hooks, host mode). A
-description shown by `staircase doctor`, never a grant.
+**Capabilities**: what an adapter says it supports (native resume, its own sandbox, an MCP gate, hooks, host mode). `staircase doctor` shows
+them. They describe an adapter and never grant anything.
 
 **Adopted**: a parked proposal the owner took into the change after a prototype (ADR 0007). It is recorded as an ordinary
 `operator` approval that names the proposal (`adopts`).
@@ -78,21 +77,20 @@ description shown by `staircase doctor`, never a grant.
 **Offered review**: what an away run puts to its owner when it ends. This is the exact tree, its files' digests, and the checks
 that passed on that tree (`awaiting_review`, resting on `phase_checked`). It is decided with `staircase decide`.
 
-**Outcome**: how a run stands, read from its history alone (`History.Outcome`): running, awaiting review, blocked or partial,
-failed, no change (a successful run without a commit and without parked proposals: nothing was approved or parked, so nothing waits and
-nothing is delivered), delivered, or delivered with incomplete evidence. A later event decides over an earlier one: a delivery over everything,
-then the review the last segment offered, then a parked or refused run (its last launch has no established end), then how the last segment ended (`run_path`, which records the status it ended with). A
-run's **status** (`Runner.StatusOf`) adds its attempts (the launches claimed on its chain: `History.Attempts`) and what it used of its time, tokens and estimated cost.
+**Outcome**: how a run stands, read from its history alone (`History.Outcome`): running, awaiting review, blocked or partial, failed, no
+change (a successful run with no commit and no parked proposals), delivered, or delivered with incomplete evidence. A later event beats an
+earlier one: a delivery beats everything, then the review the last segment offered, then a parked or refused run (its last launch has no
+established end), then how the last segment ended (`run_path`, which records its status). A run's **status** (`Runner.StatusOf`) adds its
+attempts (the launches claimed on its chain, `History.Attempts`) and what it used of its time, tokens and estimated cost.
 
-**Delivery by policy**: the delivery mode in which an away run commits its approved change to the run branch with no person
-reviewing the whole change (ADR 0012). It happens only when seven conditions hold, each read from the run's verified history and
-its bound terms: the terms say policy and the policy was signed; every approval is a rule of that policy (never the agreed task,
-evidence, a reviewer model or a person); nothing was parked; every approved path is inside the delivery scope and neither
-sensitive nor protected; the checks passed on exactly the approved tree and the run branch is still at the base; the protected
-paths are declared; the initiator signed. The run then writes `delivery_authorized` and commits like a live run does. If any
-condition fails, or is in doubt, the run ends awaiting review and says which condition (`delivery_refused` on its
-`awaiting_review`): a normal outcome, not an error. It never pushes. The certificate keeps the level it computes, carries the
-optional field `delivery: policy` and a note that no person reviewed the whole change.
+**Delivery by policy**: the delivery mode in which an away run commits its approved change to the run branch with no person reviewing
+the whole change (ADR 0012). It happens only when seven conditions hold, each read from the run's verified history and bound terms: the terms
+say policy and the policy was signed; every approval is a rule of that policy (never the agreed task, evidence, a reviewer model or a person);
+nothing was parked; every approved path is inside the delivery scope and neither sensitive nor protected; the checks passed on exactly the
+approved tree and the run branch is still at the base; the protected paths are declared; and the initiator signed. The run then writes
+`delivery_authorized` and commits like a live run. If any condition fails, or is in doubt, the run ends awaiting review and says which
+condition (`delivery_refused` on its `awaiting_review`). That is a normal outcome, not an error. It never pushes. The certificate keeps the
+level it computes and carries the optional field `delivery: policy`.
 
 **Sealed**: describes a chain after which nothing more may be decided. `delivery_authorized` ends the agent's part until the commit
 is named; `commit_prepared` ends the agent's part. `certificate_issued`, `run_recovered` and `review_delivered` end the chain.
@@ -102,20 +100,21 @@ adopted proposals, the offered review, the continuation's counters, and what sea
 no run can have written has no history. It is refused with the entry that breaks the grammar.
 
 **Profile**: what is true of a project for every run of it: the paths a person must always decide (protected and sensitive), the scope a
-change may touch, the checks and the sandbox. It is kept in the workspace, never in the client's repository, and a run resolves it into its terms
+change may touch, the checks and the sandbox. It is kept in the workspace, never in the client's repository. A run resolves it into its terms
 when it starts: a flag wins over it, its digest is bound with the terms, and a continuation keeps the profile it started with.
 
-**Environment**: the directories of the user's checkout that the repository ignores and a run's checks need (a project's `vendor/`), declared in
-its terms and shown to the checks, read-only, in the checkout of the commit they run in. It is never in the agent's worktree and never part of the
-approved bytes; a check that saw it says so in its record and in the certificate.
+**Environment**: the directories of the user's checkout that the repository ignores and a run's checks need (a project's `vendor/`). They
+are declared in the run's terms and shown to the checks, read-only, in the checkout of the commit they run in. They are never in the agent's
+worktree and never part of the approved bytes. A check that saw them says so in its record and in the certificate.
 
-**Briefing**: the one text an agent is told, composed in one place for every agent: an away run's brief, the project's instructions, the task (the
-PRD, the stories and the reviewers' lessons), what a continuation adds, and what the agent's own harness needs. `staircase case briefing` shows it.
+**Briefing**: the one text an agent is told, composed in one place for every agent: an away run's brief, the project's instructions, the
+task (the PRD, the stories and the reviewers' lessons), what a continuation adds, and what the agent's own harness needs. `staircase case
+briefing` shows it.
 
-**Change set**: runs of several repositories tied under one id, for a change that spans a backend, a middleware and a frontend. Every run stays
-one repository with its own worktree, chain and certificate; the set holds the member runs (one per project), the contract files that more than one
-repository depends on, and the acknowledgements a person recorded. It is a file in the workspace. `staircase changeset verify` checks the whole set,
-and a member's certificate names the set in an optional field.
+**Change set**: runs of several repositories tied under one id, for a change that spans a backend, a middleware and a frontend. Every run
+stays one repository with its own worktree, chain and certificate. The set holds the member runs (one per project), the contract files that
+more than one repository depends on, and the acknowledgements a person recorded. It is a file in the workspace. `staircase changeset verify`
+checks the whole set, and a member's certificate names the set in an optional field.
 
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
