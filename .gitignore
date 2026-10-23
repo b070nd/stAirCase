@@ -16,21 +16,19 @@ vendor/
 /staircase
 /staircase-*
 
-# Python bytecode and cache (CHECK 2.2.3 - no compiled artifacts in VCS)
+# Python bytecode and cache (no compiled artifacts in the repository)
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 
-# Built Go binaries under src/ (CHECK 2.2.3), and the one `go build` leaves in the CLI directory
+# Built Go binaries under src/, and the one `go build` leaves in the CLI directory
 src/staircase
 /src/cmd/staircase/staircase
 
-# Note: tests/fixtures/repos/*.tar.gz are intentional test fixtures (pre-built
-# git repository snapshots required by the orchestrator integration tests).
-# They are exempt from CHECK 2.2.3 because they are not build outputs -
-# they cannot be regenerated without the original repo history.
+# Note: tests/fixtures/repos/*.tar.gz are intentional test fixtures (pre-built git repository snapshots required by the
+# orchestrator integration tests). They are not build outputs and cannot be regenerated without the original repository history.
 
 # Local development ledger and delete-candidate quarantine (not part of the product)
 /PROTOCOL.md

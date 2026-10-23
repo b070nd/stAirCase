@@ -186,7 +186,7 @@ Both follow the same rules:
 - **No stderr text in the record.** When an agent program fails, the last 4 KiB of its stderr (with a line saying so if the start was
   dropped) is kept in the debug log, or in the host log of a hosted session, and shown at the terminal, scrubbed. It is not in the error
   the run ends with, which a caller may log or a runner may keep, and it is never on the audit chain, in the certificate or in the ledger.
-  The reason is a lesson from Cloudroom, which kept stderr tails in records its documentation said stderr never reached.
+  The reason: a runner such as Cloudroom may keep whatever the program it starts prints.
 
 ## The change certificate on every commit
 

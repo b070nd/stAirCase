@@ -58,4 +58,3 @@ New here? Read [Concepts](concepts.md), then [Getting started](../QUICKSTART.md)
 | [Testing](testing.md) | the test layers and `make check` |
 | [Contributing](../CONTRIBUTING.md) | how to propose a change, and how to write docs |
 | [Demo](../demo/README.md) | what the offline demo checks, step by step |
-| [Compliance checklist](compliance-checklist.md) | a historical audit record from the earlier runtime (archive) |

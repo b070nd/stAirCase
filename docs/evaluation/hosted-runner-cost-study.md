@@ -1,8 +1,7 @@
-# Hosted-runner cost study (US-029)
+# Hosted-runner cost study
 
 A desk study of what it would cost for stAirCase to run disposable runners in the EU, so that users could skip connecting their own.
-It answers PROTOCOL.md US-029 under the core 1.0 PRD. The beta still starts with **customer-owned runners**, and this study does not change
-that.
+The beta still starts with **customer-owned runners**, and this study does not change that.
 
 **How it was made.** The prices come from each provider's own pricing and region pages, read on **2026-10-18** (the [sources](#sources)
 list every URL). Nothing was signed up for, provisioned or paid. No runner was started, so every time, size and token count below is an
