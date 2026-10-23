@@ -32,6 +32,7 @@ src/staircase
 
 # Local development ledger and delete-candidate quarantine (not part of the product)
 /PROTOCOL.md
+/MAINTENANCE.md
 /.quarantine/
 
 # goreleaser output
