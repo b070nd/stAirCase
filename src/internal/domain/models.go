@@ -1,3 +1,5 @@
+// Package domain holds the plain types the other packages share: vendors, projects, cases, stories, topologies, runs and the records of
+// what happened in a run.
 package domain
 
 import (

@@ -46,7 +46,7 @@ and write $STAIRCASE_DIR/gates.json.sig.
 
 Re-run after any edit to gates.json. staircase gate warns when the
 signature is absent and blocks execution when the signature is invalid.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		gatesPath := filepath.Join(wsDir, "gates.json")
 		data, err := os.ReadFile(gatesPath)
@@ -77,7 +77,7 @@ content and the workspace public key (.signing.pub).
 
 Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
 gates.json has not been modified since it was last signed.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		sigPresent, err := gate.VerifyGatesSignature(wsDir)
 		if err != nil {

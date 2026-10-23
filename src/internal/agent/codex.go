@@ -100,7 +100,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	}
 	args = append(args, prompt)
 
-	var preview_ strings.Builder
+	var replies strings.Builder
 	var runErr error
 	stderr := &tail{max: 4096}
 	for started := time.Now(); ; {
@@ -134,7 +134,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 			case ev.Type == "thread.started" && ev.ThreadID != "" && resumeID == "":
 				env.RecordSession("codex", ev.ThreadID, "started")
 			case ev.Type == "item.completed" && ev.Item.Type == "agent_message":
-				preview_.WriteString(ev.Item.Text + "\n")
+				replies.WriteString(ev.Item.Text + "\n")
 			}
 		}
 		runErr = cmd.Wait()
@@ -150,10 +150,10 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 		}
 		break
 	}
-	env.Emit(ctx, orchestrator.Usage{Agent: "codex", Model: orDefault(c.Model, "codex"), Content: preview(preview_.String())})
+	env.Emit(ctx, orchestrator.Usage{Agent: "codex", Model: orDefault(c.Model, "codex"), Content: preview(replies.String())})
 	switch {
 	case runErr != nil:
-		return classifyRun(runErr, withStderr(fmt.Errorf("codex: %w: %s", runErr, preview(preview_.String())), stderr))
+		return classifyRun(runErr, withStderr(fmt.Errorf("codex: %w: %s", runErr, preview(replies.String())), stderr))
 	case !h.started.Load():
 		return ungoverned("codex")
 	}

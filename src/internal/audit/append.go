@@ -11,8 +11,7 @@ import (
 // AppendCheckpoint opens path for append (O_APPEND|O_CREATE|O_WRONLY, mode
 // 0600) and writes data.  Using O_APPEND guarantees that concurrent or
 // repeated calls to this function never overwrite earlier checkpoint records -
-// each call adds to the end of the file atomically at the OS level
-// .
+// each call adds to the end of the file atomically at the OS level.
 func AppendCheckpoint(path string, data []byte) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {

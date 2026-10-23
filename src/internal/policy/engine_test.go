@@ -356,8 +356,7 @@ func TestPolicyLoadValidation(t *testing.T) {
 }
 
 // TestDenyBeatsAllow verifies that a reject-effect rule wins when it appears
-// first: the engine is first-match-wins, so rule order determines outcome
-// .
+// first: the engine is first-match-wins, so rule order determines outcome.
 func TestDenyBeatsAllow(t *testing.T) {
 	// Reject rule first → it matches custom before the catch-all approve.
 	e := &policy.Engine{Rules: []policy.Rule{

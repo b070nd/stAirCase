@@ -2,29 +2,68 @@ version: "2"
 
 # The default linters (errcheck, govet, ineffassign, staticcheck, unused) plus the ones below, which catch real mistakes:
 # errors compared or asserted without errors.Is/As, errors formatted without %w, appends that share a backing array, os.Exit after a
-# defer, misspellings, needless conversions, shadowed built-in names and magic HTTP status numbers.
-# Left off on purpose: gosec and revive (mostly style and false positives for a tool that runs git and reads files by design),
-# nilerr (the walks skip unreadable entries on purpose).
+# defer, misspellings, needless conversions, shadowed built-in names, magic HTTP status numbers, weak crypto or TLS settings (gosec),
+# and a short list of revive rules (package comments, unused parameters, naming, error handling).
+# Left off on purpose: nilerr (the walks skip unreadable entries on purpose), and revive's "exported" rule, which asks for a comment on
+# every exported type and would only add filler.
 
 linters:
   enable:
     - errorlint
     - gocritic
+    - gosec
     - misspell
     - predeclared
+    - revive
     - unconvert
     - usestdlibvars
   settings:
+    gosec:
+      excludes:
+        - G101 # "hardcoded credentials": the names of environment variables and HTTP headers, not secrets
+        - G204 # a subprocess with a variable: running git and the user's own commands is what this tool does
+        - G304 # a file path from a variable: the CLI reads the paths a person names
+        - G301 # directories and files this tool creates are repository files, git hooks (must be executable) or scratch
+        - G306 #   space inside a private parent directory
+        - G703 # taint analysis: paths and URLs come from the person at the terminal or from a loopback-checked registration
+        - G704 #   (approvalhttp.loopback), and the page is served from embedded files with a strict Content Security Policy
+        - G705
+        - G122 # a walk over the person's own repository, not over a tree an attacker controls
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
     gocritic:
       disabled-checks:
         - ifElseChain # a long if-else chain is sometimes the clearer shape
   exclusions:
     rules:
       # Test files: t.Cleanup(func(){x.Close()}), defer Body.Close(), seed helpers -
-      # all idiomatic Go; errors are always nil in unit-test contexts.
+      # all idiomatic Go; errors are always nil in unit-test contexts. Fixture permissions, weak random numbers, unused callback
+      # parameters and unchecked errors in tests are not findings.
       - path: "_test\\.go"
         linters:
           - errcheck
+          - gosec
+          - revive
 
       # sql.DB.Close / sql.Rows.Close: errors here are always nil in practice
       # (they flush or close a pooled connection); no meaningful recovery exists.

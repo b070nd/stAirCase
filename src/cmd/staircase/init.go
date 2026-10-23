@@ -17,7 +17,7 @@ var initSkipVenv bool
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize the stAirCase workspace: database and keys",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		fmt.Printf("Initializing stAirCase in: %s\n", wsDir)
 

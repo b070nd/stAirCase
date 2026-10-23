@@ -87,8 +87,8 @@ func (s *Supervisor) Replay(paths []string, approved, byHuman bool) {
 	s.Decided(paths, approved, byHuman, "")
 }
 
-// Decided records how a checked proposal was decided; drift is its Check reason.
-func (s *Supervisor) Decided(files []string, approved, byHuman bool, drift string) {
+// Decided records how a checked proposal was decided.
+func (s *Supervisor) Decided(files []string, approved, byHuman bool, _ string) {
 	if byHuman {
 		s.report.Human++
 	} else {

@@ -1,3 +1,6 @@
+// Package sandbox runs commands and checks confined: in the macOS sandbox, Linux bubblewrap or Landlock, or a docker container. A command
+// can write only in its worktree and its own temp folder, has no network, and cannot read credentials; a run's declared environment
+// (ignored directories such as vendor/) is shown to it read-only.
 package sandbox
 
 import (

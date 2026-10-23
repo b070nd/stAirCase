@@ -24,8 +24,7 @@ type pluginGateDef struct {
 }
 
 // PluginGate is a Gate backed by an external script: it reads a JSON line on stdin and writes one to stdout. It runs with an empty
-// environment (no host secrets, no $STAIRCASE_DIR), in a fresh temp directory removed afterwards, under a configurable timeout
-// .
+// environment (no host secrets, no $STAIRCASE_DIR), in a fresh temp directory removed afterwards, under a configurable timeout.
 type PluginGate struct{ def pluginGateDef }
 
 func (p *PluginGate) Name() string     { return p.def.Name }

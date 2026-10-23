@@ -38,7 +38,7 @@ the 'repo' scope.
 If the remote is not github.com the branch is still pushed but PR creation
 is skipped and the PR URL is printed for manual use.`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		runID, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid run-id %q: %w", args[0], err)

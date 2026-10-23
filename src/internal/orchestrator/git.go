@@ -18,8 +18,8 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
-// GitRepo wraps a go-git repository and worktree with the few git operations the orchestrator needs, without the system git binary
-// . go-git v5 has no worktree API, so addWorktree and removeWorktree shell out to git.
+// GitRepo wraps a go-git repository and worktree with the few git operations the orchestrator needs, without the system git binary.
+// go-git v5 has no worktree API, so addWorktree and removeWorktree shell out to git.
 type GitRepo struct {
 	r    *gogit.Repository
 	w    *gogit.Worktree

@@ -1,3 +1,5 @@
+// Package engine holds the logic that works on projects and files without touching a run: the dependency order of projects, path globs,
+// the repository map and the ignore rules.
 package engine
 
 import (

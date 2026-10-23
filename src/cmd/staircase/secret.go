@@ -192,8 +192,7 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 		keyPath := filepath.Join(wsDir, crypto.KeyFile)
 
 		// Acquire exclusive non-blocking advisory lock.  Fails fast if any
-		// concurrent process (active run, 'secret set') holds a shared lock
-		//.
+		// concurrent process (active run, 'secret set') holds a shared lock.
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
 			return fmt.Errorf("open key for lock: %w", err)

@@ -96,8 +96,7 @@ func ResumeIfCommitted(wsDir string) error {
 	return nil
 }
 
-// RotateKey generates a new AES-256 key, re-encrypts all secrets through reencrypt, and installs the new key file atomically
-// .
+// RotateKey generates a new AES-256 key, re-encrypts all secrets through reencrypt, and installs the new key file atomically.
 //
 // A two-stage journal recovers from a crash at every step:
 //   - "pending": new key written to temp, journal written, DB not committed. Recovery asks tryDecryptAny whether the DB committed anyway.
@@ -107,8 +106,8 @@ func ResumeIfCommitted(wsDir string) error {
 // durability on most file systems. The DB uses synchronous=FULL, so the transaction is on disk when reencrypt returns; a caller that
 // opens it another way must set that pragma first.
 //
-// The caller must hold an exclusive non-blocking flock on <wsDir>/.key: it fails at once if a run or `secret set` holds a shared lock
-// . tryDecryptAny reports whether at least one stored secret decrypts with the given key; it is only used in "pending"
+// The caller must hold an exclusive non-blocking flock on <wsDir>/.key: it fails at once if a run or `secret set` holds a shared lock.
+// tryDecryptAny reports whether at least one stored secret decrypts with the given key; it is only used in "pending"
 // recovery. Pass a function returning false when there are no secrets.
 func RotateKey(
 	wsDir string,

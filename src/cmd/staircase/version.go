@@ -33,7 +33,7 @@ func buildVersion(injected, module string) string {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version of stAirCase",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		module := ""
 		if info, ok := debug.ReadBuildInfo(); ok {
 			module = info.Main.Version
