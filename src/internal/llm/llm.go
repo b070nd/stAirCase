@@ -160,7 +160,7 @@ func post(ctx context.Context, url string, headers map[string]string, body, out 
 				return nil
 			default:
 				err = fmt.Errorf("%s: HTTP %d: %s", url, resp.StatusCode, excerpt(data))
-				retry = resp.StatusCode == 408 || resp.StatusCode == 429 || resp.StatusCode >= 500
+				retry = resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
 			}
 		}
 		if !retry || attempt == maxAttempts-1 {

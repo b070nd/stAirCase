@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +19,7 @@ import (
 )
 
 // GitRepo wraps a go-git repository and worktree with the few git operations the orchestrator needs, without the system git binary
-// (CHECK 5.3.1). go-git v5 has no worktree API, so addWorktree and removeWorktree shell out to git.
+// . go-git v5 has no worktree API, so addWorktree and removeWorktree shell out to git.
 type GitRepo struct {
 	r    *gogit.Repository
 	w    *gogit.Worktree
@@ -247,7 +248,7 @@ func (g *GitRepo) Push(remoteName, branch, token string) error {
 	if token != "" {
 		opts.Auth = &githttp.BasicAuth{Username: "x-token-auth", Password: token}
 	}
-	if err := g.r.Push(opts); err != nil && err != gogit.NoErrAlreadyUpToDate {
+	if err := g.r.Push(opts); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("git push %s %s: %w", remoteName, branch, err)
 	}
 	return nil

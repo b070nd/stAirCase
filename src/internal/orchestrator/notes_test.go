@@ -125,7 +125,7 @@ func TestAttachNote_stores_the_file_exactly(t *testing.T) {
 // word, as concurrent writers lose them.
 func swallowNoteWrites(t *testing.T, n int) {
 	t.Helper()
-	real, err := exec.LookPath("git")
+	gitPath, err := exec.LookPath("git")
 	require.NoError(t, err)
 	dir := t.TempDir()
 	count := filepath.Join(dir, "count")
@@ -140,7 +140,7 @@ case " $* " in
 	;;
 esac
 exec %q "$@"
-`, count, n, count, real)
+`, count, n, count, gitPath)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o700))
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

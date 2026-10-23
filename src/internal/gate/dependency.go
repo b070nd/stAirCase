@@ -2,6 +2,7 @@ package gate
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/engine"
@@ -14,7 +15,7 @@ func init() {
 	Register(&depDepsCompletedGate{})
 }
 
-// ─── deps.no_cycle ────────────────────────────────────────────────────────────
+// deps.no_cycle
 
 type depNoCycleGate struct{}
 
@@ -39,7 +40,7 @@ func (*depNoCycleGate) Run(ctx Context) Result {
 		fmt.Sprintf("dependency graph is acyclic (%d projects, %d edges)", len(projects), len(deps)))
 }
 
-// ─── deps.deps_completed ─────────────────────────────────────────────────────
+// deps.deps_completed
 
 type depDepsCompletedGate struct{}
 
@@ -78,7 +79,7 @@ func (*depDepsCompletedGate) Run(ctx Context) Result {
 		}
 	}
 	if len(missing) > 0 || len(stale) > 0 {
-		all := append(missing, stale...)
+		all := slices.Concat(missing, stale)
 		return warn(name, "dependency",
 			fmt.Sprintf("upstream projects lack a delivered run at their current topology: %v", all))
 	}

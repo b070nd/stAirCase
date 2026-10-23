@@ -85,7 +85,8 @@ func signHandler(_ *cobra.Command, args []string) error {
 			kept = append(kept, s)
 		}
 	}
-	env.Signatures = append(kept, certificate.Signature{KeyID: id, Sig: base64.StdEncoding.EncodeToString(sig)})
+	kept = append(kept, certificate.Signature{KeyID: id, Sig: base64.StdEncoding.EncodeToString(sig)})
+	env.Signatures = kept
 	b, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		return err

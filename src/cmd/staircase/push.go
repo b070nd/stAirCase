@@ -50,7 +50,7 @@ is skipped and the PR URL is printed for manual use.`,
 			token = os.Getenv("GITHUB_TOKEN")
 		}
 
-		// ── Load run record ───────────────────────────────────────────────────
+		// Load run record
 		db, err := persistence.InitDB(wsDir)
 		if err != nil {
 			return fmt.Errorf("open workspace db: %w", err)
@@ -72,14 +72,20 @@ is skipped and the PR URL is printed for manual use.`,
 			return fmt.Errorf("run %d has no commit hash - nothing to push", runID)
 		}
 
-		// ── Open git repo ─────────────────────────────────────────────────────
+		// Open git repo
 		caseRec, err := store.GetCase(run.CaseID)
-		if err != nil || caseRec == nil {
-			return fmt.Errorf("load case %d: %v", run.CaseID, err)
+		if err != nil {
+			return fmt.Errorf("load case %d: %w", run.CaseID, err)
+		}
+		if caseRec == nil {
+			return fmt.Errorf("load case %d: not found", run.CaseID)
 		}
 		proj, err := store.GetProject(caseRec.ProjectID)
-		if err != nil || proj == nil {
-			return fmt.Errorf("load project %d: %v", caseRec.ProjectID, err)
+		if err != nil {
+			return fmt.Errorf("load project %d: %w", caseRec.ProjectID, err)
+		}
+		if proj == nil {
+			return fmt.Errorf("load project %d: not found", caseRec.ProjectID)
 		}
 
 		gr, err := orchestrator.OpenGitRepo(proj.SourcePath)
@@ -87,7 +93,7 @@ is skipped and the PR URL is printed for manual use.`,
 			return fmt.Errorf("open git repo %s: %w", proj.SourcePath, err)
 		}
 
-		// ── Push branch ───────────────────────────────────────────────────────
+		// Push branch
 		runBranch := fmt.Sprintf("staircase/run-%d", runID)
 		remote := pushRemote
 		if remote == "" {
@@ -114,7 +120,7 @@ is skipped and the PR URL is printed for manual use.`,
 		}
 		fmt.Println("✅ Branch pushed.")
 
-		// ── GitHub PR creation ────────────────────────────────────────────────
+		// GitHub PR creation
 		if !isGitHub {
 			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL - create the PR manually:\n", redactRemote(remoteURL))
 			fmt.Printf("   %s\n", manualPRURL(remoteURL, runBranch, run.GitBranch))
@@ -146,7 +152,7 @@ is skipped and the PR URL is printed for manual use.`,
 	},
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// helpers
 
 // parseGitHubOwnerRepo extracts owner and repo from a GitHub remote URL; ok is false for anything else.
 //

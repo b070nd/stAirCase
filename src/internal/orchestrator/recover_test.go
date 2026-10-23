@@ -6,6 +6,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/wslock"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -206,7 +207,7 @@ func TestRecover_trusts_only_what_the_audit_chain_records(t *testing.T) {
 		out, _ := json.Marshal(first)
 		return string(out)
 	}
-	forged := append(lines, evil(99)) // a proposal the chain never approved, numbered after every decision it holds
+	forged := append(slices.Clone(lines), evil(99)) // a proposal the chain never approved, numbered after every decision it holds
 	require.NoError(t, os.WriteFile(path, []byte(strings.Join(forged, "\n")+"\n"), 0o600))
 
 	res, err := orchestrator.NewRunner(r.Store, r.WsDir).Recover(context.Background(), r.Run.ID, orchestrator.RecoverOptions{})

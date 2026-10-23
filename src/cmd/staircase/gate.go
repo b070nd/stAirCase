@@ -99,14 +99,26 @@ func init() {
 }
 
 func runGateHandler(_ *cobra.Command, args []string) error {
-	caseID, err := parseID("case-id", args[0])
+	blocking, err := runGate(args)
 	if err != nil {
 		return err
+	}
+	if blocking {
+		os.Exit(1) // after runGate returned, so its deferred closes have run
+	}
+	return nil
+}
+
+// runGate runs the gates for a case, prints the report, and says whether it blocks.
+func runGate(args []string) (blocking bool, err error) {
+	caseID, err := parseID("case-id", args[0])
+	if err != nil {
+		return false, err
 	}
 
 	store, db, err := openStore()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = db.Close() }()
 
@@ -120,7 +132,7 @@ func runGateHandler(_ *cobra.Command, args []string) error {
 	if gateOutFile != "" {
 		out, err = os.Create(gateOutFile)
 		if err != nil {
-			return fmt.Errorf("open output file: %w", err)
+			return false, fmt.Errorf("open output file: %w", err)
 		}
 		defer func() { _ = out.Close() }()
 	}
@@ -129,27 +141,24 @@ func runGateHandler(_ *cobra.Command, args []string) error {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(report); err != nil {
-			return err
+			return false, err
 		}
 	} else {
 		printGateReport(out, report)
 	}
 
-	if report.Blocking() {
-		os.Exit(1)
-	}
-	return nil
+	return report.Blocking(), nil
 }
 
 // printGateReport renders a human-readable gate report to w.
 //
 //nolint:errcheck // fmt.Fprint* to an io.Writer; errors are not actionable in a CLI reporter.
 func printGateReport(w io.Writer, r gate.Report) {
-	// ── Header ───────────────────────────────────────────────────────────────
+	// Header
 	fmt.Fprintf(w, "\nQuality Gate Report - case #%d\n", r.CaseID)
 	fmt.Fprintf(w, "Run at: %s\n\n", r.RunAt.Format(time.RFC3339))
 
-	// ── Column widths ────────────────────────────────────────────────────────
+	// Column widths
 	const (
 		wCat  = 12
 		wName = 36
@@ -181,7 +190,7 @@ func printGateReport(w io.Writer, r gate.Report) {
 		)
 	}
 
-	// ── Footer ────────────────────────────────────────────────────────────────
+	// Footer
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, strings.Repeat("─", len(sep)))
 	overallIcon := statusIcon(r.Overall)

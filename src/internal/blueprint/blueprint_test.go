@@ -124,9 +124,9 @@ func TestCheck_plan_against_blueprint(t *testing.T) {
 	assert.ErrorContains(t, b.Check(p, "nope"), "no case")
 }
 
-func replace(s, old, new string) string {
+func replace(s, old, replacement string) string {
 	if !strings.Contains(s, old) {
 		panic("not found: " + old)
 	}
-	return strings.Replace(s, old, new, 1)
+	return strings.Replace(s, old, replacement, 1)
 }

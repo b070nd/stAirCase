@@ -598,7 +598,7 @@ func cleanApprovedPath(root, rel string) (string, error) {
 			break // the rest is new
 		}
 		if err != nil {
-			return "", fmt.Errorf("%w %q: %v", errBadPath, rel, err)
+			return "", fmt.Errorf("%w %q: %w", errBadPath, rel, err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("%w %q: goes through a symlink", errBadPath, rel)

@@ -68,9 +68,9 @@ func TestClaudeCode_host_hook_failures(t *testing.T) {
 	}
 
 	t.Run("the host gives up on a slow hook: the tool runs, nothing unapproved is committed", func(t *testing.T) {
-		real := os.Args[0]
+		binary := os.Args[0]
 		// only the tool hook is slow (the session handshake answers), so the host gives up on that one call
-		slow := scriptBin(t, "in=$(cat)\ncase \"$in\" in *PreToolUse*) sleep 2;; esac\nprintf '%s' \"$in\" | exec '"+real+"' \"$@\"")
+		slow := scriptBin(t, "in=$(cat)\ncase \"$in\" in *PreToolUse*) sleep 2;; esac\nprintf '%s' \"$in\" | exec '"+binary+"' \"$@\"")
 		r, log := hostRun(t, slow, "FAKE_CLAUDE_HOOK_TIMEOUT_MS=300")
 		assert.Contains(t, log, "Write proceeded-after-hook-failure", "the host ran the tool without an answer (this is the host's choice, not stAirCase's)")
 		require.Error(t, r.Err, "what the host wrote was never approved")

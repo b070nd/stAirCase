@@ -1,9 +1,23 @@
 version: "2"
 
-# Default enabled linters: errcheck, govet, ineffassign, staticcheck, unused.
-# No extras - additional linters to be enabled per-phase as code matures.
+# The default linters (errcheck, govet, ineffassign, staticcheck, unused) plus the ones below, which catch real mistakes:
+# errors compared or asserted without errors.Is/As, errors formatted without %w, appends that share a backing array, os.Exit after a
+# defer, misspellings, needless conversions, shadowed built-in names and magic HTTP status numbers.
+# Left off on purpose: gosec and revive (mostly style and false positives for a tool that runs git and reads files by design),
+# nilerr (the walks skip unreadable entries on purpose).
 
 linters:
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - predeclared
+    - unconvert
+    - usestdlibvars
+  settings:
+    gocritic:
+      disabled-checks:
+        - ifElseChain # a long if-else chain is sometimes the clearer shape
   exclusions:
     rules:
       # Test files: t.Cleanup(func(){x.Close()}), defer Body.Close(), seed helpers -

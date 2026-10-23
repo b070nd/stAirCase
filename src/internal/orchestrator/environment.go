@@ -32,17 +32,17 @@ func visibleOverlays(sourceRoot string, t Terms) ([]sandbox.Overlay, error) {
 	var out []sandbox.Overlay
 	for _, p := range t.Visible {
 		src := filepath.Join(root, filepath.FromSlash(p))
-		real, err := filepath.EvalSymlinks(src)
+		resolved, err := filepath.EvalSymlinks(src)
 		if err != nil {
 			return nil, fmt.Errorf("the environment path %s does not exist in %s: declare what is there (ignored directories such as vendor/)", p, sourceRoot)
 		}
 		if tracked, _ := exec.Command("git", "-C", root, "ls-files", "--", p).Output(); strings.TrimSpace(string(tracked)) != "" {
 			return nil, fmt.Errorf("the environment path %s is tracked by git, so it is in every checkout of a commit already: an environment is for what the repository ignores", p)
 		}
-		if _, err := os.Stat(real); err != nil {
+		if _, err := os.Stat(resolved); err != nil {
 			return nil, err
 		}
-		out = append(out, sandbox.Overlay{Source: real, Target: p})
+		out = append(out, sandbox.Overlay{Source: resolved, Target: p})
 	}
 	return out, nil
 }
