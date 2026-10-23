@@ -125,6 +125,10 @@ func testDockerCancelled(t *testing.T) {
 // TestDocker_the_environment_is_a_read_only_mount: with a real Docker (skipped where the image is not on the machine; run it on a proper
 // environment), a command sees the user's directory where the checkout has none, and cannot change it.
 func TestDocker_the_environment_is_a_read_only_mount(t *testing.T) {
+	t.Run("docker", testDockerEnvironment) // an engine's subtest: optional where the machine has no docker image (packaging/evidence.sh)
+}
+
+func testDockerEnvironment(t *testing.T) {
 	needDocker(t)
 	source, root := userCheckout(t)
 	overlays := []Overlay{{Source: filepath.Join(source, "vendor"), Target: "vendor"}}

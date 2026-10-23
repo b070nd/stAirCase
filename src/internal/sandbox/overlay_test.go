@@ -53,7 +53,7 @@ func TestOverlay_a_command_sees_the_environment_and_cannot_write_through_it(t *t
 	assert.False(t, sandboxed, "with the sandbox off the command says so")
 
 	if runtime.GOOS != "darwin" {
-		t.Skip("the write protection is proved with the macOS sandbox; the Linux engines refuse a declared environment (TestOverlay_engines_that_cannot_guarantee_it_refuse)")
+		t.Skip("documented limit: the write protection is proved with the macOS sandbox; the Linux engines refuse a declared environment (TestOverlay_engines_that_cannot_guarantee_it_refuse)")
 	}
 	if _, err := exec.LookPath("sandbox-exec"); err != nil {
 		t.Skip("no sandbox-exec here")
