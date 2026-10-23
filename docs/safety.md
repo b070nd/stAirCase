@@ -78,6 +78,27 @@ stAirCase is at **1.0**: its six interfaces follow semantic versioning ([compati
    never pulled for you (`docker pull` it first). It covers what stAirCase runs: the built-in agent's commands and
    every check, including an away run's evidence. Claude Code's and Codex's own commands still run in their own
    sandboxes, not in the container.
+
+   **A project's environment** (`--visible vendor`, or `visible` in the [profile](profile.md)) makes a directory your repository
+   ignores, such as composer's `vendor/`, visible to the checks: they run in a checkout of the commit, which holds tracked files only, so
+   without it a check that needs `vendor/` cannot pass. It is shown read-only (a read-only mount in the container; in the macOS sandbox a
+   link whose target the sandbox forbids writing; a run refuses where the engine cannot guarantee that, which today is bubblewrap and
+   Landlock). It is **not** in the agent's worktree, the agent's tools and approved shell commands never see it, and it is never part
+   of what is approved: a check that passes with it passed on more than the approved bytes, so the record of the check and the change
+   certificate name it, and `staircase verify` says so. Its content is yours, as it is now: stAirCase does not digest it. With
+   `--sandbox off` the directories are linked and nothing stops a check writing to them.
+   **The read boundary.** A tracked `auth.json` is in the agent's worktree, and what an agent reads can go to your model provider.
+   A project can name paths that the agent must not read (`unreadable` in its [profile](profile.md), or `--unreadable`). It is enforced
+   where the agent can be held to it, and where it cannot, the run does not start:
+
+   | Agent | What is enforced |
+   |---|---|
+   | The built-in runtime | its `read_file` and `list_dir` refuse the path and do not list it; its edit tools refuse it too (an edit shows what it changes). An approved shell command runs in the worktree and can still read it: you saw the command first |
+   | Claude Code (`claude`, `host`, `run`) | the hook refuses its `Read`, `Write` and `Edit` of the path, and a `Grep` from a folder that holds one (it reads what it searches: search a narrower folder). `Glob` and `LS` return names only and are allowed. A `Bash` command you approve is not covered |
+   | Codex, Gemini CLI, OpenCode | cannot be enforced: their sandboxes restrict writes, not reads. A run of them on such a project is refused, naming the agent |
+
+   This is a boundary for the files you name, not a promise about the rest: the deny-list of home-folder credentials above is a
+   different list, and a secret kept somewhere you did not name is readable.
 3. **Give stories a scope** so changes elsewhere come to you (`staircase story scope`).
 4. **Set a budget cap** per project (`staircase project config set --budget-cap`).
 5. **Let checks do the tedious part.** `--check` runs your tests, and security

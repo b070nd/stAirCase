@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/b070nd/stAirCase/src/internal/barrier"
@@ -72,10 +73,34 @@ func (firstSegment) base(s *runState) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve base commit: %w", err)
 	}
-	if clean, err := s.gr.IsClean(); err == nil && !clean {
+	if tracked, untracked, err := s.gr.DirtyFiles(); err == nil && len(tracked)+len(untracked) > 0 {
 		fmt.Fprintf(os.Stdout, "   ℹ️  %s has uncommitted changes; the agent works on commit %.12s without them\n", s.project.SourcePath, base)
+		if len(tracked) > 0 {
+			fmt.Fprintf(os.Stdout, "      tracked changes: %s\n", namesCapped(tracked))
+		}
+		if len(untracked) > 0 {
+			fmt.Fprintf(os.Stdout, "      untracked files: %s\n", namesCapped(untracked))
+		}
+		fmt.Fprintf(os.Stdout, "      ignored paths (vendor/, node_modules/, .env files) are not in the worktree either\n")
+		var lines []string
+		for _, p := range tracked {
+			lines = append(lines, "M "+p)
+		}
+		for _, p := range untracked {
+			lines = append(lines, "? "+p)
+		}
+		s.dirty = &history.SourceDirty{Tracked: len(tracked), Untracked: len(untracked), NamesSHA256: sha256Hex([]byte(strings.Join(lines, "\n")))}
 	}
 	return base, nil
+}
+
+// namesCapped lists up to ten names, and says how many more there are.
+func namesCapped(names []string) string {
+	const most = 10
+	if len(names) <= most {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s, and %d more", strings.Join(names[:most], ", "), len(names)-most)
 }
 
 func (g continuedSegment) base(*runState) (string, error) { return g.c.history.Bound.BaseSHA, nil } // never today's HEAD
@@ -150,6 +175,10 @@ func (firstSegment) checkout(s *runState) error {
 	if opts.Plan != nil {
 		bound.PlanDigest, bound.BlueprintHash = opts.Plan.Digest, opts.Plan.BlueprintHash
 	}
+	bound.ChangeSet = opts.ChangeSet
+	if opts.Instructions != "" { // what the project told the agent is bound before it starts
+		bound.InstructionsSHA256, bound.InstructionsBytes = sha256Hex([]byte(opts.Instructions)), len(opts.Instructions)
+	}
 	bound.ValidatorModels = opts.ValidatorModels // the panel the replay holds every decision by the reviewer models to (ADR 0014)
 	if opts.Away {                               // the brief the agent is given is bound before it starts
 		bound.AwayBrief = &history.AwayBrief{Version: AwayBriefVersion, SHA256: sha256Hex([]byte(AwayBrief))}
@@ -162,6 +191,11 @@ func (firstSegment) checkout(s *runState) error {
 	}
 	if err := r.log(run.ID).Append(bound); err != nil {
 		return fmt.Errorf("audit run_bound: %w", err)
+	}
+	if s.dirty != nil { // what the checkout held that the run does not have: a fact of the start, on the chain right after the binding
+		if err := r.log(run.ID).Append(*s.dirty); err != nil {
+			return fmt.Errorf("audit source_dirty: %w", err)
+		}
 	}
 	if opts.SignKey != "" { // the person who starts the run proves who they are, before any work is done
 		var digest string

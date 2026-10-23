@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"io"
 	"os"
 	"path/filepath"
@@ -33,12 +34,14 @@ import (
 // runState is one run, or one segment of it, while it goes: what its phases share. Each phase is a method; run calls them in the
 // order of the run's state machine. What a phase sets up for the rest of the run is undone by cleanup, in the reverse order.
 type runState struct {
-	r      *Runner
-	ctx    context.Context
-	caseID int64
-	opts   RunOptions
-	cont   *continuation // nil for a new run
-	seg    segment       // what this segment does that another would not
+	overlays []sandbox.Overlay    // the run's declared environment (Terms.Visible), as the sandbox shows it to a check
+	dirty    *history.SourceDirty // what the source checkout held that the run does not have, when it held something
+	r        *Runner
+	ctx      context.Context
+	caseID   int64
+	opts     RunOptions
+	cont     *continuation // nil for a new run
+	seg      segment       // what this segment does that another would not
 
 	harness, signers string
 
@@ -131,6 +134,11 @@ func (s *runState) prepare() (done bool, err error) {
 		if s.gr, err = OpenGitRepo(s.project.SourcePath); err != nil {
 			return false, fmt.Errorf("open git repo: %w", err)
 		}
+	}
+
+	// ── The declared environment: judged now, before anything is made ─────────
+	if s.overlays, err = visibleOverlays(s.project.SourcePath, opts.Terms); err != nil {
+		return false, err
 	}
 
 	// ── Optional reconcile ────────────────────────────────────────────────────
@@ -392,7 +400,7 @@ func (s *runState) startAgent() error {
 	s.cancelAgent = cancelAgent
 	s.deferred(cancelAgent)
 	s.stopped = make(chan struct{})
-	env := &AgentEnv{Session: agentSession(cont), Continuation: contBrief(cont), Brief: awayBrief(opts.Away), Worktree: s.worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: s.proposals, usage: s.usage, host: s.host}
+	env := &AgentEnv{Session: agentSession(cont), Continuation: contBrief(cont), Brief: awayBrief(opts.Away), Worktree: s.worktree, AllowShell: opts.AllowShellExec, Sandbox: opts.Sandbox, Instructions: opts.Instructions, Unreadable: opts.Unreadable, Environment: s.overlays, Workspace: r.wsDir, Checks: opts.Checks, CheckTimeout: opts.CheckTimeout, proposals: s.proposals, usage: s.usage, host: s.host}
 	if len(opts.ValidatorModels) > 0 {
 		s.val = &Validator{Models: opts.ValidatorModels, Chat: opts.ValidatorChat}
 		if s.val.Chat == nil {
@@ -406,7 +414,7 @@ func (s *runState) startAgent() error {
 		if s.val != nil {
 			s.val.noSampling = true // the evidence replaces the validator's own sampling
 		}
-		s.evGate = &evidenceGate{approvals: s.appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir, timeout: opts.CheckTimeout}
+		s.evGate = &evidenceGate{approvals: s.appr, checks: opts.Checks, sandbox: opts.Sandbox, wsDir: r.wsDir, timeout: opts.CheckTimeout, overlays: s.overlays}
 	}
 	signing := &decisionSigning{runID: run.ID, require: opts.RequireSignedApprovals, signKey: opts.SignKey, signAs: opts.SignAs, signers: s.signers}
 	// askHuman puts a proposal to a person (personFor) while the run's display waits. The wait ends with the run's limit, a final
@@ -834,7 +842,7 @@ func (s *runState) finalize() error {
 	// The commit is made and stays delivered. Evidence that cannot be written
 	// is reported, recorded and named in the run summary; with RequireEvidence
 	// the run also ends with ErrEvidenceIncomplete.
-	ev := evidence{checks: r.runChecks(ctx, run.ID, s.gr, hash, opts.Checks, opts.Sandbox, opts.CheckTimeout)}
+	ev := evidence{checks: r.runChecks(ctx, run.ID, s.gr, hash, opts.Checks, opts.Sandbox, opts.CheckTimeout, s.overlays)}
 	if ev.ledger, err = r.writeLedger(run.ID, s.ledger); err != nil {
 		fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
 		s.evidenceErrs = append(s.evidenceErrs, "ledger: "+err.Error())

@@ -133,3 +133,8 @@ func SetRecordCeilingForTest(n int) (restore func()) {
 func ExportedRecordBytes(proposed, approved []string) (decision, review int) {
 	return recordBytes(proposed, approved)
 }
+
+// ExportedScratchCheckout is the throwaway checkout checks run in.
+func ExportedScratchCheckout(repo, commit, prefix string) (string, func(), error) {
+	return scratchCheckout(repo, commit, prefix)
+}

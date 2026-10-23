@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/b070nd/stAirCase/src/internal/history"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"io"
 	"io/fs"
 	"os"
@@ -59,9 +60,16 @@ type AgentEnv struct {
 	// Brief is the pinned Away brief when the run is away (ADR 0008): how to work when nobody answers. Put it before the task.
 	Brief string
 
-	Worktree     string        // the run's git worktree: the agent's project root
-	AllowShell   bool          // shell_exec may be proposed (--allow-shell-exec)
-	Sandbox      string        // approved commands: "auto", "required" or "off" (--sandbox)
+	Worktree   string // the run's git worktree: the agent's project root
+	AllowShell bool   // shell_exec may be proposed (--allow-shell-exec)
+	Sandbox    string // approved commands: "auto", "required" or "off" (--sandbox)
+	// Unreadable are paths or patterns, from the worktree's root, that the project keeps out of the agent's reach (Terms.Unreadable).
+	Unreadable []string
+	reach      reach
+	// Instructions are the project's, told to the agent before its task (Terms.Instructions).
+	Instructions string
+	// Environment is the run's declared environment, shown read-only to the checks run when the agent says it is done.
+	Environment  []sandbox.Overlay
 	Workspace    string        // the stAirCase workspace: keys and secrets, hidden from commands
 	CheckTimeout time.Duration // how long one check may run (0: the default)
 	Checks       []string      // run before the agent may end (Done) and on the commit (--check)

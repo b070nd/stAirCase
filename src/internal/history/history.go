@@ -40,6 +40,9 @@ type History struct {
 
 	Launches []Launch // every agent launch, in chain order
 
+	// SourceDirty is what the checkout the run started from held that the run did not have; nil when it held nothing (source_dirty).
+	SourceDirty *SourceDirty
+
 	// Votes are the reviewer models' verdicts, in chain order (validator_voted), each with the chain position it was written at.
 	Votes []Vote
 
@@ -401,6 +404,12 @@ func replay(events []domain.RunEventLog) (History, error) {
 				return h, err
 			}
 			pending = append(pending, r)
+		case "source_dirty":
+			var d SourceDirty
+			if err := read(&d); err != nil {
+				return h, err
+			}
+			h.SourceDirty = &d
 		case "validator_voted":
 			var v Vote
 			if err := read(&v.ValidatorVoted); err != nil {

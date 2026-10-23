@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -53,6 +54,9 @@ const (
 func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 	root := env.Worktree
 	edit := func(ctx context.Context, e domain.ProposedEdit, reasoning, done string) string {
+		if env.OutOfReach(path.Clean(filepath.ToSlash(e.File))) { // an edit shows what it changes: a path out of reach is not edited either
+			return "error: " + e.File + outOfReachNote
+		}
 		ap := env.ProposeEdit(ctx, agent, reasoning, e)
 		if !ap.Approved {
 			return ap.Refusal()
@@ -68,10 +72,10 @@ func Tools(env *orchestrator.AgentEnv, agent string) []Tool {
 	tools := []Tool{
 		newTool("read_file", "Read a source file relative to the project root. Maximum 100 KB.",
 			`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`,
-			func(_ context.Context, a pathArg) string { return readFile(root, a.Path) }),
+			func(_ context.Context, a pathArg) string { return readFile(env, root, a.Path) }),
 		newTool("list_dir", "List files and sub-directories inside a project directory.",
 			`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`,
-			func(_ context.Context, a pathArg) string { return listDir(root, a.Path) }),
+			func(_ context.Context, a pathArg) string { return listDir(env, root, a.Path) }),
 		newTool("request_edit", "Propose an exact search-and-replace edit inside an existing file. No diffs or line numbers. The first occurrence of search_block is replaced; requires approval.",
 			`{"type":"object","properties":{"file":{"type":"string"},"search_block":{"type":"string"},"replace_block":{"type":"string"},"reasoning":{"type":"string"}},"required":["file","search_block","replace_block","reasoning"]}`,
 			func(ctx context.Context, a struct {
@@ -148,7 +152,39 @@ func inside(root, path string) (string, error) {
 
 var errEscape = errors.New("path escapes project root")
 
-func readFile(root, path string) string {
+// outOfReachNote is what the agent is told of a path the project keeps from it: nothing about what is there.
+const outOfReachNote = " is out of reach: the project keeps it from the agent"
+
+// relativeTo is full (resolved, inside root) as a slash path relative to root, resolved the same way.
+func relativeTo(root, full string) string {
+	r, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(r, full)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// askedRel is the path as the agent named it, relative to root with slashes and no resolving: the boundary is judged on it first, so a
+// path that is out of reach is refused whether or not anything is there (and on a file system that tells letter cases apart, "AUTH.JSON"
+// is refused as "auth.json" is, not reported missing).
+func askedRel(root, p string) string {
+	p = filepath.ToSlash(p)
+	if filepath.IsAbs(p) {
+		if rel, err := filepath.Rel(root, p); err == nil {
+			p = filepath.ToSlash(rel)
+		}
+	}
+	return strings.TrimPrefix(path.Clean(p), "./")
+}
+
+func readFile(env *orchestrator.AgentEnv, root, path string) string {
+	if env.OutOfReach(askedRel(root, path)) {
+		return "error: " + path + outOfReachNote
+	}
 	full, err := inside(root, path)
 	switch {
 	case errors.Is(err, errEscape):
@@ -157,6 +193,9 @@ func readFile(root, path string) string {
 		return "error: file not found: " + path
 	case err != nil:
 		return fmt.Sprintf("error reading %s: %v", path, err)
+	}
+	if env.OutOfReach(relativeTo(root, full)) { // by the path the link leads to, not the one it was asked by
+		return "error: " + path + outOfReachNote
 	}
 	info, err := os.Stat(full)
 	switch {
@@ -174,7 +213,10 @@ func readFile(root, path string) string {
 	return string(b)
 }
 
-func listDir(root, path string) string {
+func listDir(env *orchestrator.AgentEnv, root, path string) string {
+	if rel := askedRel(root, orDefault(path, ".")); rel != "." && env.OutOfReach(rel+"/_") {
+		return "error: " + path + outOfReachNote
+	}
 	full, err := inside(root, orDefault(path, "."))
 	switch {
 	case errors.Is(err, errEscape):
@@ -183,6 +225,10 @@ func listDir(root, path string) string {
 		return "error: directory not found: " + path
 	case err != nil:
 		return fmt.Sprintf("error listing %s: %v", path, err)
+	}
+	dirRel := relativeTo(root, full)
+	if dirRel != "." && env.OutOfReach(dirRel+"/_") { // the pattern covers what is in it
+		return "error: " + path + outOfReachNote
 	}
 	entries, err := os.ReadDir(full)
 	if err != nil {
@@ -197,12 +243,17 @@ func listDir(root, path string) string {
 		}
 		return entries[i].Name() < entries[j].Name()
 	})
-	names := make([]string, len(entries))
-	for i, e := range entries {
-		names[i] = e.Name()
-		if e.IsDir() {
-			names[i] += "/"
+	var names []string
+	for _, e := range entries {
+		rel := path2(dirRel, e.Name())
+		if env.OutOfReach(rel) || (e.IsDir() && env.OutOfReach(rel+"/_")) { // not even its name is shown
+			continue
 		}
+		name := e.Name()
+		if e.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
 	}
 	if len(names) == 0 {
 		return "(empty directory)"
@@ -342,4 +393,12 @@ func refuseAmbiguous(in hookInput, conflict string) hookInput {
 	in.Tool = ambiguousTool
 	in.Input, _ = json.Marshal(map[string]string{"conflict": conflict})
 	return in
+}
+
+// path2 joins a directory and a name as a slash path relative to the root ("." is the root).
+func path2(dir, name string) string {
+	if dir == "." || dir == "" {
+		return name
+	}
+	return dir + "/" + name
 }

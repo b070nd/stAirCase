@@ -102,3 +102,52 @@ action() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"key=GOOD-KEY"* ]]
 }
+
+# A release since 1.2.0 reads the trusted key and signers from the trusted ref itself (verify --trust-ref); the script only names the
+# ref. The stand-in below answers `verify --help` like that release and resolves the paths with git, as the real command does.
+modern() {
+  cat >"$WORK/modern-staircase" <<'FAKE'
+#!/bin/bash
+if [ "$1 $2" = "verify --help" ]; then echo "      --trust-ref string"; exit 0; fi
+echo "args: $*"
+ref=""; keypath=""; signerspath=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --trust-ref) ref="$2"; shift ;;
+    --key-path) keypath="$2"; shift ;;
+    --signers-path) signerspath="$2"; shift ;;
+  esac
+  shift
+done
+[ -z "$keypath" ] || echo "key=$(git show "$ref:$keypath")"
+[ -z "$signerspath" ] || echo "signers=$(git show "$ref:$signerspath")"
+FAKE
+  chmod +x "$WORK/modern-staircase"
+  export STAIRCASE_BIN="$WORK/modern-staircase"
+}
+
+@test "a verifier that can read the trusted ref is told the ref and the paths, not given files" {
+  modern
+  action
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--trust-ref origin/main --key-path .github/staircase.pub"* ]]
+  [[ "$output" != *"--key "* ]]
+  [[ "$output" == *"key=GOOD-KEY"* ]]
+  [[ "$output" != *"EVIL"* ]]
+}
+
+@test "the allowed signers are named by path at the trusted ref too" {
+  modern
+  ALLOWED_SIGNERS=.github/allowed_signers action
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--signers-path .github/allowed_signers"* ]]
+  [[ "$output" == *"signers=alice GOOD-SIGNER"* ]]
+}
+
+@test "trust-ref is passed through to a verifier that can read it" {
+  modern
+  git -C "$WORK/repo" tag trusted-v1 main
+  TRUST_REF=trusted-v1 BASE_REF= RANGE="main..pr" action
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--trust-ref trusted-v1"* ]]
+}

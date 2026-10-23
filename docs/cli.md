@@ -124,6 +124,18 @@ List imported blueprints
 staircase blueprint list
 ```
 
+## staircase case briefing
+
+Show the exact text an agent is told for a compiled case
+
+```
+staircase case briefing <case-id>
+```
+
+Prints what the agent of a compiled case is told: the project's instructions (from its profile), then the task (the PRD, the stories with
+their scope, and the reviewers' lessons), then what the agent's own harness adds. It is the text the agents are given, composed by the same
+function. An away run puts its own brief first and a continuation adds the task as it stood: those depend on the run and are not shown.
+
 ## staircase case delete
 
 Flag a Case for deletion (removed on next 'staircase clean --aggressive')
@@ -178,6 +190,77 @@ Show detailed status of a Case
 staircase case status <case-id>
 ```
 
+## staircase changeset ack
+
+Record that a repository accepts a member's change to a contract
+
+```
+staircase changeset ack <id> <project>:<path> --by <project> [flags]
+```
+
+Records that a person looked at the member run's change to the contract and that the project named by --by accepts it. The record is
+of the content the change produced: a later change to the file needs a new acknowledgement. Repeat the command for each other member.
+
+Flags:
+
+```
+      --by string   The project (id or name) that accepts the change
+```
+
+## staircase changeset add
+
+Make runs members of a change set (one run per project; a newer one replaces it)
+
+```
+staircase changeset add <id> <run-id>...
+```
+
+## staircase changeset contract
+
+Declare a file that several repositories depend on
+
+```
+staircase changeset contract <id> <project>:<path>
+```
+
+## staircase changeset create
+
+Make an empty change set
+
+```
+staircase changeset create <id>
+```
+
+## staircase changeset list
+
+List the workspace's change sets
+
+```
+staircase changeset list
+```
+
+## staircase changeset show
+
+Show a change set: its runs, contracts and acknowledgements
+
+```
+staircase changeset show <id>
+```
+
+## staircase changeset verify
+
+Check a whole change set: every run delivered, every certificate valid, every contract change acknowledged
+
+```
+staircase changeset verify <id> [flags]
+```
+
+Flags:
+
+```
+      --min-cal int   Fail a member whose certificate is below this change assurance level (1-4)
+```
+
 ## staircase claude
 
 Run Claude Code on a task in this repository, with every change decided by you
@@ -209,6 +292,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -223,7 +307,9 @@ Flags:
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -288,6 +374,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -301,7 +388,9 @@ Flags:
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -506,6 +595,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -520,7 +610,9 @@ Flags:
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -693,6 +785,7 @@ Flags:
       --away                       Work while you are away: nobody is asked; a change is approved only when your --check commands pass on it, anything that needs you is parked, and the run ends waiting for your review (staircase decide). Needs --check and --allow
       --away-command stringArray   An exact command an away run may run without asking (repeat for more): your decision made in advance. It needs --away, --allow-shell-exec and a sandbox without network (--sandbox docker:image=... or required); it runs only as written, in the worktree's root
       --away-tool stringArray      An exact MCP tool (mcp__<server>__<tool>) an away run may call without asking (repeat for more); any other tool call is parked
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --deliver string             How an away run's approved change reaches its branch: review (it waits for your review: staircase decide) or policy (it is committed to the run branch, with no review, when only rules of your signed policy approved it and your checks pass; no person reviews the whole change). Policy needs --away, --check, --deliver-path, --sign-approvals, a signed policy (staircase policy sign), and a --protect path or checks that name a file of their own; it never pushes (default "review")
@@ -706,7 +799,9 @@ Flags:
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm the task (needed without a terminal)
 ```
 
@@ -845,6 +940,38 @@ List projects for a vendor
 
 ```
 staircase project list <vendor-name>
+```
+
+## staircase project profile set
+
+Set fields of a project's profile (a field named replaces it; --clear removes one)
+
+```
+staircase project profile set <project-id> [flags]
+```
+
+Flags:
+
+```
+      --check stringArray          A command (such as the tests) run on the commit a run makes; repeat for more
+      --clear stringArray          Remove a field: protect, sensitive, scope, visible, unreadable, instructions, checks, sandbox (repeatable)
+      --instructions string        What every agent on this project is told before its task (conventions, rules of the house), as text
+      --instructions-file string   The same, read from a file now (the profile keeps a copy in the workspace; the file stays where it is)
+      --protect stringArray        Paths or patterns, from the repository's root, where a check is defined: a change to one always needs a person
+      --sandbox string             Where approved commands and checks run: auto, required, off or docker:image=<ref>
+      --scope stringArray          Paths or patterns a run's changes may touch; a change elsewhere comes to a person as drift
+      --sensitive stringArray      Paths or patterns a change to which always needs a person, in addition to the built-in list (a contract file, say)
+      --unreadable stringArray     Paths or patterns, from the repository's root, that the agent must not read (a tracked auth.json): an agent that cannot be stopped from reading them is not started on the project
+      --unreadable-defaults        Add the usual list to the unreadable paths: auth.json, .env files, private keys (it is written into the profile, which you can edit)
+      --visible stringArray        Ignored directories or files of the checkout that checks need and see read-only (vendor/, generated/): literal paths, from the repository's root
+```
+
+## staircase project profile show
+
+Show a project's profile
+
+```
+staircase project profile show <project-id>
 ```
 
 ## staircase project set-webhook
@@ -1098,7 +1225,9 @@ Flags:
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 
@@ -1115,9 +1244,11 @@ Flags:
 ```
       --ack-drift                  Run a case whose previous run was halted for drift, after reviewing it (recorded on the audit chain)
       --agent string               Agent to run: built-in (the compiled topology), claude-code or codex (governed through their hooks; experimental) (default "built-in")
+      --allow stringArray          A path (glob) this run's changes may touch, on top of the stories' scope: a change elsewhere comes to a person as drift (default: the project's profile)
       --allow-shell-exec           Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. Shell execution is disabled by default; pass this flag to opt in.
       --approval-port int          Start an inbound HTTP approval server on this port (0 = disabled). Exposes GET /v1/yields and POST /v1/yields/{id}/approve|reject for async HITL.
       --approval-token string      Bearer token required by the approval HTTP server. If empty and --approval-port is set, a random token is generated and printed at startup.
+      --change-set string          The change set this run belongs to (staircase changeset create): the id goes on the run's record and certificate. The run stays one repository
       --check stringArray          A command (such as your tests) to run on the commit once it is made, in the sandbox; its result goes into the change certificate, and verify fails a failed check. Repeat for more
       --check-timeout duration     How long one --check may run, wherever checks run (approving on evidence, the definition of done, after the commit); a check that takes longer counts as not passed. Default 15m
       --debug                      Log every agent message (proposals, usage) to $STAIRCASE_DIR/log/
@@ -1137,7 +1268,9 @@ Flags:
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
       --skip-gates                 Bypass quality gate pre-flight (use with care)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
 ```
 
 ## staircase seal
@@ -1177,7 +1310,9 @@ Flags:
       --sign-as string             The name you sign decisions as (default: git user.email)
       --signal string              Evaluation model (e.g. typesafe-ai/jev via the LLM gateway) asked about every change approved without you; it can only send a change to you (risky, off the stories, or no answer), never approve one
       --signal-url string          Ask a TypeSafe-compatible server instead of the gateway, for example a local Laya (laya-serve) at http://127.0.0.1:8000; the change is sent to it (a key, if it needs one: staircase secret set SIGNAL_API_KEY)
+      --unreadable stringArray     A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more
       --validator stringArray      Model that reviews in-scope file edits the policy leaves open (e.g. openai/gpt-6-astra via the LLM gateway); a human approves the run's final change once. Repeat for a panel: the models must agree, otherwise a human decides
+      --visible stringArray        A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more (default: the project's profile)
   -y, --yes                        Start without asking to confirm (needed without a terminal)
 ```
 
@@ -1449,7 +1584,10 @@ which a run writes; fetch notes from a remote with
 or pass the certificate file with --certificate.
 
 The trusted key is the workspace's public signing key (.signing.pub), or the
-file given with --key: that file is all a reviewer needs.
+file given with --key: that file is all a reviewer needs. In CI, read it from a
+protected ref instead: --trust-ref origin/main --key-path ci/staircase.pub (and
+--signers-path for the allowed signers). That ref must not hold a commit being
+verified, so a change cannot vouch for itself.
 
 A range (main..HEAD) checks every commit in it that names an agent in an
 Assisted-by: trailer; --all checks every commit. This is what a CI check on a
@@ -1463,12 +1601,15 @@ Flags:
       --certificate string       Read the certificate from this file instead of the git note
       --check-anchor             Also check that the certificate is in a Rekor log (see 'staircase audit anchor'); reads <certificate>.anchor, by default from the workspace
       --key string               Public signing key to trust (default: the workspace's .signing.pub and its team's keys, see staircase governance)
+      --key-path string          With --trust-ref, the path of the public signing key at that ref (instead of --key)
       --ledger string            With --rebuild, read the ledger from this file instead of the git note (one commit only)
       --min-cal int              Fail below this change assurance level (1-4)
       --policy-uri string        With --vsa-out, the URI that says what the policy digest covers (default: the VSA specification's policy section)
       --rebuild                  Also rebuild each commit from its ledger (what 'staircase rebuild' does): the ledger the certificate names is read from the commit's git note (refs/notes/staircase-ledger), and a commit without one, or holding other bytes than it produces, fails
       --require-initiator        CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; without it the requester is the git email, which anyone can set
       --resource-uri string      With --vsa-out, the repository URI, such as git+https://github.com/org/repo (default: from the origin remote)
+      --signers-path string      With --trust-ref, the path of the allowed_signers file at that ref (instead of --allowed-signers)
+      --trust-ref string         Read the trusted key (--key-path) and signers (--signers-path) from this git ref, such as origin/main or a protected tag, never from the checkout: a ref that is, or contains, a commit being verified is refused, because a change must not vouch for itself
       --verifier-id string       With --vsa-out, the verifier's identity URI (default: https://github.com/b070nd/stAirCase); consumers accept a VSA only from verifiers they know
       --vsa-key string           With --vsa-out, the raw Ed25519 private key file that signs it (default: the workspace's .signing.key)
       --vsa-out string           Write a SLSA Verification Summary Attestation (VSA v1, signed DSSE) for every commit that passes, to <dir>/<commit>.vsa.json; its levels are stAirCase's own (STAIRCASE_CAL_n, STAIRCASE_REBUILT, ...), never a SLSA source level

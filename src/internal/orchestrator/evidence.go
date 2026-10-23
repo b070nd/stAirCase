@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/b070nd/stAirCase/src/internal/history"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,7 +22,8 @@ type evidenceGate struct {
 	checks    []string
 	sandbox   string // as for approved commands
 	wsDir     string
-	timeout   time.Duration // for each check; 0 is the default
+	timeout   time.Duration     // for each check; 0 is the default
+	overlays  []sandbox.Overlay // the run's declared environment, shown to every check
 }
 
 // runChecks runs every check on the proposed state and returns the results and,
@@ -38,7 +39,7 @@ func (g *evidenceGate) runChecks(ctx context.Context, next map[string]*approvedF
 	defer cleanup()
 	var why []string
 	for _, command := range g.checks {
-		c, tail := runCheck(ctx, dir, command, g.sandbox, g.wsDir, g.timeout)
+		c, tail := runCheck(ctx, dir, command, g.sandbox, g.wsDir, g.timeout, g.overlays)
 		results = append(results, c)
 		if c.ExitCode != 0 {
 			why = append(why, fmt.Sprintf("check %q failed (exit %d): %s", command, c.ExitCode, strings.TrimSpace(tail)))
@@ -50,28 +51,9 @@ func (g *evidenceGate) runChecks(ctx context.Context, next map[string]*approvedF
 // state checks out the base commit in a scratch directory and lays the approved
 // changes and next over it.
 func (g *evidenceGate) state(next map[string]*approvedFile) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "staircase-evidence-")
-	if err == nil {
-		err = os.Remove(dir) // git worktree add creates it
-	}
+	dir, cleanup, err := scratchCheckout(g.approvals.repo.path, g.approvals.base.Hash.String(), "staircase-evidence-")
 	if err != nil {
 		return "", nil, err
-	}
-	repo := g.approvals.repo.path
-	err = withWorktreeLock(repo, func() error {
-		out, err := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", "--quiet", dir, g.approvals.base.Hash.String()).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("checkout for the checks: %w: %s", err, strings.TrimSpace(string(out)))
-		}
-		return nil
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup := func() {
-		_ = withWorktreeLock(repo, func() error {
-			return exec.Command("git", "-C", repo, "worktree", "remove", "--force", dir).Run()
-		})
 	}
 	merged := maps.Clone(g.approvals.files)
 	maps.Copy(merged, next)
@@ -98,7 +80,7 @@ func (g *evidenceGate) state(next map[string]*approvedFile) (string, func(), err
 func checkEvidence(results []certificate.Check) []history.Check {
 	out := make([]history.Check, len(results))
 	for i, c := range results {
-		out[i] = history.Check{Command: c.Command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed}
+		out[i] = history.Check{Command: c.Command, ExitCode: c.ExitCode, OutputSHA256: c.OutputSHA256, Sandboxed: c.Sandboxed, Environment: c.Environment}
 	}
 	return out
 }

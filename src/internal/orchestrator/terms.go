@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/b070nd/stAirCase/src/internal/changeset"
+	"github.com/b070nd/stAirCase/src/internal/engine"
 	"github.com/b070nd/stAirCase/src/internal/history"
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
@@ -53,6 +55,27 @@ type Terms struct {
 	// ProtectedPaths hold the checks' definitions (paths or ** patterns, from the repository's root): a change to one always
 	// needs a person, whatever the policy says, and is parked while away. Those the checks name are added (checkDefinitions).
 	ProtectedPaths []string `json:"protected_paths,omitempty"`
+	// Scope narrows the plan's scope for this run: a change outside these paths (or ** patterns, from the repository's root) comes to a
+	// person as drift, whatever the stories allow (--allow on a run, or the project's profile).
+	Scope []string `json:"scope,omitempty"`
+	// SensitivePaths are the project's own sensitive paths, added to the built-in list: a change to one always needs a person,
+	// whatever the policy says. They can only add to the list (the project's profile).
+	SensitivePaths []string `json:"sensitive_paths,omitempty"`
+	// ProfileSHA256 is the digest of the project's profile the run started under, "" when the project had none: what the run was told
+	// about its project is on the record.
+	ProfileSHA256 string `json:"profile_sha256,omitempty"`
+	// Instructions are the project's, given to the agent before its task, whichever agent it is (the project's profile). Text: bound
+	// by the terms' digest, saved with them, so a continuation tells its agent the same words.
+	Instructions string `json:"instructions,omitempty"`
+	// ChangeSet names the change set the run belongs to (several repositories, one piece of work): on the run's record and certificate.
+	ChangeSet string `json:"change_set,omitempty"`
+	// Unreadable are paths or patterns (from the repository's root) the project keeps out of the agent's reach: an agent that can enforce it
+	// refuses to read them, and one that cannot is not started (the project's profile).
+	Unreadable []string `json:"unreadable,omitempty"`
+	// Visible is the run's environment: directories (or files) of the user's checkout, relative to its root, that the repository
+	// ignores and the checks need (composer's vendor/, generated code). Checks see them, read-only, in the checkout of the commit they
+	// run in. They are never in the agent's worktree and never part of what is approved.
+	Visible []string `json:"visible,omitempty"`
 	// Deliver is how the run's approved change reaches its branch (ADR 0012): DeliverReview (also when empty, and then absent
 	// from the saved form, so every run saved before the field existed reads as review) offers it to a person; DeliverPolicy
 	// delivers it, while nobody is there, when only rules of the owner's signed policy approved it.
@@ -120,6 +143,30 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	if err := t.protect(); err != nil {
 		return t, err
 	}
+	var err error
+	if t.Scope, err = cleanPaths("--allow", t.Scope); err != nil {
+		return t, err
+	}
+	if t.SensitivePaths, err = cleanPaths("the profile's sensitive paths", t.SensitivePaths); err != nil {
+		return t, err
+	}
+	if t.Visible, err = visiblePaths(t.Visible); err != nil {
+		return t, err
+	}
+	if t.Unreadable, err = cleanPaths("--unreadable", t.Unreadable); err != nil {
+		return t, err
+	}
+	if why := t.unreadableRefusal(harness); why != "" {
+		return t, errors.New(why)
+	}
+	if t.ChangeSet != "" {
+		if err := changeset.ValidID(t.ChangeSet); err != nil {
+			return t, err
+		}
+	}
+	if len(t.Instructions) > maxInstructions {
+		return t, fmt.Errorf("the project's instructions are %d bytes and an agent is told at most %d", len(t.Instructions), maxInstructions)
+	}
 	if err := t.deliver(); err != nil {
 		return t, err
 	}
@@ -186,14 +233,49 @@ func (t *Terms) protect() error {
 	return nil
 }
 
-// repoPath is p cleaned, if it names something inside the repository from its root.
-func repoPath(p string) (string, bool) {
-	clean := path.Clean(p)
-	if p == "" || clean == "." || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", false
+// maxInstructions is the most a project may tell its agents (as the profile's limit).
+const maxInstructions = 32 << 10
+
+// visiblePaths is the declared environment cleaned, sorted and without duplicates: literal paths inside the repository, never a pattern
+// and never the git directory.
+func visiblePaths(paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		clean, ok := repoPath(p)
+		if !ok {
+			return nil, fmt.Errorf("--visible %q: name a path inside the repository, from its root", p)
+		}
+		if strings.ContainsAny(clean, "*?[") {
+			return nil, fmt.Errorf("--visible %q names a directory or a file, not a pattern", p)
+		}
+		if clean == ".git" || strings.HasPrefix(clean, ".git/") {
+			return nil, fmt.Errorf("--visible %q: the git directory is not an environment", p)
+		}
+		out = append(out, clean)
 	}
-	return clean, true
+	slices.Sort(out)
+	return slices.Compact(out), nil
 }
+
+// cleanPaths is paths cleaned, sorted and without duplicates, refusing one that is outside the repository or not a well formed pattern.
+func cleanPaths(what string, paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		clean, ok := repoPath(p)
+		if !ok {
+			return nil, fmt.Errorf("%s %q: name a path or pattern inside the repository, from its root", what, p)
+		}
+		if !engine.ValidGlob(clean) {
+			return nil, fmt.Errorf("%s %q is not a well formed pattern", what, p)
+		}
+		out = append(out, clean)
+	}
+	slices.Sort(out)
+	return slices.Compact(out), nil
+}
+
+// repoPath is p cleaned, if it names something inside the repository from its root.
+func repoPath(p string) (string, bool) { return engine.CleanRepoPath(p) }
 
 // checkDefinitions are the paths a check names as its definition, where that can be known: the script it runs, the files a
 // test runner is given, a build tool's file. What it only looks at (test -f x) or finds by itself (go test ./...) is not known.

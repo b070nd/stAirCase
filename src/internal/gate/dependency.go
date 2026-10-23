@@ -2,8 +2,11 @@ package gate
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/b070nd/stAirCase/src/internal/engine"
+	"github.com/b070nd/stAirCase/src/internal/history"
+	"github.com/b070nd/stAirCase/src/internal/persistence"
 )
 
 func init() {
@@ -60,26 +63,62 @@ func (*depDepsCompletedGate) Run(ctx Context) Result {
 	var stale, missing []string
 	for _, dep := range deps {
 		// Fetch the upstream project's *current* topology version so we can
-		// verify that a SUCCESS run was executed against it - not an outdated topology.
+		// verify that a run was delivered against it - not an outdated topology.
 		upstreamTopo, _ := ctx.Store.GetLatestTopology(dep.TargetProjectID)
 		if upstreamTopo == nil {
 			missing = append(missing, fmt.Sprintf("project %d (no topology)", dep.TargetProjectID))
 			continue
 		}
-		ok, err := ctx.Store.HasSuccessfulRunAtTopologyVersion(dep.TargetProjectID, upstreamTopo.Version)
+		delivered, why, err := deliveredAt(ctx.Store, dep.TargetProjectID, upstreamTopo.Version)
 		if err != nil {
 			return skip(name, "dependency", SeverityWarn, "cannot check runs: "+err.Error())
 		}
-		if !ok {
-			stale = append(stale,
-				fmt.Sprintf("project %d (no SUCCESS run at topology v%d)", dep.TargetProjectID, upstreamTopo.Version))
+		if !delivered {
+			stale = append(stale, fmt.Sprintf("project %d (no delivered run at topology v%d%s)", dep.TargetProjectID, upstreamTopo.Version, why))
 		}
 	}
 	if len(missing) > 0 || len(stale) > 0 {
 		all := append(missing, stale...)
 		return warn(name, "dependency",
-			fmt.Sprintf("upstream projects lack a SUCCESS run at their current topology: %v", all))
+			fmt.Sprintf("upstream projects lack a delivered run at their current topology: %v", all))
 	}
 	return pass(name, "dependency", SeverityWarn,
-		fmt.Sprintf("all %d upstream dependencies have a SUCCESS run at their current topology version", len(deps)))
+		fmt.Sprintf("all %d upstream dependencies have a delivered run at their current topology version", len(deps)))
+}
+
+// deliveredAt says whether a run of the project was delivered against the topology version, and when it was not, what the runs it looked
+// at said that a person should know (a history that cannot be read, a delivery whose evidence is incomplete). A run is delivered when
+// its own verified history says so (history.Outcome): a status column nobody verified decides nothing (ADR 0005, ADR 0010).
+func deliveredAt(store *persistence.Store, projectID int64, topoVersion int) (delivered bool, why string, err error) {
+	cases, err := store.ListCasesByProject(projectID)
+	if err != nil {
+		return false, "", err
+	}
+	var notes []string
+	for _, c := range cases {
+		runs, err := store.ListRunsByCase(c.ID)
+		if err != nil {
+			return false, "", err
+		}
+		for _, r := range runs {
+			h, err := history.Read(store, r.ID)
+			if err != nil { // unknown, never satisfied
+				notes = append(notes, fmt.Sprintf("the history of run #%d cannot be read: %v", r.ID, err))
+				continue
+			}
+			if h.Bound.TopologyVersion != topoVersion {
+				continue
+			}
+			switch outcome, _ := h.Outcome(); outcome {
+			case history.OutcomeDelivered:
+				return true, "", nil
+			case history.OutcomeDeliveredIncomplete:
+				notes = append(notes, fmt.Sprintf("run #%d was delivered with incomplete evidence", r.ID))
+			}
+		}
+	}
+	if len(notes) > 0 {
+		why = "; " + strings.Join(notes, "; ")
+	}
+	return false, why, nil
 }

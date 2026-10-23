@@ -222,3 +222,67 @@ func TestVerify_range_output_cannot_drive_the_terminal(t *testing.T) {
 	assert.NotContains(t, out, "\r")
 	assert.NotContains(t, err.Error(), "\x1b")
 }
+
+// TestVerify_reads_the_trusted_key_from_a_protected_ref (ADR 0002): in CI the key and the signers come from a ref the change under test
+// cannot alter, which a command now does itself. A key that only exists in the change is not on the trusted ref; a ref that is the
+// change is refused; and the options that name a path at a ref need the ref.
+func TestVerify_reads_the_trusted_key_from_a_protected_ref(t *testing.T) {
+	repo, ws, git := sessionRepo(t)
+	require.NoError(t, claudeSession(nil, []string{"add", "a", "health", "file"}))
+	pub, err := os.ReadFile(filepath.Join(ws, ".signing.pub"))
+	require.NoError(t, err)
+	// the protected base branch carries the team's public key; the change under test carries a key of its own
+	git("checkout", "-q", "main")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "ci"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "ci", "staircase.pub"), pub, 0o644))
+	git("add", "ci/staircase.pub")
+	git("commit", "-q", "-m", "the team's key")
+	git("checkout", "-q", "staircase/run-1")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "ci"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "ci", "evil.pub"), pub, 0o644))
+	git("add", "ci/evil.pub")
+	git("commit", "-q", "-m", "a key of the change's own")
+
+	reset := func() {
+		verifyMinCAL, verifyKey, verifyFile, verifyAll, verifySigners = 0, "", "", false, ""
+		verifyTrustRef, verifyKeyPath, verifySignersPath = "", "", ""
+	}
+	reset()
+	t.Cleanup(reset)
+	verifyMinCAL = 3
+
+	verifyTrustRef, verifyKeyPath = "main", "ci/staircase.pub"
+	commit := strings.TrimSpace(git("rev-parse", "staircase/run-1~1"))
+	require.NoError(t, verifyHandler(nil, []string{commit}), "the key from the protected ref verifies the certified commit")
+	assert.Empty(t, verifyKey, "the options are put back after the call")
+
+	verifyKeyPath = "ci/evil.pub"
+	err = verifyHandler(nil, []string{commit})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not on main", "a key that exists only in the change is not trusted")
+
+	verifyKeyPath = "ci/missing.pub"
+	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "ci/missing.pub is not on main")
+
+	verifyTrustRef, verifyKeyPath = "staircase/run-1", "ci/evil.pub"
+	err = verifyHandler(nil, []string{"main..staircase/run-1"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is a commit being verified", "the change cannot vouch for itself")
+	verifyTrustRef = "no-such-ref"
+	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "is not a commit in this repository")
+
+	reset()
+	verifyKeyPath = "ci/staircase.pub"
+	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "name it with --trust-ref")
+	verifyTrustRef = "main"
+	verifyKey = filepath.Join(ws, ".signing.pub")
+	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "give the key once")
+	reset()
+	verifyTrustRef = "main"
+	assert.ErrorContains(t, verifyHandler(nil, []string{commit}), "needs --key-path")
+
+	reset()
+	verifyMinCAL = 3
+	verifyTrustRef, verifyKeyPath = "main", "ci/staircase.pub"
+	require.NoError(t, verifyHandler(nil, []string{"main..staircase/run-1~1"}), "a range works too when the ref is not in it")
+}

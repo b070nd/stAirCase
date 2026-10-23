@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/sandbox"
 	"maps"
 	"os"
 	"os/exec"
@@ -32,11 +33,12 @@ type PrototypeResult struct {
 
 // approvedNow is an away run's approved state, derived again from its verified chain, with what checking it needs.
 type approvedNow struct {
-	a       *approvals
-	repo    *GitRepo
-	hist    history.History
-	terms   Terms
-	cleanup func()
+	a        *approvals
+	repo     *GitRepo
+	hist     history.History
+	terms    Terms
+	overlays []sandbox.Overlay // the run's declared environment, shown to the checks
+	cleanup  func()
 }
 
 func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
@@ -67,11 +69,16 @@ func (r *Runner) approvedNow(runID int64) (*approvedNow, error) {
 		return nil, err
 	}
 	a.repo = repo // checkouts for the checks are made from the run's repository
-	return &approvedNow{a: a, repo: repo, hist: opened.hist, terms: terms, cleanup: cleanup}, nil
+	overlays, err := visibleOverlays(opened.project.SourcePath, terms)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	return &approvedNow{a: a, repo: repo, hist: opened.hist, terms: terms, overlays: overlays, cleanup: cleanup}, nil
 }
 
 func (s *approvedNow) gate(wsDir string) *evidenceGate {
-	return &evidenceGate{approvals: s.a, checks: s.terms.Checks, sandbox: s.terms.Sandbox, wsDir: wsDir, timeout: s.terms.CheckTimeout}
+	return &evidenceGate{approvals: s.a, checks: s.terms.Checks, sandbox: s.terms.Sandbox, wsDir: wsDir, timeout: s.terms.CheckTimeout, overlays: s.overlays}
 }
 
 // parkedRequest is the request of the parked proposal number seq, as the chain holds it (what the owner was shown).

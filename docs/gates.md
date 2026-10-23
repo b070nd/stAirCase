@@ -25,7 +25,7 @@ problem.
 | `case.has_stories` | BLOCK | the case has at least one pending story |
 | `case.has_prd` | WARN | the case has a PRD |
 | `deps.no_cycle` | BLOCK | project dependencies have no cycle |
-| `deps.deps_completed` | WARN | every project this one depends on has a successful run with its current topology |
+| `deps.deps_completed` | WARN | every project this one depends on has a delivered run, read from the run's verified history, with its current topology |
 | `secret.key_file` | BLOCK | the workspace key `.key` exists, is 32 bytes and only you can read it |
 | `secret.provider_keys` | BLOCK | every model in the team has its API key stored ([Models](models.md)) |
 | `secret.no_duplicate_keys` | WARN | no secret name is stored twice for the project |

@@ -1,6 +1,8 @@
 package orchestrator
 
 import (
+	"strings"
+
 	"github.com/b070nd/stAirCase/src/internal/history"
 )
 
@@ -23,7 +25,7 @@ func (t Terms) PersonBar(files []string) string {
 	if why := protectedBar(t.ProtectedPaths, files); why != "" {
 		return why
 	}
-	return sensitiveBar(files)
+	return sensitiveBar(t.SensitivePaths, files)
 }
 
 // protectedBar is why files reach a path that holds a check's definition, or "".
@@ -36,10 +38,29 @@ func protectedBar(protected, files []string) string {
 	return ""
 }
 
-// sensitiveBar is why files reach a sensitive path, or "".
-func sensitiveBar(files []string) string {
+// sensitiveBar is why files reach a sensitive path, or "": one of the built-in list, or one the project added (extra).
+func sensitiveBar(extra, files []string) string {
 	if f := sensitive(files); f != "" {
 		return "it changes " + f + ", a sensitive path"
+	}
+	for _, f := range files {
+		if matchesFold(extra, f) {
+			return "it changes " + f + ", a sensitive path of this project"
+		}
+	}
+	return ""
+}
+
+// outsideScope is why files reach outside a run's scope (the paths its --allow or its project's profile name), or "" when scope is
+// empty or every file is inside it. It comes to a person like drift from the stories' scope, and counts no violation.
+func outsideScope(scope, files []string) string {
+	if len(scope) == 0 {
+		return ""
+	}
+	for _, f := range files {
+		if !matchesFold(scope, f) {
+			return "it changes " + f + ", outside this run's scope (" + strings.Join(scope, ", ") + ")"
+		}
 	}
 	return ""
 }

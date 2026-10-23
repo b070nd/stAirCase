@@ -8,6 +8,67 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Added
 
+- **Change sets: runs of several repositories under one id (`staircase changeset`, `--change-set`).** A change across a backend, a
+  middleware and a frontend is several runs, one per repository, and each stays what it always is: one repository, its own worktree,
+  audit chain and certificate. `staircase changeset create checkout-v2` makes the id; a run started with `--change-set checkout-v2`
+  carries it on its record (`run_bound`) and on its certificate (an optional `changeSet` field: older verifiers ignore it, and the
+  predicate version does not change). `changeset add` puts runs in the set (one per project), `changeset contract` declares the files
+  several repositories depend on, `changeset ack` records that another repository accepts a member's change to one, and
+  `staircase changeset verify checkout-v2` checks the whole set: every run delivered, every certificate signed by the workspace key,
+  about the run's commit, at the level asked (`--min-cal`) and naming the set, and no contract change without every other member's
+  acknowledgement of that exact content. The set is a file in your workspace, never in a repository. An acknowledgement is a record,
+  not a signature. What to do: nothing, unless you work across repositories ([change sets](docs/changesets.md)).
+
+- **A read boundary: files the agent must not read (`unreadable` in the profile, `--unreadable`).** A file your repository tracks, such as
+  a Composer `auth.json`, is in the agent's worktree, and what an agent reads can go to your model provider. A project can now name
+  paths that the agent must not read (`--unreadable-defaults` writes the usual list into the profile: `auth.json`, `.env` files,
+  private keys). The built-in runtime refuses to read, list or edit them; Claude Code's hook refuses its `Read`, `Write` and `Edit` of
+  them and a `Grep` from a folder that holds one. Codex, Gemini CLI and OpenCode cannot be held to it (their sandboxes restrict what
+  they write, not what they read), so a run of them on such a project is refused before anything is made, naming the agent. An
+  approved shell command and Claude Code's `Bash` are not covered, and the safety page says so, agent by agent. Nothing changes for a
+  project that names none. What to do: nothing, unless you keep secrets in the repository ([safety](docs/safety.md), [profile](docs/profile.md)).
+
+- **A project's instructions reach every agent, and nothing goes into the repository.** `staircase project profile set <id>
+  --instructions "..."` (or `--instructions-file`) keeps the conventions of a client's project (the copyright header, "patches only,
+  never edit `vendor/`") in your workspace. Every run of the project tells its agent those words, whichever agent it is (Claude Code,
+  Codex, Gemini, OpenCode or the built-in runtime), in one place: after an away run's brief and before the task. The text is saved with
+  the run's terms, its digest is bound on `run_bound`, and a continuation tells the same words. `staircase case briefing <case-id>`
+  prints the exact text an agent of a compiled case is told. They are instructions to a model, not enforcement, and the profile page
+  says so. What to do: nothing, unless you want them ([profile](docs/profile.md)).
+
+- **Checks can see a project's environment, such as composer's `vendor/` (`--visible`, `visible` in the profile).** A check runs in a
+  throwaway checkout of the commit, which holds tracked files only, so a check that needs a directory your repository ignores could not
+  pass, with the sandbox on or off. You can now declare those directories: the checks (after the commit, when the agent says it is done,
+  and as evidence for an approval) see them read-only, in the macOS sandbox as a link the sandbox forbids writing through and in a
+  `docker:` sandbox as a read-only mount. A path that does not exist in your checkout or that git tracks refuses the run before
+  anything is made, and so does an engine that cannot keep it read-only (bubblewrap and Landlock, for now). The environment is not in
+  the agent's worktree and not part of what is approved; the record of a check (`check_ran`, `phase_checked`) and the change certificate
+  name it (`environment`, an optional field of a check), and `staircase verify` says so. What to do: nothing, unless a check needs an
+  ignored directory ([profile](docs/profile.md), [safety](docs/safety.md)).
+
+- **A project profile: what is true of a client's repository for every run, kept in your workspace.** `staircase project profile set` and
+  `show` hold, per project, the paths that define a check (`--protect`), further paths that always need a person (`--sensitive`, for a
+  contract file, say, added to the built-in list and never taking from it), the scope a change may touch (`--scope`), the checks and the
+  sandbox. A run fills what its command line left out from the profile (a flag wins, then the profile, then the default), records the
+  profile's digest in its terms, and a continuation keeps the profile it started with. `staircase run` gains `--allow` like `claude`,
+  `codex` and `gemini` have, narrowing the stories' scope for that run. Nothing is written into the client's repository. A project
+  without a profile behaves as before. What to do: nothing, unless you want it ([profile](docs/profile.md)).
+
+- **A run says exactly what a dirty checkout leaves out, and records that it did.** A run works on a copy of your last commit, so
+  uncommitted work is not in it. The warning already said so in one line; it now names the files, the tracked changes apart from the
+  untracked files (ten of each, then a count), and says that ignored paths such as `vendor/` are not in the copy either. The fact (the
+  counts and a digest of the names) is a new audit entry, `source_dirty`, written right after `run_bound` and only when there is
+  something to say. Older stAirCase versions read a chain that has it and ignore it. What to do: nothing
+  ([troubleshooting](docs/troubleshooting.md), [audit](docs/audit.md)).
+
+- **`staircase verify` reads the trusted key from a protected ref itself, so any CI system can run it (`--trust-ref`, `--key-path`,
+  `--signers-path`).** The rule "never take the key from the change under test" was shell code inside the GitHub Action, so another
+  CI had to rewrite it. `verify` now reads the key, and the allowed signers, from the ref you name with git, and refuses a ref that is,
+  or holds, a commit being verified, and a path that is not on the ref, naming it. `--key` and `--allowed-signers` still work. The
+  packaged Action uses the new options when the verifier it installed has them and reads the files itself for a pinned older release;
+  its results do not change. The CI page gains a GitLab merge-request job, marked as not run by the project, and says which parts of
+  the page are GitHub's. What to do: nothing; on another CI, copy the job ([audit](docs/audit.md#other-ci-systems-gitlab)).
+
 - **The reviewer models' votes are on the audit chain.** With `--validator`, each model of the panel that is asked about a proposal
   now has its verdict written as its own entry (`validator_voted`) before the decision: the model, the request it judged, approve,
   reject or error, its reason and the digest of its whole reply. Until now the chain held only the outcome and a line of text, and
@@ -198,6 +259,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ### Fixed
 
+- **`staircase attach` no longer leaves a file in your code.** With `core.hooksPath` pointing into the working tree (a `.husky` folder),
+  it wrote its hook as an untracked file there, though nothing of stAirCase is meant to be in your repository. It now refuses and names
+  the setting; `attach --off` still works. The attach page also says that `seal` takes `--allow`, which it already did, and that
+  `--check` runs in a throwaway checkout even with `--sandbox off`, so a directory your repository ignores is not in it
+  ([attach](docs/attach.md)). What to do: nothing.
+- **A dependency counts as done only when a run of it was delivered.** The gate `deps.deps_completed` asked a status column ("a run of the
+  upstream project is SUCCESS at its current topology"), so a run row with no history and no commit satisfied it. It now reads each
+  run's verified history, the way the status commands do, and counts a run only when its outcome is delivered: a run that ended without
+  delivering, or delivered with incomplete evidence, does not, and a history that cannot be read is reported as unknown, naming the run,
+  never as satisfied. It is still a warning, and it still compares the topology version. What to do: nothing; a project that depends on
+  another one may see the warning where it saw none, and the message says why ([gates](docs/gates.md)).
 - **A change of several hundred files no longer makes its run unreadable.** The audit chain cut every entry at 64 KiB without a
   word, and an entry cut in the middle still hashes and verifies. The entries that list a change's files (a decision on a proposal
   of 700 files or more, the review an away run offers) pass that size, so the run's history was refused as "its payload is

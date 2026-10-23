@@ -37,6 +37,9 @@ var (
 	verifyRebuild     bool
 	verifyLedger      string
 
+	// where the trusted key and signers are read from: files of a protected ref, read with git
+	verifyTrustRef, verifyKeyPath, verifySignersPath string
+
 	verifyRequireInitiator bool
 
 	// a SLSA verification summary for every commit that passes
@@ -59,7 +62,10 @@ which a run writes; fetch notes from a remote with
 or pass the certificate file with --certificate.
 
 The trusted key is the workspace's public signing key (.signing.pub), or the
-file given with --key: that file is all a reviewer needs.
+file given with --key: that file is all a reviewer needs. In CI, read it from a
+protected ref instead: --trust-ref origin/main --key-path ci/staircase.pub (and
+--signers-path for the allowed signers). That ref must not hold a commit being
+verified, so a change cannot vouch for itself.
 
 A range (main..HEAD) checks every commit in it that names an agent in an
 Assisted-by: trailer; --all checks every commit. This is what a CI check on a
@@ -75,6 +81,11 @@ func init() {
 	verifyCmd.Flags().StringVar(&verifySigners, "allowed-signers", "",
 		"git allowed_signers file of trusted reviewers: a CAL 3 change they signed (staircase sign) and did not request reaches CAL 4 "+
 			"(default: the team's, from staircase governance)")
+	verifyCmd.Flags().StringVar(&verifyTrustRef, "trust-ref", "",
+		"Read the trusted key (--key-path) and signers (--signers-path) from this git ref, such as origin/main or a protected tag, never from the "+
+			"checkout: a ref that is, or contains, a commit being verified is refused, because a change must not vouch for itself")
+	verifyCmd.Flags().StringVar(&verifyKeyPath, "key-path", "", "With --trust-ref, the path of the public signing key at that ref (instead of --key)")
+	verifyCmd.Flags().StringVar(&verifySignersPath, "signers-path", "", "With --trust-ref, the path of the allowed_signers file at that ref (instead of --allowed-signers)")
 	verifyCmd.Flags().BoolVar(&verifyAll, "all", false, "In a range, require a certificate on every commit, not only on those that name an agent (Assisted-by:)")
 	verifyCmd.Flags().BoolVar(&verifyRequireInitiator, "require-initiator", false,
 		"CAL 4 counts only when the person who started the run signed the request (--sign-approvals) and is listed in the trusted signers; "+
@@ -105,6 +116,11 @@ func verifyHandler(_ *cobra.Command, args []string) error {
 			return err
 		}
 	}
+	restore, err := useTrustRef(args[0])
+	if err != nil {
+		return err
+	}
+	defer restore()
 	if strings.Contains(args[0], "..") {
 		return verifyRange(args[0])
 	}
@@ -287,7 +303,11 @@ func verifyCommit(commit string) error {
 		if !c.Sandboxed {
 			where = "without a sandbox"
 		}
-		fmt.Printf("   check passed %s: %s\n", where, tui.Safe(c.Command))
+		with := ""
+		if len(c.Environment) > 0 { // it ran on more than the approved bytes: the user's own directories, read-only
+			with = ", with the declared environment " + tui.Safe(strings.Join(c.Environment, ", "))
+		}
+		fmt.Printf("   check passed %s%s: %s\n", where, with, tui.Safe(c.Command))
 	}
 	if sg := p.Signed; sg != nil {
 		fmt.Printf("   %d decision(s) signed with SSH keys", sg.Decisions)
@@ -436,4 +456,78 @@ func writeVSA(commit string, certRaw, ledger []byte, p certificate.Predicate, le
 	}
 	fmt.Printf("   📄 Verification summary (SLSA VSA): %s\n", path)
 	return nil
+}
+
+// useTrustRef reads the trusted key, and the signers, from the ref given with --trust-ref, and points --key and --allowed-signers at
+// copies of them for this call (the returned function undoes it). It refuses a ref that is, or contains, a commit being verified: the
+// key and the signers of the change under test would vouch for that change. Without --trust-ref nothing changes.
+func useTrustRef(target string) (restore func(), err error) {
+	noop := func() {}
+	if verifyTrustRef == "" {
+		if verifyKeyPath != "" || verifySignersPath != "" {
+			return noop, errors.New("--key-path and --signers-path say where to read at a ref: name it with --trust-ref")
+		}
+		return noop, nil
+	}
+	if verifyKeyPath != "" && verifyKey != "" {
+		return noop, errors.New("give the key once: --key (a file) or --key-path (a path at --trust-ref)")
+	}
+	if verifySignersPath != "" && verifySigners != "" {
+		return noop, errors.New("give the signers once: --allowed-signers (a file) or --signers-path (a path at --trust-ref)")
+	}
+	if verifyKeyPath == "" && verifyKey == "" {
+		return noop, errors.New("--trust-ref needs --key-path: the path of the public signing key at that ref")
+	}
+	out, err := exec.Command("git", "rev-parse", "--verify", "-q", verifyTrustRef+"^{commit}").Output()
+	if err != nil {
+		return noop, fmt.Errorf("--trust-ref %q is not a commit in this repository", verifyTrustRef)
+	}
+	trusted := strings.TrimSpace(string(out))
+	var under []string
+	if strings.Contains(target, "..") {
+		list, err := exec.Command("git", "rev-list", target).Output()
+		if err != nil {
+			return noop, fmt.Errorf("%q is not a commit range in this repository", target)
+		}
+		under = strings.Fields(string(list))
+	} else {
+		one, err := exec.Command("git", "rev-parse", "--verify", "-q", target+"^{commit}").Output()
+		if err != nil {
+			return noop, fmt.Errorf("%q is not a commit in this repository", target)
+		}
+		under = []string{strings.TrimSpace(string(one))}
+	}
+	if slices.Contains(under, trusted) {
+		return noop, fmt.Errorf("--trust-ref %s is a commit being verified (%.12s): the key and the signers must come from a ref the change under test cannot alter, such as the protected base branch", verifyTrustRef, trusted)
+	}
+	dir, err := os.MkdirTemp("", "staircase-trust-")
+	if err != nil {
+		return noop, err
+	}
+	read := func(path, to string) (string, error) {
+		b, err := exec.Command("git", "show", verifyTrustRef+":"+path).Output()
+		if err != nil {
+			return "", fmt.Errorf("%s is not on %s: the trusted key and signers are read from there, not from the change under test; merge them into the protected ref first", path, verifyTrustRef)
+		}
+		file := filepath.Join(dir, to)
+		return file, os.WriteFile(file, b, 0o600)
+	}
+	oldKey, oldSigners := verifyKey, verifySigners
+	restore = func() {
+		verifyKey, verifySigners = oldKey, oldSigners
+		_ = os.RemoveAll(dir)
+	}
+	if verifyKeyPath != "" {
+		if verifyKey, err = read(verifyKeyPath, "trusted.pub"); err != nil {
+			restore()
+			return noop, err
+		}
+	}
+	if verifySignersPath != "" {
+		if verifySigners, err = read(verifySignersPath, "allowed_signers"); err != nil {
+			restore()
+			return noop, err
+		}
+	}
+	return restore, nil
 }

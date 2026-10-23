@@ -38,6 +38,7 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.Flags().BoolVar(&cli.dryRun, "dry-run", false, "Validate and print the execution plan without running")
 	runCmd.Flags().BoolVar(&cli.force, "force", false, "No effect: runs use a separate worktree")
+	runCmd.Flags().StringArrayVar(&cli.allow, "allow", nil, "A path (glob) this run's changes may touch, on top of the stories' scope: a change elsewhere comes to a person as drift (default: the project's profile)")
 	runCmd.Flags().BoolVar(&cli.skipGates, "skip-gates", false, "Bypass quality gate pre-flight (use with care)")
 	runCmd.Flags().BoolVar(&cli.autoStash, "auto-stash", false, "No effect: runs use a separate worktree")
 	for _, f := range []string{"force", "auto-stash"} {
@@ -64,6 +65,7 @@ func init() {
 		"Enable run_shell for this run - agents may request OS-level shell execution subject to HITL approval. "+
 			"Shell execution is disabled by default; pass this flag to opt in.")
 	sandboxFlag(runCmd)
+	changeSetFlag(runCmd)
 	checkFlag(runCmd)
 	signFlags(runCmd)
 	runCmd.Flags().BoolVar(&cli.ackDrift, "ack-drift", false,
@@ -80,7 +82,9 @@ func runCaseHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return runCase(cli, caseID)
+	l := cli
+	l.scopeInTerms = true
+	return runCase(l, caseID)
 }
 
 // sandboxFlag adds --sandbox to cmd: where approved commands and checks run.
@@ -93,9 +97,6 @@ func sandboxFlag(cmd *cobra.Command) {
 
 // runCase runs a compiled case with the run flags.
 func runCase(l launch, caseID int64) error {
-	if _, err := orchestrator.NewTerms(l.runTerms(), ""); err != nil { // the run judges them again, with its plan's harness
-		return err
-	}
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
 	db, err := persistence.InitDB(wsDir)
@@ -104,6 +105,27 @@ func runCase(l launch, caseID int64) error {
 	}
 	defer func() { _ = db.Close() }()
 	store := persistence.NewStore(db)
+
+	if err := checkChangeSet(&l, wsDir); err != nil {
+		return err
+	}
+	// What is true of the case's project for every run of it fills what the command line left out; the terms are judged after that,
+	// before anything is made (the run judges them again, with its plan's harness).
+	if l.terms.ProfileSHA256 == "" { // a session applied it already
+		c, err := store.GetCase(caseID)
+		if err != nil || c == nil {
+			return fmt.Errorf("case #%d not found", caseID)
+		}
+		if err := applyProfile(&l, wsDir, c.ProjectID); err != nil {
+			return err
+		}
+	}
+	if l.scopeInTerms {
+		l.terms.Scope = l.allow
+	}
+	if _, err := orchestrator.NewTerms(l.runTerms(), ""); err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -201,6 +223,13 @@ func checkFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&cli.terms.ProtectedPaths, "protect", nil,
 		"A path or pattern (from the repository's root) where a --check is defined, such as tests/**: a change to it always comes to you, "+
 			"whatever the policy says, and is parked while away. What the checks name (the script they run, make's Makefile) is protected without it. Repeat for more")
+	cmd.Flags().StringArrayVar(&cli.terms.Unreadable, "unreadable", nil,
+		"A path or pattern (from the repository's root) the agent must not read, such as auth.json, for this run, on top of the project's profile: "+
+			"the built-in runtime and Claude Code refuse to read it, and an agent that cannot be stopped from reading it (Codex, Gemini CLI, OpenCode) is not started. Repeat for more")
+	cmd.Flags().StringArrayVar(&cli.terms.Visible, "visible", nil,
+		"A directory or file of your checkout that the repository ignores and the checks need (vendor/, generated/): the checks see it, read-only, in "+
+			"the checkout of the commit they run in. The agent's worktree never has it, and it is not part of what is approved. Repeat for more "+
+			"(default: the project's profile)")
 }
 
 // validatorFlag adds --validator and --signal to cmd.

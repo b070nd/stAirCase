@@ -101,6 +101,22 @@ is named; `commit_prepared` ends the agent's part. `certificate_issued`, `run_re
 adopted proposals, the offered review, the continuation's counters, and what sealed it (`internal/history`, ADR 0010). A chain that
 no run can have written has no history. It is refused with the entry that breaks the grammar.
 
+**Profile**: what is true of a project for every run of it: the paths a person must always decide (protected and sensitive), the scope a
+change may touch, the checks and the sandbox. It is kept in the workspace, never in the client's repository, and a run resolves it into its terms
+when it starts: a flag wins over it, its digest is bound with the terms, and a continuation keeps the profile it started with.
+
+**Environment**: the directories of the user's checkout that the repository ignores and a run's checks need (a project's `vendor/`), declared in
+its terms and shown to the checks, read-only, in the checkout of the commit they run in. It is never in the agent's worktree and never part of the
+approved bytes; a check that saw it says so in its record and in the certificate.
+
+**Briefing**: the one text an agent is told, composed in one place for every agent: an away run's brief, the project's instructions, the task (the
+PRD, the stories and the reviewers' lessons), what a continuation adds, and what the agent's own harness needs. `staircase case briefing` shows it.
+
+**Change set**: runs of several repositories tied under one id, for a change that spans a backend, a middleware and a frontend. Every run stays
+one repository with its own worktree, chain and certificate; the set holds the member runs (one per project), the contract files that more than one
+repository depends on, and the acknowledgements a person recorded. It is a file in the workspace. `staircase changeset verify` checks the whole set,
+and a member's certificate names the set in an optional field.
+
 **Terms**: what a run decides under, set when it starts and kept by every continuation. They say:
 - who agreed to the task;
 - how changes are approved;

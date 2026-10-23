@@ -1335,28 +1335,6 @@ func (s *Store) KillStaleRuns(caseID int64, maxAge time.Duration) (int64, error)
 	return n, nil
 }
 
-// HasSuccessfulRunAtTopologyVersion reports whether the given project has at
-// least one SUCCESS run whose topology_version matches the supplied version.
-// Used by the deps.deps_completed gate to verify upstream work was done against
-// the current topology, not an outdated one.
-func (s *Store) HasSuccessfulRunAtTopologyVersion(projectID int64, topoVersion int) (bool, error) {
-	var count int
-	err := s.db.QueryRow(
-		`
-		SELECT COUNT(*)
-		FROM runs
-		JOIN cases ON runs.case_id = cases.id
-		WHERE cases.project_id = ?
-		  AND runs.status = 'SUCCESS'
-		  AND runs.topology_version = ?`,
-		projectID, topoVersion,
-	).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("has successful run at topology version: %w", err)
-	}
-	return count > 0, nil
-}
-
 // ─── Type aliases (for callers that import persistence.Run etc.) ──────────────
 
 // Run is a convenience alias so cmd packages can use persistence.Run directly.

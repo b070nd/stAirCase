@@ -35,6 +35,8 @@ type deciders struct {
 	declared      map[string]bool // the exact commands an away run may run without asking (ADR 0009)
 	declaredTools map[string]bool // the exact MCP tools an away run may call without asking (ADR 0008)
 	protected     []string        // the paths that hold the checks' definitions: a change to one needs a person
+	sensitive     []string        // the project's own sensitive paths, added to the built-in list
+	scope         []string        // the run's own scope (--allow, the profile's): outside it a person decides
 	signal        *Signal
 	redact        func(string) string                                                 // removes delivered secret values from what a person is shown
 	sign          *decisionSigning                                                    // checks and adds signatures on human decisions
@@ -67,7 +69,7 @@ func (d *deciders) vote(v history.ValidatorVoted) error {
 // agreed to it), away, what an away run may run or call without asking, and the paths only a person may change.
 func (d *deciders) under(t Terms) *deciders {
 	d.task = (t.ApproveInScope || t.ApproveOnEvidence) && t.Agreed != ""
-	d.protected = t.ProtectedPaths
+	d.protected, d.sensitive, d.scope = t.ProtectedPaths, t.SensitivePaths, t.Scope
 	d.away, d.declared, d.declaredTools = t.Away, declaredSet(t.AwayCommands), declaredSet(t.AwayTools)
 	return d
 }
@@ -179,6 +181,9 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 	// Drift supervision: a proposal reaching outside the stories' scope, past
 	// a limit or at a checkpoint goes to a human, never to policy.
 	rl.drift, rl.halt = d.drift.Check(rl.files)
+	if rl.drift == "" { // the run's own scope (--allow, the profile's) narrows the stories': outside it a person decides
+		rl.drift = outsideScope(d.scope, rl.files)
+	}
 	req.Drift = rl.drift
 	if rl.next != nil {
 		req.Guard = guard(rl.next, func(p string) *approvedFile { f, _ := d.approvals.current(p); return f })
@@ -198,7 +203,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 	// settings) is a person's to decide, whatever the policy says, in every run, and while away it is parked. It sits before the
 	// limits and the policy, like the protected paths, so no rule, task or validator can approve it.
 	if req.ActionType == domain.ActionFileEdit {
-		if why := sensitiveBar(rl.files); why != "" {
+		if why := sensitiveBar(d.sensitive, rl.files); why != "" {
 			req.Review = why + PersonDecides
 			d.display.AddActivity(fmt.Sprintf("%-14s SENSITIVE %s → HITL (%s)", req.AgentName, req.ActionType, why))
 			return d.human(req, rl)

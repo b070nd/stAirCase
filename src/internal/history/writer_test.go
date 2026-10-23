@@ -55,6 +55,7 @@ var events = map[string][]func() any{
 	"unapproved_worktree_change": {func() any { return &history.UnapprovedWorktreeChange{} }},
 	"validator_voted":            {func() any { return &history.ValidatorVoted{} }},
 	"story_accepted":             {func() any { return &history.StoryAccepted{} }},
+	"source_dirty":               {func() any { return &history.SourceDirty{} }},
 	"signal_rated":               {func() any { return &history.SignalRated{} }, func() any { return &history.SignalFailed{} }},
 	"check_ran":                  {func() any { return &history.CheckRan{} }},
 	"done_checked":               {func() any { return &history.DoneChecked{} }, func() any { return &history.DoneCheckFailed{} }},
@@ -65,7 +66,7 @@ var events = map[string][]func() any{
 
 // addedAfterTheFixture are the events written by code that came after the fixture was captured: no writer of the code before ADR 0014
 // produced them, so their bytes are pinned by a test of their own.
-var addedAfterTheFixture = map[string]bool{"validator_voted": true, "story_accepted": true}
+var addedAfterTheFixture = map[string]bool{"validator_voted": true, "story_accepted": true, "source_dirty": true}
 
 func fixtureEntries(t *testing.T) []domain.RunEventLog {
 	raw, err := os.ReadFile(filepath.Join("..", "chain", "testdata", "fixture_chain.json"))
@@ -232,4 +233,9 @@ func TestPrepare_story_accepted(t *testing.T) {
 	assert.Equal(t, `{"actor":"alice","story_id":7,"type":"story_accepted"}`, e.Payload)
 	_, err = history.Prepare(history.StoryAccepted{StoryID: 7, Actor: strings.Repeat("a", chain.MaxPayload)})
 	require.ErrorIs(t, err, chain.ErrPayloadTooLarge)
+}
+
+func TestWriter_source_dirty(t *testing.T) {
+	got := write(t, history.Settings{}, history.SourceDirty{Tracked: 2, Untracked: 1, NamesSHA256: "d"})
+	assert.Equal(t, `{"names_sha256":"d","tracked":2,"type":"source_dirty","untracked":1}`, got)
 }

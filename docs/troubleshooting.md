@@ -76,7 +76,11 @@ afresh. No secret is lost either way.
 **`… has uncommitted changes; the agent works on commit … without them`**
 
 Not an error. The agents work on a separate copy of your **last commit**. Commit
-first if they should see your latest changes.
+first if they should see your latest changes. The lines under it name the files they will not have:
+the tracked changes and the untracked files (up to ten of each), and it says that ignored paths
+(`vendor/`, `node_modules/`, `.env` files) are not in the copy either, whatever you commit. The fact is
+also on the audit chain (`source_dirty`: the counts and a digest of the names), so a reviewer can tell
+that a run started from a checkout that held more than its commit.
 
 **`Budget cap exceeded - killing run #N`**
 

@@ -24,6 +24,12 @@ type Bound struct {
 	AwayCommands    *DeclaredCommands `json:"away_commands,omitempty"`
 	AwayTools       *DeclaredTools    `json:"away_tools,omitempty"`
 	TermsSHA256     string            `json:"terms_sha256,omitempty"` // the saved options' digest; absent before ADR 0010
+	// InstructionsSHA256 is the digest of the project's instructions the agent was told, and InstructionsBytes their length; absent when
+	// the project gave none. The text itself is in the saved terms, which the digest above binds.
+	InstructionsSHA256 string `json:"instructions_sha256,omitempty"`
+	InstructionsBytes  int    `json:"instructions_bytes,omitempty"`
+	// ChangeSet is the id of the change set the run was started for; absent when it named none. It goes on the run's certificate.
+	ChangeSet string `json:"change_set,omitempty"`
 	// ValidatorModels are the reviewer models the run asked, in the order it asked them (ADR 0014, section 3). Where the field is
 	// present the replay requires the votes that every decision by `validator:` rests on; chains without it read as before.
 	ValidatorModels []string `json:"validator_models,omitempty"`
@@ -270,6 +276,8 @@ type Check struct {
 	ExitCode     int    `json:"exit_code"`
 	OutputSHA256 string `json:"output_sha256"`
 	Sandboxed    bool   `json:"sandboxed"`
+	// Environment names the declared directories the check saw, read-only; absent when it saw none.
+	Environment []string `json:"environment,omitempty"`
 }
 
 // PhaseChecked is an away run's checks on the exact approved tree (ADR 0006).

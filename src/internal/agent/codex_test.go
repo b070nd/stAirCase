@@ -2,8 +2,11 @@ package agent_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,4 +118,34 @@ func TestCodex_without_its_hooks_nothing_is_kept(t *testing.T) {
 	assert.Contains(t, r.Err.Error(), "never ran staircase's hooks")
 	assert.Equal(t, persistence.RunStatusFailed, r.Run.Status)
 	assert.Empty(t, r.Run.GitCommitHash)
+}
+
+// TestCodex_is_told_the_projects_instructions (a project profile): the instructions of the run's terms are in the prompt Codex is
+// started with, before the task, and their digest is bound on run_bound.
+func TestCodex_is_told_the_projects_instructions(t *testing.T) {
+	bin, argsFile := codexBin(t, "1")
+	r := runtest.Run(t, runtest.Options{Agent: &agent.Codex{Prompt: "TASK-MARKER", Bin: bin},
+		Run: orchestrator.RunOptions{Terms: orchestrator.Terms{Instructions: "Patches only: never edit vendor/."}}})
+	require.NoError(t, r.Err)
+	var args []string
+	b, err := os.ReadFile(argsFile)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(b, &args))
+	var prompt string
+	for _, a := range args {
+		if strings.Contains(a, "TASK-MARKER") {
+			prompt = a
+		}
+	}
+	require.NotEmpty(t, prompt, "the prompt is among the arguments: %v", args)
+	assert.Contains(t, prompt, "Patches only: never edit vendor/.")
+	assert.Less(t, strings.Index(prompt, "Patches only"), strings.Index(prompt, "TASK-MARKER"))
+	var bound struct {
+		Sha   string `json:"instructions_sha256"`
+		Bytes int    `json:"instructions_bytes"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Events[0].Payload), &bound))
+	sum := sha256.Sum256([]byte("Patches only: never edit vendor/."))
+	assert.Equal(t, hex.EncodeToString(sum[:]), bound.Sha, "what the agent was told is bound on the run")
+	assert.Equal(t, len("Patches only: never edit vendor/."), bound.Bytes)
 }

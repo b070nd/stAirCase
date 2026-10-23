@@ -8,7 +8,9 @@
 #
 # The trusted key and the allowed signers are read from a trusted ref (the pull
 # request's base branch), never from the pull request's own files: a pull
-# request that replaces them would otherwise vouch for itself.
+# request that replaces them would otherwise vouch for itself. staircase verify
+# does the reading itself (--trust-ref, since 1.2.0); the script only chooses the
+# ref, and keeps the old way for a pinned release that cannot.
 #
 # Inputs come as environment variables, never pasted into the script:
 #   KEY      path of the trusted public signing key in the repository (required)
@@ -94,13 +96,21 @@ trusted() { # trusted <path>: print a file's content at the trusted ref
     return 1
   fi
 }
-keyfile="$dir/trusted.pub"
-trusted "$KEY" > "$keyfile"
-args=("$range" --key "$keyfile" --min-cal "${MIN_CAL:-2}")
-if [ -n "${ALLOWED_SIGNERS:-}" ]; then
-  signers="$dir/allowed_signers"
-  trusted "$ALLOWED_SIGNERS" > "$signers"
-  args+=(--allowed-signers "$signers")
+help="$("$dir/staircase" verify --help 2>&1 || true)"
+if [[ "$help" == *--trust-ref* ]]; then
+  # staircase reads the key and the signers from the trusted ref itself, and refuses a ref that holds a commit being verified.
+  args=("$range" --trust-ref "$trust" --key-path "$KEY" --min-cal "${MIN_CAL:-2}")
+  [ -z "${ALLOWED_SIGNERS:-}" ] || args+=(--signers-path "$ALLOWED_SIGNERS")
+else
+  # A release before 1.2.0 (the version input can pin one) cannot: read them here, from the trusted ref, the same way.
+  keyfile="$dir/trusted.pub"
+  trusted "$KEY" > "$keyfile"
+  args=("$range" --key "$keyfile" --min-cal "${MIN_CAL:-2}")
+  if [ -n "${ALLOWED_SIGNERS:-}" ]; then
+    signers="$dir/allowed_signers"
+    trusted "$ALLOWED_SIGNERS" > "$signers"
+    args+=(--allowed-signers "$signers")
+  fi
 fi
 [ "${ALL:-true}" = "false" ] || args+=(--all)
 [ "${REBUILD:-false}" = "true" ] && args+=(--rebuild)

@@ -1,6 +1,10 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
+	"github.com/b070nd/stAirCase/src/internal/orchestrator"
+	"github.com/stretchr/testify/require"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,4 +80,29 @@ func TestHookCommand_every_way_the_program_can_fail_blocks(t *testing.T) {
 	assert.Equal(t, 2, status(script("exit 1")), "it fails")
 	assert.Equal(t, 2, status(script("kill -9 $$")), "it is killed")
 	assert.Equal(t, 2, status(script("exit 126")), "it cannot be executed")
+}
+
+// TestPre_the_read_boundary (the read boundary): Claude Code's Read and its edit tools are refused for a path the project keeps out of
+// reach; Grep is refused where its search root holds one (it reads what it searches); Glob returns names only and is allowed; the rest
+// is as before.
+func TestPre_the_read_boundary(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "auth.json"), []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src", "a.php"), []byte("<?php\n"), 0o644))
+	root, err := filepath.EvalSymlinks(root)
+	require.NoError(t, err)
+	h := &hookServer{root: root, env: &orchestrator.AgentEnv{Worktree: root, Unreadable: []string{"auth.json"}}}
+	pre := func(tool string, input map[string]any) string {
+		b, _ := json.Marshal(input)
+		return h.pre(context.Background(), hookInput{Tool: tool, Input: b})
+	}
+	assert.Contains(t, pre("Read", map[string]any{"file_path": filepath.Join(root, "auth.json")}), "out of reach")
+	assert.Contains(t, pre("Read", map[string]any{"file_path": "auth.json"}), "out of reach")
+	assert.Empty(t, pre("Read", map[string]any{"file_path": filepath.Join(root, "src", "a.php")}))
+	assert.Contains(t, pre("Grep", map[string]any{"pattern": "password"}), "out of reach", "a search from the root would read it")
+	assert.Contains(t, pre("Grep", map[string]any{"pattern": "password", "path": root}), "out of reach")
+	assert.Empty(t, pre("Grep", map[string]any{"pattern": "php", "path": filepath.Join(root, "src")}), "a narrower search is fine")
+	assert.Empty(t, pre("Glob", map[string]any{"pattern": "**/*.json"}), "names only")
+	assert.Contains(t, pre("Write", map[string]any{"file_path": filepath.Join(root, "auth.json"), "content": "x"}), "out of reach")
 }

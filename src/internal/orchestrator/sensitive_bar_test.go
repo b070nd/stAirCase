@@ -102,3 +102,84 @@ func TestDecide_sensitive_bar_applies_before_limits_and_policy(t *testing.T) {
 		t.Errorf("the policy counted %d approvals; want the 1 it had", d.autoApproved)
 	}
 }
+
+// TestDecide_a_project_can_add_sensitive_paths_and_narrow_the_scope (the project profile): a contract file the project names always
+// goes to a person whatever a rule approves, in a run you watch and in an away run, where it is parked; a run's own scope sends what
+// is outside it to a person like drift; and neither can make a built-in sensitive path easier to approve.
+func TestDecide_a_project_can_add_sensitive_paths_and_narrow_the_scope(t *testing.T) {
+	approveEdits := `{"rules":[{"action_types":["file_edit"],"effect":"approve"}]}`
+	edit := func(file string) domain.YieldRequest {
+		return domain.YieldRequest{AgentName: "coder", ActionType: domain.ActionFileEdit,
+			ProposedEdits: []domain.ProposedEdit{{File: file, SearchBlock: MarkerNewFile, ReplaceBlock: "x\n"}}}
+	}
+	terms := Terms{SensitivePaths: []string{"contracts/**"}, Scope: []string{"src/**", "contracts/**"}}
+	for _, away := range []bool{false, true} {
+		terms.Away = away
+		for file, want := range map[string]string{ // who decides each file: the rule, or a person (parked while away)
+			"src/a.php":          "policy",
+			"contracts/doc.json": map[bool]string{false: "operator", true: "parked"}[away],
+			"docs/readme.md":     map[bool]string{false: "operator", true: "parked"}[away], // outside the run's scope
+			".github/ci.yml":     map[bool]string{false: "operator", true: "parked"}[away], // still sensitive: the profile only adds
+		} {
+			d, _ := testDeciders(t, terms, approveEdits)
+			d.drift = policy.NewSupervisor([]string{"**"}, plan.Limits{MaxScopeViolations: 9}) // the stories allow everything
+			req := edit(file)
+			if rl := d.decide(context.Background(), &req); rl.source != want {
+				t.Errorf("away=%v %s: decided by %q, want %q (%s)", away, file, rl.source, want, rl.resp.Feedback)
+			}
+		}
+	}
+	if bar := terms.PersonBar([]string{"contracts/doc.json"}); !strings.Contains(bar, "a sensitive path of this project") {
+		t.Errorf("the bar for a project's own sensitive path: %q", bar)
+	}
+	if bar := (Terms{}).PersonBar([]string{"contracts/doc.json"}); bar != "" {
+		t.Errorf("without the profile a contract file is an ordinary path: %q", bar)
+	}
+}
+
+func TestNewTerms_normalizes_the_scope_and_the_project_sensitive_paths(t *testing.T) {
+	got, err := NewTerms(Terms{Scope: []string{"src//a/**", "src/a/**", "docs"}, SensitivePaths: []string{"./contracts/**"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got.Scope, ",") != "docs,src/a/**" || strings.Join(got.SensitivePaths, ",") != "contracts/**" {
+		t.Errorf("scope %v, sensitive %v", got.Scope, got.SensitivePaths)
+	}
+	for _, bad := range []Terms{{Scope: []string{"/abs"}}, {Scope: []string{"../up"}}, {SensitivePaths: []string{"."}}, {SensitivePaths: []string{"a/[b"}}} {
+		if _, err := NewTerms(bad, ""); err == nil {
+			t.Errorf("%+v was accepted", bad)
+		}
+	}
+}
+
+// TestNewTerms_the_read_boundary: a project that keeps paths out of the agent's reach cannot be run by an agent that cannot be stopped from
+// reading them (Codex, Gemini CLI, OpenCode: their sandboxes restrict writes, not reads); the built-in runtime and Claude Code can.
+func TestNewTerms_the_read_boundary(t *testing.T) {
+	terms := Terms{Unreadable: []string{"./auth.json", "**/.env", "auth.json"}}
+	for harness, name := range map[string]string{"codex": "Codex", "gemini": "Gemini CLI", "opencode": "OpenCode"} {
+		_, err := NewTerms(terms, harness)
+		if err == nil {
+			t.Fatalf("%s was accepted on a project that keeps files out of its reach", harness)
+		}
+		for _, want := range []string{name + " cannot be stopped from reading", "auth.json", "Claude Code or the built-in runtime"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: %q does not say %q", harness, err, want)
+			}
+		}
+		if _, err := NewTerms(Terms{}, harness); err != nil {
+			t.Errorf("%s with nothing out of reach: %v", harness, err)
+		}
+	}
+	for _, harness := range []string{"", "claude-code"} {
+		got, err := NewTerms(terms, harness)
+		if err != nil {
+			t.Fatalf("%q: %v", harness, err)
+		}
+		if strings.Join(got.Unreadable, ",") != "**/.env,auth.json" {
+			t.Errorf("%q: the paths are cleaned and sorted: %v", harness, got.Unreadable)
+		}
+	}
+	if _, err := NewTerms(Terms{Unreadable: []string{"/etc/passwd"}}, ""); err == nil {
+		t.Error("a path outside the repository was accepted")
+	}
+}

@@ -81,7 +81,7 @@ func (c *Codex) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	hook := fmt.Sprintf(`[{matcher="*",hooks=[{type="command",command=%s,timeout=%d}]}]`,
 		tomlString(HookCommand(bin, "codex", "--governed")), hookTimeout)
 	hooks := []string{"-c", "hooks.SessionStart=" + hook, "-c", "hooks.PreToolUse=" + hook, "-c", "hooks.PostToolUse=" + hook, "-c", "hooks.Stop=" + hook}
-	prompt := withContinuation(c.Prompt, env) + "\n\n" + codexRules
+	prompt := BriefingFor("codex", c.Prompt, env, "")
 
 	// A continued run resumes Codex's own thread (`codex exec resume <id>`); a first segment learns the thread's id from the
 	// first event of its --json stream and puts it on the audit chain at once, so a kill cannot lose it.

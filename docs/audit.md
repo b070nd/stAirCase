@@ -18,7 +18,8 @@ Events you will see:
 
 | Event | Meaning |
 |---|---|
-| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), the reviewer models it asked when it has a panel (`validator_models`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
+| `run_bound` | what the run started from (commit, plan, blueprint), and the digest of the options it saved for a continuation (`terms_sha256`), the reviewer models it asked when it has a panel (`validator_models`), the digest and length of the project's instructions the agent was told (`instructions_sha256`, `instructions_bytes`), the change set it was started for when it named one (`change_set`), and, for a hosted session resumed after its run was decided, that session and the run it follows (`resumes_session`, `resumes_run`) |
+| `source_dirty` | the checkout the run started from held changes that are not in the commit it works on, so the agent did not have them: the number of tracked changes, the number of untracked files and a digest of their names. Written right after `run_bound`, only when there were some; ignored paths are never counted |
 | `yield_request` | an agent proposed a change or a command |
 | `yield_decided` | the decision: who decided (`policy`, `operator`, `validator:<model>`, …), the reason, the `yield_request` entry it answers (`request_entry`), and for an approved change the hash of the exact approved content. A final review (`action_type` `final_review`, a finished run's or a recovery's) answers no request and holds the digest of the whole change put to the person |
 | `shell_exec_rejected` | a shell command was refused because the run did not allow shell commands |
@@ -33,7 +34,7 @@ Events you will see:
 | `task_agreed` | who agreed to the task before a session started, and the plan's digest |
 | `policy_snapshot` | the digest of the `policy.json` the run decided under, and whether its signature was valid (written before the first proposal) |
 | `initiator_signed` | the person who started the run signed a request naming the run, base commit and plan: who, and the SSH signature (only when the run was started with a key) |
-| `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed and the digest of its output |
+| `check_ran` | a `--check` command ran on the delivered commit: its command, exit code, whether it was sandboxed, the digest of its output, and the declared environment it saw when the run had one (`environment`: see [a project's profile](profile.md)) |
 | `shell_ran` | an approved shell command ran: the agent, the command and whether it ran in the sandbox |
 | `validator_voted` | one reviewer model's verdict on one proposal, written before the decision it went into: the model, the `yield_request` entry it judged (`request_entry`), `approve`, `reject` or `error` (it failed or gave no verdict), its reason, and the digest of its whole reply. Every model that was asked has one, whether the panel agreed or not ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)). Votes are not signed: they are as trustworthy as the workspace that wrote them |
 | `signal_rated` | a decision model was asked about a change that was not decided by a person: the model, the probabilities it gave that the change is risky and that it serves a story, the kind of change and the cost, or the error when it could not answer. It can only send the change to a person |
@@ -509,6 +510,46 @@ copy of the workflow, with `contents: read`, the pull request's head checked out
 [testing](testing.md) does this).
 
 The same check runs locally: `staircase verify main..HEAD --all --min-cal 3`.
+
+### Other CI systems (GitLab)
+
+Everything above that names GitHub is the packaging: the Action, its attestation check and `pull_request_target`. The check itself is one
+command over a git range. Since 1.2.0 it reads the trusted key, and the allowed signers if you use CAL 4, from a ref the change under
+test cannot alter, so a job on any CI is a few lines:
+
+```bash
+staircase verify origin/main..$HEAD --all --min-cal 2 --rebuild \
+  --trust-ref origin/main --key-path ci/staircase.pub
+# CAL 4: add  --signers-path ci/allowed_signers  and  --require-initiator
+```
+
+`--trust-ref` refuses a ref that is, or holds, a commit being verified, and names the path it could not find. The public key is committed
+to the protected branch, as above.
+
+A GitLab job for merge requests, written from the commands of this page and of [install](install.md) and **not run against a GitLab
+instance by the project** (try it on a test project first):
+
+```yaml
+staircase-verify:
+  stage: test
+  image: golang:1.26                 # any image with git and curl will do
+  variables: { GIT_DEPTH: "0" }      # the whole history: the range needs real commits
+  rules: [ { if: '$CI_PIPELINE_SOURCE == "merge_request_event"' } ]
+  script:
+    - V=v1.2.0                       # pin a release, and check checksums.txt with cosign as install.md says
+    - curl -fsSLO https://github.com/b070nd/stAirCase/releases/download/$V/staircase_${V#v}_linux_amd64.tar.gz
+    - curl -fsSLO https://github.com/b070nd/stAirCase/releases/download/$V/checksums.txt
+    - sha256sum -c --ignore-missing checksums.txt && tar -xzf staircase_*.tar.gz staircase
+    - git fetch -q origin refs/notes/staircase:refs/notes/staircase refs/notes/staircase-ledger:refs/notes/staircase-ledger
+    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - ./staircase verify "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA" --all --min-cal 2 --rebuild
+        --trust-ref "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --key-path ci/staircase.pub
+```
+
+End the range at `CI_MERGE_REQUEST_SOURCE_BRANCH_SHA`, not at `CI_COMMIT_SHA`: in a merged-results pipeline the latter is a commit GitLab
+made, which has no certificate. The notes must be pushed to the project (`git push origin refs/notes/staircase refs/notes/staircase-ledger`),
+and everything under "Limits, stated plainly" applies to a squash-merge on GitLab too. Release archives are hosted on github.com, so the
+runner needs outbound access to it; the build attestation and the cosign recipe check GitHub's identity, and are GitHub-specific.
 
 ## Look at a run
 

@@ -166,12 +166,12 @@ func (c *ClaudeCode) Run(ctx context.Context, env *orchestrator.AgentEnv) error 
 		env.RecordSession("claude-code", c.Host.SessionID, mode)
 		args = append(slices.Clone(c.Host.Args), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 			flag, c.Host.SessionID)
-		if sp := strings.TrimSpace(c.Host.SystemPrompt + "\n\n" + env.Brief); sp != "" {
+		if sp := strings.TrimSpace(c.Host.SystemPrompt + "\n\n" + env.Brief + "\n\n" + instructionsBlock(env)); sp != "" {
 			args = append(args, "--append-system-prompt", sp)
 		}
 	} else {
 		sid, resumed := sessionFor(env, "claude-code")
-		args = []string{"-p", withContinuation(c.Prompt, env), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
+		args = []string{"-p", BriefingFor("claude-code", c.Prompt, env, ""), "--settings", settings, "--setting-sources", "", "--strict-mcp-config",
 			"--output-format", "json"}
 		if resumed {
 			args = append(args, "--resume", sid)
@@ -517,8 +517,21 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 			if p == "" {
 				continue
 			}
-			if _, err := h.rel(p); err != nil {
+			rel, err := h.rel(p)
+			if err != nil {
 				return "staircase: only files inside the project can be read"
+			}
+			if h.env != nil && in.Tool == "Read" && h.env.OutOfReach(rel) { // the read boundary: Read names the file it reads
+				return "staircase: " + rel + " is out of reach: the project keeps it from the agent"
+			}
+		}
+		if h.env != nil && in.Tool == "Grep" { // a search reads what it searches: refuse where the folder holds a file out of reach
+			dir := "."
+			if p := orDefault(a.FilePath, a.Path); p != "" {
+				dir, _ = h.rel(p)
+			}
+			if h.env.OutOfReach(dir) || h.env.HoldsOutOfReach(dir) {
+				return "staircase: a search here would read files that are out of reach (the project keeps them from the agent); search a narrower folder"
 			}
 		}
 		return ""
@@ -537,6 +550,9 @@ func (h *hookServer) pre(ctx context.Context, in hookInput) string {
 		rel, err := h.rel(a.FilePath)
 		if err != nil {
 			return "staircase: only files inside the project can be changed"
+		}
+		if h.env != nil && h.env.OutOfReach(rel) { // an edit shows what it changes
+			return "staircase: " + rel + " is out of reach: the project keeps it from the agent"
 		}
 		if in.Tool == "Write" {
 			return h.proposeEdit(ctx, in, domain.ProposedEdit{File: rel, SearchBlock: orchestrator.MarkerNewFile, ReplaceBlock: a.Content})

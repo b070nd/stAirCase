@@ -3,6 +3,7 @@ package gate_test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/b070nd/stAirCase/src/internal/history"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -595,57 +596,122 @@ func TestDepDepsCompletedGate_no_deps_passes(t *testing.T) {
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
 
-func TestDepDepsCompletedGate_incomplete_upstream_warns(t *testing.T) {
-	// Upstream has a topology but no SUCCESS run at that version → warn.
-	ctx, _ := newGateEnv(t)
-	v, _ := ctx.Store.CreateVendor(t.Name())
-	upstream, _ := ctx.Store.CreateProject(v.ID, "Upstream", "")
-	downstream, _ := ctx.Store.CreateProject(v.ID, "Downstream", "")
-	ctx.Store.CreateProjectDependency(downstream.ID, upstream.ID)
-	ctx.Store.CreateSwarmTopology(upstream.ID, "sup", "memory", "langgraph") // topology exists, no runs
-	c, _ := ctx.Store.CreateCase(downstream.ID)
-	ctx.CaseID = c.ID
-	r := gate.DepDepsCompletedGate.Run(ctx)
-	assert.Equal(t, gate.StatusWarn, r.Status)
-	assert.Contains(t, r.Message, "SUCCESS run")
+// upstream makes a project with one topology and one case, and a run of it at that topology; the run has no history yet.
+func upstream(t *testing.T, ctx gate.Context, name string) (projectID int64, topoVersion int, runID int64) {
+	t.Helper()
+	v, err := ctx.Store.CreateVendor(t.Name() + name)
+	require.NoError(t, err)
+	p, err := ctx.Store.CreateProject(v.ID, name, "")
+	require.NoError(t, err)
+	topo, err := ctx.Store.CreateSwarmTopology(p.ID, "sup", "memory", "langgraph")
+	require.NoError(t, err)
+	c, err := ctx.Store.CreateCase(p.ID)
+	require.NoError(t, err)
+	run, err := ctx.Store.CreateRun(c.ID, topo.Version, "main")
+	require.NoError(t, err)
+	return p.ID, topo.Version, run.ID
 }
 
-func TestDepDepsCompletedGate_completed_upstream_passes(t *testing.T) {
-	// Upstream has a topology AND a SUCCESS run at that topology version → pass.
-	ctx, _ := newGateEnv(t)
-	v, _ := ctx.Store.CreateVendor(t.Name())
-	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "")
-	downstream, _ := ctx.Store.CreateProject(v.ID, "Down", "")
-	ctx.Store.CreateProjectDependency(downstream.ID, upstream.ID)
-
-	topo, _ := ctx.Store.CreateSwarmTopology(upstream.ID, "sup", "memory", "langgraph")
-	upCase, _ := ctx.Store.CreateCase(upstream.ID)
-	run, _ := ctx.Store.CreateRun(upCase.ID, topo.Version, "main")
-	ctx.Store.UpdateRunStatus(run.ID, "SUCCESS", nil, "abc123")
-
-	c, _ := ctx.Store.CreateCase(downstream.ID)
+// downstream makes a project that depends on upstreamID and a case of it, and points the gate's context at that case.
+func downstream(t *testing.T, ctx *gate.Context, upstreamID int64) {
+	t.Helper()
+	v, err := ctx.Store.CreateVendor(t.Name() + "-down")
+	require.NoError(t, err)
+	d, err := ctx.Store.CreateProject(v.ID, "Down", "")
+	require.NoError(t, err)
+	_, err = ctx.Store.CreateProjectDependency(d.ID, upstreamID)
+	require.NoError(t, err)
+	c, err := ctx.Store.CreateCase(d.ID)
+	require.NoError(t, err)
 	ctx.CaseID = c.ID
+}
+
+// deliver writes the history of a run that delivered its commit: bound at the topology, the commit named and its certificate issued.
+func deliver(t *testing.T, ctx gate.Context, runID int64, topoVersion int, extra ...history.Event) {
+	t.Helper()
+	w := history.NewWriter(ctx.Store, runID, history.Settings{})
+	require.NoError(t, w.Append(history.Bound{BaseSHA: "b", Branch: "staircase/run-1", TopologyVersion: topoVersion}))
+	require.NoError(t, w.Append(history.CommitPrepared{Commit: "abc123abc123", Base: "b", Tree: "t", Branch: "staircase/run-1"}))
+	require.NoError(t, w.Append(history.CertificateIssued{Commit: "abc123abc123", CAL: 2, EnvelopeSHA256: "e"}))
+	for _, e := range extra {
+		require.NoError(t, w.Append(e))
+	}
+	require.NoError(t, ctx.Store.UpdateRunStatus(runID, "SUCCESS", nil, "abc123abc123"))
+}
+
+func TestDepDepsCompletedGate_incomplete_upstream_warns(t *testing.T) {
+	// Upstream has a topology but no run at that version -> warn.
+	ctx, _ := newGateEnv(t)
+	up, _, _ := upstream(t, ctx, "Upstream")
+	downstream(t, &ctx, up)
 	r := gate.DepDepsCompletedGate.Run(ctx)
-	assert.Equal(t, gate.StatusPass, r.Status)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "delivered run")
+}
+
+func TestDepDepsCompletedGate_a_delivered_upstream_passes(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	up, topo, run := upstream(t, ctx, "Up")
+	deliver(t, ctx, run, topo)
+	downstream(t, &ctx, up)
+	r := gate.DepDepsCompletedGate.Run(ctx)
+	assert.Equal(t, gate.StatusPass, r.Status, r.Message)
+}
+
+// TestDepDepsCompletedGate_a_status_row_is_not_a_delivery: a run row that says SUCCESS and has no history and no commit is not a
+// delivered run. The glossary says nothing decides from rows that were not verified, and a run's outcome is read from its history.
+func TestDepDepsCompletedGate_a_status_row_is_not_a_delivery(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	up, _, run := upstream(t, ctx, "Up")
+	require.NoError(t, ctx.Store.UpdateRunStatus(run, "SUCCESS", nil, ""))
+	downstream(t, &ctx, up)
+	r := gate.DepDepsCompletedGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "delivered run")
+}
+
+func TestDepDepsCompletedGate_a_run_that_ended_without_delivering_is_not_one(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	up, topo, run := upstream(t, ctx, "Up")
+	w := history.NewWriter(ctx.Store, run, history.Settings{})
+	require.NoError(t, w.Append(history.Bound{BaseSHA: "b", Branch: "staircase/run-1", TopologyVersion: topo}))
+	require.NoError(t, w.Append(history.Ended{Phases: []string{"PRE_FLIGHT"}, Status: "FAILED"}))
+	require.NoError(t, ctx.Store.UpdateRunStatus(run, "SUCCESS", nil, "")) // the row says otherwise: the history decides
+	downstream(t, &ctx, up)
+	assert.Equal(t, gate.StatusWarn, gate.DepDepsCompletedGate.Run(ctx).Status)
+}
+
+func TestDepDepsCompletedGate_incomplete_evidence_does_not_count_and_says_so(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	up, topo, run := upstream(t, ctx, "Up")
+	deliver(t, ctx, run, topo, history.EvidenceFailed{Commit: "abc123abc123", Errors: []string{"ledger: disk full"}})
+	downstream(t, &ctx, up)
+	r := gate.DepDepsCompletedGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "incomplete evidence")
+}
+
+func TestDepDepsCompletedGate_a_history_that_cannot_be_read_is_unknown_not_satisfied(t *testing.T) {
+	ctx, _ := newGateEnv(t)
+	up, topo, run := upstream(t, ctx, "Up")
+	deliver(t, ctx, run, topo)
+	_, err := ctx.Store.DB().Exec(`UPDATE run_event_logs SET payload = replace(payload, '"cal":2', '"cal":4') WHERE run_id = ? AND event_type = 'certificate_issued'`, run)
+	require.NoError(t, err)
+	downstream(t, &ctx, up)
+	r := gate.DepDepsCompletedGate.Run(ctx)
+	assert.Equal(t, gate.StatusWarn, r.Status)
+	assert.Contains(t, r.Message, "cannot be read")
+	assert.Contains(t, r.Message, fmt.Sprintf("run #%d", run))
 }
 
 func TestDepDepsCompletedGate_stale_topology_warns(t *testing.T) {
-	// Upstream has a SUCCESS run at v1 but topology was bumped to v2 → warn.
+	// Upstream delivered at v1 but the topology was bumped to v2 -> warn.
 	ctx, _ := newGateEnv(t)
-	v, _ := ctx.Store.CreateVendor(t.Name())
-	upstream, _ := ctx.Store.CreateProject(v.ID, "Up", "")
-	downstream, _ := ctx.Store.CreateProject(v.ID, "Down", "")
-	ctx.Store.CreateProjectDependency(downstream.ID, upstream.ID)
-
-	topoV1, _ := ctx.Store.CreateSwarmTopology(upstream.ID, "sup", "memory", "langgraph") // v1
-	upCase, _ := ctx.Store.CreateCase(upstream.ID)
-	run, _ := ctx.Store.CreateRun(upCase.ID, topoV1.Version, "main")
-	ctx.Store.UpdateRunStatus(run.ID, "SUCCESS", nil, "abc123")
-
-	ctx.Store.CreateSwarmTopology(upstream.ID, "sup2", "memory", "langgraph") // v2 - bumps version
-
-	c, _ := ctx.Store.CreateCase(downstream.ID)
-	ctx.CaseID = c.ID
+	up, topo, run := upstream(t, ctx, "Up")
+	deliver(t, ctx, run, topo)
+	_, err := ctx.Store.CreateSwarmTopology(up, "sup2", "memory", "langgraph") // v2 - bumps version
+	require.NoError(t, err)
+	downstream(t, &ctx, up)
 	r := gate.DepDepsCompletedGate.Run(ctx)
 	assert.Equal(t, gate.StatusWarn, r.Status)
 	assert.Contains(t, r.Message, "v2") // should mention the stale version

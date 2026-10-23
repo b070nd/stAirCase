@@ -84,7 +84,7 @@ func (g *Gemini) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 	// run's worktree is a new folder every time. Trusting it lets Gemini read the repository's own
 	// .gemini settings (see the documentation: do not run this on a repository you do not trust).
 	sid, resumed := sessionFor(env, "gemini")
-	args := []string{"-p", withContinuation(g.Prompt, env) + "\n\n" + geminiRules, "--approval-mode=yolo", "--output-format", "json", "--skip-trust"}
+	args := []string{"-p", BriefingFor("gemini", g.Prompt, env, ""), "--approval-mode=yolo", "--output-format", "json", "--skip-trust"}
 	if resumed {
 		args = append(args, "--resume", sid)
 	} else {

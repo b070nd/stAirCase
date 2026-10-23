@@ -152,6 +152,8 @@ type CheckRan struct {
 	ExitCode     int    `json:"exit_code"`
 	OutputSHA256 string `json:"output_sha256"`
 	Sandboxed    bool   `json:"sandboxed"`
+	// Environment names the declared directories the check saw, read-only; absent when it saw none.
+	Environment []string `json:"environment,omitempty"`
 }
 
 func (CheckRan) eventName() string { return "check_ran" }
@@ -211,3 +213,15 @@ type StoryAccepted struct {
 }
 
 func (StoryAccepted) eventName() string { return "story_accepted" }
+
+// SourceDirty is source_dirty: the checkout a run was started from had changes that are not in the commit the run works on, so the
+// agent did not have them. It holds the counts of the tracked changes and of the untracked files, and the digest of their names (a
+// status letter and the path, sorted, one a line). Ignored paths are never listed: they are not in a worktree either, and git does not
+// say which exist.
+type SourceDirty struct {
+	Tracked     int    `json:"tracked"`
+	Untracked   int    `json:"untracked"`
+	NamesSHA256 string `json:"names_sha256"`
+}
+
+func (SourceDirty) eventName() string { return "source_dirty" }
