@@ -13,6 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/b070nd/stAirCase/src/internal/relversion"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -239,29 +240,17 @@ func TestNoBuiltBinaryIsTracked(t *testing.T) {
 	}
 }
 
-// latestRelease is the newest released version the changelog names: the first "## [X.Y.Z]" heading under [Unreleased].
-func latestRelease(t *testing.T) string {
-	src, err := os.ReadFile(filepath.Join(repoRoot, "CHANGELOG.md"))
-	require.NoError(t, err)
-	m := regexp.MustCompile(`(?m)^## \[(\d+\.\d+\.\d+)\] - `).FindSubmatch(src)
-	require.NotNil(t, m, "no released version in the changelog")
-	return string(m[1])
-}
-
-// TestVersionsNameTheLatestRelease: what tells a person which version to use must name the version the changelog says is the latest, so a
-// release cannot leave the documented pinned Action example, or the fixture that exercises it, on an older one. The release steps in
-// CONTRIBUTING.md say to bump both when preparing a release.
+// TestVersionsNameTheLatestRelease: every place that tells a person which release to use (the pinned Action example, the fixture's default,
+// the release checklist, the site's links and its guide) names the release the CHANGELOG says is the latest. A release moves them all
+// with `make version` (go run ./src/tools/setversion); this test fails until it has been run.
 func TestVersionsNameTheLatestRelease(t *testing.T) {
-	v := "v" + latestRelease(t)
-	pinned := func(path string, patterns ...string) {
-		src, err := os.ReadFile(filepath.Join(repoRoot, path))
-		require.NoError(t, err)
-		for _, p := range patterns {
-			assert.Contains(t, string(src), fmt.Sprintf(p, v), "%s does not name the latest release %s (%q)", path, v, p)
-		}
+	changelog, err := os.ReadFile(filepath.Join(repoRoot, "CHANGELOG.md"))
+	require.NoError(t, err)
+	releases := relversion.Releases(changelog)
+	require.NotEmpty(t, releases, "no released version in the changelog")
+	for _, p := range relversion.Check(repoRoot, releases[0]) {
+		t.Error(p + " (run `make version`)")
 	}
-	pinned("docs/audit.md", "uses: b070nd/stAirCase@%s ", "version: %s ")
-	pinned("demo/ruleset-fixture.sh", `VERSION="${2:-%s}"`, "(default version: %s)")
 }
 
 // TestChangelogHasNoLinkToAnotherProgramsRelease: the changelog keeps the earlier Bash implementation's 1.0.0 to 1.2.0 as history, but

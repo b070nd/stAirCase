@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -272,9 +273,12 @@ var pages = []string{
 	"use-cases/teams.html",
 	"use-cases/evidence.html",
 	"guides/index.html",
-	"guides/v1.1.0/install.html",
-	"guides/v1.1.0/first-run.html",
 }
+
+// guideDir is the folder of one release's setup guide; each holds the same two pages.
+var guideDir = regexp.MustCompile(`^guides/(v\d+\.\d+\.\d+)/`)
+
+var guidePages = []string{"install.html", "first-run.html"}
 
 // Every page of the site passes the check.
 func TestSite(t *testing.T) {
@@ -289,7 +293,15 @@ func TestSite(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := append([]string(nil), pages...)
+	for _, f := range found { // every release's guide holds both its pages: a missing one is reported
+		if m := guideDir.FindStringSubmatch(f); m != nil {
+			for _, g := range guidePages {
+				want = append(want, "guides/"+m[1]+"/"+g)
+			}
+		}
+	}
 	sort.Strings(want)
+	want = slices.Compact(want)
 	sort.Strings(found)
 	if strings.Join(found, "\n") != strings.Join(want, "\n") {
 		t.Errorf("the site's pages are\n%s\nwant\n%s", strings.Join(found, "\n"), strings.Join(want, "\n"))

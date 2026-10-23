@@ -40,9 +40,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v1.1.0
+      - uses: b070nd/stAirCase@v1.2.0
         with:
-          version: v1.1.0                            # the verifier that runs, pinned
+          version: v1.2.0                            # the verifier that runs, pinned
           key: .github/staircase.pub
           all: true                                  # every commit needs a certificate (the default)
           allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4
@@ -68,6 +68,12 @@ jobs:
   <li>A failed check recorded in a certificate makes <code>staircase verify</code> fail, so a CI check that requires certificates also requires passing checks.</li>
 </ul>
 
+<h2 id="other-ci">Other CI systems</h2>
+<p>The check itself is one command over a git range, so any CI can run it. It reads the trusted key, and the allowed signers if you use CAL 4, from a ref that the change under test cannot alter, and refuses a ref that is, or holds, a commit being verified:</p>
+<pre tabindex="0"><code>staircase verify origin/main..$HEAD --all --min-cal 2 --rebuild \
+  --trust-ref origin/main --key-path ci/staircase.pub</code></pre>
+<p>The documentation has a GitLab merge request job as a starting point. The project has not run it on a GitLab instance: try it on a test project first.</p>
+
 <h2 id="limits">Limits, stated plainly</h2>
 <ul>
   <li>A certificate is about one commit id. Squash-merge and rebase-merge make new commits that carry no certificate: check the pull request's own commits before merging, and merge with a merge commit, or certify the merged result with <code>staircase seal</code>.</li>
@@ -76,11 +82,11 @@ jobs:
   <li>A pull request that edits the check's own workflow runs its own version of it under <code>on: pull_request</code>: protect <code>.github/</code> with required review, or run the check on <code>pull_request_target</code>.</li>
   <li>None of this has been exercised against a real organization ruleset; do that once with a test repository before relying on it (<code>demo/ruleset-fixture.sh</code> builds one).</li>
 </ul>
-<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/audit.md#require-certificates-on-pull-requests">Require certificates on pull requests</a>.</p>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/audit.md#require-certificates-on-pull-requests">Require certificates on pull requests</a>.</p>
 </main>
 <footer class="site">
-  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
-  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+  <p>These pages describe stAirCase v1.2.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
 </footer>
 </body>
 </html>

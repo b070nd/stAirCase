@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **`make version` moves every mention of the current release.** The CHANGELOG's newest release heading is the one source of the version.
+  `go run ./src/tools/setversion` (or `make version`) updates the pinned Action example, the fixture's default, the release checklist and the
+  site's links, and adds the site's setup guide for the release; `-check` only reports. A test fails while any mention is stale. The
+  site now describes 1.2.0.
+
 ### Changed
 
 - **The program's output uses words, not emoji.** Success lines no longer start with a check mark, warnings start with `warning:`,
