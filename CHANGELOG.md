@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A few lines still began with a symbol.** 1.3.0 removed the emoji from the output, but an information symbol and a circle arrow were left:
+  five lines of `staircase doctor`, two of `staircase push`, one of `staircase serve` and two when a run starts. The doctor now says `info` in
+  its list and the other lines say `note:`. The test that keeps symbols out of the output covers these characters too.
+
 ## [1.3.0] - 2026-10-23
 
 This release is about what a person reads: the program's output, the documentation and the project's site, and keeping the version in one place.

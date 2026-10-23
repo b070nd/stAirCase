@@ -122,12 +122,12 @@ is skipped and the PR URL is printed for manual use.`,
 
 		// GitHub PR creation
 		if !isGitHub {
-			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL - create the PR manually:\n", redactRemote(remoteURL))
+			fmt.Printf("   note: Remote %q is not a recognized GitHub URL - create the PR manually:\n", redactRemote(remoteURL))
 			fmt.Printf("   %s\n", manualPRURL(remoteURL, runBranch, run.GitBranch))
 			return nil
 		}
 		if token == "" {
-			fmt.Printf("   ℹ️  No --github-token provided - create the PR manually:\n")
+			fmt.Printf("   note: No --github-token provided - create the PR manually:\n")
 			fmt.Printf("   https://github.com/%s/%s/compare/%s?expand=1\n", owner, repo, runBranch)
 			return nil
 		}

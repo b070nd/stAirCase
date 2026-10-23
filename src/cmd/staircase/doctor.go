@@ -85,7 +85,7 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 
 	// 4. Leftovers of the Python runtime
 	if _, err := os.Stat(filepath.Join(wsDir, "venv")); err == nil {
-		fmt.Println("  ℹ️  venv/ is from an older staircase and no longer used - you can delete it")
+		fmt.Println("  info  venv/ is from an older staircase and no longer used - you can delete it")
 	}
 
 	// 5. Git
@@ -106,14 +106,14 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 	if _, err := os.Stat(filepath.Join(wsDir, "tmp")); err == nil {
 		fmt.Println("  ok    tmp/ directory")
 	} else {
-		fmt.Println("  ℹ️  tmp/ directory - created on first run")
+		fmt.Println("  info  tmp/ directory - created on first run")
 	}
 
 	if dbStatErr == nil {
 		interruptedRuns(wsDir)
 	}
 	if _, err := os.Stat(filepath.Join(wsDir, "legal-hold")); err == nil {
-		fmt.Println("  ℹ️  legal hold in effect: clean --aggressive deletes no audit rows, cases or run branches")
+		fmt.Println("  info  legal hold in effect: clean --aggressive deletes no audit rows, cases or run branches")
 	}
 	optionalTools()
 
@@ -175,7 +175,7 @@ func interruptedRuns(wsDir string) {
 func optionalTools() {
 	fmt.Println("\n  Optional tools (stAirCase works without them; each adds something)")
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		fmt.Println("  ℹ️  ssh-keygen: not found - needed to sign decisions and reviews (--sign-approvals, staircase sign)")
+		fmt.Println("  info  ssh-keygen: not found - needed to sign decisions and reviews (--sign-approvals, staircase sign)")
 	} else if major, minor, ok := opensshVersion(); !ok {
 		fmt.Println("  ok    ssh-keygen found (version not checked) - signed decisions and reviews")
 	} else if major < 8 {
@@ -252,7 +252,7 @@ func firstPath(name string) string {
 // agentLine reports one agent: not installed, or its version and login state.
 func agentLine(name, bin, versionFlag string, login func(bin string) string) {
 	if bin == "" {
-		fmt.Printf("  ℹ️  %s: not installed\n", name)
+		fmt.Printf("  info  %s: not installed\n", name)
 		return
 	}
 	version, _ := runQuiet(bin, versionFlag)

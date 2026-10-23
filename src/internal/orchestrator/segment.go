@@ -73,7 +73,7 @@ func (firstSegment) base(s *runState) (string, error) {
 		return "", fmt.Errorf("resolve base commit: %w", err)
 	}
 	if tracked, untracked, err := s.gr.DirtyFiles(); err == nil && len(tracked)+len(untracked) > 0 {
-		fmt.Fprintf(os.Stdout, "   ℹ️  %s has uncommitted changes; the agent works on commit %.12s without them\n", s.project.SourcePath, base)
+		fmt.Fprintf(os.Stdout, "   note: %s has uncommitted changes; the agent works on commit %.12s without them\n", s.project.SourcePath, base)
 		if len(tracked) > 0 {
 			fmt.Fprintf(os.Stdout, "      tracked changes: %s\n", namesCapped(tracked))
 		}
@@ -126,7 +126,7 @@ func (firstSegment) open(s *runState) error {
 
 func (g continuedSegment) open(s *runState) error {
 	s.run = g.c.run
-	fmt.Fprintf(os.Stdout, "↻ Run #%d  case=%d  continued (segment %d)\n", s.run.ID, s.caseID, g.c.segment)
+	fmt.Fprintf(os.Stdout, "Run #%d  case=%d  continued (segment %d)\n", s.run.ID, s.caseID, g.c.segment)
 	s.releaseOwner = g.c.release // Resume took the claim before it checked anything, and hands it over
 	return nil
 }
