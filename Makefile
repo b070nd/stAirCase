@@ -4,7 +4,7 @@
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
 # tests, the offline demo, formatting, tidy and the Windows build.
 check: lint
-	@test -z "$$(gofmt -l src tests demo)" || { gofmt -l src tests demo; echo "✗ gofmt needed"; exit 1; }
+	@test -z "$$(gofmt -l src tests demo)" || { gofmt -l src tests demo; echo "error: gofmt needed"; exit 1; }
 	go mod tidy -diff
 	GOOS=windows go build ./...
 	go test ./... -count=1 -timeout=600s

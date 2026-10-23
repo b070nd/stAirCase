@@ -31,7 +31,7 @@ func projectLessons(store *persistence.Store, projectID int64) ([]string, error)
 		for _, r := range runs {
 			h, err := history.Read(store, r.ID)
 			if err != nil { // a run whose history cannot be trusted teaches nothing: said, and skipped
-				fmt.Fprintf(os.Stderr, "⚠️  lessons: run #%d skipped: %v\n", r.ID, err)
+				fmt.Fprintf(os.Stderr, "warning: lessons: run #%d skipped: %v\n", r.ID, err)
 				continue
 			}
 			for _, d := range h.Decisions {

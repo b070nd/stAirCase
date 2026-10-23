@@ -208,7 +208,7 @@ staircase verify staircase/run-7 --min-cal 3     # fail below CAL 3
 ```
 
 ```
-✅ Commit 8a4ae8705334: valid change certificate, CAL 3
+Commit 8a4ae8705334: valid change certificate, CAL 3
    run #7 from 1ec6a66040cc, assisted by Claude Code
    3 decision(s) by operator
 ```

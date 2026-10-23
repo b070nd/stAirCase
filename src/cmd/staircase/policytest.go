@@ -70,11 +70,11 @@ approving what it must not, or from escalating what it should approve.`,
 		for _, title := range []struct {
 			heading string
 			items   []string
-		}{{"⚠️  a person REJECTED these, the policy would APPROVE them:", rep.RejectedByPerson},
+		}{{"warning: a person REJECTED these, the policy would APPROVE them:", rep.RejectedByPerson},
 			{"the policy would reject these, which were approved:", rep.WouldReject},
-			{"⚠️  these were decided without a person, and a protected or sensitive path now sends them to one:", rep.WouldGoToPerson},
-			{"⚠️  the terms these runs saved could not be read, so only the sensitive list was applied to them:", rep.Unchecked},
-			{"⚠️  these runs were not replayed:", rep.Skipped}} {
+			{"warning: these were decided without a person, and a protected or sensitive path now sends them to one:", rep.WouldGoToPerson},
+			{"warning: the terms these runs saved could not be read, so only the sensitive list was applied to them:", rep.Unchecked},
+			{"warning: these runs were not replayed:", rep.Skipped}} {
 			if len(title.items) > 0 {
 				fmt.Printf("\n%s\n  %s\n", title.heading, strings.Join(title.items, "\n  "))
 			}

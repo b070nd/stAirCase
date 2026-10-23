@@ -57,7 +57,7 @@ var governanceUseCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("✅ Governance from %s at %.12s: %d file(s) installed\n", pin.Source, pin.Commit, len(pin.Files))
+		fmt.Printf("Governance from %s at %.12s: %d file(s) installed\n", pin.Source, pin.Commit, len(pin.Files))
 		for _, name := range slices.Sorted(maps.Keys(pin.Files)) {
 			fmt.Printf("   %s\n", name)
 		}
@@ -94,15 +94,15 @@ var governanceStatusCmd = &cobra.Command{
 		}
 		fmt.Printf("Governance: %s (%s) at %.12s\n", st.Pin.Source, st.Pin.Ref, st.Pin.Commit)
 		if st.Behind {
-			fmt.Printf("   ⚠️  the source is at %.12s now: review it, then run staircase governance use again\n", st.Latest)
+			fmt.Printf("   warning: the source is at %.12s now: review it, then run staircase governance use again\n", st.Latest)
 		} else {
-			fmt.Println("   ✅ up to date with the source")
+			fmt.Println("   up to date with the source")
 		}
 		for _, name := range slices.Sorted(maps.Keys(st.Pin.Blueprints)) {
 			fmt.Printf("   blueprint %s %.12s\n", name, st.Pin.Blueprints[name])
 		}
 		for _, f := range st.Modified {
-			fmt.Printf("   ⚠️  %s was changed in the workspace since it was installed\n", f)
+			fmt.Printf("   warning: %s was changed in the workspace since it was installed\n", f)
 		}
 		return nil
 	},

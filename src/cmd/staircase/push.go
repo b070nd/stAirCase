@@ -110,15 +110,15 @@ is skipped and the PR URL is printed for manual use.`,
 		owner, repo, isGitHub := parseGitHubOwnerRepo(remoteURL)
 		pushToken := token
 		if !isGitHub && pushToken != "" {
-			fmt.Printf("   ⚠️  Remote %q is not github.com - pushing without the GitHub token\n", redactRemote(remoteURL))
+			fmt.Printf("   warning: Remote %q is not github.com - pushing without the GitHub token\n", redactRemote(remoteURL))
 			pushToken = ""
 		}
 
-		fmt.Printf("⬆️  Pushing %s → %s/%s …\n", runBranch, remote, runBranch)
+		fmt.Printf("Pushing %s → %s/%s …\n", runBranch, remote, runBranch)
 		if err := gr.Push(remote, runBranch, pushToken); err != nil {
 			return fmt.Errorf("push failed: %w", err)
 		}
-		fmt.Println("✅ Branch pushed.")
+		fmt.Println("Branch pushed.")
 
 		// GitHub PR creation
 		if !isGitHub {
@@ -141,12 +141,12 @@ is skipped and the PR URL is printed for manual use.`,
 		if err != nil {
 			return fmt.Errorf("create PR: %w", err)
 		}
-		fmt.Printf("🎉 Pull request opened: %s\n", prURL)
+		fmt.Printf("Pull request opened: %s\n", prURL)
 
 		// Post a commit status so the PR shows the staircase check green.
 		if postErr := postGitHubStatus(token, owner, repo, run.GitCommitHash, "success",
 			fmt.Sprintf("Agent run #%d completed", runID)); postErr != nil {
-			fmt.Printf("   ⚠️  Could not post commit status: %v\n", postErr)
+			fmt.Printf("   warning: Could not post commit status: %v\n", postErr)
 		}
 		return nil
 	},

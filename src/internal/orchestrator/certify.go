@@ -89,7 +89,7 @@ type evidence struct {
 func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *plan.Plan, repo *GitRepo, ev evidence) error {
 	priv, err := crypto.LoadSigningKey(r.wsDir)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  No change certificate: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: No change certificate: %v\n", err)
 		return fmt.Errorf("no signing key: %w", err)
 	}
 	// The decisions are counted from the chain, so it is read only as verified: a changed row gets no certificate.
@@ -187,7 +187,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 	if err := attachNote(repo, NotesRef, path, commit); err != nil {
 		return fmt.Errorf("attach the change certificate to %s: %w", commit, err)
 	}
-	fmt.Fprintf(os.Stdout, "   📜 Change certificate (CAL %d): %s, also in git notes (refs/notes/staircase)\n", p.CAL, path)
+	fmt.Fprintf(os.Stdout, "   Change certificate (CAL %d): %s, also in git notes (refs/notes/staircase)\n", p.CAL, path)
 	for _, d := range hist.Delivered { // signing again gives the same certificate: it is on the chain once
 		if d.Event == "certificate_issued" && d.EnvelopeSHA256 == sha256Hex(b) {
 			return nil

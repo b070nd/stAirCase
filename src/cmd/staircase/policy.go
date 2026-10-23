@@ -46,7 +46,7 @@ signature file is absent and refuses to run when the signature is invalid.`,
 			return fmt.Errorf("write policy signature: %w", err)
 		}
 
-		fmt.Printf("✅ policy.json signed → %s\n", sigPath)
+		fmt.Printf("policy.json signed → %s\n", sigPath)
 		fmt.Printf("   sig: %s…\n", sigHex[:16])
 		return nil
 	},
@@ -72,7 +72,7 @@ confirm that policy.json has not been modified since it was last signed.`,
 			return fmt.Errorf("no policy.json.sig found - run 'staircase policy sign' first")
 		}
 
-		fmt.Println("✅ policy.json signature verified.")
+		fmt.Println("policy.json signature verified.")
 		return nil
 	},
 }

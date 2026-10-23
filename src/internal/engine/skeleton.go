@@ -213,7 +213,7 @@ func TokenEstimate(text string) int {
 func WarnTokenBudget(text string) string {
 	est := TokenEstimate(text)
 	if est > tokenBudgetWarn {
-		return fmt.Sprintf("⚠️  Context is ~%dk tokens (exceeds 100k) - this may be slow or costly.", est/1000)
+		return fmt.Sprintf("warning: Context is ~%dk tokens (exceeds 100k) - this may be slow or costly.", est/1000)
 	}
 	return ""
 }

@@ -40,7 +40,7 @@ var caseNewCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create case: %w", err)
 		}
-		fmt.Printf("✅ Case #%d created (project #%d) - status: %s\n", c.ID, projectID, c.Status)
+		fmt.Printf("Case #%d created (project #%d) - status: %s\n", c.ID, projectID, c.Status)
 		fmt.Printf("   Set a PRD with: staircase case set-prd %d <prd.json>\n", c.ID)
 		return nil
 	},
@@ -70,7 +70,7 @@ var caseSetPRDCmd = &cobra.Command{
 		if err := store.SetCasePRD(caseID, string(prdBytes)); err != nil {
 			return fmt.Errorf("set PRD: %w", err)
 		}
-		fmt.Printf("✅ PRD loaded into Case #%d (%d bytes).\n", caseID, len(prdBytes))
+		fmt.Printf("PRD loaded into Case #%d (%d bytes).\n", caseID, len(prdBytes))
 		return nil
 	},
 }
@@ -176,7 +176,7 @@ var caseDeleteCmd = &cobra.Command{
 		if err := store.FlagCaseDeleted(caseID); err != nil {
 			return fmt.Errorf("flag case: %w", err)
 		}
-		fmt.Printf("🗑  Case #%d flagged for deletion. Run 'staircase clean --aggressive' to purge.\n", caseID)
+		fmt.Printf("Case #%d flagged for deletion. Run 'staircase clean --aggressive' to purge.\n", caseID)
 		return nil
 	},
 }
@@ -231,14 +231,14 @@ so it can be run again. A RUNNING run must be stopped first.`,
 			if out, err := gitOutput(project.SourcePath, "worktree", "remove", "--force", wt); err != nil {
 				return fmt.Errorf("remove run worktree %s: %w: %s", wt, err, out)
 			}
-			fmt.Printf("   🗑  Removed worktree: %s\n", wt)
+			fmt.Printf("   Removed worktree: %s\n", wt)
 		}
 		branch := fmt.Sprintf("staircase/run-%d", lastRun.ID)
 		if _, err := gitOutput(project.SourcePath, "rev-parse", "--verify", branch); err == nil {
 			if out, err := gitOutput(project.SourcePath, "branch", "-D", branch); err != nil {
 				return fmt.Errorf("delete run branch %q: %w: %s", branch, err, out)
 			}
-			fmt.Printf("   🗑  Deleted branch: %s\n", branch)
+			fmt.Printf("   Deleted branch: %s\n", branch)
 		}
 
 		actor := "unknown"
@@ -251,7 +251,7 @@ so it can be run again. A RUNNING run must be stopped first.`,
 		if err := store.UpdateCaseStatus(caseID, persistence.CaseStatusPending); err != nil {
 			return fmt.Errorf("update case status: %w", err)
 		}
-		fmt.Printf("✅ Case #%d rolled back: run #%d (%s) discarded by %s; case is PENDING again.\n",
+		fmt.Printf("Case #%d rolled back: run #%d (%s) discarded by %s; case is PENDING again.\n",
 			caseID, lastRun.ID, lastRun.Status, actor)
 		return nil
 	},

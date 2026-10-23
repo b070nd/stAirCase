@@ -139,7 +139,7 @@ func runCase(l launch, caseID int64) error {
 	go func() {
 		select {
 		case <-sigCh:
-			fmt.Fprintln(os.Stderr, "\n⏹  Stopping the run and recording its outcome (further Ctrl-C are ignored)…")
+			fmt.Fprintln(os.Stderr, "\nStopping the run and recording its outcome (further Ctrl-C are ignored)…")
 			cancel()
 		case <-ctx.Done():
 		}

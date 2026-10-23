@@ -115,7 +115,7 @@ func signHandler(_ *cobra.Command, args []string) error {
 			_ = os.WriteFile(path, append(b, '\n'), 0o600)
 		}
 	}
-	fmt.Printf("✍️  Commit %.12s: change certificate signed by %s\n", commit, who)
+	fmt.Printf("Commit %.12s: change certificate signed by %s\n", commit, who)
 	fmt.Println("   Push it with: git push origin refs/notes/staircase")
 	return nil
 }

@@ -26,7 +26,7 @@ var vendorAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create vendor: %w", err)
 		}
-		fmt.Printf("✅ Vendor #%d %q created.\n", v.ID, v.Name)
+		fmt.Printf("Vendor #%d %q created.\n", v.ID, v.Name)
 		return nil
 	},
 }

@@ -155,16 +155,16 @@ func verifyRange(rng string) error {
 			if assisted != "" {
 				err = fmt.Errorf("%w (the commit says an agent helped: %s)", err, assisted)
 			}
-			fmt.Printf("❌ %v\n", err)
+			fmt.Printf("error: %v\n", err)
 			failed = append(failed, err.Error())
 		}
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("%d of %d commit(s) in %s failed:\n  %s", len(failed), len(commits), rng, strings.Join(failed, "\n  "))
 	}
-	fmt.Printf("✅ %s: %d commit(s) checked\n", rng, len(commits)-skipped)
+	fmt.Printf("%s: %d commit(s) checked\n", rng, len(commits)-skipped)
 	if skipped > 0 {
-		fmt.Printf("⚠️  %d commit(s) were not checked because they name no agent. An agent's commit that leaves out its Assisted-by trailer looks the same; use --all where every change must be certified.\n", skipped)
+		fmt.Printf("warning: %d commit(s) were not checked because they name no agent. An agent's commit that leaves out its Assisted-by trailer looks the same; use --all where every change must be certified.\n", skipped)
 	}
 	return nil
 }
@@ -276,7 +276,7 @@ func verifyCommit(commit string) error {
 			return fmt.Errorf("commit %.12s: %w", commit, err)
 		}
 	}
-	fmt.Printf("✅ Commit %.12s: valid change certificate, CAL %d\n", commit, level)
+	fmt.Printf("Commit %.12s: valid change certificate, CAL %d\n", commit, level)
 	fmt.Print(rebuilt)
 	if verifyVSAOut != "" {
 		if err := writeVSA(commit, raw, rebuiltLedger, p, level, initiatorTrusted, keys, signersFile); err != nil {
@@ -319,7 +319,7 @@ func verifyCommit(commit string) error {
 	if a := p.Attention; a != nil {
 		fmt.Printf("   %d decision(s) by people, median %.0f s", a.HumanDecisions, a.MedianSeconds)
 		if a.QuickApprovals > 0 {
-			fmt.Printf("; ⚠️  %d large change(s) approved within seconds", a.QuickApprovals)
+			fmt.Printf("; warning: %d large change(s) approved within seconds", a.QuickApprovals)
 		}
 		fmt.Println()
 	}
@@ -454,7 +454,7 @@ func writeVSA(commit string, certRaw, ledger []byte, p certificate.Predicate, le
 	if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("   📄 Verification summary (SLSA VSA): %s\n", path)
+	fmt.Printf("   Verification summary (SLSA VSA): %s\n", path)
 	return nil
 }
 

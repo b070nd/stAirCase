@@ -62,7 +62,7 @@ signature is absent and blocks execution when the signature is invalid.`,
 		if err := os.WriteFile(sigPath, []byte(sigHex), 0o644); err != nil {
 			return fmt.Errorf("write gates signature: %w", err)
 		}
-		fmt.Printf("✅ gates.json signed → %s\n", sigPath)
+		fmt.Printf("gates.json signed → %s\n", sigPath)
 		fmt.Printf("   sig: %s…\n", sigHex[:16])
 		return nil
 	},
@@ -86,7 +86,7 @@ gates.json has not been modified since it was last signed.`,
 		if !sigPresent {
 			return fmt.Errorf("no gates.json.sig found - run 'staircase gate sign' first")
 		}
-		fmt.Println("✅ gates.json signature verified.")
+		fmt.Println("gates.json signature verified.")
 		return nil
 	},
 }
@@ -179,13 +179,12 @@ func printGateReport(w io.Writer, r gate.Report) {
 			}
 			prevCat = res.Category
 		}
-		statusIcon := statusIcon(res.Status)
 		fmt.Fprintf(
-			w, "%-*s  %-*s  %-*s  %s%-*s  %s\n",
+			w, "%-*s  %-*s  %-*s  %-*s  %s\n",
 			wCat, res.Category,
 			wName, res.Name,
 			wSev, string(res.Severity),
-			statusIcon, wStat, string(res.Status),
+			wStat, string(res.Status),
 			res.Message,
 		)
 	}
@@ -193,29 +192,15 @@ func printGateReport(w io.Writer, r gate.Report) {
 	// Footer
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, strings.Repeat("─", len(sep)))
-	overallIcon := statusIcon(r.Overall)
-	fmt.Fprintf(w, "Overall: %s%s\n", overallIcon, r.Overall)
+	fmt.Fprintf(w, "Overall: %s\n", r.Overall)
 	fmt.Fprintf(w, "Summary: %d pass, %d warn, %d fail, %d skip\n",
 		r.Summary.Pass, r.Summary.Warn, r.Summary.Fail, r.Summary.Skip)
 
 	if r.Blocking() {
-		fmt.Fprintln(w, "\n❌  BLOCK failures must be resolved before running.")
+		fmt.Fprintln(w, "\nBLOCK failures must be resolved before running.")
 	} else if r.Overall == gate.StatusWarn {
-		fmt.Fprintln(w, "\n⚠   Warnings detected - review before running.")
+		fmt.Fprintln(w, "\nWarnings detected - review before running.")
 	} else {
-		fmt.Fprintln(w, "\n✅  All BLOCK gates passed. Safe to run.")
-	}
-}
-
-func statusIcon(s gate.Status) string {
-	switch s {
-	case gate.StatusPass:
-		return "✅ "
-	case gate.StatusWarn:
-		return "⚠  "
-	case gate.StatusFail:
-		return "❌ "
-	default:
-		return "⏭  "
+		fmt.Fprintln(w, "\nAll BLOCK gates passed. Safe to run.")
 	}
 }

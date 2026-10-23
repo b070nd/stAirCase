@@ -189,6 +189,40 @@ func TestNoHiddenUnicode(t *testing.T) {
 	}
 }
 
+// TestNoEmojiInOutput: what the program prints, the demo scripts and the pages that show the output use words, not pictographs, so the
+// output reads the same in every terminal, log and screen reader. Emoji, dingbats such as the check marks, and the symbol blocks are
+// refused; arrows and typographic dashes are fine. Tests may use them as data. The CHANGELOG and the recorded evidence are history.
+func TestNoEmojiInOutput(t *testing.T) {
+	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z").Output()
+	require.NoError(t, err)
+	pictograph := regexp.MustCompile("[\u231a\u231b\u23e9-\u23fa\u2600-\u27bf\u2b00-\u2bff\U0001f000-\U0001faff]\ufe0f?")
+	checked := func(f string) bool {
+		switch {
+		case strings.HasSuffix(f, "_test.go"), f == "CHANGELOG.md", strings.HasPrefix(f, "docs/release-evidence/"):
+			return false
+		case strings.HasSuffix(f, ".go"), strings.HasSuffix(f, ".html"), strings.HasSuffix(f, ".md"):
+			return true
+		case strings.HasPrefix(f, "demo/") && strings.HasSuffix(f, ".sh"), f == "Makefile":
+			return true
+		}
+		return false
+	}
+	for _, f := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if !checked(f) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(repoRoot, f))
+		if err != nil {
+			continue
+		}
+		for n, line := range strings.Split(string(b), "\n") {
+			if m := pictograph.FindString(line); m != "" {
+				t.Errorf("%s:%d: %q: say it in words", f, n+1, m)
+			}
+		}
+	}
+}
+
 // TestNoBuiltBinaryIsTracked: nothing the build leaves behind is in the repository. A `go build` run inside this directory writes a
 // binary of tens of megabytes here, and a careless `git add -A` once took one in; the largest file the repository holds is far smaller
 // than the limit.

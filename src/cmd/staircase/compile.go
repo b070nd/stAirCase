@@ -69,7 +69,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 		return "", fmt.Errorf("project %d not found", caseRec.ProjectID)
 	}
 
-	fmt.Printf("⚙️  Compiling case #%d  project=%q\n", caseID, project.Name)
+	fmt.Printf("Compiling case #%d  project=%q\n", caseID, project.Name)
 
 	// 3. DAG Resolution (spec §4.1)
 	allDeps, err := store.ListAllProjectDependencies()
@@ -90,7 +90,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 	for i, p := range ordered {
 		names[i] = p.Name
 	}
-	fmt.Printf("   📦 Dependency order: %s\n", strings.Join(names, " → "))
+	fmt.Printf("   Dependency order: %s\n", strings.Join(names, " → "))
 
 	// 4. Repo Skeletonization + Semantic XML Packing (spec §4.1)
 	var repoParts []string
@@ -121,7 +121,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 		return "", fmt.Errorf("load earlier reviews: %w", err)
 	}
 	if harness != "" {
-		fmt.Printf("   🤖 Agent: %s (brings its own model; no topology needed)\n", harness)
+		fmt.Printf("   Agent: %s (brings its own model; no topology needed)\n", harness)
 	} else if err := addTopology(store, project, &pl); err != nil {
 		return "", err
 	}
@@ -169,8 +169,8 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 		return "", fmt.Errorf("compile plan: %w", err)
 	}
 
-	fmt.Printf("   ✅ Generated: %s\n", outPath)
-	fmt.Printf("   🚀 Run with:  staircase run %d\n", caseID)
+	fmt.Printf("   Generated: %s\n", outPath)
+	fmt.Printf("   Run with:  staircase run %d\n", caseID)
 	return outPath, nil
 }
 
@@ -183,7 +183,7 @@ func addTopology(store *persistence.Store, project *domain.Project, pl *plan.Pla
 	if topology == nil {
 		return fmt.Errorf("no swarm topology registered for project %q", project.Name)
 	}
-	fmt.Printf("   🕸  Topology v%d  supervisor=%q  checkpoint=%s\n",
+	fmt.Printf("   Topology v%d  supervisor=%q  checkpoint=%s\n",
 		topology.Version, topology.SupervisorName, topology.CheckpointType)
 
 	agentNodes, err := store.ListAgentNodes(topology.ID)

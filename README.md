@@ -51,7 +51,7 @@ staircase verify staircase/run-1
 ```
 
 ```
-✅ Commit 33279b77f9ba: valid change certificate, CAL 3
+Commit 33279b77f9ba: valid change certificate, CAL 3
    requested by dev@example.com (the git email of the checkout: unauthenticated)
    run #1 from 188a7dda520e, assisted by Claude Code
    1 decision(s) by operator

@@ -486,7 +486,7 @@ func (r *Runner) reportDrift(runID int64, sup *policy.Supervisor) {
 	if rep.Halted != "" {
 		halted = ", halted: " + rep.Halted
 	}
-	fmt.Fprintf(os.Stdout, "   🧭 Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
+	fmt.Fprintf(os.Stdout, "   Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
 		len(rep.InScope), len(rep.OutOfScope), rep.Overrides, rep.Violations, halted)
 }
 
@@ -526,9 +526,9 @@ func startApprovalServer(ctx context.Context, opts RunOptions) (*approvalhttp.Se
 	if err := srv.Start(ctx); err != nil {
 		return nil, fmt.Errorf("approval http server: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "   🌐 Review in your browser: %s\n", srv.ReviewURL())
-	fmt.Fprintf(os.Stdout, "   🌐 Approval API: http://%s/v1/yields\n", srv.ListenAddr())
-	fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", token)
+	fmt.Fprintf(os.Stdout, "   Review in your browser: %s\n", srv.ReviewURL())
+	fmt.Fprintf(os.Stdout, "   Approval API: http://%s/v1/yields\n", srv.ListenAddr())
+	fmt.Fprintf(os.Stdout, "   Approval token: %s\n", token)
 	return srv, nil
 }
 
@@ -544,7 +544,7 @@ func (r *Runner) openDebugLog(runID int64) *diag.Log {
 	if err != nil {
 		return nil
 	}
-	fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s (at most %d bytes)\n", logPath, diag.MaxLogBytes)
+	fmt.Fprintf(os.Stdout, "   Debug log: %s (at most %d bytes)\n", logPath, diag.MaxLogBytes)
 	return f
 }
 

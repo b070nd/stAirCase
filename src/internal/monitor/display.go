@@ -240,9 +240,9 @@ func (d *Display) Final(status string) {
 	d.mu.Unlock()
 	d.Render()
 
-	statusLine := dActive.Render("✅ " + status)
+	statusLine := dActive.Render(status)
 	if strings.Contains(status, "FAIL") || strings.Contains(status, "KILL") {
-		statusLine = dWarn.Render("❌ " + status)
+		statusLine = dWarn.Render(status)
 	}
 	fmt.Fprintln(os.Stdout, statusLine)
 }

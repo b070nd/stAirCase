@@ -151,7 +151,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("write checkpoint: %w", err)
 	}
 
-	fmt.Printf("✅ Audit checkpoint written: %s\n", cpPath)
+	fmt.Printf("Audit checkpoint written: %s\n", cpPath)
 	fmt.Printf("   run_id:  %d\n", runID)
 	fmt.Printf("   entries: %d\n", len(entries))
 	fmt.Printf("   sig:     %s…\n", sig[:16])
@@ -166,7 +166,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 		if err := audit.AppendAnchor(cpPath+".anchor", anchor); err != nil {
 			return fmt.Errorf("write anchor sidecar: %w", err)
 		}
-		fmt.Printf("🪨 Anchored in Rekor: %s\n", anchor.RekorURL)
+		fmt.Printf("Anchored in Rekor: %s\n", anchor.RekorURL)
 		fmt.Printf("   uuid:      %s\n", anchor.UUID)
 		fmt.Printf("   log_index: %d\n", anchor.LogIndex)
 	}
@@ -212,10 +212,10 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 		}
 
 		if err := verifyOne(cpPath, lineNum, cp, pubKey); err != nil {
-			fmt.Printf("❌ %v\n", err)
+			fmt.Printf("error: %v\n", err)
 			anyFailed = true
 		} else {
-			fmt.Printf("✅ Checkpoint %s (record %d) OK - run_id=%d entries=%d exported=%s\n",
+			fmt.Printf("Checkpoint %s (record %d) OK - run_id=%d entries=%d exported=%s\n",
 				cpPath, lineNum, cp.RunID, len(cp.Entries), cp.Exported.Format(time.RFC3339))
 		}
 
@@ -225,7 +225,7 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 		if auditCheckAnchor {
 			anchors, aErr := audit.LoadAnchors(cpPath + ".anchor")
 			if aErr != nil {
-				fmt.Printf("❌ record %d: load anchors: %v\n", lineNum, aErr)
+				fmt.Printf("error: record %d: load anchors: %v\n", lineNum, aErr)
 				anyFailed = true
 			} else {
 				if auditRekorURL != audit.DefaultRekorURL { // --rekor-url: the log to ask, not the sidecar's say-so
@@ -235,10 +235,10 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 				}
 				recordHash := sha256.Sum256(line)
 				if anchor, vErr := audit.VerifyAnchor(line, hex.EncodeToString(recordHash[:]), anchors, []ed25519.PublicKey{pubKey}); vErr != nil {
-					fmt.Printf("❌ record %d: %v\n", lineNum, vErr)
+					fmt.Printf("error: record %d: %v\n", lineNum, vErr)
 					anyFailed = true
 				} else {
-					fmt.Printf("🪨 record %d anchored OK - uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
+					fmt.Printf("record %d anchored OK - uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
 				}
 			}
 		}
@@ -259,7 +259,7 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 func verifyOne(cpPath string, lineNum int, cp AuditCheckpoint, pubKey []byte) error {
 	// 1. Hash chain
 	if chainErr := chain.Verify(cp.Entries); chainErr != nil {
-		log.Printf("❌ Hash chain invalid: %v", chainErr)
+		log.Printf("error: Hash chain invalid: %v", chainErr)
 		return fmt.Errorf("checkpoint %s record %d: hash chain invalid: %w", cpPath, lineNum, chainErr)
 	}
 
@@ -269,7 +269,7 @@ func verifyOne(cpPath string, lineNum int, cp AuditCheckpoint, pubKey []byte) er
 		return fmt.Errorf("checkpoint %s record %d: marshal entries: %w", cpPath, lineNum, err)
 	}
 	if sigErr := crypto.Verify(pubKey, canonical, cp.Signature); sigErr != nil {
-		log.Printf("❌ Signature invalid: %v", sigErr)
+		log.Printf("error: Signature invalid: %v", sigErr)
 		return fmt.Errorf("checkpoint %s record %d: signature invalid: %w", cpPath, lineNum, sigErr)
 	}
 	return nil

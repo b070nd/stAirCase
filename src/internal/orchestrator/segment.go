@@ -109,13 +109,13 @@ func (firstSegment) open(s *runState) error {
 	if n, err := r.store.KillStaleRuns(caseID, 2*time.Hour); err != nil {
 		obs.Log.Warn("kill stale runs", "err", err)
 	} else if n > 0 {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Killed %d stale run(s) for case %d\n", n, caseID)
+		fmt.Fprintf(os.Stdout, "   warning: Killed %d stale run(s) for case %d\n", n, caseID)
 	}
 	var err error
 	if s.run, err = r.store.CreateRun(caseID, s.topoVersion, s.gitBranch); err != nil {
 		return fmt.Errorf("create run: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "🚀 Run #%d  case=%d  branch=%s\n", s.run.ID, caseID, s.gitBranch)
+	fmt.Fprintf(os.Stdout, "Run #%d  case=%d  branch=%s\n", s.run.ID, caseID, s.gitBranch)
 	// It cannot already be owned: the number is new. A failure to take the lock is a failure to run, not something to go on without.
 	if s.releaseOwner, err = claimRun(r.wsDir, s.run.ID); err != nil {
 		_ = r.store.FinishRun(s.run.ID, persistence.RunStatusFailed, time.Now(), "")
@@ -154,7 +154,7 @@ func (firstSegment) checkout(s *runState) error {
 		if s.appr, err = newApprovals(wgr, s.baseSHA); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s\n", s.runBranch, s.worktree)
+		fmt.Fprintf(os.Stdout, "   Run branch %s in worktree %s\n", s.runBranch, s.worktree)
 	}
 	// The terms this run starts under, saved for a continuation (ADR 0005): its options and its plan now, its policy
 	// when it is read (policy). A run that cannot save them still runs; it simply cannot be continued, only recovered.
@@ -227,7 +227,7 @@ func (g continuedSegment) checkout(s *runState) error {
 	r, run, cont := s.r, s.run, g.c
 	// the run's own branch and worktree, already checked to hold exactly the approved state
 	s.runBranch, s.worktree, s.appr = cont.history.Bound.Branch, cont.worktree, cont.appr
-	fmt.Fprintf(os.Stdout, "   🌿 Run branch %s in worktree %s (continued)\n", s.runBranch, s.worktree)
+	fmt.Fprintf(os.Stdout, "   Run branch %s in worktree %s (continued)\n", s.runBranch, s.worktree)
 	// The run is reopened and the continuation put on its chain before anything else happens: from here on it is
 	// a run that is going again, and the chain says from which state (the chain head) and under which terms.
 	if err := r.store.ReopenRun(run.ID); err != nil {

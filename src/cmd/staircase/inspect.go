@@ -129,15 +129,15 @@ var inspectLogCmd = &cobra.Command{
 		chainOK := rows.Intact()
 		for i, l := range logs {
 			intact := rows.Broken[i] == nil
-			mark := "✅"
+			mark := "ok"
 			if !intact {
-				mark = "❌ TAMPERED"
+				mark = "TAMPERED"
 			}
 			hashSnip := l.EventHash
 			if len(hashSnip) > 16 {
 				hashSnip = hashSnip[:16] + "…"
 			}
-			fmt.Printf("%s #%-4d  %-14s  %s  %s\n",
+			fmt.Printf("%-8s #%-4d  %-14s  %s  %s\n",
 				mark, l.ID, tui.Safe(l.EventType), l.Timestamp.Format("15:04:05"), hashSnip)
 			// Payload preview - truncated by default to avoid terminal flooding (C-4).
 			if inspectLogFull {
@@ -153,9 +153,9 @@ var inspectLogCmd = &cobra.Command{
 
 		fmt.Println()
 		if chainOK {
-			fmt.Printf("✅ Hash chain intact (%d entries).\n", len(logs))
+			fmt.Printf("Hash chain intact (%d entries).\n", len(logs))
 		} else {
-			fmt.Printf("❌ Hash chain BROKEN - log may have been tampered with!\n")
+			fmt.Printf("error: Hash chain BROKEN - log may have been tampered with!\n")
 		}
 		return nil
 	},

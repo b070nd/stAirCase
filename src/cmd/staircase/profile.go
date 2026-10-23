@@ -84,7 +84,7 @@ func applyProfile(l *launch, wsDir string, projectID int64) error {
 	}
 	l.terms.ProfileSHA256 = p.Digest()
 	if len(used) > 0 {
-		fmt.Printf("📋 Profile of project #%d: %s (a flag on the command line overrides it)\n", projectID, strings.Join(used, ", "))
+		fmt.Printf("Profile of project #%d: %s (a flag on the command line overrides it)\n", projectID, strings.Join(used, ", "))
 	}
 	return nil
 }

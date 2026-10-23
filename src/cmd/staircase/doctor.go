@@ -47,15 +47,15 @@ func init() {
 func doctorHandler(_ *cobra.Command, _ []string) error {
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
-	fmt.Printf("🩺 stAirCase Doctor - workspace: %s\n\n", wsDir)
+	fmt.Printf("stAirCase Doctor - workspace: %s\n\n", wsDir)
 
 	allOK := true
 
 	check := func(label string, ok bool, detail string) {
 		if ok {
-			fmt.Printf("  ✅ %s\n", label)
+			fmt.Printf("  ok    %s\n", label)
 		} else {
-			fmt.Printf("  ❌ %s - %s\n", label, detail)
+			fmt.Printf("  FAIL  %s - %s\n", label, detail)
 			allOK = false
 		}
 	}
@@ -104,7 +104,7 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 	// 6. tmp directory
 	// tmp/ is created on first run, so its absence is informational only.
 	if _, err := os.Stat(filepath.Join(wsDir, "tmp")); err == nil {
-		fmt.Println("  ✅ tmp/ directory")
+		fmt.Println("  ok    tmp/ directory")
 	} else {
 		fmt.Println("  ℹ️  tmp/ directory - created on first run")
 	}
@@ -119,10 +119,10 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 
 	fmt.Println()
 	if !allOK {
-		fmt.Println("❌ Some checks failed. See above for remediation steps.")
+		fmt.Println("error: Some checks failed. See above for remediation steps.")
 		return fmt.Errorf("doctor: some checks failed")
 	}
-	fmt.Println("✅ All checks passed. Ready to orchestrate.")
+	fmt.Println("All checks passed. Ready to orchestrate.")
 	return nil
 }
 
@@ -165,7 +165,7 @@ func interruptedRuns(wsDir string) {
 					hint += " --force (only if its process is gone)"
 				}
 			}
-			fmt.Printf("  ⚠️  run #%d was interrupted with %d approved change(s): %s\n", r.ID, n, hint)
+			fmt.Printf("  warn  run #%d was interrupted with %d approved change(s): %s\n", r.ID, n, hint)
 		}
 	}
 }
@@ -177,11 +177,11 @@ func optionalTools() {
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		fmt.Println("  ℹ️  ssh-keygen: not found - needed to sign decisions and reviews (--sign-approvals, staircase sign)")
 	} else if major, minor, ok := opensshVersion(); !ok {
-		fmt.Println("  ✅ ssh-keygen found (version not checked) - signed decisions and reviews")
+		fmt.Println("  ok    ssh-keygen found (version not checked) - signed decisions and reviews")
 	} else if major < 8 {
-		fmt.Printf("  ⚠️  ssh-keygen (OpenSSH %d.%d) - signing needs 8.0 or newer\n", major, minor)
+		fmt.Printf("  warn  ssh-keygen (OpenSSH %d.%d) - signing needs 8.0 or newer\n", major, minor)
 	} else {
-		fmt.Printf("  ✅ ssh-keygen (OpenSSH %d.%d) - signed decisions and reviews\n", major, minor)
+		fmt.Printf("  ok    ssh-keygen (OpenSSH %d.%d) - signed decisions and reviews\n", major, minor)
 	}
 
 	engines := sandbox.Status()
@@ -195,11 +195,11 @@ func optionalTools() {
 	}
 	switch {
 	case len(working) > 0:
-		fmt.Printf("  ✅ sandbox: %s - commands and checks run confined\n", strings.Join(working, ", "))
+		fmt.Printf("  ok    sandbox: %s - commands and checks run confined\n", strings.Join(working, ", "))
 	case len(engines) > 0:
-		fmt.Printf("  ⚠️  sandbox: none works here (%s) - with --sandbox auto commands run unconfined and say so; --sandbox required refuses them\n", strings.Join(why, "; "))
+		fmt.Printf("  warn  sandbox: none works here (%s) - with --sandbox auto commands run unconfined and say so; --sandbox required refuses them\n", strings.Join(why, "; "))
 	default:
-		fmt.Println("  ⚠️  sandbox: none for this operating system - commands run unconfined unless --sandbox required refuses them")
+		fmt.Println("  warn  sandbox: none for this operating system - commands run unconfined unless --sandbox required refuses them")
 	}
 
 	agentLine("Claude Code", firstPath("claude"), "--version", func(bin string) string {
@@ -263,11 +263,11 @@ func agentLine(name, bin, versionFlag string, login func(bin string) string) {
 	if len(version) > 60 {
 		version = version[:60]
 	}
-	state, mark := login(bin), "✅"
+	state, mark := login(bin), "ok  "
 	if strings.HasPrefix(state, "not logged in") {
-		mark = "⚠️ " // installed, but a session would stop at its login
+		mark = "warn" // installed, but a session would stop at its login
 	}
-	fmt.Printf("  %s %s %s (%s)\n", mark, name, version, state)
+	fmt.Printf("  %s  %s %s (%s)\n", mark, name, version, state)
 }
 
 // runQuiet runs bin with args for at most five seconds and returns what it

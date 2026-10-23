@@ -135,7 +135,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m yieldModel) View() string {
 	var sb strings.Builder
 
-	sb.WriteString(styleHeader.Render("⚠  HITL Yield Request"))
+	sb.WriteString(styleHeader.Render("HITL Yield Request"))
 	sb.WriteString("\n\n")
 	if m.req.Guard != "" {
 		sb.WriteString(styleReject.Render("CHECK: " + Safe(m.req.Guard)))

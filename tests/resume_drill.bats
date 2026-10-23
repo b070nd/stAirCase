@@ -266,7 +266,7 @@ resumed_events() { sc inspect log 1 | grep -c "run_resumed" || true; }
   sound
 }
 
-acks() { sc inspect log 1 | grep -c "^. #[0-9]* *launch_acknowledged" || true; }   # entry lines only: a payload names its type too
+acks() { sc inspect log 1 | grep -cE "^[A-Za-z]+ +#[0-9]+ +launch_acknowledged" || true; }   # entry lines only: a payload names its type too
 
 @test "an acknowledgement killed between the launch's end and its acknowledgement is finished by the next call, once" {
   first launch-claimed

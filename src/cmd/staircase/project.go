@@ -50,7 +50,7 @@ var projectAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create project: %w", err)
 		}
-		fmt.Printf("✅ Project #%d %q created under vendor %q.\n", p.ID, p.Name, vendorName)
+		fmt.Printf("Project #%d %q created under vendor %q.\n", p.ID, p.Name, vendorName)
 		if p.SourcePath != "" {
 			fmt.Printf("   Source path: %s\n", p.SourcePath)
 		}
@@ -128,7 +128,7 @@ var projectDepAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create dependency: %w", err)
 		}
-		fmt.Printf("✅ Dependency #%d: project #%d → project #%d\n", dep.ID, srcID, tgtID)
+		fmt.Printf("Dependency #%d: project #%d → project #%d\n", dep.ID, srcID, tgtID)
 		return nil
 	},
 }
@@ -168,9 +168,9 @@ signed response body (so an approval cannot be replayed for another request).`,
 			return fmt.Errorf("set webhook: %w", err)
 		}
 		if url == "" {
-			fmt.Printf("✅ Webhook cleared for project #%d.\n", id)
+			fmt.Printf("Webhook cleared for project #%d.\n", id)
 		} else {
-			fmt.Printf("✅ Webhook set for project #%d: %s\n", id, url)
+			fmt.Printf("Webhook set for project #%d: %s\n", id, url)
 		}
 		return nil
 	},
@@ -217,7 +217,7 @@ var projectConfigSetCmd = &cobra.Command{
 			if err := store.SetProjectDefaultModel(id, configDefaultModel); err != nil {
 				return fmt.Errorf("set default model: %w", err)
 			}
-			fmt.Printf("✅ Default model for project #%d set to %q.\n", id, configDefaultModel)
+			fmt.Printf("Default model for project #%d set to %q.\n", id, configDefaultModel)
 		}
 		if cmd.Flags().Changed("budget-cap") {
 			if err := checkBudgetCap(configBudgetCap); err != nil {
@@ -227,9 +227,9 @@ var projectConfigSetCmd = &cobra.Command{
 				return fmt.Errorf("set budget cap: %w", err)
 			}
 			if configBudgetCap == 0 {
-				fmt.Printf("✅ Budget cap for project #%d cleared (no cap).\n", id)
+				fmt.Printf("Budget cap for project #%d cleared (no cap).\n", id)
 			} else {
-				fmt.Printf("✅ Budget cap for project #%d set to $%.2f/run.\n", id, configBudgetCap)
+				fmt.Printf("Budget cap for project #%d set to $%.2f/run.\n", id, configBudgetCap)
 			}
 		}
 		return nil

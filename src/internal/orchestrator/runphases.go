@@ -147,7 +147,7 @@ func (s *runState) prepare() (done bool, err error) {
 		if err != nil {
 			obs.Log.Warn("reconcile", "err", err)
 		} else if len(result.StalledRuns) > 0 || len(result.OrphanBranches) > 0 {
-			fmt.Fprintf(os.Stdout, "   🔄 Reconcile: %d stale run(s) killed, %d branch(es) retained for inspection\n",
+			fmt.Fprintf(os.Stdout, "   Reconcile: %d stale run(s) killed, %d branch(es) retained for inspection\n",
 				len(result.StalledRuns), len(result.OrphanBranches))
 		}
 	}
@@ -267,9 +267,9 @@ func (s *runState) finish(runErr error) error {
 				obs.Log.Warn("remove run worktree", "path", s.worktree, "err", err)
 			}
 		case persistence.RunStatusAwaitingReview:
-			fmt.Fprintf(os.Stdout, "   🔎 Worktree kept until your review: %s\n", s.worktree)
+			fmt.Fprintf(os.Stdout, "   Worktree kept until your review: %s\n", s.worktree)
 		default:
-			fmt.Fprintf(os.Stdout, "   🔎 Worktree kept for inspection: %s\n", s.worktree)
+			fmt.Fprintf(os.Stdout, "   Worktree kept for inspection: %s\n", s.worktree)
 		}
 	}
 	if s.finalStatus != persistence.RunStatusSuccess && s.finalStatus != persistence.RunStatusAwaitingReview {
@@ -596,7 +596,7 @@ func (s *runState) overBudget() bool {
 	if !s.display.BudgetExceeded() {
 		return false
 	}
-	fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded - killing run #%d\n", s.run.ID)
+	fmt.Fprintf(os.Stdout, "\nwarning: Budget cap exceeded - killing run #%d\n", s.run.ID)
 	s.cancelled()
 	return true
 }
@@ -604,7 +604,7 @@ func (s *runState) overBudget() bool {
 func (s *runState) driftHalt(reason string) {
 	s.sup.Halt(reason)
 	_ = s.r.log(s.run.ID).Append(history.DriftHalt{Reason: reason})
-	fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s - halting run #%d\n", tui.Safe(reason), s.run.ID)
+	fmt.Fprintf(os.Stdout, "\nDrift: %s - halting run #%d\n", tui.Safe(reason), s.run.ID)
 	s.cancelled()
 }
 
@@ -797,7 +797,7 @@ func (s *runState) finalize() error {
 			return err
 		}
 		if !approved {
-			fmt.Fprintf(os.Stdout, "   ✋ Final review rejected - nothing committed\n")
+			fmt.Fprintf(os.Stdout, "   Final review rejected - nothing committed\n")
 			s.finalStatus = persistence.RunStatusFailed
 		}
 	}
@@ -843,15 +843,15 @@ func (s *runState) finalize() error {
 	// the run also ends with ErrEvidenceIncomplete.
 	ev := evidence{checks: r.runChecks(ctx, run.ID, s.gr, hash, opts.Checks, opts.Sandbox, opts.CheckTimeout, s.overlays)}
 	if ev.ledger, err = r.writeLedger(run.ID, s.ledger); err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: Ledger not written: %v\n", err)
 		s.evidenceErrs = append(s.evidenceErrs, "ledger: "+err.Error())
 	} else if err := attachNote(s.gr, LedgerNotesRef, LedgerPath(r.wsDir, run.ID), hash); err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not attached to the commit: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: Ledger not attached to the commit: %v\n", err)
 		s.evidenceErrs = append(s.evidenceErrs, "ledger note: "+err.Error())
 	}
 	ev.policy, ev.initiator, ev.byPolicy = s.snap.Digest, s.initiator, authorized != ""
 	if err := r.certify(run.ID, hash, s.baseSHA, chainHead, opts.Plan, s.gr, ev); err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: Change certificate not written: %v\n", err)
 		_ = r.log(run.ID).Append(history.CertificateFailed{Commit: hash, Error: err.Error()})
 		s.evidenceErrs = append(s.evidenceErrs, "certificate: "+err.Error())
 	}

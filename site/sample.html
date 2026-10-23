@@ -56,16 +56,16 @@ cd stAirCase
 <p>With <code>--drift</code>, after its stories' work the coder keeps proposing files outside both stories' scope. Each goes to you marked as drift; the blueprint allows 2 such proposals, so the 3rd halts the run. Example output, from the demo's documentation:</p>
 <div class="sample">
 <p><span class="sample-label">Sample output</span></p>
-<pre tabindex="0"><code>🧭 Drift: more than 2 proposals reached outside the stories' scope - halting run #1
-✓ run halted (KILLED) and exited 1
-✓ the case does not run again until 'staircase run 1 --ack-drift'</code></pre>
+<pre tabindex="0"><code>Drift: more than 2 proposals reached outside the stories' scope - halting run #1
+  ok    run halted (KILLED) and exited 1
+  ok    the case does not run again until 'staircase run 1 --ack-drift'</code></pre>
 </div>
 
 <h2 id="verify-example">What a certificate check looks like</h2>
 <p>After a real run, <code>staircase verify</code> checks the commit's certificate. Example output, from the project's README, with example values:</p>
 <div class="sample">
 <p><span class="sample-label">Sample output</span></p>
-<pre tabindex="0"><code>✅ Commit 33279b77f9ba: valid change certificate, CAL 3
+<pre tabindex="0"><code>Commit 33279b77f9ba: valid change certificate, CAL 3
    requested by dev@example.com (the git email of the checkout: unauthenticated)
    run #1 from 188a7dda520e, assisted by Claude Code
    1 decision(s) by operator</code></pre>

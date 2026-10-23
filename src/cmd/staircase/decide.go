@@ -91,11 +91,11 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			if accept && res.Commit == "" {
-				fmt.Printf("✅ Run #%d accepted: its change was empty, so nothing was delivered and its branch is unchanged. What it parked stays unapplied\n", runID)
+				fmt.Printf("Run #%d accepted: its change was empty, so nothing was delivered and its branch is unchanged. What it parked stays unapplied\n", runID)
 			} else if accept {
-				fmt.Printf("✅ Run #%d accepted: committed %.12s on staircase/run-%d\n", runID, res.Commit, runID)
+				fmt.Printf("Run #%d accepted: committed %.12s on staircase/run-%d\n", runID, res.Commit, runID)
 			} else {
-				fmt.Printf("✋ Run #%d rejected: nothing committed\n", runID)
+				fmt.Printf("Run #%d rejected: nothing committed\n", runID)
 			}
 			return err
 		}
@@ -133,7 +133,7 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("✅ Adopted parked proposal %d into run #%d's change. The new review:\n", decideAdopt, ids[0])
+		fmt.Printf("Adopted parked proposal %d into run #%d's change. The new review:\n", decideAdopt, ids[0])
 		fmt.Print(inboxTree([]orchestrator.Review{rv}, nil))
 		return nil
 	}
@@ -194,7 +194,7 @@ func decideHandler(cmd *cobra.Command, args []string) error {
 			},
 		}
 		if err := ask(in, os.Stdout, rv, box); err != nil {
-			fmt.Printf("   ⚠️  run #%d: %v\n", rv.RunID, err)
+			fmt.Printf("   warning: run #%d: %v\n", rv.RunID, err)
 		}
 	}
 	return nil

@@ -110,9 +110,9 @@ rotated API key) and counts its version.`,
 			scope = fmt.Sprintf("project #%d", *pid)
 		}
 		if replaced {
-			fmt.Printf("✅ Secret %q replaced (%s, version %d).\n", args[0], scope, version)
+			fmt.Printf("Secret %q replaced (%s, version %d).\n", args[0], scope, version)
 		} else {
-			fmt.Printf("✅ Secret %q stored (%s).\n", args[0], scope)
+			fmt.Printf("Secret %q stored (%s).\n", args[0], scope)
 		}
 		return nil
 	},
@@ -251,7 +251,7 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 			return err
 		}
 
-		fmt.Println("✅ Workspace key rotated and all secrets re-encrypted.")
+		fmt.Println("Workspace key rotated and all secrets re-encrypted.")
 		return nil
 	},
 }
@@ -278,7 +278,7 @@ var secretDeleteCmd = &cobra.Command{
 		if !gone {
 			return fmt.Errorf("no secret %q in scope %s (staircase secret list)", args[0], scope)
 		}
-		fmt.Printf("✅ Secret %q removed (%s).\n", args[0], scope)
+		fmt.Printf("Secret %q removed (%s).\n", args[0], scope)
 		return nil
 	},
 }

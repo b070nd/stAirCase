@@ -42,7 +42,7 @@ var topoRegisterCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create topology: %w", err)
 		}
-		fmt.Printf("✅ Topology #%d v%d created  supervisor=%q  checkpoint=%s  runtime=%s\n",
+		fmt.Printf("Topology #%d v%d created  supervisor=%q  checkpoint=%s  runtime=%s\n",
 			t.ID, t.Version, t.SupervisorName, t.CheckpointType, t.RuntimeType)
 		fmt.Printf("   Add agents: staircase topology agent add %d <name> <role>\n", t.ID)
 		return nil
@@ -95,7 +95,7 @@ var agentAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create agent node: %w", err)
 		}
-		fmt.Printf("✅ Agent #%d %q added to topology #%d  model=%s\n", n.ID, n.Name, topoID, n.Model)
+		fmt.Printf("Agent #%d %q added to topology #%d  model=%s\n", n.ID, n.Name, topoID, n.Model)
 		return nil
 	},
 }
@@ -133,7 +133,7 @@ var edgeAddCmd = &cobra.Command{
 		if e.Condition != "" {
 			label = fmt.Sprintf("─[%s]→", e.Condition)
 		}
-		fmt.Printf("✅ Edge #%d: %s %s %s\n", e.ID, e.FromNode, label, e.ToNode)
+		fmt.Printf("Edge #%d: %s %s %s\n", e.ID, e.FromNode, label, e.ToNode)
 		return nil
 	},
 }
@@ -170,7 +170,7 @@ var toolAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create tool: %w", err)
 		}
-		fmt.Printf("✅ Tool #%d %q registered for agent #%d\n", t.ID, t.ToolName, agentID)
+		fmt.Printf("Tool #%d %q registered for agent #%d\n", t.ID, t.ToolName, agentID)
 		return nil
 	},
 }
