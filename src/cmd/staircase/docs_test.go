@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -165,17 +166,18 @@ func rel(p string) string {
 	return r
 }
 
-// TestNoHiddenUnicode: no tracked file contains characters that make code
-// read differently from how it runs (Trojan Source) - the guard staircase
-// applies to agents' changes, applied to its own repository. Tests write such
-// characters as escapes (\u202e), never raw.
+// TestNoHiddenUnicode: no tracked file holds an invisible character: direction controls (Trojan Source), zero-width and format
+// characters, variation selectors, or Unicode tag characters, which can carry hidden text. Tests write them as escapes (\u202e).
 func TestNoHiddenUnicode(t *testing.T) {
 	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z").Output()
 	require.NoError(t, err)
-	hidden := regexp.MustCompile("[\u202a-\u202e\u2066-\u2069\u200b-\u200d\u2060\ufeff]")
+	hidden := regexp.MustCompile("[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufe00-\ufe0e\U000e0000-\U000e007f]")
 	for _, f := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
 		b, err := os.ReadFile(filepath.Join(repoRoot, f))
 		if err != nil {
+			continue
+		}
+		if !utf8.Valid(b) { // an archive or an image: its bytes are not text
 			continue
 		}
 		if loc := hidden.FindIndex(b); loc != nil {

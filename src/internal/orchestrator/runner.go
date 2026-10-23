@@ -1,10 +1,6 @@
-// Package orchestrator implements the stAirCase run lifecycle state machine.
-//
-// The orchestrator is the single authoritative coordinator of a run:
-// it sequences pre-flight checks, the run's git worktree, the in-process agent,
-// the decision (HITL) loop, finalize and teardown - each labelled
-// by a [RunPhase] constant so that crash recovery and tests can reason about
-// where execution stopped.
+// Package orchestrator implements the stAirCase run lifecycle. It is the single coordinator of a run: pre-flight checks, the git
+// worktree, the in-process agent, the decision (HITL) loop, finalize and teardown, each labelled by a [RunPhase] so crash recovery and
+// tests know where execution stopped.
 package orchestrator
 
 import (

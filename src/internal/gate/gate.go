@@ -1,13 +1,5 @@
-// Package gate implements the stAirCase pre-run quality gate system.
-//
-// Architecture:
-//   - Gate     - interface each check implements (Name, Category, Severity, Run)
-//   - Register - adds a gate to the global registry (called from each file's init)
-//   - RunAll   - executes every registered gate and returns a Report
-//   - Report   - JSON-serialisable, machine- and human-readable result set
-//
-// New gates: implement the Gate interface and call Register(&myGate{}) in an init()
-// function inside any file in this package. No other wiring required.
+// Package gate is the pre-run quality gate. A Gate (Name, Category, Severity, Run) registers itself with Register in an init(); RunAll
+// executes every registered gate and returns a JSON-serialisable Report. A new gate needs nothing else.
 package gate
 
 import (

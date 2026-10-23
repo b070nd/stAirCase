@@ -17,10 +17,9 @@ func SavedTerms(wsDir string, runID int64, h history.History) (Terms, error) {
 // shared by the deciders, `staircase policy test` and the refusals of delivery by policy.
 const PersonDecides = ": a person decides, whatever the policy says"
 
-// PersonBar says why a file edit touching files would go to a person under these terms whatever the policy says, or "" when no
-// bar reaches it: a path that holds a check's definition (protected), or a sensitive path. It is the one wording of that reason:
-// the deciders apply the two bars before limits and the policy (decide.go) with protectedBar and sensitiveBar, which this joins;
-// `staircase policy test` asks it of a past proposal's recorded paths, and delivery by policy repeats it (condition 4).
+// PersonBar says why a file edit touching files would go to a person under these terms whatever the policy says, or "" when no bar
+// reaches it: a path that holds a check's definition (protected), or a sensitive path. It is the one wording of that reason, used by
+// the deciders (before limits and policy), by `staircase policy test` on a past proposal's paths, and by delivery by policy (condition 4).
 func (t Terms) PersonBar(files []string) string {
 	if why := protectedBar(t.ProtectedPaths, files); why != "" {
 		return why

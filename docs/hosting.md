@@ -39,22 +39,22 @@ it).
 
 ## When the runner resumes a session
 
-A runner resumes a session it started by passing `--resume <id>` instead of `--session-id <id>`. The session's id leads to the run it
-was governed as: the latest run whose audit chain names it as its agent's session. A session no run names was never governed, so it is
-refused. What happens next depends on where that run stands:
+A runner resumes a session it started by passing `--resume <id>` instead of `--session-id <id>`. The session's id leads to the run it was
+governed as: the latest run whose audit chain names it as its agent's session. A session no run names was never governed, so it is refused.
+What happens next depends on where that run stands:
 
-- **It was interrupted** (its process was killed): the session continues it, as `staircase resume` would, with every check that makes.
-  A run killed while its agent ran has a launch with no outcome: the session is refused and the run parked, as
-  [audit](audit.md#lost-launches) explains. A resumed session never acknowledges by itself, because the acknowledgement attests that a
-  person looked; the refusal names the command. Look at what the agent may have done, then run `staircase acknowledge <run>`: it
-  records your acknowledgement of that exact launch on the audit chain and launches nothing, so the runner's own `--resume` then
-  proceeds in its own Claude Code session. (`staircase resume <run> --ack-unknown` also acknowledges, but then continues the run in
-  a session stAirCase starts, not the runner's.) Three lost launches stay refused whatever you acknowledge; recover the run instead.
-- **It awaits your review**: the session continues the same run. The review it offered is withdrawn (`run_resumed` names it), so a
-  decision on it is refused as stale. When the session ends, the checks run again on the exact tree, and one new review covers the
-  whole change.
-- **You decided it** (accepted or rejected): the session goes on as a new away run from today's HEAD, under fresh governance. Its
-  `run_bound` names the session and the run it follows.
+- **It was interrupted** (its process was killed): the session continues it, as `staircase resume` would, with all the same checks.
+  - A run killed while its agent ran has a launch with no outcome. The session is refused and the run is parked, as
+    [audit](audit.md#lost-launches) explains.
+  - A resumed session never acknowledges by itself, because an acknowledgement says a person looked. The refusal names the command.
+  - Look at what the agent may have done, then run `staircase acknowledge <run>`. It records your acknowledgement of that exact launch on the
+    audit chain and launches nothing, so the runner's own `--resume` then proceeds in its own Claude Code session.
+  - `staircase resume <run> --ack-unknown` also acknowledges, but it continues the run in a session stAirCase starts, not the runner's.
+  - Three lost launches stay refused whatever you acknowledge. Recover the run instead.
+- **It awaits your review**: the session continues the same run. The review it offered is withdrawn (`run_resumed` names it), so a decision
+  on it is refused as stale. When the session ends, the checks run again on the exact tree, and one new review covers the whole change.
+- **You decided it** (accepted or rejected): the session goes on as a new away run from today's HEAD, under fresh governance. Its `run_bound`
+  names the session and the run it follows.
 
 In each case Claude Code resumes its own conversation, so the agent remembers what was said. `--fork-session`, `--continue` and
 `--resume-session-at` stay refused: a forked session, or one found other than by its id, is not hosted.

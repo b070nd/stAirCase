@@ -1,10 +1,6 @@
-// Package barrier lets a test hold a process at a named point, so a kill drill
-// can wait until the process has really reached a boundary and only then hard-kill it.
-//
-// In a normal build [Hit] does nothing at all. A binary built with -tags barriers
-// reads STAIRCASE_BARRIER (name, or name@n for the n-th time it is reached) and
-// STAIRCASE_BARRIER_DIR; when the point is reached it writes <dir>/<name>.reached
-// and then blocks until it is killed.
+// Package barrier lets a test hold a process at a named point, so a kill drill can wait until the process has reached a boundary and
+// then kill it. Normally [Hit] does nothing. In a binary built with -tags barriers it reads STAIRCASE_BARRIER (name, or name@n for the
+// n-th time) and STAIRCASE_BARRIER_DIR, writes <dir>/<name>.reached at that point, and blocks until killed.
 package barrier
 
 // Points, in the order a run reaches them. A drill kills at one and checks what a fresh process finds.

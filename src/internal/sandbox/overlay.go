@@ -12,10 +12,9 @@ import (
 // the user's checkout; Target is where it appears, relative to the root.
 type Overlay struct{ Source, Target string }
 
-// linkOverlays makes each overlay visible in root for an engine that has no way to bind a path read-only: as a link whose target the
-// engine already forbids writing (the macOS sandbox writes only in root and a temp folder), or, with no sandbox at all, a link and
-// nothing that stops a write (the command is recorded as not sandboxed, as it always is). Engines that could say "read-only" but have
-// not been tested for it here refuse: a check must never get write access to the user's dependencies by accident.
+// linkOverlays makes each overlay visible in root for an engine that cannot bind a path read-only: as a link whose target the engine
+// already forbids writing (the macOS sandbox), or, with no sandbox, a link and nothing that stops a write (the command is recorded as not
+// sandboxed). Engines not tested for read-only here refuse, so a check never gets write access to the user's dependencies by accident.
 func linkOverlays(root, engine string, overlays []Overlay) error {
 	switch engine {
 	case "", "sandbox-exec": // no sandbox, or one whose writes are confined to root and its temp folder

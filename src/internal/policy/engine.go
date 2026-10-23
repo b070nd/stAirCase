@@ -1,33 +1,21 @@
-// Package policy evaluates auto-approval rules against HITL yield requests.
+// Package policy evaluates auto-approval rules against HITL yield requests. It is pure logic (no I/O), loaded once per run from
+// $STAIRCASE_DIR/policy.json, or a zero-rule engine that approves nothing. The first matching rule wins, in declaration order.
 //
-// Design goals:
-//   - Pure logic: no I/O, no external dependencies, fully unit-testable.
-//   - Loaded once per run from $STAIRCASE_DIR/policy.json (or falls back to
-//     a zero-rule engine that approves nothing automatically).
-//   - Short-circuit: the first matching rule wins; rules are evaluated in
-//     declaration order so operators can place more-specific rules first.
+// A rule can also condition on the files and size of the change (Paths, MaxLines, MaxFiles, NewFilesOnly, NoDeletions), checked against
+// the Facts the orchestrator derives from the proposal. They are additive: a file without them decides as before, and an older
+// stAirCase refuses a file that uses them (the strict parse), which fails closed. Expressions (CEL) are deferred; see ADR 0013.
 //
-// # Typed conditions (CEL deferred)
+// All conditions of a rule are AND-ed:
 //
-// A rule can also condition on the files and size of the change: Paths, MaxLines,
-// MaxFiles, NewFilesOnly and NoDeletions, checked against the Facts the
-// orchestrator derives from the proposal. They are additive: a file without them
-// decides exactly as before, and an older stAirCase refuses a file that uses them
-// (the strict parse below), which fails closed. Expressions (CEL) are deferred;
-// see docs/adr/0013-cel-conditions-in-policy-rules.md.
-//
-// Rule semantics (all conditions are AND-ed within a rule):
-//
-//	ActionTypes     - if non-empty, the yield's ActionType must be in the list.
-//	MinConfidence   - if non-zero, the yield's ConfidenceScore must be >= this.
-//	AllowedExtensions - if non-empty, every file in ProposedEdits must have an
-//	                    extension from this list (prevents auto-approval of e.g.
-//	                    go/py source from a high-confidence shell_exec rule).
-//	Paths           - if non-empty, every changed file must match one glob.
-//	MaxLines, MaxFiles - if non-zero, the change must not exceed them.
-//	NewFilesOnly    - every changed file must be new (absent from the base commit).
-//	NoDeletions     - no changed file may be deleted.
-//	Effect          - "approve" or "reject".  Defaults to "approve" when absent.
+//	ActionTypes        if non-empty, the yield's ActionType must be in the list.
+//	MinConfidence      if non-zero, the ConfidenceScore must be >= this.
+//	AllowedExtensions  if non-empty, every file in ProposedEdits must have a listed extension (so a high-confidence shell_exec rule
+//	                   cannot auto-approve go or py source).
+//	Paths              if non-empty, every changed file must match one glob.
+//	MaxLines, MaxFiles if non-zero, the change must not exceed them.
+//	NewFilesOnly       every changed file must be new (absent from the base commit).
+//	NoDeletions        no changed file may be deleted.
+//	Effect             "approve" or "reject"; "approve" when absent.
 package policy
 
 import (
@@ -142,16 +130,9 @@ func (r Rule) hasTypedCondition() bool {
 	return len(r.Paths) > 0 || r.MaxLines != 0 || r.MaxFiles != 0 || r.NewFilesOnly || r.NoDeletions
 }
 
-// Engine holds an ordered list of auto-approval rules and optional session limits.
+// Engine holds an ordered list of auto-approval rules and optional session limits. The policy file (CHECK 7.1.2):
 //
-// Policy file format (CHECK 7.1.2):
-//
-//	{
-//	  "version": 1,
-//	  "rules": [...],
-//	  "limits": {"max_auto_approved": 10, "max_total_yields": 50, "max_run_secs": 3600},
-//	  "allow_blanket_deny": false
-//	}
+//	{"version": 1, "rules": [...], "limits": {"max_auto_approved": 10, "max_total_yields": 50, "max_run_secs": 3600}, "allow_blanket_deny": false}
 type Engine struct {
 	// Version is a format version for forward compatibility (CHECK 7.1.2).
 	Version int `json:"version"`
@@ -272,13 +253,8 @@ func parseEngine(data []byte, path string) (*Engine, error) {
 // PolicySigFile is the sidecar written by 'staircase policy sign'.
 const PolicySigFile = "policy.json.sig"
 
-// VerifyPolicySignature checks the Ed25519 signature sidecar (policy.json.sig)
-// against the current policy.json content using the workspace signing public key.
-//
-// Returns (false, nil) when either policy.json or the signature sidecar are
-// absent - the caller should warn the operator but continue.  Returns
-// (true, nil) when the signature is present and valid.  Returns (true, err)
-// when the signature is present but invalid (tamper detected).
+// VerifyPolicySignature checks policy.json.sig against policy.json with the workspace public key. It returns (false, nil) when either
+// file is missing (the caller should warn and go on), (true, nil) when valid, and (true, err) when invalid: tampering.
 func VerifyPolicySignature(wsDir string) (sigPresent bool, err error) {
 	data, err := os.ReadFile(filepath.Join(wsDir, "policy.json"))
 	if os.IsNotExist(err) {
@@ -345,15 +321,10 @@ type PolicyDecision struct {
 	Reason string
 }
 
-// Evaluate applies the engine's rules to req and returns a PolicyDecision.
-// The first matching rule wins; rules are evaluated in declaration order.
-//
-// shell_exec actions are never auto-approved: the operator must personally
-// review and approve every shell command regardless of policy configuration.
-// The same holds for tool calls, whatever conditions a rule has.
-//
-// facts are what the orchestrator derived from the proposal's edits; only the typed
-// conditions (Paths, MaxLines, MaxFiles, NewFilesOnly, NoDeletions) read them.
+// Evaluate applies the engine's rules to req; the first matching rule wins, in declaration order. shell_exec actions are never
+// auto-approved: the operator must approve every shell command, and the same holds for tool calls, whatever a rule says. facts are what
+// the orchestrator derived from the proposal's edits; only the typed conditions (Paths, MaxLines, MaxFiles, NewFilesOnly, NoDeletions)
+// read them.
 func (e *Engine) Evaluate(req domain.YieldRequest, facts Facts) PolicyDecision {
 	// Hard invariant: shell commands must always reach a human operator.
 	// No policy rule can override this - a broad auto-approve rule could

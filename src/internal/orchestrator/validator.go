@@ -14,16 +14,11 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/monitor"
 )
 
-// Validator is an automated reviewer: a model that decides in-scope file edits
-// the policy rules leave open, in place of a human. It sees only the
-// orchestrator-derived change (each file before and after) and the case's
-// stories, never the agent's reasoning. What it cannot decide goes to a human:
-// shell commands, drift, sensitive paths, files too large to show it, every
-// sampleEvery-th approval, and anything after rejectLimit rejections in a row.
-// A run whose changes the validator approved is committed only after a human
-// approves the final aggregate change once. With several models, each reviews
-// the change: it is decided only when they all agree, otherwise a human
-// decides, seeing each one's reason.
+// Validator is an automated reviewer: a model that decides in-scope file edits the policy rules leave open, in place of a human. It sees
+// only the orchestrator-derived change (each file before and after) and the case's stories, never the agent's reasoning. A human still
+// decides shell commands, drift, sensitive paths, files too large to show, every sampleEvery-th approval, and anything after rejectLimit
+// rejections in a row. A run whose changes the validator approved is committed only after a human approves the final aggregate change
+// once. With several models, a change is decided only when they all agree; otherwise a human decides, seeing each reason.
 type Validator struct {
 	Models []string
 	Chat   llm.Model // nil: the models are called with the project's secrets

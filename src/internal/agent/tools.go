@@ -326,9 +326,8 @@ func (t *tail) String() string {
 }
 
 // withStderr is a failed agent's error with its stderr tail beside it, not in it. Error() is the cause alone: an error is logged,
-// returned to a runner and may be kept by it, and stderr text is a local diagnostic that must reach no record (Cloudroom persisted
-// such tails despite saying it did not). The run keeps the tail where only the person debugging reads it
-// (orchestrator.runState.keepStderr), scrubbed.
+// returned to a runner and may be kept by it, and stderr text is a local diagnostic that must reach no record (Cloudroom persisted such
+// tails despite saying it did not). The run keeps the tail where only the person debugging reads it (orchestrator.runState.keepStderr).
 func withStderr(err error, t *tail) error {
 	if err == nil || t.String() == "" {
 		return err
@@ -356,12 +355,9 @@ func orDefault(s, def string) string {
 // with different values; `pre` refuses it.
 const ambiguousTool = "staircase_ambiguous_arguments"
 
-// aliasArgs renames each host argument to the name the governed tools read
-// (Claude Code's), so a tool call has one name per argument. A name and its alias
-// that are both present must hold the same value (compared as JSON): if they
-// differ, the call is ambiguous (which path would the host write?) and conflict
-// names them. An alias is removed once it is copied, so what is approved and what
-// the host runs are read from the same key.
+// aliasArgs renames each host argument to the name the governed tools read (Claude Code's), so a call has one name per argument. If a
+// name and its alias are both present with different values (compared as JSON), the call is ambiguous and conflict names them. An alias
+// is removed once copied, so what is approved and what the host runs come from the same key.
 func aliasArgs(args map[string]any, aliases map[string]string) (conflict string) {
 	keys := make([]string, 0, len(aliases))
 	for from := range aliases {

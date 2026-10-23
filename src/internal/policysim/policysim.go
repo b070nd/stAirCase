@@ -1,9 +1,7 @@
-// Package policysim runs expected-outcome scenarios against a policy file through
-// the same admission code a real run uses (the deciders: policy rules, guards,
-// drift supervision, limits, task and evidence approval), so that what a policy
-// must do and must not do can be asserted in CI. It is not the replay of past
-// runs (`staircase policy test` without --scenarios), which reports differences and
-// establishes nothing about limits, guards or checkpoints.
+// Package policysim runs expected-outcome scenarios against a policy file through the same admission code a real run uses (the
+// deciders: rules, guards, drift supervision, limits, task and evidence approval), so CI can assert what a policy must and must not do.
+// It is not the replay of past runs (`staircase policy test` without --scenarios), which reports differences and says nothing about
+// limits, guards or checkpoints.
 package policysim
 
 import (

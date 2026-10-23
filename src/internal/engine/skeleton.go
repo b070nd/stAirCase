@@ -17,13 +17,9 @@ import (
 
 const tokenBudgetWarn = 100_000
 
-// RepoMap generates a compact textual "repo map" for a repository:
-// a directory tree annotated with function/class signatures for known file types.
-// Respects both .gitignore and .staircaseignore patterns.
-//
-// In a git repository with a commit the map is of that commit (HEAD): agents
-// work on the last commit, so files that were never committed and edits that
-// were not are not in it. Anywhere else it is of the folder as it is.
+// RepoMap builds a compact "repo map": a directory tree with function and class signatures for known file types, respecting .gitignore
+// and .staircaseignore. In a git repository with a commit, the map is of HEAD, because agents work on the last commit; uncommitted files
+// and edits are not in it. Elsewhere it is of the folder as it is.
 func RepoMap(repoPath string) (string, error) {
 	if m, ok, err := repoMapAtHead(repoPath); ok {
 		return m, err

@@ -98,7 +98,7 @@ func TestRebuild_a_changed_ledger_gives_another_tree(t *testing.T) {
 // reproduce those bytes), while NUL bytes, bare CRs, JSON-special characters
 // and large files survive the ledger and rebuild to the same tree (F94).
 func TestRebuild_is_lossless_for_text_and_refuses_what_it_cannot_hold(t *testing.T) {
-	awkward := "a\x00b\r\nc\r d e \"q\" \\ <&> \U0001F642 \t\n" + strings.Repeat("x", 150<<10)
+	awkward := "a\x00b\r\nc\r d\u2028e \"q\" \\ <&> \U0001F642 \t\n" + strings.Repeat("x", 150<<10)
 	var binaryAnswer orchestrator.Approval
 	agent := func(ctx context.Context, env *orchestrator.AgentEnv) error {
 		for _, e := range []domain.ProposedEdit{

@@ -31,14 +31,14 @@ const AwayBrief = `You are working unattended: nobody will answer questions or a
 // AwayBriefVersion is the version of AwayBrief.
 const AwayBriefVersion = 1
 
-// awaitReview is the acceptance of an away run when its agent stopped: the checks run once more, on the exact approved tree
-// (the agent stopping is not acceptance), and their result is recorded as phase_checked. A tree that passes is offered for
-// review (awaiting_review, naming that phase_checked entry); one that does not ends the run FAILED. Nothing is committed.
+// awaitReview is the acceptance of an away run when its agent stopped: the checks run once more on the exact approved tree and the
+// result is recorded as phase_checked. A tree that passes is offered for review (awaiting_review, naming that entry); one that does not
+// ends the run FAILED. Nothing is committed.
 //
-// A run that delivers by policy (attempt is not nil) instead judges the seven conditions of ADR 0012 once its checks passed: when
-// they all hold it audits delivery_authorized and ends SUCCESS, so that the commit is made and delivered like a live run's, with
-// no person asked; otherwise it is offered for review like any other, and the awaiting_review entry and the message say which
-// condition sent it to the owner. The tree it authorized is returned, "" when it did not authorize.
+// A run that delivers by policy (attempt is not nil) instead judges the seven conditions of ADR 0012 once its checks passed. If all
+// hold, it audits delivery_authorized and ends SUCCESS, so the commit is made like a live run's with no person asked; otherwise it is
+// offered for review, and the awaiting_review entry and message say which condition sent it to the owner. It returns the tree it
+// authorized, or "" when it did not.
 func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, gate *evidenceGate, parked int, attempt *deliveryAttempt) (status, authorizedTree string, err error) {
 	tree, passed, failed, err := r.checkTree(ctx, runID, appr, gate)
 	if err != nil {

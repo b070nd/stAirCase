@@ -25,11 +25,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMain lets the test binary stand in for `claude`: with FAKE_CLAUDE naming a script
-// file it plays those tool calls through the real hook commands
-// from --settings, the way Claude Code does, and logs each decision. Called
-// as `<binary> hook …` it stands in for `staircase hook`, which the adapter's
-// hooks call (the adapter names the running program). Hooks inherit the
+// TestMain lets the test binary stand in for `claude`: with FAKE_CLAUDE naming a script it plays those tool calls through the real hook
+// commands from --settings and logs each decision. Called as `<binary> hook ...` it stands in for `staircase hook`. Hooks inherit the
 // fake's environment, so the hook check comes first.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "hook" {
@@ -334,12 +331,9 @@ func TestClaudeCode_cannot_stop_until_checks_pass(t *testing.T) {
 	assert.Contains(t, r.Types(), "done_checked")
 }
 
-// TestClaudeCode_commands_run_in_its_sandbox: a session turns on Claude Code's
-// own sandbox, strictly (no unsandboxed retry, no start without it, no
-// network), hiding the workspace and credentials like staircase's sandbox.
-// An approved command then counts as sandboxed: the files it wrote are
-// decided after it ran and the run keeps CAL 3. A command asking to leave
-// the sandbox is refused.
+// TestClaudeCode_commands_run_in_its_sandbox: a session turns on Claude Code's own sandbox, strictly (no unsandboxed retry, no network,
+// workspace and credentials hidden). An approved command counts as sandboxed and the run keeps CAL 3; a command asking to leave the
+// sandbox is refused.
 func TestClaudeCode_commands_run_in_its_sandbox(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "decisions.log")
 	script, err := json.Marshal([]fakeCall{

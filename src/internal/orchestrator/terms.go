@@ -16,10 +16,10 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
-// Terms are what a run decides under, set when it starts and kept by every continuation: who agreed to the task, how changes
-// are approved, where commands and checks run, the checks, what signs, and what an away run may do without asking. They are
-// plain data, saved as the run's options.json and bound on run_bound by digest (ADR 0010, Q22). Where the run listens, how it
-// is shown and the agent that carries it out are not terms (RunOptions).
+// Terms are what a run decides under, set when it starts and kept by every continuation: who agreed to the task, how changes are
+// approved, where commands and checks run, the checks, what signs, and what an away run may do without asking. They are plain data,
+// saved as the run's options.json and bound on run_bound by digest (ADR 0010, Q22). Where the run listens, how it is shown and the
+// agent that carries it out are not terms (RunOptions).
 type Terms struct {
 	// Agreed says who agreed to the task before the run (a session's confirmation).
 	Agreed string `json:"agreed,omitempty"`
@@ -173,11 +173,10 @@ func NewTerms(t Terms, harness string) (Terms, error) {
 	return t, t.checkDeclared(harness)
 }
 
-// deliver judges the delivery mode (ADR 0012). Review is the default and is never saved. Policy delivery is unattended, so it
-// is refused unless everything it rests on is in the terms: an away run (nobody to ask), no reviewer model (a model's approval
-// is never a rule's), a delivery scope, the initiator's signature (the certificate names who armed it), and a complete
-// declaration of the protected paths (after protect: the checks name a file of their own, or --protect named some). Signed
-// decisions are refused with --away already. Whether the policy was signed is known only when the run starts (firstSegment.policy).
+// deliver judges the delivery mode (ADR 0012). Review is the default and is never saved. Policy delivery is unattended, so it is refused
+// unless everything it rests on is in the terms: an away run, no reviewer model (a model's approval is never a rule's), a delivery
+// scope, the initiator's signature, and a complete declaration of the protected paths (after protect). Signed decisions are refused with
+// --away already. Whether the policy was signed is known only when the run starts (firstSegment.policy).
 func (t *Terms) deliver() error {
 	switch t.Deliver {
 	case "", DeliverReview:

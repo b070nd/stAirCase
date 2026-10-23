@@ -1,15 +1,12 @@
-// Package diag holds the logs stAirCase keeps for a person to read when something went wrong: the hosted-session log
-// (host/<session>.log) and the run's debug log. They are local, never evidence, and they are held to two rules.
+// Package diag holds the logs kept for a person to read when something went wrong: the hosted-session log (host/<session>.log) and the
+// run's debug log. They are local, never evidence, and follow two rules:
 //
-//   - They are bounded. A log and its numbered previous file (path.1) together never exceed the bound (MaxLogBytes): when the log
-//     reaches half of it, it moves to path.1, replacing an older one, and continues in a fresh file. The newest output survives and
-//     the oldest is what is dropped. Each fresh file, and the end, say how often it rotated and how many bytes were dropped. The
-//     bound covers the markers too.
-//   - They hold no secret the agent was handed. Every write is scrubbed of the delivered values, line by line, so a value cut in
-//     two by two writes is still found.
+//   - They are bounded. A log and its previous file (path.1) never exceed MaxLogBytes together: at half the bound the log moves to
+//     path.1 and continues in a fresh file. The oldest output is dropped; each fresh file and the end say how often it rotated and how
+//     many bytes were lost.
+//   - They hold no secret the agent was handed. Every write is scrubbed line by line, so a value split across two writes is still found.
 //
-// What a log drops is lost on purpose; the run's authoritative records (the audit chain, the certificate, the ledger) are not
-// kept here and are never short of anything because a log is full.
+// The authoritative records (audit chain, certificate, ledger) are not kept here, so a full log never costs the run any evidence.
 package diag
 
 import (

@@ -217,13 +217,10 @@ func AttachNote(repoPath, ref, file, commit string) error {
 	return attachNote(repo, ref, file, commit)
 }
 
-// attachNote adds the file's content, byte for byte, as a note under
-// refs/notes/<ref> on commit. Git loses notes that are added at the same moment
-// (without a word: six parallel adds lost notes in 8 of 8 trials), so the write
-// holds a lock on the repository, covering every notes ref, reads the note back
-// and compares it with the file, and writes it again up to noteAttempts times.
-// A note that cannot be confirmed is an error, never a success: a certificate
-// that is not there fails a verifier later.
+// attachNote adds the file's content, byte for byte, as a note under refs/notes/<ref> on commit. Git loses notes added at the same
+// moment (six parallel adds lost notes in 8 of 8 trials), so the write holds a repository lock, reads the note back, compares it with
+// the file, and retries up to noteAttempts times. A note that cannot be confirmed is an error, because a missing certificate fails a
+// verifier later.
 func attachNote(repo *GitRepo, ref, file, commit string) error {
 	unlock, err := lockNotes(repo)
 	if err != nil {

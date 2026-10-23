@@ -11,12 +11,9 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/tui"
 )
 
-// Review brings a change made elsewhere (for example a cloud agent's pull
-// request) into the run's worktree, one file at a time, and has each file
-// reviewed after the fact: approved, it is kept; rejected, it is reverted.
-// The branch's own diff since its merge base with the run's base is applied,
-// so newer work on the current branch is not undone; a file whose diff does
-// not apply is left out and reported.
+// Review brings a change made elsewhere (for example a cloud agent's pull request) into the run's worktree one file at a time and has
+// each file reviewed afterwards: approved files stay, rejected ones are reverted. Only the branch's own diff since its merge base is
+// applied, so newer work on the current branch is not undone. A file whose diff does not apply is left out and reported.
 type Review struct {
 	Commit string // the exact commit reviewed
 	By     string // who made it, as the certificate names them

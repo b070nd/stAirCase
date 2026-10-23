@@ -68,12 +68,9 @@ func checkReply(agentName, event string, reply []byte) error {
 // timeout bounds it. No proxy: the token only ever goes to the local run.
 var hookClient = &http.Client{Transport: &http.Transport{}}
 
-// RunHook is `staircase hook <agent> [--governed]`: it passes one hook call
-// on stdin to the governed run and prints the run's answer. The result is
-// the exit code. Every failure is 2, which blocks the tool call: agents let
-// the call run when a hook fails any other way. Without --governed and
-// without a session (a hook installed once for a user or a company), the
-// call passes through.
+// RunHook is `staircase hook <agent> [--governed]`: it passes one hook call from stdin to the governed run and prints the answer. The
+// result is the exit code. Every failure is 2, which blocks the tool call, because agents let the call run on any other failure. Without
+// --governed and without a session (a hook installed once for a user or company), the call passes through.
 func RunHook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	block := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "staircase hook: "+format+"\n", a...)

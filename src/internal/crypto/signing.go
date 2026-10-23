@@ -1,16 +1,11 @@
 package crypto
 
-// Ed25519 signing for audit checkpoints.
+// Ed25519 signing for audit checkpoints. Keys live in $STAIRCASE_DIR as raw bytes, written once by `staircase init`:
 //
-// Key files:
+//	.signing.key  64-byte private key (seed+public, mode 0600)
+//	.signing.pub  32-byte public key (mode 0644)
 //
-//	$STAIRCASE_DIR/.signing.key  - 64-byte Ed25519 private key (seed+public, mode 0600)
-//	$STAIRCASE_DIR/.signing.pub  - 32-byte Ed25519 public  key (mode 0644)
-//
-// Both are stored as raw bytes (not PEM/base64) to keep the code simple and the
-// file sizes predictable.  The key pair is generated once by `staircase init`.
-//
-// Signatures are 64-byte Ed25519 signatures encoded as lowercase hex.
+// Signatures are 64 bytes, encoded as lowercase hex.
 
 import (
 	"crypto/ed25519"

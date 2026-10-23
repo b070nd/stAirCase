@@ -1,31 +1,12 @@
 package main
 
-// audit - tamper-proof checkpoint export and verification.
+// audit: tamper-evident checkpoints of a run's event log.
 //
-// Commands:
+//	staircase audit export <run-id>           write $STAIRCASE_DIR/audit/run-{id}.checkpoint.json, signed with the workspace key
+//	staircase audit verify <checkpoint-file>  re-derive the hash chain and check the signature; non-zero exit on any difference
 //
-//	staircase audit export <run-id>
-//	    Reads all event-log entries for the run, computes a canonical
-//	    JSON payload, signs it with the workspace Ed25519 key, and writes
-//	    $STAIRCASE_DIR/audit/run-{id}.checkpoint.json.
-//
-//	staircase audit verify <checkpoint-file>
-//	    Reads a checkpoint file, re-derives the hash chain from the stored
-//	    entries, and verifies the Ed25519 signature against the public key in
-//	    $STAIRCASE_DIR/.signing.pub.  Exits non-zero on any discrepancy.
-//
-// Checkpoint format (run-{id}.checkpoint.json):
-//
-//	{
-//	  "run_id":    42,
-//	  "exported":  "2026-05-05T12:00:00Z",
-//	  "entries":   [ …RunEventLog objects… ],
-//	  "signature": "<128-char hex Ed25519 signature over canonical entries JSON>"
-//	}
-//
-// The signature covers the UTF-8 encoding of the JSON array in "entries" with
-// no trailing newline.  The array uses compact JSON (no pretty-printing) to
-// make cross-platform re-verification deterministic.
+// A checkpoint is {"run_id", "exported", "entries", "signature"}. The signature is Ed25519 over the compact JSON array in "entries"
+// (no trailing newline), so it can be re-verified anywhere.
 
 import (
 	"bufio"

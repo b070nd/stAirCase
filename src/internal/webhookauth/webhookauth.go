@@ -1,23 +1,14 @@
-// Package webhookauth provides HMAC-SHA256 request/response authentication for
-// the webhook approval channel. Without it, anyone who can reach (or MITM) a
-// project's webhook endpoint can forge a human approval and bypass HITL.
+// Package webhookauth authenticates the webhook approval channel with HMAC-SHA256, in both directions. Without it, anyone who can reach
+// or intercept a project's webhook endpoint could forge a human approval.
 //
-// Wire format (both directions):
-//
-//	X-Staircase-Timestamp: <unix seconds>
-//	X-Staircase-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>
-//
-// The orchestrator signs the outbound yield request and verifies the signature
-// on the approver's response. A matching secret on both sides proves the
-// response came from the configured approver and was not tampered with; the
-// timestamp bounds replay. The request body carries a fresh "yield_id" and the
-// request carries
-//
+//	X-Staircase-Timestamp:      <unix seconds>
+//	X-Staircase-Signature:      sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>
 //	X-Staircase-Request-SHA256: <hex SHA-256 of the request body>
 //
-// and the approver must echo both, as "yield_id" and "request_sha256", in its
-// signed response body, so a captured approval cannot be replayed against
-// another request - not even an identical one.
+// The orchestrator signs the yield request and verifies the approver's signed response. A shared secret proves the response came from
+// the approver unchanged, and the timestamp bounds replay. The request body carries a fresh "yield_id", and the approver must echo it
+// and the body digest as "yield_id" and "request_sha256" in the signed response, so a captured approval cannot be replayed against
+// another request, even an identical one.
 package webhookauth
 
 import (

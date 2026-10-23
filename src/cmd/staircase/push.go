@@ -148,15 +148,13 @@ is skipped and the PR URL is printed for manual use.`,
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-// parseGitHubOwnerRepo extracts owner and repo from common GitHub remote URL
-// formats. Returns ok=false when the URL is not a github.com remote.
+// parseGitHubOwnerRepo extracts owner and repo from a GitHub remote URL; ok is false for anything else.
 //
 //	https://github.com/owner/repo.git → owner, repo, true
 //	git@github.com:owner/repo.git     → owner, repo, true
 //
-// Anchored (^) so a malicious URL embedding "github.com" in its path
-// (e.g. https://evil.example/https://github.com/o/r) is never treated as
-// a GitHub remote - that decision also gates token attachment on push.
+// The patterns are anchored, so a URL that only contains "github.com" in its path is not a GitHub remote. That decision also gates
+// attaching the token on push.
 var reGitHubHTTPS = regexp.MustCompile(`^(?i)https?://(?:[^@/]+@)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$`)
 var reGitHubSSH = regexp.MustCompile(`^(?i)git@github\.com:([^/]+)/([^/]+?)(?:\.git)?/?$`)
 

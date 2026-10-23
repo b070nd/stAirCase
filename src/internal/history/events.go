@@ -192,10 +192,9 @@ const (
 	VoteError   = "error" // the model gave none: it failed, or its reply was not a verdict
 )
 
-// ValidatorVoted is validator_voted: one reviewer model's verdict on one proposal, written before the decision it went into. Every
-// model of the panel that was asked has one, whether they agreed or not and whether it gave a verdict or failed, so what a decision
-// by `validator:` rested on can be read back (ADR 0014, section 3). The reason is the model's own, and the digest is that of its
-// whole reply.
+// ValidatorVoted is validator_voted: one reviewer model's verdict on one proposal, written before the decision it went into. Every model
+// of the panel that was asked has one, whether it agreed, disagreed or failed, so what a decision by `validator:` rested on can be read
+// back (ADR 0014, section 3). The reason is the model's own; the digest is that of its whole reply.
 type ValidatorVoted struct {
 	Model        string `json:"model"`
 	RequestEntry string `json:"request_entry"`
@@ -214,10 +213,9 @@ type StoryAccepted struct {
 
 func (StoryAccepted) eventName() string { return "story_accepted" }
 
-// SourceDirty is source_dirty: the checkout a run was started from had changes that are not in the commit the run works on, so the
-// agent did not have them. It holds the counts of the tracked changes and of the untracked files, and the digest of their names (a
-// status letter and the path, sorted, one a line). Ignored paths are never listed: they are not in a worktree either, and git does not
-// say which exist.
+// SourceDirty is source_dirty: the checkout a run started from had changes that are not in the commit the run works on, so the agent did
+// not have them. It holds the counts of tracked changes and untracked files, and the digest of their names (a status letter and the
+// path, sorted, one a line). Ignored paths are never listed: they are not in a worktree either.
 type SourceDirty struct {
 	Tracked     int    `json:"tracked"`
 	Untracked   int    `json:"untracked"`

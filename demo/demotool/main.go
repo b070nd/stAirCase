@@ -59,13 +59,9 @@ func fatal(msg string) {
 	os.Exit(1)
 }
 
-// serve answers chat completions like a model would for the demo's two
-// agents, deciding from the conversation alone: the supervisor hands the task
-// to the coder and ends once the coder has worked; the coder creates the
-// greeting file, points the README at it and deletes the obsolete notes.
-// Mode "tamper" then asks to run a shell command that changes the greeting
-// after its approval; mode "drift" then keeps proposing files outside the
-// stories' scope.
+// serve answers chat completions like a model would, deciding from the conversation alone: the supervisor hands the task to the coder,
+// who creates the greeting file, points the README at it and deletes the old notes. Mode "tamper" then changes the greeting after its
+// approval; mode "drift" keeps proposing files outside the stories' scope.
 func serve(urlFile, mode string) error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -7,11 +7,10 @@ import (
 	"strings"
 )
 
-// scratchCheckout makes a throwaway checkout of commit of the repository at repo, in a new temporary directory whose name starts with
-// prefix, and returns the directory and the function that removes it. It is where checks run: the final checks on the commit a run made,
-// the checks run when the agent says it is done, and the evidence a person's approval can rest on. All three make it here, under the
-// repository's worktree lock, because git is not safe against two `worktree add` at once and runs in one repository do start together.
-// It holds tracked files only: what the repository ignores is not in it.
+// scratchCheckout makes a throwaway checkout of commit of the repository at repo, in a new temporary directory named with prefix, and
+// returns the directory and a function that removes it. It is where checks run: the final checks, the checks run when the agent says it
+// is done, and the evidence a person's approval can rest on. It takes the repository's worktree lock, because git is not safe against two
+// `worktree add` at once. It holds tracked files only: what the repository ignores is not in it.
 func scratchCheckout(repo, commit, prefix string) (dir string, cleanup func(), err error) {
 	dir, err = os.MkdirTemp("", prefix)
 	if err == nil {

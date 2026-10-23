@@ -1,10 +1,6 @@
-// Package wslock provides advisory file locking (flock) primitives shared by
-// the runner and the CLI rotate command.
-//
-// The runner acquires a shared lock on the workspace key file for the duration
-// of an active run.  The 'staircase secret rotate' command acquires an
-// exclusive non-blocking lock for the duration of key rotation.  The two are
-// mutually exclusive: rotate fails fast if a run is active (CHECK 4.3.3).
+// Package wslock provides the advisory file locks (flock) shared by the runner and `secret rotate`. A run holds a shared lock on the
+// workspace key file while it is active; rotation takes an exclusive non-blocking lock, so it fails at once if a run is active
+// (CHECK 4.3.3).
 //
 //go:build !windows
 

@@ -29,12 +29,12 @@ files, uncommitted. Edits you did not stage are left alone. If your branch moved
 while you were deciding, it is not touched, and the certified commit stays on its
 `staircase/run-N` branch.
 
-`seal` takes `--allow <glob>` (repeatable) like `review` and the other commands: a staged file outside that scope comes to you as
-drift instead of as a routine approval.
+`seal` takes `--allow <glob>` (repeatable), like `review` and the other commands. A staged file outside that scope comes to you as drift
+instead of as a routine approval.
 
-`--check` commands run on the sealed commit in a throwaway checkout of it, not in your working directory, and `--sandbox off` only
-removes the sandbox: the checkout still holds tracked files only, so a directory your repository ignores (`vendor/`, `node_modules/`,
-`generated/`) is not there. A check that needs one cannot pass until stAirCase can show it to a check (a project's environment).
+`--check` commands run on the sealed commit in a throwaway checkout, not in your working directory. `--sandbox off` only removes the
+sandbox: the checkout still holds tracked files only, so a directory your repository ignores (`vendor/`, `node_modules/`, `generated/`)
+is not there, and a check that needs one cannot pass in a seal.
 
 The files were changed before anyone decided them, so a sealed commit reaches
 [CAL 2](adr/0001-core-promise-and-assurance-levels.md). For CAL 3, run the agent
@@ -49,7 +49,9 @@ accident. It is not a wall: `git commit --no-verify` gets through, which is why 
 An existing pre-commit hook of your own is never replaced; `attach --off` removes
 only stAirCase's.
 
-Nothing of stAirCase is written into your repository's files: the hook goes under the git directory (`.git/hooks`), and stAirCase's
-other traces are refs and worktree metadata under `.git`. If `core.hooksPath` points to a directory inside your working tree (a
-`.husky` folder, say), `attach` refuses, naming the setting, because the hook would be an untracked file in your code; point
-`core.hooksPath` outside the repository, or unset it, and attach again. `attach --off` works whatever the setting is.
+Nothing of stAirCase is written into your repository's files. The hook goes under the git directory (`.git/hooks`), and the other traces
+are refs and worktree metadata under `.git`.
+
+If `core.hooksPath` points to a directory inside your working tree (a `.husky` folder, say), `attach` refuses and names the setting,
+because the hook would be an untracked file in your code. Point `core.hooksPath` outside the repository, or unset it, and attach again.
+`attach --off` works whatever the setting is.

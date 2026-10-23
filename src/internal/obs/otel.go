@@ -27,13 +27,9 @@ var OTelEndpoint string
 // code paths never need to check whether OTel is enabled.
 var Tracer trace.Tracer = noop.NewTracerProvider().Tracer("staircase")
 
-// InitOTel configures the OpenTelemetry SDK for the given endpoint
-// (CHECK 10.3.1).  When endpoint is empty this is a no-op and a no-op
-// shutdown function is returned.  The returned function must be called (defer)
-// on process exit to guarantee span delivery.
-//
-// The exporter connects lazily and asynchronously: an unreachable collector
-// never blocks or fails a run - spans are dropped after the batch timeout.
+// InitOTel configures OpenTelemetry for endpoint (CHECK 10.3.1). With an empty endpoint it does nothing and returns a no-op shutdown.
+// Defer the returned function so spans are delivered on exit. The exporter connects lazily, so an unreachable collector never blocks or
+// fails a run; spans are dropped after the batch timeout.
 func InitOTel(endpoint string) (shutdown func()) {
 	OTelEndpoint = endpoint
 	if endpoint == "" {

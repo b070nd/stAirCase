@@ -1,8 +1,7 @@
-// Package history is the one replay of a run's audit chain (ADR 0010): what a verified chain says a run bound, proposed,
-// decided, parked, adopted, offered and delivered, read in one walk. A chain that no run can have written has no history; it is
-// refused with a GrammarError that names the entry. The package decides only from verified chains (Read); ReadRows shows a chain as
-// stored, marked, for the commands that display one. It is also the one way an entry is written (Writer, ADR 0014): every event is
-// a type here, and a payload's keys are those of its type. It touches no git and no files.
+// Package history is the one replay of a run's audit chain (ADR 0010): what a verified chain says a run bound, proposed, decided,
+// parked, adopted, offered and delivered. A chain no run can have written has no history; it is refused with a GrammarError naming the
+// entry. Read decides only from verified chains; ReadRows shows a chain as stored, marked, for the commands that display one. It is also
+// the one way an entry is written (Writer, ADR 0014): every event is a type here. It touches no git and no files.
 package history
 
 import (
@@ -205,14 +204,12 @@ func Read(store *persistence.Store, runID int64) (History, error) {
 	return h, nil
 }
 
-// replay is the fold. The grammar (ADR 0010, section 2): run_bound first and once; every decision but a final review uses up a
-// request of the same segment and kind audited before it (the one it names, when it names one); proposal numbers increase;
-// commit_prepared leaves room only for a final review; certificate_issued, run_recovered and review_delivered end the chain; launches
-// are numbered in order, each outcome names the open launch, and nothing launches or resumes while a launch has no outcome; a launch
-// is acknowledged only after it ended unknown or unresponsive, by name, once, and before the chain ends; delivery_authorized follows
-// the latest phase_checked, of the same passing tree, once, in policy mode under the run's terms and signed policy, and nothing
-// is written after it but what a delivery writes (afterAuthorization). Event
-// types and fields it does not know are ignored.
+// replay is the fold. The grammar is in ADR 0010, section 2: run_bound first and once; each decision but a final review uses up an
+// earlier request of the same segment and kind; proposal numbers increase; commit_prepared leaves room only for a final review;
+// certificate_issued, run_recovered and review_delivered end the chain; launches are numbered, each outcome names the open launch, and
+// nothing launches or resumes while one is open; a launch is acknowledged once, by name, after it ended unknown or unresponsive;
+// delivery_authorized follows the latest passing phase_checked, once, in policy mode under the run's terms and signed policy, and only a
+// delivery's own events follow it (afterAuthorization). Unknown event types and fields are ignored.
 func replay(events []domain.RunEventLog) (History, error) {
 	h := History{Segment: 1, entries: map[string]bool{}}
 	var pending []*Request // this segment's requests not yet decided, in chain order
@@ -527,12 +524,10 @@ func replay(events []domain.RunEventLog) (History, error) {
 	return h, nil
 }
 
-// afterAuthorization are the only events a chain holds after delivery_authorized (ADR 0012, section 3), an allow-list: what a
-// delivery writes once it is authorized, and nothing else, so an event type that is added later, or that nobody knows, is refused
-// until it is placed here on purpose. They are the commit-naming (commit_prepared, certificate_issued, and run_recovered and
-// recovery_repaired of a recovery), the evidence (check_ran, certificate_failed, evidence_failed), the end of the launch the agent
-// had (launch_ended), the run's path (run_path) and a rollback of the delivered run (rolled_back, written by `staircase case
-// rollback`). review_delivered is not here: a run that authorized its delivery offered no review.
+// afterAuthorization is the allow-list of events a chain may hold after delivery_authorized (ADR 0012, section 3): the commit-naming
+// events (commit_prepared, certificate_issued, and a recovery's run_recovered and recovery_repaired), the evidence (check_ran,
+// certificate_failed, evidence_failed), launch_ended, run_path, and rolled_back (from `staircase case rollback`). A new or unknown
+// event type is refused until it is added here on purpose. review_delivered is not here: a run that authorized delivery offered no review.
 var afterAuthorization = map[string]bool{
 	"commit_prepared": true, "certificate_issued": true, "run_recovered": true, "recovery_repaired": true,
 	"check_ran": true, "certificate_failed": true, "evidence_failed": true,

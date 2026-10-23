@@ -11,16 +11,14 @@ type ModelPricing struct {
 	OutputPer1M float64
 }
 
-// pricingTable - read from the providers' price pages on 2026-10-05:
+// pricingTable holds standard (non-batch, non-cached) rates read from the providers' price pages on 2026-10-05:
 //   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
 //   - OpenAI:    https://developers.openai.com/api/docs/pricing
 //   - Google:    https://ai.google.dev/gemini-api/docs/pricing
 //
-// Standard (non-batch, non-cached) rates. Where a price depends on the prompt's
-// size or a promotion ends, the higher rate is used: a budget cap that counts
-// too little stops nothing. xAI's entries and the retired Gemini 1.5/2.0 ones
-// were not on a page read that day. Re-read the pages when a provider ships
-// a model; a model that is not here counts at unpricedCeiling.
+// Where a price depends on prompt size or a promotion ends, the higher rate is used, because a budget cap that counts too little stops
+// nothing. xAI's entries and the retired Gemini 1.5/2.0 ones were not on a page read that day. Re-read the pages when a provider ships a
+// model; a model not listed counts at unpricedCeiling.
 var pricingTable = map[string]ModelPricing{
 	// Anthropic Claude
 	"claude-fable-5-1":  {10.00, 50.00},

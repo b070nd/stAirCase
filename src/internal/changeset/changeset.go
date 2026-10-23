@@ -1,8 +1,6 @@
-// Package changeset links runs of several repositories under one id (a spec of the first real project): a change that spans a backend, a
-// middleware and a frontend is one piece of work, and each run of it stays what it always is, one repository with its own worktree, chain
-// and certificate. The set holds the member runs, the contract files declared for it and the acknowledgements a person recorded; it is a
-// workspace file, like a profile, and nothing of it is ever in a client's repository. It holds no database and no git: Verify, in
-// verify.go, brings the facts of the runs.
+// Package changeset links runs of several repositories under one id. Each run stays one repository with its own worktree, chain and
+// certificate; the set holds the member runs, the declared contract files and the acknowledgements a person recorded. It is a workspace
+// file, like a profile, never in a client's repository. It holds no database and no git: Verify brings the facts of the runs.
 package changeset
 
 import (

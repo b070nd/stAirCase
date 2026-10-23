@@ -62,21 +62,12 @@ func GenerateKey(wsDir string) error {
 	return nil
 }
 
-// LoadKey reads the 32-byte workspace key.
-// On Unix it also verifies that the key file has mode 0600; a wider permission
-// set indicates the file may have been exposed and is treated as an error.
-// (On Windows POSIX mode bits are not meaningful and the check is skipped.)
+// LoadKey reads the 32-byte workspace key. On Unix it requires mode 0600, because a wider mode may mean the file was exposed. (Windows
+// mode bits mean nothing, so the check is skipped there.)
 //
-// LoadKey automatically resumes any "committed" rotation journal left by a
-// crashed rotation before reading the key.  This ensures that any command
-// that loads the key self-heals an interrupted rotation without requiring the
-// user to re-run 'staircase secret rotate'.
-//
-// A "pending" journal is ambiguous (the secrets may or may not have been
-// re-encrypted already), so LoadKey refuses rather than hand out a key that
-// could be the wrong one: reading would fail and, worse, a write would leave a
-// secret under a key the finished rotation drops. 'staircase secret rotate'
-// resolves it.
+// It first finishes a "committed" rotation journal left by a crash, so any command heals an interrupted rotation. A "pending" journal
+// is ambiguous (the secrets may or may not be re-encrypted), so LoadKey refuses rather than return a possibly wrong key: a write would
+// leave a secret under a key the finished rotation drops. `staircase secret rotate` resolves it.
 func LoadKey(wsDir string) ([]byte, error) {
 	if err := ResumeIfCommitted(wsDir); err != nil {
 		return nil, fmt.Errorf("load workspace key: rotate recovery: %w", err)

@@ -66,13 +66,9 @@ func writeRotateJournal(journalPath string, j rotateJournal) error {
 	return syncDir(filepath.Dir(journalPath)) // durable directory entry for journal
 }
 
-// ResumeIfCommitted checks for a "committed" rotation journal in wsDir and,
-// if found, completes the interrupted key installation atomically.  It is
-// called by LoadKey so that any command that reads the workspace key
-// self-heals a crash that left the DB committed but the key file unreplaced.
-//
-// "pending" journals are not touched here - their resolution requires
-// tryDecryptAny and is handled exclusively by RotateKey.
+// ResumeIfCommitted completes an interrupted key installation when wsDir holds a "committed" rotation journal. LoadKey calls it, so any
+// command that reads the key heals a crash that left the DB committed but the key file unreplaced. "pending" journals are left to
+// RotateKey, because resolving them needs tryDecryptAny.
 func ResumeIfCommitted(wsDir string) error {
 	journalPath := filepath.Join(wsDir, rotateJournalFile)
 	j, err := readRotateJournal(journalPath)
@@ -100,43 +96,20 @@ func ResumeIfCommitted(wsDir string) error {
 	return nil
 }
 
-// RotateKey generates a new AES-256 key, re-encrypts all secrets via
-// reencrypt, and atomically installs the new key file (CHECK 4.3.2).
+// RotateKey generates a new AES-256 key, re-encrypts all secrets through reencrypt, and installs the new key file atomically
+// (CHECK 4.3.2).
 //
-// # Crash-recovery guarantee
+// A two-stage journal recovers from a crash at every step:
+//   - "pending": new key written to temp, journal written, DB not committed. Recovery asks tryDecryptAny whether the DB committed anyway.
+//   - "committed": DB committed, temp file holds the new key, key file not replaced. Recovery renames temp to the key file.
 //
-// A two-stage journal provides process-crash recovery at every step:
+// The journal and key temp files are fsynced before their renames, and the workspace directory after every key rename, for power-loss
+// durability on most file systems. The DB uses synchronous=FULL, so the transaction is on disk when reencrypt returns; a caller that
+// opens it another way must set that pragma first.
 //
-//   - Stage "pending": new key written to temp, journal written, DB not yet
-//     committed.  Recovery checks tryDecryptAny to determine whether the DB
-//     committed anyway (e.g., crash between commit and journal-update).
-//
-//   - Stage "committed": DB committed, temp file holds new key, key file not
-//     yet replaced.  Recovery renames temp → key file.
-//
-// # Durability scope
-//
-// The journal temp file and the new key temp file are fsynced before their
-// respective renames, and the workspace directory is fsynced after every key
-// rename (including recovery paths).  This provides power-loss durability for
-// the key file and journal on most filesystems.
-//
-// The workspace DB is opened with synchronous=FULL, so the rotation
-// transaction is on disk when reencrypt returns; a caller that opens the DB
-// another way must set PRAGMA synchronous=FULL before the transaction.
-//
-// # Concurrency
-//
-// The caller must hold an exclusive advisory flock on <wsDir>/.key before
-// calling this function.  The flock is non-blocking (LOCK_NB): it fails fast
-// if any active run or concurrent 'secret set' already holds a shared lock
-// (CHECK 4.3.3).  No waiting occurs.
-//
-// tryDecryptAny must return true if at least one stored secret can be
-// decrypted with the given key.  It is only called during "pending" recovery
-// to detect whether the DB transaction committed before the crash.  Pass a
-// function that returns false if the workspace has no secrets; rotation is
-// safe in that case regardless of DB state.
+// The caller must hold an exclusive non-blocking flock on <wsDir>/.key: it fails at once if a run or `secret set` holds a shared lock
+// (CHECK 4.3.3). tryDecryptAny reports whether at least one stored secret decrypts with the given key; it is only used in "pending"
+// recovery. Pass a function returning false when there are no secrets.
 func RotateKey(
 	wsDir string,
 	reencrypt func(oldKey, newKey []byte) error,

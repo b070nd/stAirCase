@@ -17,15 +17,12 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/sandbox"
 )
 
-// OpenCode runs OpenCode (`opencode run`) in the run's worktree as the run's
-// agent, built from its documentation (opencode.ai/docs/plugins): a plugin
-// generated for the run hooks tool.execute.before, posts every tool call to
-// the run and throws to block it, so edits, patches and commands are decided
-// before they run and every other tool is refused.
+// OpenCode runs OpenCode (`opencode run`) in the run's worktree, built from its plugin documentation (opencode.ai/docs/plugins). A
+// plugin generated for the run hooks tool.execute.before, posts every tool call to the run and throws to block it, so edits, patches and
+// commands are decided before they run and every other tool is refused.
 //
-// OpenCode cannot be told to ignore plugins of the user or the repository, and
-// a plugin that fails to load lets calls through; so a session whose plugin
-// never reaches the run fails, and finalize refuses any change nobody approved.
+// OpenCode cannot ignore plugins of the user or repository, and a plugin that fails to load lets calls through. So a session whose
+// plugin never reaches the run fails, and finalize refuses any change nobody approved.
 type OpenCode struct {
 	Prompt  string
 	Model   string // optional --model provider/model

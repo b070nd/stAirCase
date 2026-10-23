@@ -90,104 +90,103 @@ with stAirCase.
 
 ### What a run can have written
 
-A chain whose hashes verify must also be one a run can have written. Recovery, resume, review and the
-certificate read it through one replay ([ADR 0010](adr/0010-one-replay-of-the-audit-chain.md)). That replay
-refuses a chain that breaks any of these rules, and names the entry that breaks it:
+A chain whose hashes verify must also be a chain that a run can have written. Recovery, resume, review and the certificate all read it
+through one replay ([ADR 0010](adr/0010-one-replay-of-the-audit-chain.md)). The replay refuses a chain that breaks any of these rules and
+names the entry that breaks it:
 
 - `run_bound` comes first, and only once.
-- Every decision except a final review answers a request audited earlier in the same segment, of the same kind.
-  Requests a segment left undecided are not carried past a `run_resumed`.
+- Every decision except a final review answers a request of the same kind, audited earlier in the same segment. Requests a segment left
+  undecided are not carried past a `run_resumed`.
 - Proposal numbers increase.
-- After `commit_prepared` only a final review may be decided. After `certificate_issued`, `run_recovered` or
-  `review_delivered`, nothing is decided and the run is not resumed.
-- Launches are numbered from 1, one after the other. A launch's outcome names its attempt and generation. No agent is
-  launched, and the run is not resumed, while an earlier launch has no outcome. No agent is launched after
-  `commit_prepared`, and no outcome is written after the chain ended.
-- A run that asked reviewer models names them on `run_bound` (`validator_models`). Its chain holds a vote
-  (`validator_voted`) only from one of those models, on a request that waits for its decision, once for each model. A decision
-  by `validator:<models>` rests on one vote from each model on its request, every one agreeing with it, and is by the whole
-  panel; a split, or a model that failed, can only be followed by a person's decision. Votes that no decision by the models
-  used (a sampled review) are allowed. A chain written before the field is read as it always was
-  ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)).
+- After `commit_prepared`, only a final review may be decided. After `certificate_issued`, `run_recovered` or `review_delivered`, nothing
+  is decided and the run is not resumed.
+- Launches are numbered from 1, one after the other. A launch's outcome names its attempt and generation. No agent is launched, and the
+  run is not resumed, while an earlier launch has no outcome. No agent is launched after `commit_prepared`, and no outcome is written
+  after the chain ended.
+- A run that asked reviewer models names them on `run_bound` (`validator_models`). Its chain holds a vote (`validator_voted`) only from
+  one of those models, on a request that is waiting for its decision, once per model. A decision by `validator:<models>` rests on one
+  vote from each model on its request, all agreeing with it, and counts as made by the whole panel. After a split, or after a model
+  failed, only a person can decide. Votes that no decision used (a sampled review) are allowed. A chain written before the field reads as it
+  always did ([ADR 0014](adr/0014-typed-audit-writes-ceilings-and-votes.md)).
 
-A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more
-often than a finished run does. A finished run asks after changes approved as part of the task or on evidence, or
-when its reviewer model left something unreviewed. Recovery asks whenever anything was approved by neither a person
-nor a policy rule, reviewer-model approvals included.
+A final review counts only if it was made after the run's last approval. `staircase recover` asks for one more often than a finished run
+does. A finished run asks after changes approved as part of the task or on evidence, or when its reviewer model left something
+unreviewed. Recovery asks whenever anything was approved by neither a person nor a policy rule, reviewer-model approvals included.
 
 ### Lost launches
 
-Every launch of an agent is claimed on the chain (`launch_claimed`) before its process starts, and its outcome
-(`launch_ended`) is written once it stopped. A process that is killed, crashes or loses its machine in between
-leaves a claim with no outcome. Nobody can know what that agent did before it died, outside the worktree included.
+Every launch of an agent is claimed on the chain (`launch_claimed`) before its process starts, and its outcome (`launch_ended`) is
+written once it stopped. If the process is killed, crashes or loses its machine in between, the claim has no outcome. Nobody can know what
+that agent did before it died, including outside the worktree.
 
-`staircase resume` (and a resumed hosted session) that finds such a claim first records its outcome as
-`unknown_after_restart`. Then it **parks** the run: it refuses to launch the agent again and says why. Look at what
-the agent may have done, then say you looked with `staircase acknowledge <run>`, or continue at once with
-`staircase resume <run> --ack-unknown`.
+When `staircase resume` (or a resumed hosted session) finds such a claim, it first records the outcome as `unknown_after_restart`. Then it
+**parks** the run: it refuses to launch the agent again and says why. Look at what the agent may have done, then either say you looked with
+`staircase acknowledge <run>`, or continue at once with `staircase resume <run> --ack-unknown`.
 
-`staircase acknowledge <run>` launches nothing. Under the run's lock it writes the launch's end (`unknown_after_restart`) if the
-launch is still open, then `launch_acknowledged`, naming the attempt and the generation of the launch it acknowledges, so it
-cannot be reused to cover a later loss. A second call changes nothing, and a run with no open or lost launch is refused. A
-continuation, a hosted runner's resume included, then treats that launch as acknowledged. A hosted resume never acknowledges by
-itself. `--ack-unknown` is the same operation followed by the resume; `run_resumed` records the attempt it acknowledged
-(`ack_unknown`), as it always has. The replay accepts `launch_acknowledged` only after a launch that ended `unknown_after_restart`
-or `unresponsive`, once per launch. An agent that did not stop when asked
-(`unresponsive`) parks the run the same way. Its end was not established either.
+`staircase acknowledge <run>` launches nothing. Under the run's lock it writes the launch's end (`unknown_after_restart`) if the launch is
+still open, then `launch_acknowledged`, naming the attempt and generation of that launch, so it cannot be reused to cover a later loss.
 
-A run whose launches ended this way **3 times** is not launched again, acknowledged or not: the refusal says how many,
-and `staircase recover <run>` still commits what the run had approved. The time a run was down is not counted
-against its time limit.
+- A second call changes nothing. A run with no open or lost launch is refused.
+- A continuation, a hosted runner's resume included, then treats that launch as acknowledged. A hosted resume never acknowledges by itself.
+- `--ack-unknown` is the same operation followed by the resume. `run_resumed` records the attempt it acknowledged (`ack_unknown`).
+- The replay accepts `launch_acknowledged` only after a launch that ended `unknown_after_restart` or `unresponsive`, once per launch. An agent
+  that did not stop when asked (`unresponsive`) parks the run the same way, because its end was not established either.
 
-The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or
-partial, with the exact `staircase acknowledge <run>`, `staircase resume <run> --ack-unknown` and `staircase recover <run>`
-commands, or refused when it has lost 3 launches. An acknowledgement never lifts that limit. Its attempts are the launches claimed, lost ones included.
+A run whose launches ended this way **3 times** is not launched again, acknowledged or not. The refusal says how many, and `staircase
+recover <run>` still commits what the run had approved. The time a run was down does not count against its time limit.
+
+The status of such a run (`staircase decide <run>`, `staircase inspect log <run>`) says the same without a restart: blocked or partial,
+with the exact `acknowledge`, `resume --ack-unknown` and `recover` commands, or refused after 3 lost launches. An acknowledgement never lifts
+that limit. The run's attempts are the launches claimed, lost ones included.
 
 ### Launch failure classes
 
-A launch that did not end well says why on its `launch_ended` (`class`), apart from anything the checks or a reviewer decided:
+A launch that did not end well says why on its `launch_ended` (`class`), separately from anything the checks or a reviewer decided:
 
 | Class | Outcome it goes with | Meaning |
 |---|---|---|
-| `rejected` | `failed` | The agent was refused or never ran governed: its program could not be started, or its hooks (or plugin) never reached the run, so nothing it did is kept |
-| `host_exit` | `failed` | The agent's process started and ended with an error |
-| `storage` | `exited`, `failed` or `stopped` | The launch ended in a way the run established, but a record of it could not be written to the chain while the agent ran |
-| `cleanup` | `unresponsive` | The agent did not stop when asked, so its end is not established |
-| `uncertain_dispatch` | `unknown_after_restart` | The launch was claimed and no outcome was recorded: nobody knows what the agent did |
+| `rejected` | `failed` | The agent was refused or never ran governed: its program could not start, or its hooks (or plugin) never reached the run, so nothing it did is kept. |
+| `host_exit` | `failed` | The agent's process started and ended with an error. |
+| `storage` | `exited`, `failed` or `stopped` | The launch ended in a way the run established, but a record of it could not be written to the chain while the agent ran. |
+| `cleanup` | `unresponsive` | The agent did not stop when asked, so its end is not established. |
+| `uncertain_dispatch` | `unknown_after_restart` | The launch was claimed and no outcome was recorded. Nobody knows what the agent did. |
 
-A launch that ended by itself (`exited`) or that the run stopped (`stopped`) has no class, unless a record could not be written. A
-class is about the agent's process and the records of it: it is never a check result and never acceptance, and it never makes a
-change approved. A run that fails this way says so in its outcome (`the run failed, and its agent's launch 1 ended in a host exit`),
-and `staircase decide <run>` and `staircase inspect` list the launches with their class. A chain from before classes has no `class`;
-it is read as the class its outcome implies (`failed` as a host exit, `unresponsive` as a cleanup failure, `unknown_after_restart` as
-an uncertain dispatch). If the class itself cannot be written because storage is failing, the launch has no outcome on the chain and
-a restart records it as an uncertain dispatch.
+A launch that ended by itself (`exited`) or that the run stopped (`stopped`) has no class, unless a record could not be written.
+
+A class describes the agent's process and the records of it. It is never a check result, never acceptance, and never makes a change
+approved. A run that fails this way says so in its outcome (`the run failed, and its agent's launch 1 ended in a host exit`), and `staircase
+decide <run>` and `staircase inspect` list the launches with their class.
+
+A chain from before classes has no `class`, and reads as the class its outcome implies: `failed` as a host exit, `unresponsive` as a
+cleanup failure, `unknown_after_restart` as an uncertain dispatch. If the class itself cannot be written because storage is failing, the
+launch has no outcome on the chain, and a restart records it as an uncertain dispatch.
 
 ## Logs are diagnostics, not evidence
 
-Two logs help a person find out why a run went wrong, and neither is part of the evidence:
+Two logs help a person find out why a run went wrong. Neither is part of the evidence:
 
 - the **debug log** (`--debug`: `log/staircase-debug-run<N>.log` in the workspace), and
 - the **host log** of a hosted session (`host/<session>.log`; see [hosting](hosting.md#what-the-runner-keeps-and-what-it-does-not)).
 
-Both are held to the same rules:
+Both follow the same rules:
 
-- **A bound, and the newest output kept.** A log and its numbered previous file together never exceed **8 MiB**, markers included.
-  When a log reaches half of that (4 MiB) it moves to the previous file (`<name>.log.1`, replacing an older one) and continues in a
-  fresh file, so the oldest output is what is dropped and the end of a long session survives. Each fresh file starts with a line
-  saying how often the log rotated and how much it dropped so far (`[staircase: rotated N times, dropped M bytes so far; ...]`), and
-  when the process ends the log says so once more (`[staircase: rotated N times, dropped M bytes in all]`). A log that is already
-  at half of its bound when a resumed session opens it is rotated at once, so the continuation's output is kept. A log from before
-  rotation, longer than half of the bound, keeps its newest half as the previous file. Rotation cuts at a line end where it can, and a
-  secret is scrubbed before it is cut, so one that falls across a rotation is still gone. A log loses nothing that matters to the run:
-  the audit chain, the certificate and the ledger are written elsewhere and are never short of a record because a log rotated.
-- **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the
-  environment variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret is
-  shown as `<REDACTED>`.
-- **No stderr text in the record.** When an agent program fails, the last 4 KiB of its stderr (with a line saying so if its
-  start was dropped) is kept in the debug log, or in the host log of a hosted session, and shown at the terminal, scrubbed. It is not
-  in the error the run ends with, which a caller may log or a runner may keep, and it is never on the audit chain, in the certificate
-  or in the ledger. The reason is a lesson from Cloudroom, which kept stderr tails in records its prose said stderr never reached.
+- **A size bound, and the newest output is kept.** A log and its numbered previous file never exceed **8 MiB** together, markers
+  included. When a log reaches half of that (4 MiB), it moves to the previous file (`<name>.log.1`, replacing an older one) and continues
+  in a fresh file. The oldest output is dropped, so the end of a long session survives.
+  - Each fresh file starts with a line saying how often the log rotated and how much it dropped
+    (`[staircase: rotated N times, dropped M bytes so far; ...]`). When the process ends, the log says so once more
+    (`[staircase: rotated N times, dropped M bytes in all]`).
+  - A log already at half its bound when a resumed session opens it is rotated at once, so the continuation's output is kept. A log from
+    before rotation that is longer than half the bound keeps its newest half as the previous file.
+  - Rotation cuts at a line end where it can, and a secret is scrubbed before the cut, so one that falls across a rotation is still gone.
+  - A log loses nothing that matters to the run. The audit chain, certificate and ledger are written elsewhere, and a rotated log never
+    leaves them short of a record.
+- **No secret the agent was handed.** Every write is scrubbed of the values stAirCase delivered (a stored secret, and the environment
+  variables named with `--pass-env`), line by line, so a value that arrives in two pieces is still found. A secret shows as `<REDACTED>`.
+- **No stderr text in the record.** When an agent program fails, the last 4 KiB of its stderr (with a line saying so if the start was
+  dropped) is kept in the debug log, or in the host log of a hosted session, and shown at the terminal, scrubbed. It is not in the error
+  the run ends with, which a caller may log or a runner may keep, and it is never on the audit chain, in the certificate or in the ledger.
+  The reason is a lesson from Cloudroom, which kept stderr tails in records its documentation said stderr never reached.
 
 ## The change certificate on every commit
 
@@ -281,12 +280,14 @@ undelivered: the commit exists, and its hash is in the record.
 
 ### Writing a note
 
-Git drops notes that are added at the same moment, without an error. So every write of a certificate or ledger note, and the one
-`staircase sign` makes, holds a lock on the repository (a lock file in its git directory, shared by every worktree), stores the
-file's exact bytes, reads the note back and writes it again a bounded number of times. A note that cannot be confirmed is an
-evidence failure, never a success. **On Windows that lock excludes nothing:** the build compiles, but its lock calls are
-no-ops, so two deliveries or a `sign` at the same moment in one repository can still lose a note there. The read-back narrows that window but does not close it; on
-Windows, do not run two writers in one repository at once.
+Git drops notes that are added at the same moment, without an error. So every write of a certificate or ledger note, including the one
+`staircase sign` makes, holds a lock on the repository (a lock file in its git directory, shared by every worktree), stores the file's
+exact bytes, reads the note back, and writes it again a few times if needed. A note that cannot be confirmed is an evidence failure, never a
+success.
+
+**On Windows that lock does nothing.** The build compiles, but its lock calls are no-ops, so two deliveries, or a `sign`, at the same moment
+in one repository can still lose a note. The read-back narrows that window but does not close it. On Windows, do not run two writers in one
+repository at once.
 
 ## Keeping evidence: clean, archive and legal hold
 
@@ -438,9 +439,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v1.1.0   # use the release you have verified; the trust rules below need 0.6.0 or later
+      - uses: b070nd/stAirCase@v1.2.0   # use the release you have verified; the trust rules below need 0.6.0 or later
         with:
-          version: v1.1.0                            # the verifier that runs, pinned (it is also the action's own tag here)
+          version: v1.2.0                            # the verifier that runs, pinned (it is also the action's own tag here)
           key: .github/staircase.pub
           all: true                                  # every commit needs a certificate (the default)
           allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4

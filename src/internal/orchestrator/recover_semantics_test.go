@@ -58,12 +58,9 @@ func trim(s string) string { return strings.TrimSpace(s) }
 
 func sha(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
 
-// TestRecover_refuses_histories_with_a_wrong_shape_even_when_their_hashes_are_right:
-// real store, hash-valid chains. Live runs audit a yield_request before the decision it
-// leads to (the final review is the exception: it is a decision by itself), and record the
-// digest of exactly the approved state with every approval. A history without those is not
-// one a run of any version that keeps a journal (v0.6.0 on) writes; recovery refuses it
-// before it touches git.
+// TestRecover_refuses_histories_with_a_wrong_shape_even_when_their_hashes_are_right uses a real store and hash-valid chains. Live runs
+// audit a yield_request before its decision (a final review is the exception) and record the digest of the approved state with every
+// approval. A history without those cannot come from a run that keeps a journal (v0.6.0 on), so recovery refuses it before touching git.
 func TestRecover_refuses_histories_with_a_wrong_shape_even_when_their_hashes_are_right(t *testing.T) {
 	firstDecision := func(e domain.RunEventLog) bool {
 		return e.EventType == "yield_decided"

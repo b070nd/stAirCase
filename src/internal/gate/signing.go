@@ -1,20 +1,12 @@
 package gate
 
-// gates.json integrity (MCP signed tool ecosystem - P3 precursor).
+// gates.json integrity. Plugin gates in $wsDir/gates.json run as subprocesses, so a signature lets the operator detect a changed
+// manifest, as policy.json.sig and the audit checkpoints do.
 //
-// Plugin gate definitions in $wsDir/gates.json are loaded and executed as
-// subprocesses.  Without a signature the operator cannot detect whether an
-// adversary has modified the gate manifest (e.g. pointing a gate script at a
-// malicious binary).  Signing the manifest provides the same tamper-detection
-// guarantee as policy.json.sig and the audit checkpoint Ed25519 signatures.
+//	staircase gate sign    sign gates.json into gates.json.sig
+//	staircase gate verify  verify it; non-zero exit on failure
 //
-// Workflow:
-//
-//	staircase gate sign   - signs gates.json → gates.json.sig
-//	staircase gate verify - verifies the signature, exits non-zero on failure
-//
-// RunAll warns when the signature is absent and returns a gate failure when
-// the signature is present but invalid.
+// RunAll warns when the signature is missing and fails the gate when it is present but invalid.
 
 import (
 	"fmt"
@@ -29,12 +21,8 @@ import (
 // GatesSigFile is the sidecar written by 'staircase gate sign'.
 const GatesSigFile = "gates.json.sig"
 
-// VerifyGatesSignature checks the Ed25519 signature sidecar (gates.json.sig)
-// against the current gates.json content using the workspace signing public key.
-//
-// Returns (false, nil) when either gates.json or the signature sidecar are
-// absent - caller should warn but continue.  Returns (true, nil) when valid.
-// Returns (true, err) when the sidecar is present but the signature is invalid.
+// VerifyGatesSignature checks gates.json.sig against gates.json with the workspace public key. It returns (false, nil) when either file
+// is missing (the caller should warn and go on), (true, nil) when valid, and (true, err) when the signature is present but invalid.
 func VerifyGatesSignature(wsDir string) (sigPresent bool, err error) {
 	gatesPath := filepath.Join(wsDir, "gates.json")
 	data, err := os.ReadFile(gatesPath)
