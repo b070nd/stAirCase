@@ -11,6 +11,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 This release is about using stAirCase on a client's repository without putting anything of it into that repository, and about the audit
 trail being typed, bounded and complete.
 
+**The tag `v1.2.0` was created twice.** It was first pushed on 2026-10-23 on the last commit of the pull request branch, before the pull
+request was merged. The release workflow refused it, because that commit was not on `master`, so nothing was released from it. The tag was
+deleted and created again on the commit that was merged. The files are identical in both: the tree hash is the same. The Go module proxy
+fetched the first tag before it was deleted and keeps it, so its record for `v1.2.0` names the branch commit (`fef2239`) and not the
+merged one. `go install github.com/b070nd/stAirCase/src/cmd/staircase@v1.2.0` still builds the same source. `staircase version` in the
+released binaries reports the merged commit.
+
 ### Added
 
 - **Project profile.** `staircase project profile set` and `show` keep, per project and in your workspace, the settings every run of it

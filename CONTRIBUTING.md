@@ -64,10 +64,15 @@ lists every page.
    `## [X.Y.Z] - date` heading; it becomes the release notes. In the same change set the
    version in the pinned Action example in `docs/audit.md` and the default of
    `demo/ruleset-fixture.sh` to `vX.Y.Z` (a test fails until they name it).
-2. Merge to `master` with CI green, then tag from `master` (a published tag is never moved: the Go
-   checksum database and module proxy keep a version's first source for good; v1.0.0 is the one exception,
-   see the CHANGELOG):
-   `git tag -a vX.Y.Z -m "stAirCase vX.Y.Z" && git push origin vX.Y.Z`.
+2. Merge to `master` with CI green. Then tag the merge commit on an up to date `master`, never the pull request branch:
+
+   ```bash
+   git switch master && git pull --ff-only
+   git tag -a vX.Y.Z -m "stAirCase vX.Y.Z" && git push origin vX.Y.Z
+   ```
+
+   The release workflow refuses any commit that is not on `master`. A published tag is never moved, because the Go checksum database
+   and module proxy keep a version's first source for good. v1.0.0 and v1.2.0 are the two exceptions; the CHANGELOG says what happened.
 3. The release workflow builds the archives reproducibly, signs the
    checksums (cosign), attaches SBOMs and attests build provenance.
 4. Update the Homebrew tap with `packaging/homebrew-formula.sh` from the
