@@ -50,18 +50,18 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SMOKE_MODEL="${SMOKE_MODEL:-openai/gpt-6-astra}"
 
 case "$MODE" in
-  model)  [ -n "${AI_GATEWAY_API_KEY:-}" ] || { echo "⏭  smoke model skipped: AI_GATEWAY_API_KEY is not set"; exit 0; } ;;
+  model)  [ -n "${AI_GATEWAY_API_KEY:-}" ] || { echo "smoke model skipped: AI_GATEWAY_API_KEY is not set"; exit 0; } ;;
   claude) AUTH="$(claude auth status 2>/dev/null || true)"   # captured: grep -q in a pipe would SIGPIPE it
           [[ "$AUTH" =~ \"loggedIn\":\ *true ]] \
-            || { echo "⏭  smoke claude skipped: the claude CLI is not installed or not logged in"; exit 0; } ;;
+            || { echo "smoke claude skipped: the claude CLI is not installed or not logged in"; exit 0; } ;;
   gemini|gemini-ungated) command -v gemini >/dev/null && { [ -n "${SMOKE_GEMINI_PASS:-}" ] || [ -f "$HOME/.gemini/oauth_creds.json" ]; } \
-            || { echo "⏭  smoke gemini skipped: gemini is not installed, or has no login and SMOKE_GEMINI_PASS is not set"; exit 0; } ;;
+            || { echo "smoke gemini skipped: gemini is not installed, or has no login and SMOKE_GEMINI_PASS is not set"; exit 0; } ;;
   codex|codex-stop)
           CODEX="$(command -v codex || echo /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex)"
           "$CODEX" login status >/dev/null 2>&1 \
-            || { echo "⏭  smoke codex skipped: codex is not installed or not logged in"; exit 0; } ;;
+            || { echo "smoke codex skipped: codex is not installed or not logged in"; exit 0; } ;;
   opencode) command -v opencode >/dev/null && opencode providers list 2>&1 | grep -qE '[1-9][0-9]* credentials' \
-            || { echo "⏭  smoke opencode skipped: opencode is not installed or has no provider login"; exit 0; } ;;
+            || { echo "smoke opencode skipped: opencode is not installed or has no provider login"; exit 0; } ;;
   *) echo "usage: smoke.sh model|claude|gemini|codex|codex-stop|opencode"; exit 2 ;;
 esac
 
@@ -153,7 +153,7 @@ run() {
   RUN_PID=""
   local want="${WANT_FILE:-GREETING.md}"
   git -C "$REPO" cat-file -e "staircase/run-$id:$want" 2>/dev/null || die "run #$id did not commit $want"
-  echo "  ✓ run #$id SUCCESS after $n decision(s); $want:"
+  echo "  ok    run #$id SUCCESS after $n decision(s); $want:"
   git -C "$REPO" show "staircase/run-$id:$want" | sed 's/^/    │ /'
   staircase audit export "$id" >/dev/null && staircase audit verify "$STAIRCASE_DIR/audit/run-$id.checkpoint.json"
   fresh_verify "$id"
@@ -176,13 +176,13 @@ case "$MODE" in
     say "Recording a real run ($SMOKE_MODEL)"
     run 1 0 run 1 --record-llm "$WORK/llm.jsonl"
     ! grep -qF "$AI_GATEWAY_API_KEY" "$WORK/llm.jsonl" || die "the recording contains the gateway key"
-    echo "  ✓ recording holds $(wc -l < "$WORK/llm.jsonl" | tr -d ' ') exchanges and no key"
+    echo "  ok    recording holds $(wc -l < "$WORK/llm.jsonl" | tr -d ' ') exchanges and no key"
     say "Replaying it offline (gateway URL made unreachable)"
     printf 'http://127.0.0.1:9/v1' | staircase secret set LLM_GATEWAY_URL >/dev/null
     run 2 0 run 1 --replay-llm "$WORK/llm.jsonl"
     [ "$(git -C "$REPO" rev-parse staircase/run-1:GREETING.md)" = "$(git -C "$REPO" rev-parse staircase/run-2:GREETING.md)" ] \
       || die "the replay committed different bytes"
-    echo "  ✓ the replay committed the same bytes, offline" ;;
+    echo "  ok    the replay committed the same bytes, offline" ;;
   claude)
     say "Claude Code, every tool call governed by hooks"
     # A headless machine has no login: SMOKE_CLAUDE_PASS names the variable that holds Claude Code's own
@@ -206,13 +206,13 @@ case "$MODE" in
     [ -z "${SMOKE_GEMINI_MODEL:-}" ] || PASS_ARGS+=(--model "$SMOKE_GEMINI_MODEL")
     STRAY=STRAY.txt EXPECT_FAILED=1 SMOKE_MAX_SECS="${SMOKE_MAX_SECS:-240}" run 1 0 gemini --yes --allow GREETING.md ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$TASK"
     staircase inspect log 1 --full | grep -q unapproved_worktree_change || die "the chain does not record the unapproved worktree change"
-    echo "  ✓ the run failed and the chain records unapproved_worktree_change"
+    echo "  ok    the run failed and the chain records unapproved_worktree_change"
     [ "$(git -C "$REPO" rev-list --count main..staircase/run-1 2>/dev/null || echo 0)" = 0 ] || die "a commit was made although bytes nobody approved were in the worktree"
-    echo "  ✓ nothing was committed"
+    echo "  ok    nothing was committed"
     (cd "$REPO" && staircase recover 1 >"$WORK/recover.log" 2>&1) || { cat "$WORK/recover.log"; die "recover refused"; }
     git -C "$REPO" cat-file -e staircase/run-1:GREETING.md 2>/dev/null || die "recover did not deliver the approved file"
     if git -C "$REPO" cat-file -e staircase/run-1:STRAY.txt 2>/dev/null; then die "the stray file reached the commit"; fi
-    echo "  ✓ recover delivered the approved GREETING.md and not STRAY.txt:"
+    echo "  ok    recover delivered the approved GREETING.md and not STRAY.txt:"
     git -C "$REPO" show staircase/run-1:GREETING.md | sed 's/^/    │ /'
     staircase audit export 1 >/dev/null && staircase audit verify "$STAIRCASE_DIR/audit/run-1.checkpoint.json"
     fresh_verify 1 ;;
@@ -223,9 +223,9 @@ case "$MODE" in
       --check "$STOP_CHECK" "Create NOTES.txt containing one short line describing this project. Do not change any other file."
     staircase inspect log 1 | grep -E "done_checked|yield_decided" | sed 's/^/    /'
     [ "$(staircase inspect log 1 | grep -c done_checked)" -ge 2 ] || die "the Stop hook did not run the check twice: it never blocked the first attempt to stop"
-    echo "  ✓ the first attempt to stop was blocked by the failing check, the second allowed" ;;
+    echo "  ok    the first attempt to stop was blocked by the failing check, the second allowed" ;;
   codex)
     say "Codex, edits decided first, command changes reviewed after"
     run 1 0 codex --yes --model "${SMOKE_CODEX_MODEL:-gpt-6-luna}" --allow GREETING.md "$TASK" ;;
 esac
-echo "✅ smoke $MODE passed"
+echo "smoke $MODE passed"

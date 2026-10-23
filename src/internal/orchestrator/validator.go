@@ -31,14 +31,14 @@ type Validator struct {
 }
 
 const (
-	validatorSampleEvery = 5 // ponytail: fixed; make it a flag if operators need another rate
+	validatorSampleEvery = 5 // fixed for now; make it a flag if operators need another rate
 	validatorRejectLimit = 2 // rejections in a row before a human decides
 	validatorMaxFile     = 32 << 10
 )
 
 // sensitivePaths always go to a human, in every run and whatever the policy says (decide.go): build, CI, dependency and secret
 // files, CODEOWNERS and Gemini's repository settings, where a small change has a large effect.
-// ("**/" also matches at the root.) ponytail: fixed list; make it policy if projects need their own.
+// ("**/" also matches at the root.) The list is fixed for now; make it policy if projects need their own.
 var sensitivePaths = []string{".github/**", ".gitlab/**", ".circleci/**", ".husky/**", "**/.gitlab-ci.yml", "**/.travis.yml", "**/azure-pipelines.yml",
 	"**/Jenkinsfile", "**/Makefile", "**/GNUmakefile", "**/justfile", "**/Dockerfile", "**/go.mod", "**/go.sum", "**/package.json", "**/*.lock",
 	"**/.npmrc", "**/.gitattributes", "**/.gitmodules", "**/.pre-commit-config.yaml", "**/.env*", "**/*.sh",
@@ -130,8 +130,11 @@ func (v *Validator) review(ctx context.Context, model string, before, after map[
 	var vd verdict
 	dec := json.NewDecoder(strings.NewReader(text[i : j+1]))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&vd); err != nil || vd.Approve == nil {
-		return verdict{}, resp, fmt.Errorf("validator reply is not a JSON verdict: %v", err)
+	if err := dec.Decode(&vd); err != nil {
+		return verdict{}, resp, fmt.Errorf("validator reply is not a JSON verdict: %w", err)
+	}
+	if vd.Approve == nil {
+		return verdict{}, resp, fmt.Errorf("validator reply is not a JSON verdict: it has no \"approve\" field")
 	}
 	return vd, resp, nil
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── Schema migration tracking ────────────────────────────────────────────────
+// Schema migration tracking
 
 // TestInitDB_migrations_recorded checks that every entry in Migrations is
 // recorded in the schema_migrations table exactly once after InitDB.

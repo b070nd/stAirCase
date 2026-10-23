@@ -326,8 +326,8 @@ func (t *tail) String() string {
 }
 
 // withStderr is a failed agent's error with its stderr tail beside it, not in it. Error() is the cause alone: an error is logged,
-// returned to a runner and may be kept by it, and stderr text is a local diagnostic that must reach no record (Cloudroom persisted such
-// tails despite saying it did not). The run keeps the tail where only the person debugging reads it (orchestrator.runState.keepStderr).
+// returned to a runner and may be kept by it, and stderr text is a local diagnostic that must reach no record. The run keeps the tail
+// where only the person debugging reads it (orchestrator.runState.keepStderr).
 func withStderr(err error, t *tail) error {
 	if err == nil || t.String() == "" {
 		return err

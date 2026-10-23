@@ -10,7 +10,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
-// ─── Core types ───────────────────────────────────────────────────────────────
+// Core types
 
 // Severity classifies whether a failing gate blocks the run or is advisory.
 type Severity string
@@ -57,14 +57,14 @@ type Gate interface {
 	Run(ctx Context) Result
 }
 
-// ─── Registry ─────────────────────────────────────────────────────────────────
+// Registry
 
 var registry []Gate
 
 // Register adds a gate to the global registry. Call it from init() functions.
 func Register(g Gate) { registry = append(registry, g) }
 
-// ─── Runner ───────────────────────────────────────────────────────────────────
+// Runner
 
 // Report is the complete, JSON-serialisable output of a quality gate run.
 type Report struct {
@@ -141,7 +141,7 @@ func RunAll(ctx Context) Report {
 	return report
 }
 
-// ─── Result constructors (used by gate implementations) ──────────────────────
+// Result constructors (used by gate implementations)
 
 func pass(name, category string, sev Severity, msg string) Result {
 	return Result{Name: name, Category: category, Severity: sev, Status: StatusPass, Message: msg}

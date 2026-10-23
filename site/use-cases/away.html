@@ -33,10 +33,11 @@ staircase decide</code></pre>
 <h2 id="while-away">While you are away</h2>
 <ul>
   <li><strong>Approved on evidence only.</strong> A change inside <code>--allow</code> is approved when every <code>--check</code> passes on the exact state it would produce. Your policy rules still apply. <code>--away</code> needs at least one <code>--check</code>.</li>
-  <li><strong>What needs you is parked, not asked.</strong> A change without evidence, one outside the scope, a sensitive file, a guard hit or a shell command would come to you; while you are away it is parked. The agent is told at once that it is kept for you, and to go on with what it can do without it. The parked proposal is on the audit chain with why it needed you. It is never applied by itself.</li>
+  <li><strong>What needs you is parked, not asked.</strong> A change without evidence, one outside the scope, a sensitive file, a guard hit, a change to where your checks are defined or a shell command would come to you; while you are away it is parked. The agent is told at once that it is kept for you, and to go on with what it can do without it. The parked proposal is on the audit chain with why it needed you. It is never applied by itself.</li>
   <li><strong>The end is checked, not announced.</strong> When the agent stops, your checks run once more on the whole approved change. A change that does not pass ends the run failed. One that passes ends it <strong>awaiting review</strong>, with nothing committed. The process exits; nothing has to keep running.</li>
+  <li><strong>Delivery by policy.</strong> With <code>--deliver policy</code>, rules of your signed policy can deliver a change to the run branch without your review, but only when seven conditions hold, all read from the run's verified history. If one fails, the run waits for you and <code>staircase decide</code> names it. Review stays the default.</li>
 </ul>
-<p class="note">Evidence is as good as your checks. A check reads the files the agent changes, so an agent that may edit a test (or the script a check runs) can make the check pass. In v1.1.0, keep the files your checks read out of the story's scope.</p>
+<p class="note">Evidence is as good as your checks. A check reads the files the agent changes, so an agent that may edit a test (or the script a check runs) can make the check pass. The paths where your checks are defined are protected: a change to one always goes to a person, so while you are away it is parked (<code>--protect</code> adds more).</p>
 
 <h2 id="decide">When you are back: <code>staircase decide</code></h2>
 <div class="table-wrap">
@@ -53,6 +54,9 @@ staircase decide</code></pre>
 </div>
 <p>Without a terminal: <code>staircase decide 12 --accept</code> or <code>--reject</code>, with <code>-m</code> for why. A decision is bound to the review you saw.</p>
 
+<h2 id="outcomes">How each run stands</h2>
+<p>Every run has one outcome, read from its verified audit chain alone: running, awaiting review, blocked or partial, failed, no change, delivered, or delivered with incomplete evidence. <code>staircase decide</code> shows it with the run's attempts, time, tokens and cost against its limits. If the agent was lost (its process was killed), the run is parked until you say you looked with <code>staircase acknowledge &lt;run&gt;</code>; that launches nothing.</p>
+
 <h2 id="declared-commands">Declared commands and tools</h2>
 <p>An away run parks every command, because a command needs a person. A command you can name in advance can be declared:</p>
 <pre tabindex="0"><code>staircase claude "regenerate the API client and fix what breaks" --allow "src/**" --away --check "go test ./..." \
@@ -68,6 +72,7 @@ staircase host setup --allow "src/**" --check "go test ./..." --pass-env CLAUDE_
   <li>The runner's stdin and stdout reach Claude Code untouched; stAirCase's own output goes to a log in the workspace.</li>
   <li>Every call of the runner's MCP tools is a proposal stAirCase decides; a change made with an approved tool call reaches CAL 2.</li>
   <li>An argument stAirCase does not know is refused, naming it, because it could widen what the agent may do.</li>
+  <li>A runner can resume a session it started (<code>--resume</code>): an interrupted run continues, and one that awaits review is reviewed again as a whole.</li>
   <li>The agent works in stAirCase's run worktree; what reaches <code>staircase/run-N</code> is only what stAirCase derived from recorded decisions, with its certificate.</li>
 </ul>
 
@@ -75,13 +80,13 @@ staircase host setup --allow "src/**" --check "go test ./..." --pass-env CLAUDE_
 <ul>
   <li>The commit holds exactly the files the chain says were approved, derived again from the base commit, and the tree must be the one whose checks passed.</li>
   <li>The certificate cites the checks that ran on that tree and says the change was made while you were away and accepted afterwards.</li>
-  <li>Not yet in v1.1.0: a run that requires signed decisions cannot be away; delivery by policy without your review; a resumed or forked runner session (refused, naming the reason); hosted sessions of other agents than Claude Code.</li>
+  <li>Not yet: a run that requires signed decisions cannot be away; a forked runner session (refused, naming the reason); hosted sessions of other agents than Claude Code.</li>
 </ul>
-<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/away.md">Working while you are away</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/hosting.md">Governing sessions another program starts</a>.</p>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/away.md">Working while you are away</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/hosting.md">Governing sessions another program starts</a>.</p>
 </main>
 <footer class="site">
-  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
-  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+  <p>These pages describe stAirCase v1.2.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
 </footer>
 </body>
 </html>

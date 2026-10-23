@@ -58,10 +58,10 @@ workspace, never your checkout.`,
 			return err
 		}
 		for _, s := range hub.Removed() { // sessions whose process was killed: nothing of theirs is shown or decided
-			fmt.Printf("🧹 Removed the registration of %q: its process is gone\n", s.Name)
+			fmt.Printf("Removed the registration of %q: its process is gone\n", s.Name)
 		}
 		interruptedRunsOwned(wsDir)
-		fmt.Printf("🌐 Review every session in your browser: %s\n   Stop with Ctrl-C. Start sessions with --approval-port <port>.\n", hub.ReviewURL())
+		fmt.Printf("Review every session in your browser: %s\n   Stop with Ctrl-C. Start sessions with --approval-port <port>.\n", hub.ReviewURL())
 		<-ctx.Done()
 		return nil
 	},
@@ -90,7 +90,7 @@ func interruptedRunsOwned(wsDir string) {
 		held, known := orchestrator.RunOwner(wsDir, r.ID)
 		switch {
 		case known && !held:
-			fmt.Printf("⚠️  Run #%d was killed before it finished (its process is gone). Continue it: staircase resume %d, or recover what it approved: staircase recover %d\n", r.ID, r.ID, r.ID)
+			fmt.Printf("warning: Run #%d was killed before it finished (its process is gone). Continue it: staircase resume %d, or recover what it approved: staircase recover %d\n", r.ID, r.ID, r.ID)
 		case !known:
 			fmt.Printf("ℹ️  Run #%d says it is running; whether its process is alive cannot be told (it began before runs held a lock)\n", r.ID)
 		}

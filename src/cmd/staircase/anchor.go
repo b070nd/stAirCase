@@ -71,7 +71,7 @@ func auditAnchorHandler(_ *cobra.Command, args []string) error {
 	if err := audit.AppendAnchor(path+".anchor", a); err != nil {
 		return err
 	}
-	fmt.Printf("🪨 Run #%d's change certificate is in the log: uuid=%s log_index=%d\n", runID, a.UUID, a.LogIndex)
+	fmt.Printf("Run #%d's change certificate is in the log: uuid=%s log_index=%d\n", runID, a.UUID, a.LogIndex)
 	return nil
 }
 
@@ -104,6 +104,6 @@ func checkAnchor(sidecar string, payload []byte, trusted []ed25519.PublicKey) er
 	if err != nil {
 		return err
 	}
-	fmt.Printf("   🪨 in the transparency log: uuid=%s log_index=%d\n", a.UUID, a.LogIndex)
+	fmt.Printf("   in the transparency log: uuid=%s log_index=%d\n", a.UUID, a.LogIndex)
 	return nil
 }

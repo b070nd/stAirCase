@@ -59,10 +59,10 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 	tmpDir := filepath.Join(wsDir, "tmp")
 
 	if cleanDryRun {
-		fmt.Println("🔍 Dry-run mode - nothing will be deleted.")
+		fmt.Println("Dry-run mode - nothing will be deleted.")
 	}
 
-	// ── 1. Tmp: Python-era scripts and their sidecars, IPC sockets ────────────
+	// 1. Tmp: Python-era scripts and their sidecars, IPC sockets
 	removed := 0
 	for _, pat := range []string{"graph_exec_*", "*.sock"} {
 		matches, _ := filepath.Glob(filepath.Join(tmpDir, pat))
@@ -72,16 +72,16 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 	if removed == 0 {
-		fmt.Println("   ✓ tmp/ already clean.")
+		fmt.Println("   tmp/ already clean.")
 	}
 
 	if !cleanAggressive {
 		return nil
 	}
 
-	fmt.Println("   🔬 Aggressive GC...")
+	fmt.Println("   Aggressive GC...")
 
-	// ── 2. Preserve set: FAILED run IDs if --keep-failed ──────────────────────
+	// 2. Preserve set: FAILED run IDs if --keep-failed
 	preservedRunIDs := map[int64]bool{}
 	if cleanKeepFailed {
 		db, err := persistence.InitDB(wsDir)
@@ -92,24 +92,24 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 				preservedRunIDs[r.ID] = true
 			}
 			_ = db.Close()
-			fmt.Printf("   🔒 Preserving %d FAILED run(s) (--keep-failed).\n", len(preservedRunIDs))
+			fmt.Printf("   Preserving %d FAILED run(s) (--keep-failed).\n", len(preservedRunIDs))
 		}
 	}
 
-	// ── 3. Remove the Python venv older versions installed ───────────────────
+	// 3. Remove the Python venv older versions installed
 	venvPath := filepath.Join(wsDir, "venv")
 	if info, err := os.Lstat(venvPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			// Never follow a symlink - it could point outside the workspace.
-			fmt.Printf("   ⚠️  Skipping venv removal: %s is a symlink.\n", venvPath)
+			fmt.Printf("   warning: Skipping venv removal: %s is a symlink.\n", venvPath)
 		} else {
 			removeTarget(venvPath)
 		}
 	}
 
-	// ── 4. Prune stale staircase/run-* branches in project repos ──────────────
+	// 4. Prune stale staircase/run-* branches in project repos
 	if _, err := os.Stat(filepath.Join(wsDir, legalHoldFile)); err == nil {
-		fmt.Printf("   🔒 Legal hold in effect (%s): no audit rows, cases or run branches are deleted. Remove the file to allow it.\n",
+		fmt.Printf("   Legal hold in effect (%s): no audit rows, cases or run branches are deleted. Remove the file to allow it.\n",
 			filepath.Join(wsDir, legalHoldFile))
 		return nil
 	}
@@ -133,7 +133,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 	cutoff := time.Now().AddDate(0, 0, -30)
 	for _, repoPath := range sourcePaths {
 		if err := pruneRepoBranches(repoPath, wsDir, cutoff, preservedRunIDs); err != nil {
-			fmt.Printf("   ⚠️  %s: %v\n", repoPath, err)
+			fmt.Printf("   warning: %s: %v\n", repoPath, err)
 		}
 	}
 
@@ -159,21 +159,21 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 	seen := map[int64]bool{}
 	flagged, err := store.ListFlaggedCases()
 	if err != nil {
-		fmt.Printf("   ⚠️  Listing flagged cases: %v\n", err)
+		fmt.Printf("   warning: Listing flagged cases: %v\n", err)
 		return
 	}
 	for _, c := range flagged {
 		lines = append(lines, archiveLine{"case", c})
 		runs, err := store.ListRunsByCase(c.ID)
 		if err != nil {
-			fmt.Printf("   ⚠️  Archiving case %d: %v\n", c.ID, err)
+			fmt.Printf("   warning: Archiving case %d: %v\n", c.ID, err)
 			return
 		}
 		for _, r := range runs {
 			lines = append(lines, archiveLine{"run", r})
 			rows, err := history.ReadRows(store, r.ID) // archived as stored: the archive is a copy, not a judgement
 			if err != nil {
-				fmt.Printf("   ⚠️  Archiving run %d: %v\n", r.ID, err)
+				fmt.Printf("   warning: Archiving run %d: %v\n", r.ID, err)
 				return
 			}
 			for _, e := range rows.Entries {
@@ -184,7 +184,7 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 	}
 	old, err := store.PrunableEventLogs(cleanKeepEventRows) // whole runs only
 	if err != nil {
-		fmt.Printf("   ⚠️  Listing old event log rows: %v\n", err)
+		fmt.Printf("   warning: Listing old event log rows: %v\n", err)
 		return
 	}
 	for _, e := range old {
@@ -197,14 +197,14 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 	}
 	path, err := writeArchive(wsDir, lines)
 	if err != nil {
-		fmt.Printf("   ⚠️  The audit rows could not be archived, so none were deleted: %v\n", err)
+		fmt.Printf("   warning: The audit rows could not be archived, so none were deleted: %v\n", err)
 		return
 	}
-	fmt.Printf("   📦 Archived %d record(s) to %s before deleting them.\n", len(lines), path)
+	fmt.Printf("   Archived %d record(s) to %s before deleting them.\n", len(lines), path)
 	if n, err := store.DeleteFlaggedCases(); err != nil {
-		fmt.Printf("   ⚠️  DeleteFlaggedCases: %v\n", err)
+		fmt.Printf("   warning: DeleteFlaggedCases: %v\n", err)
 	} else if n > 0 {
-		fmt.Printf("   🗑  Purged %d flagged case(s).\n", n)
+		fmt.Printf("   Purged %d flagged case(s).\n", n)
 	}
 	if len(old) > 0 {
 		var runIDs []int64
@@ -214,9 +214,9 @@ func purgeAudit(store *persistence.Store, wsDir string) {
 			}
 		}
 		if n, err := store.PruneEventLogsOfRuns(runIDs); err != nil {
-			fmt.Printf("   ⚠️  PruneEventLogs: %v\n", err)
+			fmt.Printf("   warning: PruneEventLogs: %v\n", err)
 		} else if n > 0 {
-			fmt.Printf("   🗑  Pruned %d old event log row(s) of %d run(s).\n", n, len(runIDs))
+			fmt.Printf("   Pruned %d old event log row(s) of %d run(s).\n", n, len(runIDs))
 		}
 	}
 }
@@ -330,7 +330,7 @@ func pruneRepoBranches(repoPath, wsDir string, cutoff time.Time, preserve map[in
 		}
 
 		if !delivered(repoPath, branch) {
-			fmt.Printf("   🔒 Kept %s: it is not merged anywhere else, so it holds the only copy of the run's commit.\n", branch)
+			fmt.Printf("   Kept %s: it is not merged anywhere else, so it holds the only copy of the run's commit.\n", branch)
 			continue
 		}
 
@@ -345,15 +345,15 @@ func pruneRepoBranches(repoPath, wsDir string, cutoff time.Time, preserve map[in
 		}
 		if wtErr == nil {
 			if out, err := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", wt).CombinedOutput(); err != nil {
-				fmt.Printf("   ⚠️  Remove worktree %s: %v: %s\n", wt, err, strings.TrimSpace(string(out)))
+				fmt.Printf("   warning: Remove worktree %s: %v: %s\n", wt, err, strings.TrimSpace(string(out)))
 				continue
 			}
-			fmt.Printf("   🗑  Removed worktree: %s\n", wt)
+			fmt.Printf("   Removed worktree: %s\n", wt)
 		}
 		if err := exec.Command("git", "-C", repoPath, "branch", "-D", branch).Run(); err != nil {
-			fmt.Printf("   ⚠️  Delete %s: %v\n", branch, err)
+			fmt.Printf("   warning: Delete %s: %v\n", branch, err)
 		} else {
-			fmt.Printf("   🗑  Deleted branch: %s\n", branch)
+			fmt.Printf("   Deleted branch: %s\n", branch)
 		}
 	}
 	if !cleanDryRun {
@@ -369,8 +369,8 @@ func removeTarget(path string) {
 		return
 	}
 	if err := os.RemoveAll(path); err != nil {
-		fmt.Printf("   ⚠️  Remove %s: %v\n", filepath.Base(path), err)
+		fmt.Printf("   warning: Remove %s: %v\n", filepath.Base(path), err)
 	} else {
-		fmt.Printf("   🗑  Removed: %s\n", path)
+		fmt.Printf("   Removed: %s\n", path)
 	}
 }

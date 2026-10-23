@@ -139,7 +139,7 @@ func runCase(l launch, caseID int64) error {
 	go func() {
 		select {
 		case <-sigCh:
-			fmt.Fprintln(os.Stderr, "\n⏹  Stopping the run and recording its outcome (further Ctrl-C are ignored)…")
+			fmt.Fprintln(os.Stderr, "\nStopping the run and recording its outcome (further Ctrl-C are ignored)…")
 			cancel()
 		case <-ctx.Done():
 		}
@@ -151,7 +151,7 @@ func runCase(l launch, caseID int64) error {
 		go func() { _ = http.ListenAndServe(l.metricsAddr, mux) }() // #nosec G114 -- metrics addr is operator-controlled, not user input
 	}
 
-	// Configure OpenTelemetry when --otel-endpoint is provided (CHECK 10.3.1).
+	// Configure OpenTelemetry when --otel-endpoint is provided.
 	otelShutdown := obs.InitOTel(l.otelEndpoint)
 	defer otelShutdown()
 

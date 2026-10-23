@@ -21,7 +21,7 @@ func randomKey(t *testing.T) []byte {
 	return key
 }
 
-// ─── Encrypt / Decrypt ────────────────────────────────────────────────────────
+// Encrypt / Decrypt
 
 func TestEncryptDecrypt_roundtrip(t *testing.T) {
 	key := randomKey(t)
@@ -88,7 +88,7 @@ func TestDecrypt_invalid_base64_fails(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// ─── GenerateKey / LoadKey ────────────────────────────────────────────────────
+// GenerateKey / LoadKey
 
 func TestGenerateKey_creates_key_file(t *testing.T) {
 	dir := t.TempDir()
@@ -165,7 +165,7 @@ func TestLoadKey_insecure_permissions_rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "insecure permissions", "error must mention insecure permissions")
 }
 
-// ─── Version prefix (C-3) ─────────────────────────────────────────────────────
+// Version prefix (C-3)
 
 func TestEncrypt_produces_v1_prefix(t *testing.T) {
 	key := make([]byte, 32)
@@ -200,7 +200,7 @@ func TestDecrypt_legacy_no_prefix_still_works(t *testing.T) {
 	assert.Equal(t, plaintext, got)
 }
 
-// ─── Error paths ─────────────────────────────────────────────────────────────
+// Error paths
 
 func TestGenerateKey_nonwritable_dir_returns_error(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -233,29 +233,4 @@ func TestDecrypt_ciphertext_too_short_returns_error(t *testing.T) {
 	_, err := crypto.Decrypt(key, oneByteB64)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ciphertext too short")
-}
-
-// ─── CHECK 4.2.5: named test aliases for checklist grep ──────────────────────
-// The checklist uses: go test -run "TestDecrypt.*Corrupt|TestDecrypt.*WrongKey"
-// The equivalents above use snake_case names; these CamelCase aliases ensure
-// the grep succeeds while exercising the same logic.
-
-func TestDecryptWrongKey(t *testing.T) {
-	key1 := randomKey(t)
-	key2 := randomKey(t)
-	ct, err := crypto.Encrypt(key1, "secret data")
-	require.NoError(t, err)
-	_, err = crypto.Decrypt(key2, ct)
-	assert.Error(t, err, "decrypting with wrong key must fail (AES-GCM auth tag mismatch)")
-}
-
-func TestDecryptCorrupt(t *testing.T) {
-	key := randomKey(t)
-	ct, err := crypto.Encrypt(key, "authentic data")
-	require.NoError(t, err)
-	// Flip one bit in the ciphertext body (after the nonce, before the tag).
-	bs := []byte(ct)
-	bs[len(bs)/2] ^= 0xFF
-	_, err = crypto.Decrypt(key, string(bs))
-	assert.Error(t, err, "corrupt ciphertext must not decrypt (AES-GCM auth tag fails)")
 }

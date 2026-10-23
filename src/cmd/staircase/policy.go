@@ -26,7 +26,7 @@ var policySignCmd = &cobra.Command{
 
 Re-run this command after every policy edit. staircase run warns when the
 signature file is absent and refuses to run when the signature is invalid.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 
 		policyPath := filepath.Join(wsDir, "policy.json")
@@ -46,7 +46,7 @@ signature file is absent and refuses to run when the signature is invalid.`,
 			return fmt.Errorf("write policy signature: %w", err)
 		}
 
-		fmt.Printf("✅ policy.json signed → %s\n", sigPath)
+		fmt.Printf("policy.json signed → %s\n", sigPath)
 		fmt.Printf("   sig: %s…\n", sigHex[:16])
 		return nil
 	},
@@ -61,7 +61,7 @@ content and the workspace public key (.signing.pub).
 
 Exits 0 when the signature is valid, non-zero otherwise.  Useful in CI to
 confirm that policy.json has not been modified since it was last signed.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 
 		sigPresent, err := policy.VerifyPolicySignature(wsDir)
@@ -72,7 +72,7 @@ confirm that policy.json has not been modified since it was last signed.`,
 			return fmt.Errorf("no policy.json.sig found - run 'staircase policy sign' first")
 		}
 
-		fmt.Println("✅ policy.json signature verified.")
+		fmt.Println("policy.json signature verified.")
 		return nil
 	},
 }

@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # lib.sh - helpers shared by run-demo.sh and smoke.sh (sourced, not run).
 
-say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
+say()  { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
 note() { printf '  \033[2m%s\033[0m\n' "$*"; }
-ok()   { printf '  ✓ %s\n' "$*"; }
+ok()   { printf '  ok    %s\n' "$*"; }
 # die prints why, and the tail of $RUN_LOG when a run log is set.
-die()  { echo "✗ $*"; if [ -f "${RUN_LOG:-}" ]; then tail -20 "$RUN_LOG"; fi; exit 1; }
+die()  { echo "error: $*"; if [ -f "${RUN_LOG:-}" ]; then tail -20 "$RUN_LOG"; fi; exit 1; }
 
 require_tools() {
   for tool in "$@"; do command -v "$tool" >/dev/null || die "$tool required"; done

@@ -221,17 +221,17 @@ func TestRecover_only_a_cut_append_is_a_torn_tail(t *testing.T) {
 		_, l0 := journalLines(t, r0)
 		require.NoError(t, json.Unmarshal([]byte(l0[0]), &first))
 	}
-	real, _ := json.Marshal(struct { // the field order appendJournal writes
+	line, _ := json.Marshal(struct { // the field order appendJournal writes
 		Seq     int             `json:"seq"`
 		Source  string          `json:"source"`
 		Request json.RawMessage `json:"request"`
 	}{3, "operator", first.Request})
-	for _, n := range []int{1, 7, 8, 12, 20, 30, len(real) / 2, len(real) - 2, len(real) - 1} {
+	for _, n := range []int{1, 7, 8, 12, 20, 30, len(line) / 2, len(line) - 2, len(line) - 1} {
 		cases = append(cases, struct {
 			name   string
 			tail   string
 			recovs bool
-		}{fmt.Sprintf("a real line cut after %d of %d bytes", n, len(real)), string(real[:n]), true})
+		}{fmt.Sprintf("a real line cut after %d of %d bytes", n, len(line)), string(line[:n]), true})
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 func fileEditReq(actionType string, confidence float64, files ...string) domain.YieldRequest {
 	edits := make([]domain.ProposedEdit, len(files))
@@ -47,7 +47,7 @@ func loadEngine(dir string) (*policy.Engine, error) {
 	return snap.Engine, nil
 }
 
-// ─── LoadEngine ───────────────────────────────────────────────────────────────
+// LoadEngine
 
 func TestLoadEngine_missing_file_returns_empty(t *testing.T) {
 	e, err := loadEngine(t.TempDir())
@@ -75,7 +75,7 @@ func TestLoadEngine_invalid_json_returns_error(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// ─── Evaluate - empty engine ──────────────────────────────────────────────────
+// Evaluate - empty engine
 
 func TestEvaluate_empty_engine_never_approves(t *testing.T) {
 	e := &policy.Engine{}
@@ -85,7 +85,7 @@ func TestEvaluate_empty_engine_never_approves(t *testing.T) {
 	assert.Contains(t, dec.Reason, "no matching rule")
 }
 
-// ─── ActionType matching ──────────────────────────────────────────────────────
+// ActionType matching
 
 func TestEvaluate_action_type_match(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -164,7 +164,7 @@ func TestEvaluate_action_type_case_insensitive(t *testing.T) {
 	assert.True(t, dec.Approved)
 }
 
-// ─── Confidence matching ──────────────────────────────────────────────────────
+// Confidence matching
 
 func TestEvaluate_confidence_above_threshold_approves(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -202,7 +202,7 @@ func TestEvaluate_zero_min_confidence_matches_any(t *testing.T) {
 	assert.True(t, dec.Approved)
 }
 
-// ─── Extension matching ───────────────────────────────────────────────────────
+// Extension matching
 
 func TestEvaluate_allowed_extension_matches(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -251,7 +251,7 @@ func TestEvaluate_no_edits_vacuously_satisfies_extension_rule(t *testing.T) {
 	assert.True(t, dec.Approved)
 }
 
-// ─── EffectReject ─────────────────────────────────────────────────────────────
+// EffectReject
 
 func TestEvaluate_reject_effect_matched_is_true_approved_is_false(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -263,7 +263,7 @@ func TestEvaluate_reject_effect_matched_is_true_approved_is_false(t *testing.T) 
 	assert.Contains(t, dec.Reason, "auto-rejected")
 }
 
-// ─── Default effect ───────────────────────────────────────────────────────────
+// Default effect
 
 func TestEvaluate_zero_effect_defaults_to_approve(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -274,7 +274,7 @@ func TestEvaluate_zero_effect_defaults_to_approve(t *testing.T) {
 	assert.True(t, dec.Approved)
 }
 
-// ─── First-match wins ─────────────────────────────────────────────────────────
+// First-match wins
 
 func TestEvaluate_first_matching_rule_wins(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -287,7 +287,7 @@ func TestEvaluate_first_matching_rule_wins(t *testing.T) {
 	assert.Contains(t, dec.Reason, "rule #0")
 }
 
-// ─── Combined conditions ──────────────────────────────────────────────────────
+// Combined conditions
 
 func TestEvaluate_combined_conditions_all_must_match(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -313,7 +313,7 @@ func TestEvaluate_combined_conditions_all_must_match(t *testing.T) {
 	assert.False(t, dec.Matched, "wrong extension should not match")
 }
 
-// ─── Reason string ────────────────────────────────────────────────────────────
+// Reason string
 
 func TestEvaluate_reason_contains_rule_index(t *testing.T) {
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -325,7 +325,7 @@ func TestEvaluate_reason_contains_rule_index(t *testing.T) {
 	assert.Contains(t, dec.Reason, "rule #1")
 }
 
-// ─── approvalhttp integration (uses domain.YieldRequest directly) ─────────────
+// approvalhttp integration (uses domain.YieldRequest directly)
 
 // TestEvaluate_type_compatible_with_domain verifies that domain.YieldRequest
 // (the canonical type) is accepted by Evaluate without any conversion - i.e.
@@ -343,11 +343,10 @@ func TestEvaluate_type_compatible_with_domain(t *testing.T) {
 	assert.True(t, dec.Approved)
 }
 
-// ─── Checklist-named tests (CHECK 7.1.3–7.2.2) ───────────────────────────────
-// The compliance checklist (docs/compliance-checklist.md) specifies exact test names via grep.
+// Policy loading, rule order and session limits
 
 // TestPolicyLoadValidation verifies that LoadEngine rejects files with invalid
-// JSON so the caller can surface the error to the operator (CHECK 7.1.3).
+// JSON so the caller can surface the error to the operator.
 func TestPolicyLoadValidation(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(`not-json`), 0o600))
@@ -357,8 +356,7 @@ func TestPolicyLoadValidation(t *testing.T) {
 }
 
 // TestDenyBeatsAllow verifies that a reject-effect rule wins when it appears
-// first: the engine is first-match-wins, so rule order determines outcome
-// (CHECK 7.1.4).
+// first: the engine is first-match-wins, so rule order determines outcome.
 func TestDenyBeatsAllow(t *testing.T) {
 	// Reject rule first → it matches custom before the catch-all approve.
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -374,7 +372,7 @@ func TestDenyBeatsAllow(t *testing.T) {
 
 // TestAllowBeatesDeny verifies that the engine is first-match-wins, not
 // deny-over-allow: when an approve rule appears before a reject rule for the
-// same request, the approve rule wins (CHECK 7.1.4).
+// same request, the approve rule wins.
 func TestAllowBeatesDeny(t *testing.T) {
 	// Approve rule first → wins even though a reject rule also matches.
 	e := &policy.Engine{Rules: []policy.Rule{
@@ -389,7 +387,7 @@ func TestAllowBeatesDeny(t *testing.T) {
 
 // TestBlanketDenyRequiresFlag verifies that a policy file containing a rule
 // that would reject ALL requests (no conditions + EffectReject) is refused by
-// LoadEngine unless allow_blanket_deny is explicitly true (CHECK 7.1.5).
+// LoadEngine unless allow_blanket_deny is explicitly true.
 func TestBlanketDenyRequiresFlag(t *testing.T) {
 	dir := t.TempDir()
 
@@ -410,7 +408,7 @@ func TestBlanketDenyRequiresFlag(t *testing.T) {
 
 // TestLimitExhaustionAsksOperator verifies that CheckLimits returns exhausted=true
 // when a counter reaches its cap, signalling that the operator must be consulted -
-// the limit must NEVER be silently allowed or silently denied (CHECK 7.2.2).
+// the limit must NEVER be silently allowed or silently denied.
 func TestLimitExhaustionAsksOperator(t *testing.T) {
 	e := &policy.Engine{Limits: policy.Limits{MaxAutoApproved: 5}}
 
@@ -429,7 +427,7 @@ func TestLimitExhaustionAsksOperator(t *testing.T) {
 	assert.False(t, exhausted, "zero limit (unlimited) must always return exhausted=false")
 }
 
-// ─── VerifyPolicySignature ────────────────────────────────────────────────────
+// VerifyPolicySignature
 
 // setupSignedPolicy creates a temp workspace with a valid policy.json + signing
 // key pair + policy.json.sig so tests can exercise VerifyPolicySignature.

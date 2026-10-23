@@ -340,11 +340,11 @@ func changesetVerify(w io.Writer, id string, minCAL int) error {
 		}
 		fmt.Fprintln(w)
 		for _, p := range m.Problems {
-			fmt.Fprintf(w, "   ✗ %s\n", tui.Safe(p))
+			fmt.Fprintf(w, "   problem: %s\n", tui.Safe(p))
 		}
 	}
 	for _, p := range r.Problems {
-		fmt.Fprintf(w, "✗ %s\n", tui.Safe(p))
+		fmt.Fprintf(w, "problem: %s\n", tui.Safe(p))
 	}
 	if !r.OK() {
 		return fmt.Errorf("change set %s does not hold", id)

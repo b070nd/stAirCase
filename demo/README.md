@@ -75,7 +75,7 @@ allows 2 such proposals, so the 3rd halts the run (`drift_halt`), and the case
 does not run again until you pass `--ack-drift`:
 
 ```
-🧭 Drift: more than 2 proposals reached outside the stories' scope - halting run #1
-✓ run halted (KILLED) and exited 1
-✓ the case does not run again until 'staircase run 1 --ack-drift'
+Drift: more than 2 proposals reached outside the stories' scope - halting run #1
+  ok    run halted (KILLED) and exited 1
+  ok    the case does not run again until 'staircase run 1 --ack-drift'
 ```

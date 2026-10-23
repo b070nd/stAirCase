@@ -51,15 +51,15 @@ staircase attach --off                # back to normal</code></pre>
   <li>Your current branch moves to one new commit with the approved files, your message, an <code>Assisted-by: &lt;agent&gt;</code> trailer and a change certificate.</li>
 </ol>
 <p>Rejected changes are not committed and not thrown away: they stay in your working files, uncommitted. Edits you did not stage are left alone. If your branch moved while you were deciding, it is not touched, and the certified commit stays on its <code>staircase/run-N</code> branch.</p>
-<p><code>staircase attach</code> installs a pre-commit hook that refuses <code>git commit</code> and shows how to seal. It is not a wall: <code>git commit --no-verify</code> gets through, which is why the <a href="../use-cases/ci.html">CI check</a> is the second line. An existing pre-commit hook of your own is never replaced.</p>
+<p><code>staircase attach</code> installs a pre-commit hook that refuses <code>git commit</code> and shows how to seal. It is not a wall: <code>git commit --no-verify</code> gets through, which is why the <a href="../use-cases/ci.html">CI check</a> is the second line. An existing pre-commit hook of your own is never replaced, and nothing is written into your repository's files: if <code>core.hooksPath</code> points inside the working tree (a <code>.husky</code> folder), <code>attach</code> refuses and names the setting. <code>staircase seal</code> takes <code>--allow</code> like the other commands.</p>
 
 <h2 id="level">Why CAL 2, and not more</h2>
 <p>Every byte that reaches your branch was decided, but nobody governed what the agent did on its own machine or in your checkout. A second person can still sign a reviewed change with <code>staircase sign</code>, but CAL 4 needs CAL 3 first, so a reviewed or sealed change stays at CAL 2. For CAL 3, run the agent through stAirCase (<code>staircase claude</code>, <code>staircase codex</code>): see <a href="../use-cases/governed-runs.html">governed runs</a>.</p>
-<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/review.md">Reviewing changes made elsewhere</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/attach.md">Agents in your own checkout</a>.</p>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/review.md">Reviewing changes made elsewhere</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/attach.md">Agents in your own checkout</a>.</p>
 </main>
 <footer class="site">
-  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
-  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+  <p>These pages describe stAirCase v1.2.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
 </footer>
 </body>
 </html>

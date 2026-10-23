@@ -40,7 +40,7 @@ staircase verify &lt;commit&gt; --key signing.pub</code></pre>
 <p>The ledger holds the approved content, so it stays in your workspace; to let a reviewer rebuild, give them the ledger file.</p>
 
 <h2 id="audit-chain">The audit chain</h2>
-<p>Each event of a run is stored with a hash of its content and of the event before it. Changing, removing or reordering any event breaks every hash after it. A decision is written to the chain before the agent learns it, and secrets are removed from every event before it is stored.</p>
+<p>Each event of a run is stored with a hash of its content and of the event before it. Changing, removing or reordering any event breaks every hash after it. A decision is written to the chain before the agent learns it, and secrets are removed from every event before it is stored. Each reviewer model's verdict, each launch of an agent and a checkout that held changes the run did not have are events on the chain too.</p>
 <pre tabindex="0"><code>staircase inspect runs --case 1        # runs of case 1 and their status
 staircase inspect log 7                # the events of run 7; also checks the chain
 staircase replay 7                     # just the decisions, in order, after checking the chain</code></pre>
@@ -65,11 +65,11 @@ staircase verify staircase/run-7 --check-anchor</code></pre>
 
 <h2 id="missing">When the evidence cannot be written</h2>
 <p>The commit is made first; the ledger and the signed certificate are written after it. If either cannot be written, the commit is still on its run branch and the run says so plainly: its outcome is <code>delivered_without_evidence</code>, and the audit chain has an <code>evidence_failed</code> event. With <code>--require-evidence</code> the run also exits non-zero, so a script or CI job cannot mistake it for a complete result.</p>
-<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/audit.md">Audit evidence</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/spec/certificate-v1.md">the certificate specification</a>.</p>
+<p>More: <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/audit.md">Audit evidence</a>, <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/spec/certificate-v1.md">the certificate specification</a>.</p>
 </main>
 <footer class="site">
-  <p>These pages describe stAirCase v1.1.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
-  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.1.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+  <p>These pages describe stAirCase v1.2.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
 </footer>
 </body>
 </html>

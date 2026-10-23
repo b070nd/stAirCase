@@ -38,7 +38,7 @@ the 'repo' scope.
 If the remote is not github.com the branch is still pushed but PR creation
 is skipped and the PR URL is printed for manual use.`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		runID, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid run-id %q: %w", args[0], err)
@@ -50,7 +50,7 @@ is skipped and the PR URL is printed for manual use.`,
 			token = os.Getenv("GITHUB_TOKEN")
 		}
 
-		// ── Load run record ───────────────────────────────────────────────────
+		// Load run record
 		db, err := persistence.InitDB(wsDir)
 		if err != nil {
 			return fmt.Errorf("open workspace db: %w", err)
@@ -72,14 +72,20 @@ is skipped and the PR URL is printed for manual use.`,
 			return fmt.Errorf("run %d has no commit hash - nothing to push", runID)
 		}
 
-		// ── Open git repo ─────────────────────────────────────────────────────
+		// Open git repo
 		caseRec, err := store.GetCase(run.CaseID)
-		if err != nil || caseRec == nil {
-			return fmt.Errorf("load case %d: %v", run.CaseID, err)
+		if err != nil {
+			return fmt.Errorf("load case %d: %w", run.CaseID, err)
+		}
+		if caseRec == nil {
+			return fmt.Errorf("load case %d: not found", run.CaseID)
 		}
 		proj, err := store.GetProject(caseRec.ProjectID)
-		if err != nil || proj == nil {
-			return fmt.Errorf("load project %d: %v", caseRec.ProjectID, err)
+		if err != nil {
+			return fmt.Errorf("load project %d: %w", caseRec.ProjectID, err)
+		}
+		if proj == nil {
+			return fmt.Errorf("load project %d: not found", caseRec.ProjectID)
 		}
 
 		gr, err := orchestrator.OpenGitRepo(proj.SourcePath)
@@ -87,7 +93,7 @@ is skipped and the PR URL is printed for manual use.`,
 			return fmt.Errorf("open git repo %s: %w", proj.SourcePath, err)
 		}
 
-		// ── Push branch ───────────────────────────────────────────────────────
+		// Push branch
 		runBranch := fmt.Sprintf("staircase/run-%d", runID)
 		remote := pushRemote
 		if remote == "" {
@@ -104,17 +110,17 @@ is skipped and the PR URL is printed for manual use.`,
 		owner, repo, isGitHub := parseGitHubOwnerRepo(remoteURL)
 		pushToken := token
 		if !isGitHub && pushToken != "" {
-			fmt.Printf("   ⚠️  Remote %q is not github.com - pushing without the GitHub token\n", redactRemote(remoteURL))
+			fmt.Printf("   warning: Remote %q is not github.com - pushing without the GitHub token\n", redactRemote(remoteURL))
 			pushToken = ""
 		}
 
-		fmt.Printf("⬆️  Pushing %s → %s/%s …\n", runBranch, remote, runBranch)
+		fmt.Printf("Pushing %s → %s/%s …\n", runBranch, remote, runBranch)
 		if err := gr.Push(remote, runBranch, pushToken); err != nil {
 			return fmt.Errorf("push failed: %w", err)
 		}
-		fmt.Println("✅ Branch pushed.")
+		fmt.Println("Branch pushed.")
 
-		// ── GitHub PR creation ────────────────────────────────────────────────
+		// GitHub PR creation
 		if !isGitHub {
 			fmt.Printf("   ℹ️  Remote %q is not a recognized GitHub URL - create the PR manually:\n", redactRemote(remoteURL))
 			fmt.Printf("   %s\n", manualPRURL(remoteURL, runBranch, run.GitBranch))
@@ -135,18 +141,18 @@ is skipped and the PR URL is printed for manual use.`,
 		if err != nil {
 			return fmt.Errorf("create PR: %w", err)
 		}
-		fmt.Printf("🎉 Pull request opened: %s\n", prURL)
+		fmt.Printf("Pull request opened: %s\n", prURL)
 
 		// Post a commit status so the PR shows the staircase check green.
 		if postErr := postGitHubStatus(token, owner, repo, run.GitCommitHash, "success",
 			fmt.Sprintf("Agent run #%d completed", runID)); postErr != nil {
-			fmt.Printf("   ⚠️  Could not post commit status: %v\n", postErr)
+			fmt.Printf("   warning: Could not post commit status: %v\n", postErr)
 		}
 		return nil
 	},
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// helpers
 
 // parseGitHubOwnerRepo extracts owner and repo from a GitHub remote URL; ok is false for anything else.
 //

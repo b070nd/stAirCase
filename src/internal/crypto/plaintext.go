@@ -21,7 +21,7 @@ func ScrubBytes(data []byte, secrets []string) []byte {
 	return data
 }
 
-// Plaintext wraps a byte slice. It never leaks its value through fmt, log or json (String returns "<redacted>", CHECK 4.2.2), and
+// Plaintext wraps a byte slice. It never leaks its value through fmt, log or json (String returns "<redacted>"), and
 // Zero() overwrites the bytes when they are no longer needed. Use NewPlaintext, Value() and Zero().
 type Plaintext struct {
 	val []byte

@@ -43,7 +43,7 @@ func runYield(ctx context.Context, req domain.YieldRequest, opts ...tea.ProgramO
 	return final.resp
 }
 
-// ─── Model ────────────────────────────────────────────────────────────────────
+// Model
 
 type yieldState int
 
@@ -70,7 +70,7 @@ func newYieldModel(req domain.YieldRequest) yieldModel {
 	return yieldModel{req: req, rendered: rendered, width: 120, height: 40}
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// Styles
 
 var (
 	styleHeader  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
@@ -83,7 +83,7 @@ var (
 	styleBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
 )
 
-// ─── tea.Model interface ──────────────────────────────────────────────────────
+// tea.Model interface
 
 func (m yieldModel) Init() tea.Cmd { return nil }
 
@@ -135,7 +135,7 @@ func (m yieldModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m yieldModel) View() string {
 	var sb strings.Builder
 
-	sb.WriteString(styleHeader.Render("⚠  HITL Yield Request"))
+	sb.WriteString(styleHeader.Render("HITL Yield Request"))
 	sb.WriteString("\n\n")
 	if m.req.Guard != "" {
 		sb.WriteString(styleReject.Render("CHECK: " + Safe(m.req.Guard)))

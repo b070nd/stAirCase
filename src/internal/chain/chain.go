@@ -38,7 +38,7 @@ func CheckSize(eventType, payload string) error {
 
 // HashV1 is the version 1 chain hash: SHA-256(payload ‖ prevHash ‖ gitCommitHash).
 //
-// The payload comes first and the commit is a third input, where the original checklist specified SHA-256(prev_hash ‖ event_body).
+// The payload comes first and the commit is a third input, unlike the more common SHA-256(prev_hash ‖ event_body).
 // That is intentional: including the commit ties each entry to the revision that wrote it. Changing the order would invalidate
 // every audit chain written so far.
 func HashV1(payload, prevHash, gitCommitHash string) string {

@@ -98,7 +98,7 @@ func rebuildHandler(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("✅ Commit %.12s rebuilt: %d approved proposal(s) on %.12s give tree %.12s, identical to the commit's\n", commit, proposals, p.BaseCommit, tree)
+	fmt.Printf("Commit %.12s rebuilt: %d approved proposal(s) on %.12s give tree %.12s, identical to the commit's\n", commit, proposals, p.BaseCommit, tree)
 	fmt.Printf("   certificate signed, ledger %.12s named in it, run #%d\n", p.Ledger, p.Run)
 	return nil
 }

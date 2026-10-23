@@ -72,17 +72,20 @@ func main() {
 	}
 	c := &signal.Client{Model: *model, Key: key, BaseURL: *base, API: *api}
 	w := io.Writer(os.Stdout)
+	closeOut := func() {}
 	if *out != "" {
 		f, err := os.Create(*out)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "jeveval:", err)
 			os.Exit(2)
 		}
-		defer func() { _ = f.Close() }()
+		closeOut = func() { _ = f.Close() }
 		w = io.MultiWriter(os.Stdout, f)
 	}
 	m := meta{Command: "jeveval " + strings.Join(os.Args[1:], " "), Base: *base, API: *api, Tool: *toolVersion, Cases: b}
-	if err := run(context.Background(), c, *model, cases, w, m); err != nil {
+	err := run(context.Background(), c, *model, cases, w, m)
+	closeOut()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "jeveval:", err)
 		os.Exit(1)
 	}

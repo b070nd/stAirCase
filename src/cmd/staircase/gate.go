@@ -46,7 +46,7 @@ and write $STAIRCASE_DIR/gates.json.sig.
 
 Re-run after any edit to gates.json. staircase gate warns when the
 signature is absent and blocks execution when the signature is invalid.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		gatesPath := filepath.Join(wsDir, "gates.json")
 		data, err := os.ReadFile(gatesPath)
@@ -62,7 +62,7 @@ signature is absent and blocks execution when the signature is invalid.`,
 		if err := os.WriteFile(sigPath, []byte(sigHex), 0o644); err != nil {
 			return fmt.Errorf("write gates signature: %w", err)
 		}
-		fmt.Printf("✅ gates.json signed → %s\n", sigPath)
+		fmt.Printf("gates.json signed → %s\n", sigPath)
 		fmt.Printf("   sig: %s…\n", sigHex[:16])
 		return nil
 	},
@@ -77,7 +77,7 @@ content and the workspace public key (.signing.pub).
 
 Exits 0 when valid, non-zero otherwise. Useful in CI to confirm that
 gates.json has not been modified since it was last signed.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		sigPresent, err := gate.VerifyGatesSignature(wsDir)
 		if err != nil {
@@ -86,7 +86,7 @@ gates.json has not been modified since it was last signed.`,
 		if !sigPresent {
 			return fmt.Errorf("no gates.json.sig found - run 'staircase gate sign' first")
 		}
-		fmt.Println("✅ gates.json signature verified.")
+		fmt.Println("gates.json signature verified.")
 		return nil
 	},
 }
@@ -99,14 +99,26 @@ func init() {
 }
 
 func runGateHandler(_ *cobra.Command, args []string) error {
-	caseID, err := parseID("case-id", args[0])
+	blocking, err := runGate(args)
 	if err != nil {
 		return err
+	}
+	if blocking {
+		os.Exit(1) // after runGate returned, so its deferred closes have run
+	}
+	return nil
+}
+
+// runGate runs the gates for a case, prints the report, and says whether it blocks.
+func runGate(args []string) (blocking bool, err error) {
+	caseID, err := parseID("case-id", args[0])
+	if err != nil {
+		return false, err
 	}
 
 	store, db, err := openStore()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = db.Close() }()
 
@@ -120,7 +132,7 @@ func runGateHandler(_ *cobra.Command, args []string) error {
 	if gateOutFile != "" {
 		out, err = os.Create(gateOutFile)
 		if err != nil {
-			return fmt.Errorf("open output file: %w", err)
+			return false, fmt.Errorf("open output file: %w", err)
 		}
 		defer func() { _ = out.Close() }()
 	}
@@ -129,27 +141,24 @@ func runGateHandler(_ *cobra.Command, args []string) error {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(report); err != nil {
-			return err
+			return false, err
 		}
 	} else {
 		printGateReport(out, report)
 	}
 
-	if report.Blocking() {
-		os.Exit(1)
-	}
-	return nil
+	return report.Blocking(), nil
 }
 
 // printGateReport renders a human-readable gate report to w.
 //
 //nolint:errcheck // fmt.Fprint* to an io.Writer; errors are not actionable in a CLI reporter.
 func printGateReport(w io.Writer, r gate.Report) {
-	// ── Header ───────────────────────────────────────────────────────────────
+	// Header
 	fmt.Fprintf(w, "\nQuality Gate Report - case #%d\n", r.CaseID)
 	fmt.Fprintf(w, "Run at: %s\n\n", r.RunAt.Format(time.RFC3339))
 
-	// ── Column widths ────────────────────────────────────────────────────────
+	// Column widths
 	const (
 		wCat  = 12
 		wName = 36
@@ -170,43 +179,28 @@ func printGateReport(w io.Writer, r gate.Report) {
 			}
 			prevCat = res.Category
 		}
-		statusIcon := statusIcon(res.Status)
 		fmt.Fprintf(
-			w, "%-*s  %-*s  %-*s  %s%-*s  %s\n",
+			w, "%-*s  %-*s  %-*s  %-*s  %s\n",
 			wCat, res.Category,
 			wName, res.Name,
 			wSev, string(res.Severity),
-			statusIcon, wStat, string(res.Status),
+			wStat, string(res.Status),
 			res.Message,
 		)
 	}
 
-	// ── Footer ────────────────────────────────────────────────────────────────
+	// Footer
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, strings.Repeat("─", len(sep)))
-	overallIcon := statusIcon(r.Overall)
-	fmt.Fprintf(w, "Overall: %s%s\n", overallIcon, r.Overall)
+	fmt.Fprintf(w, "Overall: %s\n", r.Overall)
 	fmt.Fprintf(w, "Summary: %d pass, %d warn, %d fail, %d skip\n",
 		r.Summary.Pass, r.Summary.Warn, r.Summary.Fail, r.Summary.Skip)
 
 	if r.Blocking() {
-		fmt.Fprintln(w, "\n❌  BLOCK failures must be resolved before running.")
+		fmt.Fprintln(w, "\nBLOCK failures must be resolved before running.")
 	} else if r.Overall == gate.StatusWarn {
-		fmt.Fprintln(w, "\n⚠   Warnings detected - review before running.")
+		fmt.Fprintln(w, "\nWarnings detected - review before running.")
 	} else {
-		fmt.Fprintln(w, "\n✅  All BLOCK gates passed. Safe to run.")
-	}
-}
-
-func statusIcon(s gate.Status) string {
-	switch s {
-	case gate.StatusPass:
-		return "✅ "
-	case gate.StatusWarn:
-		return "⚠  "
-	case gate.StatusFail:
-		return "❌ "
-	default:
-		return "⏭  "
+		fmt.Fprintln(w, "\nAll BLOCK gates passed. Safe to run.")
 	}
 }

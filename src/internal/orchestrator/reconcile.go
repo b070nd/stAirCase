@@ -28,14 +28,14 @@ type ReconcileResult struct {
 func (r *Runner) Reconcile(_ context.Context, caseID int64, sourcePath string, _ bool) (ReconcileResult, error) {
 	var result ReconcileResult
 
-	// ── 1. Kill stale RUNNING DB records for this case ────────────────────────
+	// 1. Kill stale RUNNING DB records for this case
 	killed, err := r.killStaleRunRecords(caseID)
 	if err != nil {
 		return result, fmt.Errorf("reconcile stale runs: %w", err)
 	}
 	result.StalledRuns = killed
 
-	// ── 2. Detect orphan git branches ─────────────────────────────────────────
+	// 2. Detect orphan git branches
 	if sourcePath == "" {
 		return result, nil
 	}

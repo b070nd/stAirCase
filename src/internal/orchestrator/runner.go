@@ -215,7 +215,7 @@ func (r *Runner) run(ctx context.Context, caseID int64, opts RunOptions, cont *c
 	return s.runErr
 }
 
-// RunSummary is the on-disk representation of a completed run (CHECK 10.4.1).
+// RunSummary is the on-disk representation of a completed run.
 type RunSummary struct {
 	RunID       int64     `json:"run_id"`
 	CaseID      int64     `json:"case_id"`
@@ -231,7 +231,7 @@ type RunSummary struct {
 }
 
 // writeSummary writes a RunSummary as summary.json to
-// $STAIRCASE_DIR/runs/<run_id>/ (CHECK 10.4.1).
+// $STAIRCASE_DIR/runs/<run_id>/.
 func writeSummary(wsDir string, s RunSummary) error {
 	dir := filepath.Join(wsDir, "runs", fmt.Sprintf("%d", s.RunID))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -273,7 +273,7 @@ func (r *Runner) runGates(caseID int64) error {
 	return nil
 }
 
-// ─── Git helpers ──────────────────────────────────────────────────────────────
+// Git helpers
 
 // webhookClient is shared across all webhook calls within a single run.
 // It never follows a redirect: the approval must come from the address that was configured.
@@ -383,7 +383,7 @@ func timePtr(t time.Time) *time.Time { return &t }
 
 // scrubSecrets replaces every occurrence of each active secret value with
 // "<REDACTED>" across all operator-visible fields before the yield request
-// is presented via TUI, webhook, or HTTP approval server (CHECK 4.4.3 / 7.4.2).
+// is presented via TUI, webhook, or HTTP approval server.
 // Scrubbing covers: ReasoningTrace, and every proposed edit's File, SearchBlock,
 // and ReplaceBlock - agents can embed plaintext secrets in any of these.
 func scrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRequest {
@@ -486,7 +486,7 @@ func (r *Runner) reportDrift(runID int64, sup *policy.Supervisor) {
 	if rep.Halted != "" {
 		halted = ", halted: " + rep.Halted
 	}
-	fmt.Fprintf(os.Stdout, "   🧭 Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
+	fmt.Fprintf(os.Stdout, "   Drift: %d file(s) in scope, %d outside (human overrides: %d), %d scope violation(s)%s\n",
 		len(rep.InScope), len(rep.OutOfScope), rep.Overrides, rep.Violations, halted)
 }
 
@@ -526,9 +526,9 @@ func startApprovalServer(ctx context.Context, opts RunOptions) (*approvalhttp.Se
 	if err := srv.Start(ctx); err != nil {
 		return nil, fmt.Errorf("approval http server: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "   🌐 Review in your browser: %s\n", srv.ReviewURL())
-	fmt.Fprintf(os.Stdout, "   🌐 Approval API: http://%s/v1/yields\n", srv.ListenAddr())
-	fmt.Fprintf(os.Stdout, "   🔑 Approval token: %s\n", token)
+	fmt.Fprintf(os.Stdout, "   Review in your browser: %s\n", srv.ReviewURL())
+	fmt.Fprintf(os.Stdout, "   Approval API: http://%s/v1/yields\n", srv.ListenAddr())
+	fmt.Fprintf(os.Stdout, "   Approval token: %s\n", token)
 	return srv, nil
 }
 
@@ -544,7 +544,7 @@ func (r *Runner) openDebugLog(runID int64) *diag.Log {
 	if err != nil {
 		return nil
 	}
-	fmt.Fprintf(os.Stdout, "   🔍 Debug log: %s (at most %d bytes)\n", logPath, diag.MaxLogBytes)
+	fmt.Fprintf(os.Stdout, "   Debug log: %s (at most %d bytes)\n", logPath, diag.MaxLogBytes)
 	return f
 }
 

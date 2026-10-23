@@ -175,7 +175,7 @@ func printReport(r repoReport) {
 	}
 	r.Agents = agents
 	agentCommits := r.Commits - r.Human
-	fmt.Printf("📊 %s: %d commit(s), %d by people, %d with an agent\n", r.Repository, r.Commits, r.Human, agentCommits)
+	fmt.Printf("%s: %d commit(s), %d by people, %d with an agent\n", r.Repository, r.Commits, r.Human, agentCommits)
 	for _, cal := range slices.Sorted(maps.Keys(r.Certified)) {
 		fmt.Printf("   CAL %d: %d certified\n", cal, r.Certified[cal])
 	}
@@ -183,18 +183,18 @@ func printReport(r repoReport) {
 		fmt.Printf("   %s: %d commit(s)\n", a, r.Agents[a])
 	}
 	if len(r.Hurried) > 0 {
-		fmt.Printf("   ⚠️  %d certified commit(s) where large changes were approved within seconds:\n", len(r.Hurried))
+		fmt.Printf("   warning: %d certified commit(s) where large changes were approved within seconds:\n", len(r.Hurried))
 		for _, p := range r.Hurried {
 			fmt.Printf("      %.12s %s: %s\n", p.Commit, p.Subject, p.Reason)
 		}
 	}
 	if len(r.Problems) == 0 {
 		if agentCommits > 0 {
-			fmt.Println("   ✅ every agent commit carries a valid certificate")
+			fmt.Println("   every agent commit carries a valid certificate")
 		}
 		return
 	}
-	fmt.Printf("   ❌ %d agent commit(s) without a valid certificate:\n", len(r.Problems))
+	fmt.Printf("   error: %d agent commit(s) without a valid certificate:\n", len(r.Problems))
 	for _, p := range r.Problems {
 		fmt.Printf("      %.12s %s: %s\n", p.Commit, p.Subject, p.Reason)
 	}

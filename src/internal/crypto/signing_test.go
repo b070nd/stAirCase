@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── GenerateSigningKey ───────────────────────────────────────────────────────
+// GenerateSigningKey
 
 func TestGenerateSigningKey_creates_key_files(t *testing.T) {
 	dir := t.TempDir()
@@ -95,7 +95,7 @@ func TestGenerateSigningKey_pub_key_write_fails(t *testing.T) {
 		"private key must be removed when pub key write fails")
 }
 
-// ─── LoadSigningKey ───────────────────────────────────────────────────────────
+// LoadSigningKey
 
 func TestLoadSigningKey_roundtrip(t *testing.T) {
 	dir := t.TempDir()
@@ -147,7 +147,7 @@ func TestLoadSigningKey_bad_permissions_returns_error(t *testing.T) {
 	assert.Contains(t, err.Error(), "insecure permissions")
 }
 
-// ─── LoadSigningPublicKey ─────────────────────────────────────────────────────
+// LoadSigningPublicKey
 
 func TestLoadSigningPublicKey_roundtrip(t *testing.T) {
 	dir := t.TempDir()
@@ -171,7 +171,7 @@ func TestLoadSigningPublicKey_wrong_size_returns_error(t *testing.T) {
 	assert.Contains(t, err.Error(), "corrupt")
 }
 
-// ─── Sign / Verify ────────────────────────────────────────────────────────────
+// Sign / Verify
 
 func TestSign_produces_128_char_hex(t *testing.T) {
 	dir := t.TempDir()
@@ -250,7 +250,7 @@ func TestVerify_wrong_length_signature_returns_error(t *testing.T) {
 	assert.Contains(t, err.Error(), "wrong size")
 }
 
-// ─── Sign determinism: same key, same message → consistent verify ─────────────
+// Sign determinism: same key, same message → consistent verify
 
 func TestSign_verify_large_payload(t *testing.T) {
 	dir := t.TempDir()

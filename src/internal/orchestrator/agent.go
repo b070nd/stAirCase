@@ -322,7 +322,7 @@ func (h *agentHost) deliveredSecrets() []string {
 func (h *agentHost) secret(name string) (string, error) {
 	outcome := "error"
 	defer func() {
-		_ = h.store.LogSecretAccess(&h.runID, name, outcome) // CHECK 4.4.1
+		_ = h.store.LogSecretAccess(&h.runID, name, outcome)
 		obs.SecretAccessTotal.WithLabelValues(outcome).Inc()
 	}()
 	if name == "" {

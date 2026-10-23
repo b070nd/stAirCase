@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// ─── formatElapsed ────────────────────────────────────────────────────────────
+// formatElapsed
 
 func TestFormatElapsed_seconds_only(t *testing.T) {
 	assert.Equal(t, "42s", monitor.ExportedFormatElapsed(42*time.Second))
@@ -28,7 +28,7 @@ func TestFormatElapsed_sub_second_rounds_to_zero(t *testing.T) {
 	assert.Equal(t, "0s", monitor.ExportedFormatElapsed(400*time.Millisecond))
 }
 
-// ─── formatTokens ─────────────────────────────────────────────────────────────
+// formatTokens
 
 func TestFormatTokens_zero_returns_dash(t *testing.T) {
 	assert.Equal(t, "-", monitor.ExportedFormatTokens(0))
@@ -46,7 +46,7 @@ func TestFormatTokens_millions(t *testing.T) {
 	assert.Equal(t, "2.3M", monitor.ExportedFormatTokens(2_300_000))
 }
 
-// ─── AddActivity / Pause / Resume ─────────────────────────────────────────────
+// AddActivity / Pause / Resume
 
 func newTestDisplay(t *testing.T) (*monitor.Display, *monitor.Tracker) {
 	t.Helper()

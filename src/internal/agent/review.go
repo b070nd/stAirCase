@@ -49,7 +49,7 @@ func (r *Review) Run(ctx context.Context, env *orchestrator.AgentEnv) error {
 			return err
 		}
 		if _, err := git(patch, "apply", "--whitespace=nowarn", "-"); err != nil {
-			fmt.Printf("   ⚠️  %s: left out, its change does not apply to this branch (%v)\n", tui.Safe(file), err)
+			fmt.Printf("   warning: %s: left out, its change does not apply to this branch (%v)\n", tui.Safe(file), err)
 			continue
 		}
 		env.ProposeWorktreeChanges(ctx, r.By, fmt.Sprintf("%s changed %s in commit %.12s.", r.By, file, r.Commit))

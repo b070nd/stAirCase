@@ -115,7 +115,7 @@ func (s *runState) cleanup() {
 // prepare loads what the run starts from and checks that it may start, making nothing. A dry run stops here (done).
 func (s *runState) prepare() (done bool, err error) {
 	r, opts, caseID := s.r, s.opts, s.caseID
-	// ── Load case + project ───────────────────────────────────────────────────
+	// Load case + project
 	if s.caseRec, err = r.store.GetCase(caseID); err != nil {
 		return false, fmt.Errorf("load case: %w", err)
 	}
@@ -129,30 +129,30 @@ func (s *runState) prepare() (done bool, err error) {
 		return false, fmt.Errorf("project %d not found", s.caseRec.ProjectID)
 	}
 
-	// ── Open git repo (used across the whole run lifecycle) ──────────────────
+	// Open git repo (used across the whole run lifecycle)
 	if s.project.SourcePath != "" {
 		if s.gr, err = OpenGitRepo(s.project.SourcePath); err != nil {
 			return false, fmt.Errorf("open git repo: %w", err)
 		}
 	}
 
-	// ── The declared environment: judged now, before anything is made ─────────
+	// The declared environment: judged now, before anything is made
 	if s.overlays, err = visibleOverlays(s.project.SourcePath, opts.Terms); err != nil {
 		return false, err
 	}
 
-	// ── Optional reconcile ────────────────────────────────────────────────────
+	// Optional reconcile
 	if opts.Reconcile && s.project.SourcePath != "" && s.seg.first() {
 		result, err := r.Reconcile(s.ctx, caseID, s.project.SourcePath, true)
 		if err != nil {
 			obs.Log.Warn("reconcile", "err", err)
 		} else if len(result.StalledRuns) > 0 || len(result.OrphanBranches) > 0 {
-			fmt.Fprintf(os.Stdout, "   🔄 Reconcile: %d stale run(s) killed, %d branch(es) retained for inspection\n",
+			fmt.Fprintf(os.Stdout, "   Reconcile: %d stale run(s) killed, %d branch(es) retained for inspection\n",
 				len(result.StalledRuns), len(result.OrphanBranches))
 		}
 	}
 
-	// ── Base revision ─────────────────────────────────────────────────────────
+	// Base revision
 	// The run works in its own git worktree at the current HEAD commit; the
 	// developer's checkout (branch, index, files, stash) is never modified, so
 	// uncommitted changes there are not visible to the agent.
@@ -160,7 +160,7 @@ func (s *runState) prepare() (done bool, err error) {
 		return false, err
 	}
 
-	// ── Resolve topology ──────────────────────────────────────────────────────
+	// Resolve topology
 	topology, err := r.store.GetLatestTopology(s.project.ID)
 	if err != nil {
 		return false, fmt.Errorf("load topology: %w", err)
@@ -175,7 +175,7 @@ func (s *runState) prepare() (done bool, err error) {
 		s.topoVersion = opts.Plan.TopologyVersion // what runs is the plan, not the latest topology
 	}
 
-	// ── Resolve current git branch (capture SHA on detached HEAD) ─────────────
+	// Resolve current git branch (capture SHA on detached HEAD)
 	s.gitBranch = "unknown"
 	if s.gr != nil {
 		if b, bErr := s.gr.CurrentBranch(); bErr == nil {
@@ -183,7 +183,7 @@ func (s *runState) prepare() (done bool, err error) {
 		}
 	}
 
-	// ── Quality gate pre-flight ───────────────────────────────────────────────
+	// Quality gate pre-flight
 	if !opts.SkipGates && s.seg.first() { // a continuation is checked by loadContinuation and the worktree checks, not by the case's gates
 		if err := r.runGates(caseID); err != nil {
 			return false, err
@@ -267,9 +267,9 @@ func (s *runState) finish(runErr error) error {
 				obs.Log.Warn("remove run worktree", "path", s.worktree, "err", err)
 			}
 		case persistence.RunStatusAwaitingReview:
-			fmt.Fprintf(os.Stdout, "   🔎 Worktree kept until your review: %s\n", s.worktree)
+			fmt.Fprintf(os.Stdout, "   Worktree kept until your review: %s\n", s.worktree)
 		default:
-			fmt.Fprintf(os.Stdout, "   🔎 Worktree kept for inspection: %s\n", s.worktree)
+			fmt.Fprintf(os.Stdout, "   Worktree kept for inspection: %s\n", s.worktree)
 		}
 	}
 	if s.finalStatus != persistence.RunStatusSuccess && s.finalStatus != persistence.RunStatusAwaitingReview {
@@ -291,10 +291,10 @@ func (s *runState) bind() error { return s.seg.checkout(s) }
 // and starts what a person decides through and what the run shows.
 func (s *runState) setup() error {
 	r, opts, run := s.r, s.opts, s.run
-	// ── RUN SETUP ─────────────────────────────────────────────────────────────
+	// RUN SETUP
 	// Acquire a shared advisory flock on the key file for the duration of this
 	// run so that 'staircase secret rotate' (which holds an exclusive lock)
-	// cannot replace the key while decryption is in progress (CHECK 4.3.3).
+	// cannot replace the key while decryption is in progress.
 	keyLockF, err := os.Open(filepath.Join(r.wsDir, crypto.KeyFile))
 	if err != nil {
 		return fmt.Errorf("load workspace key: open for lock: %w", err)
@@ -383,7 +383,7 @@ func (s *runState) setup() error {
 // startAgent starts the agent in the run's worktree, with what decides its proposals.
 func (s *runState) startAgent() error {
 	r, opts, cont, run := s.r, s.opts, s.cont, s.run
-	// ── AGENT_START ───────────────────────────────────────────────────────────
+	// AGENT_START
 	if err := r.enter(PhaseAgentStart); err != nil {
 		return err
 	}
@@ -450,7 +450,7 @@ func (s *runState) startAgent() error {
 		}
 	})
 
-	// ── AGENT_LOOP ────────────────────────────────────────────────────────────
+	// AGENT_LOOP
 	if err := r.enter(PhaseAgentLoop); err != nil {
 		return err
 	}
@@ -596,7 +596,7 @@ func (s *runState) overBudget() bool {
 	if !s.display.BudgetExceeded() {
 		return false
 	}
-	fmt.Fprintf(os.Stdout, "\n⚠️  Budget cap exceeded - killing run #%d\n", s.run.ID)
+	fmt.Fprintf(os.Stdout, "\nwarning: Budget cap exceeded - killing run #%d\n", s.run.ID)
 	s.cancelled()
 	return true
 }
@@ -604,7 +604,7 @@ func (s *runState) overBudget() bool {
 func (s *runState) driftHalt(reason string) {
 	s.sup.Halt(reason)
 	_ = s.r.log(s.run.ID).Append(history.DriftHalt{Reason: reason})
-	fmt.Fprintf(os.Stdout, "\n🧭 Drift: %s - halting run #%d\n", tui.Safe(reason), s.run.ID)
+	fmt.Fprintf(os.Stdout, "\nDrift: %s - halting run #%d\n", tui.Safe(reason), s.run.ID)
 	s.cancelled()
 }
 
@@ -658,7 +658,7 @@ func (s *runState) decide(p proposal) bool {
 			return true
 		}
 	}
-	// CHECK 4.4.3 / 7.4.2: scrub delivered secret values from all
+	// Scrub delivered secret values from all
 	// operator-visible fields before any HITL presentation path.
 	req := scrubSecrets(p.req, s.host.deliveredSecrets())
 	// Child span of the run: its duration is the yield→decision
@@ -671,7 +671,7 @@ func (s *runState) decide(p proposal) bool {
 	rl := dec.decide(s.waitCtx, &req) // checks, models, signals and signing end with the run's limit too
 	barrier.Hit(barrier.DecisionMade)
 	// Record the decision, with the exact approved content, before the runtime can act on it: an approval that is not on
-	// the audit chain is never released (CHECK 7.3.1). consume says when it is consumed.
+	// the audit chain is never released. consume says when it is consumed.
 	decidedFor := func(journaled bool) history.Decided {
 		decided := yieldDecided(dec.total, rl.source, req, rl.resp, s.baseSHA, rl.next, rl.drift)
 		decided.RequestEntry = p.entry
@@ -697,7 +697,7 @@ func (s *runState) decide(p proposal) bool {
 	yieldSpan.End()
 	if err != nil {
 		why := "the orchestrator could not record this decision; the run is stopping"
-		if ce, ok := err.(*consumeError); ok && ce.journal {
+		if ce := (*consumeError)(nil); errors.As(err, &ce) && ce.journal {
 			why = "the orchestrator could not keep this approval; the run is stopping"
 		}
 		p.reply <- decision{resp: domain.Decide(false, why)}
@@ -747,7 +747,7 @@ func (s *runState) parkedTotal() int {
 // change with its evidence: the commit named on the chain before the branch moves to it.
 func (s *runState) finalize() error {
 	r, opts, run, appr, ctx := s.r, s.opts, s.run, s.appr, s.ctx
-	// ── FINALIZE ──────────────────────────────────────────────────────────────
+	// FINALIZE
 	if err := r.enter(PhaseFinalize); err != nil {
 		return err
 	}
@@ -797,7 +797,7 @@ func (s *runState) finalize() error {
 			return err
 		}
 		if !approved {
-			fmt.Fprintf(os.Stdout, "   ✋ Final review rejected - nothing committed\n")
+			fmt.Fprintf(os.Stdout, "   Final review rejected - nothing committed\n")
 			s.finalStatus = persistence.RunStatusFailed
 		}
 	}
@@ -843,15 +843,15 @@ func (s *runState) finalize() error {
 	// the run also ends with ErrEvidenceIncomplete.
 	ev := evidence{checks: r.runChecks(ctx, run.ID, s.gr, hash, opts.Checks, opts.Sandbox, opts.CheckTimeout, s.overlays)}
 	if ev.ledger, err = r.writeLedger(run.ID, s.ledger); err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not written: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: Ledger not written: %v\n", err)
 		s.evidenceErrs = append(s.evidenceErrs, "ledger: "+err.Error())
 	} else if err := attachNote(s.gr, LedgerNotesRef, LedgerPath(r.wsDir, run.ID), hash); err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Ledger not attached to the commit: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: Ledger not attached to the commit: %v\n", err)
 		s.evidenceErrs = append(s.evidenceErrs, "ledger note: "+err.Error())
 	}
 	ev.policy, ev.initiator, ev.byPolicy = s.snap.Digest, s.initiator, authorized != ""
 	if err := r.certify(run.ID, hash, s.baseSHA, chainHead, opts.Plan, s.gr, ev); err != nil {
-		fmt.Fprintf(os.Stdout, "   ⚠️  Change certificate not written: %v\n", err)
+		fmt.Fprintf(os.Stdout, "   warning: Change certificate not written: %v\n", err)
 		_ = r.log(run.ID).Append(history.CertificateFailed{Commit: hash, Error: err.Error()})
 		s.evidenceErrs = append(s.evidenceErrs, "certificate: "+err.Error())
 	}

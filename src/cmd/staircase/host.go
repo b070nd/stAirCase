@@ -39,7 +39,7 @@ var hostClaudeCmd = &cobra.Command{
 	Use:                "claude [the runner's Claude Code arguments]",
 	Short:              "Stand in for Claude Code: the runner's session, governed as an away run",
 	DisableFlagParsing: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		return hostClaude(args, os.Stdin, os.Stdout)
 	},
 }
@@ -47,7 +47,7 @@ var hostClaudeCmd = &cobra.Command{
 var hostSetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Set the scope, checks and credential names for hosted sessions in this workspace",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if len(hostSetupAllow) == 0 || len(hostSetupChecks) == 0 {
 			return errors.New("hosted sessions are away runs: name the scope with --allow and at least one --check")
 		}

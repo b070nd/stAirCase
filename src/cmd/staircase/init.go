@@ -17,7 +17,7 @@ var initSkipVenv bool
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize the stAirCase workspace: database and keys",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		wsDir := viper.GetString("STAIRCASE_DIR")
 		fmt.Printf("Initializing stAirCase in: %s\n", wsDir)
 
@@ -27,21 +27,21 @@ var initCmd = &cobra.Command{
 			log.Fatalf("Database initialization failed: %v", err)
 		}
 		defer func() { _ = db.Close() }()
-		fmt.Println("✅ SQLite Database initialized and schema verified.")
+		fmt.Println("SQLite Database initialized and schema verified.")
 
 		// 2. Generate workspace encryption key (idempotent)
 		if err := crypto.GenerateKey(wsDir); err != nil {
 			log.Fatalf("Key generation failed: %v", err)
 		}
-		fmt.Println("🔑 Workspace encryption key ready.")
+		fmt.Println("Workspace encryption key ready.")
 
 		// 2b. Generate Ed25519 signing key for audit checkpoints (idempotent)
 		if err := crypto.GenerateSigningKey(wsDir); err != nil {
 			log.Fatalf("Signing key generation failed: %v", err)
 		}
-		fmt.Println("🔏 Audit signing key ready.")
+		fmt.Println("Audit signing key ready.")
 
-		fmt.Println("\n🎉 stAirCase Workspace initialized. Ready to orchestrate.")
+		fmt.Println("\nstAirCase Workspace initialized. Ready to orchestrate.")
 	},
 }
 

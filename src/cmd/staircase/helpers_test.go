@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/b070nd/stAirCase/src/internal/domain"
-	"github.com/b070nd/stAirCase/src/internal/gate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,13 +51,6 @@ func TestFilterSubgraph_single_node_no_deps(t *testing.T) {
 	ps, ds := filterSubgraph(7, []domain.Project{{ID: 7}}, nil)
 	assert.Len(t, ps, 1)
 	assert.Empty(t, ds)
-}
-
-func TestStatusIcon_all_branches(t *testing.T) {
-	assert.Contains(t, statusIcon(gate.StatusPass), "✅")
-	assert.Contains(t, statusIcon(gate.StatusWarn), "⚠")
-	assert.Contains(t, statusIcon(gate.StatusFail), "❌")
-	assert.NotEmpty(t, statusIcon(gate.Status("unknown"))) // default branch
 }
 
 func TestParseID_rejects_trailing_garbage(t *testing.T) {

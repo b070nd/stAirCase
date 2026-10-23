@@ -1,9 +1,7 @@
-// Advisory file locking stubs for Windows.  The Windows build cannot launch
-// Python subprocesses, so no concurrent run can hold the key file open; all
-// operations are safe without locking.
-//
 //go:build windows
 
+// Package wslock provides the advisory file locks shared by the runner and `secret rotate`. On Windows there are none: the stubs below
+// exclude nothing, so Enforced is false and a free lock does not mean a process is gone.
 package wslock
 
 // Enforced is false: these stubs exclude nothing, so a free lock does not mean a process is gone.

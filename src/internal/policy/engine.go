@@ -34,7 +34,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/plan"
 )
 
-// Limits caps automatic behaviour within a run (CHECK 7.2.1).
+// Limits caps automatic behaviour within a run.
 // Zero values mean "unlimited".
 type Limits struct {
 	// MaxAutoApproved is the maximum number of yields that may be automatically
@@ -130,22 +130,22 @@ func (r Rule) hasTypedCondition() bool {
 	return len(r.Paths) > 0 || r.MaxLines != 0 || r.MaxFiles != 0 || r.NewFilesOnly || r.NoDeletions
 }
 
-// Engine holds an ordered list of auto-approval rules and optional session limits. The policy file (CHECK 7.1.2):
+// Engine holds an ordered list of auto-approval rules and optional session limits. The policy file:
 //
 //	{"version": 1, "rules": [...], "limits": {"max_auto_approved": 10, "max_total_yields": 50, "max_run_secs": 3600}, "allow_blanket_deny": false}
 type Engine struct {
-	// Version is a format version for forward compatibility (CHECK 7.1.2).
+	// Version is a format version for forward compatibility.
 	Version int `json:"version"`
 
 	// Rules is the ordered list of auto-approval rules.
 	Rules []Rule `json:"rules"`
 
-	// Limits caps automatic behaviour within a run (CHECK 7.2.1).
+	// Limits caps automatic behaviour within a run.
 	Limits Limits `json:"limits"`
 
 	// AllowBlanketDeny must be explicitly true when any rule has EffectReject
 	// with no conditions (would silently reject every yield).  LoadEngine returns
-	// an error if a blanket-deny rule is found and this flag is false (CHECK 7.1.5).
+	// an error if a blanket-deny rule is found and this flag is false.
 	AllowBlanketDeny bool `json:"allow_blanket_deny"`
 }
 
@@ -174,7 +174,7 @@ func SnapshotFromBytes(data []byte, signed bool) (*Snapshot, error) {
 
 // LoadSnapshot reads $wsDir/policy.json once. A missing file yields an empty
 // (approve-nothing) Engine. It fails when the JSON cannot be parsed, a
-// blanket-deny rule lacks AllowBlanketDeny (CHECK 7.1.5), or a signature
+// blanket-deny rule lacks AllowBlanketDeny, or a signature
 // sidecar exists and does not match those bytes.
 func LoadSnapshot(wsDir string) (*Snapshot, error) {
 	path := filepath.Join(wsDir, "policy.json")
@@ -286,10 +286,10 @@ func verifySignature(wsDir string, data []byte) (bool, error) {
 }
 
 // CheckLimits returns (true, reason) when the supplied counters have reached or
-// exceeded one of the Engine's session limits (CHECK 7.2.1).
+// exceeded one of the Engine's session limits.
 // Returns (false, "") when no limit is breached.
 // Callers must route to human operator review when the result is true - the
-// limit exhaustion must never be silently allowed or silently denied (CHECK 7.2.2).
+// limit exhaustion must never be silently allowed or silently denied.
 func (e *Engine) CheckLimits(autoApproved, totalYields int) (exhausted bool, reason string) {
 	if e.Limits.MaxAutoApproved > 0 && autoApproved >= e.Limits.MaxAutoApproved {
 		return true, fmt.Sprintf(
@@ -361,7 +361,7 @@ func (e *Engine) Evaluate(req domain.YieldRequest, facts Facts) PolicyDecision {
 	return PolicyDecision{Matched: false, Reason: "no matching rule"}
 }
 
-// ─── predicate helpers ────────────────────────────────────────────────────────────
+// predicate helpers
 
 func (r Rule) matchesAgentName(agentName string) bool {
 	if len(r.AgentNames) == 0 {

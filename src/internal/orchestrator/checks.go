@@ -41,9 +41,9 @@ func (r *Runner) runChecks(ctx context.Context, runID int64, repo *GitRepo, comm
 			tail = "no checkout of the commit: " + err.Error()
 		}
 		if c.ExitCode == 0 {
-			fmt.Fprintf(os.Stdout, "   ✅ Check passed: %s\n", command)
+			fmt.Fprintf(os.Stdout, "   Check passed: %s\n", command)
 		} else {
-			fmt.Fprintf(os.Stdout, "   ❌ Check failed (exit %d): %s\n%s\n", c.ExitCode, command, indent(tail))
+			fmt.Fprintf(os.Stdout, "   Check failed (exit %d): %s\n%s\n", c.ExitCode, command, indent(tail))
 		}
 		if !c.Sandboxed {
 			fmt.Fprintf(os.Stdout, "      (ran without a sandbox)\n")

@@ -36,7 +36,7 @@ Setting a key that exists in the same scope replaces its value (for example a
 rotated API key) and counts its version.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
-		// Read the secret value from stdin (CHECK 4.5.1: never accept as argv
+		// Read the secret value from stdin (never accept it as argv
 		// so it doesn't leak into shell history / process listings).
 		var value string
 		stat, _ := os.Stdin.Stat()
@@ -65,7 +65,7 @@ rotated API key) and counts its version.`,
 		keyPath := filepath.Join(wsDir, crypto.KeyFile)
 
 		// Hold a shared lock on the key file from LoadKey through CreateSecret. Otherwise a concurrent `secret rotate` could commit between
-		// Encrypt and the insert and leave this ciphertext under the old key. Rotate's exclusive lock refuses instead of waiting (CHECK 4.3.3).
+		// Encrypt and the insert and leave this ciphertext under the old key. Rotate's exclusive lock refuses instead of waiting.
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
 			return fmt.Errorf("open key for lock: %w", err)
@@ -110,9 +110,9 @@ rotated API key) and counts its version.`,
 			scope = fmt.Sprintf("project #%d", *pid)
 		}
 		if replaced {
-			fmt.Printf("✅ Secret %q replaced (%s, version %d).\n", args[0], scope, version)
+			fmt.Printf("Secret %q replaced (%s, version %d).\n", args[0], scope, version)
 		} else {
-			fmt.Printf("✅ Secret %q stored (%s).\n", args[0], scope)
+			fmt.Printf("Secret %q stored (%s).\n", args[0], scope)
 		}
 		return nil
 	},
@@ -177,7 +177,7 @@ var secretListCmd = &cobra.Command{
 
 // secretRotateCmd re-encrypts every secret under a new AES-256 key. The key file is replaced atomically and all ciphertexts are updated
 // in one transaction, so a crash leaves the workspace fully rotated or not at all. An exclusive non-blocking lock on the key file fails
-// fast if a run or `secret set` holds a shared one (CHECK 4.3.3).
+// fast if a run or `secret set` holds a shared one.
 var secretRotateCmd = &cobra.Command{
 	Use:   "rotate",
 	Short: "Re-encrypt all secrets under a new AES-256 workspace key",
@@ -192,8 +192,7 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 		keyPath := filepath.Join(wsDir, crypto.KeyFile)
 
 		// Acquire exclusive non-blocking advisory lock.  Fails fast if any
-		// concurrent process (active run, 'secret set') holds a shared lock
-		// (CHECK 4.3.3).
+		// concurrent process (active run, 'secret set') holds a shared lock.
 		lockF, err := os.OpenFile(keyPath, os.O_RDONLY, 0)
 		if err != nil {
 			return fmt.Errorf("open key for lock: %w", err)
@@ -210,7 +209,7 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 		}
 		defer func() { _ = db.Close() }()
 
-		// reencrypt re-encrypts every secret in a single DB transaction (CHECK 4.3.2).
+		// reencrypt re-encrypts every secret in a single DB transaction.
 		// Opens a pinned *sql.Conn, makes sure synchronous=FULL on it, then runs the
 		// rotation transaction on the same connection - guaranteeing that the PRAGMA
 		// and the transaction share the underlying SQLite connection and the WAL
@@ -246,12 +245,12 @@ run or a 'secret set' command - already holds a shared lock on the key.`,
 		}
 
 		// RotateKey handles key generation, journal-based crash recovery, and
-		// atomic key-file installation (CHECK 4.3.2).
+		// atomic key-file installation.
 		if err := crypto.RotateKey(wsDir, reencrypt, tryDecryptAny); err != nil {
 			return err
 		}
 
-		fmt.Println("✅ Workspace key rotated and all secrets re-encrypted.")
+		fmt.Println("Workspace key rotated and all secrets re-encrypted.")
 		return nil
 	},
 }
@@ -278,7 +277,7 @@ var secretDeleteCmd = &cobra.Command{
 		if !gone {
 			return fmt.Errorf("no secret %q in scope %s (staircase secret list)", args[0], scope)
 		}
-		fmt.Printf("✅ Secret %q removed (%s).\n", args[0], scope)
+		fmt.Printf("Secret %q removed (%s).\n", args[0], scope)
 		return nil
 	},
 }

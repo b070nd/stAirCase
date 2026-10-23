@@ -1,3 +1,6 @@
+// Package sandbox runs commands and checks confined: in the macOS sandbox, Linux bubblewrap or Landlock, or a docker container. A command
+// can write only in its worktree and its own temp folder, has no network, and cannot read credentials; a run's declared environment
+// (ignored directories such as vendor/) is shown to it read-only.
 package sandbox
 
 import (
@@ -8,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -36,12 +40,12 @@ func CommandWith(ctx context.Context, root, cwd, command, mode string, overlays 
 	}
 	cleanup = func() { _ = os.RemoveAll(tmp) }
 	if mode == DockerPrefix || strings.HasPrefix(mode, DockerPrefix+":") { // chosen by name, never by auto; it fails rather than run unsandboxed
-		real, err := filepath.EvalSymlinks(tmp)
+		resolvedTmp, err := filepath.EvalSymlinks(tmp)
 		if err != nil {
 			cleanup()
 			return nil, false, func() {}, err
 		}
-		dcmd, stop, err := dockerCommand(ctx, root, cwd, real, command, mode, overlays)
+		dcmd, stop, err := dockerCommand(ctx, root, cwd, resolvedTmp, command, mode, overlays)
 		if err != nil {
 			cleanup()
 			return nil, false, func() {}, err
@@ -63,7 +67,7 @@ func CommandWith(ctx context.Context, root, cwd, command, mode string, overlays 
 			return nil, false, func() {}, err
 		}
 	}
-	args := append(wrap, "/bin/sh", "-c", command)
+	args := slices.Concat(wrap, []string{"/bin/sh", "-c", command})
 	cmd = exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = cwd
 	cmd.Env = append(Env(), "TMPDIR="+tmp)
@@ -71,8 +75,8 @@ func CommandWith(ctx context.Context, root, cwd, command, mode string, overlays 
 }
 
 // Credentials are paths under the home folder that hold keys and tokens.
-// ponytail: a list, not an allowlist of reads (tools read all over the
-// system); add a path here when a tool keeps its tokens elsewhere.
+// This is a deny list, not an allowlist of reads, because tools read all over the system. Add a path here when a tool keeps its
+// tokens elsewhere.
 var Credentials = []string{".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials",
 	".npmrc", ".pypirc", ".config/gh", ".config/gcloud", ".config/git", "Library/Keychains",
 	".vault-token", ".cargo/credentials.toml", ".cargo/credentials", ".terraform.d/credentials.tfrc.json", ".oci", ".password-store",
@@ -94,8 +98,8 @@ func hidden(hide []string) []string {
 		if p == "" {
 			continue
 		}
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			out = append(out, real)
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			out = append(out, resolved)
 		}
 	}
 	return out
@@ -252,8 +256,8 @@ func bwrapUsable(bin string) error {
 
 // readable covers the file system except the hide paths: each hidden path's
 // ancestors are replaced by their other entries.
-// ponytail: entries created after the command starts next to a hidden path
-// (for example a new folder in the home folder) are not readable.
+// Limit: entries created after the command starts next to a hidden path (for example a new folder in the home folder) are not
+// readable.
 func readable(hide []string) []string {
 	allowed := map[string]bool{"/": true}
 	for _, h := range hide {

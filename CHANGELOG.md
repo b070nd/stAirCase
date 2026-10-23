@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+### Added
+
+- **`make version` moves every mention of the current release.** The CHANGELOG's newest release heading is the one source of the version.
+  `go run ./src/tools/setversion` (or `make version`) updates the pinned Action example, the fixture's default, the release checklist and the
+  site's links, and adds the site's setup guide for the release; `-check` only reports. A test fails while any mention is stale. The
+  site now describes 1.2.0.
+
+### Changed
+
+- **The program's output uses words, not emoji.** Success lines no longer start with a check mark, warnings start with `warning:`,
+  failures with `error:`, and decorative symbols are gone. The `staircase doctor` list and the `inspect log` entries use `ok`, `warn`
+  and `FAIL`, and the gate report states each result once, in its STATUS column. `staircase changeset verify` prints `problem:`
+  where it printed a cross. Output reads the same in every terminal, log file and screen reader. Only the text people read changes:
+  exit codes, which stream a line goes to, JSON output, the audit chain and certificates are the same. A script that looks for an
+  emoji, or reads the first word of a line as a status, needs to change; use the exit code. The demo scripts, the README and the
+  documentation show the new output, and a test keeps emoji out of it ([compatibility](docs/compatibility.md)).
+
 ## [1.2.0] - 2026-10-23
 
 This release is about using stAirCase on a client's repository without putting anything of it into that repository, and about the audit

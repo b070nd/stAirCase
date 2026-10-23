@@ -64,10 +64,10 @@ func guard(next map[string]*approvedFile, before func(p string) *approvedFile) s
 	return strings.Join(why, "; ")
 }
 
-// addsMatch reports whether new has a match of re that old did not have.
-func addsMatch(re *regexp.Regexp, old, new string) bool {
-	for _, m := range re.FindAllString(new, -1) {
-		if strings.Count(new, m) > strings.Count(old, m) {
+// addsMatch reports whether updated has a match of re that old did not have.
+func addsMatch(re *regexp.Regexp, old, updated string) bool {
+	for _, m := range re.FindAllString(updated, -1) {
+		if strings.Count(updated, m) > strings.Count(old, m) {
 			return true
 		}
 	}

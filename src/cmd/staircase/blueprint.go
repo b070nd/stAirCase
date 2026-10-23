@@ -45,12 +45,12 @@ var blueprintImportCmd = &cobra.Command{
 			return err
 		}
 		if !created {
-			fmt.Printf("✅ Blueprint %s %.12s is already imported (unchanged).\n", b.Name, hash)
+			fmt.Printf("Blueprint %s %.12s is already imported (unchanged).\n", b.Name, hash)
 			return nil
 		}
-		fmt.Printf("✅ Blueprint %s imported: %s\n", b.Name, hash)
+		fmt.Printf("Blueprint %s imported: %s\n", b.Name, hash)
 		if gitSHA == "" {
-			fmt.Fprintln(os.Stderr, "   ⚠️  not reproducible: the blueprint is not a clean git checkout, so no source commit was recorded")
+			fmt.Fprintln(os.Stderr, "   warning: not reproducible: the blueprint is not a clean git checkout, so no source commit was recorded")
 		} else {
 			fmt.Printf("   source commit %s\n", gitSHA)
 		}
@@ -129,7 +129,7 @@ change the blueprint, import it and bind again.`,
 		if err != nil {
 			return fmt.Errorf("bind: %w", err)
 		}
-		fmt.Printf("✅ Project #%d bound to blueprint %s %.12s: topology v%d\n", id, b.Name, stored.Hash, version)
+		fmt.Printf("Project #%d bound to blueprint %s %.12s: topology v%d\n", id, b.Name, stored.Hash, version)
 		for i, c := range cases {
 			fmt.Printf("   case #%d  %s  (%d stories) → staircase compile %d\n", c, b.Cases[i].Slug, len(b.Cases[i].Stories), c)
 		}

@@ -31,7 +31,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ─── command wiring ───────────────────────────────────────────────────────────
+// command wiring
 
 var auditCmd = &cobra.Command{
 	Use:   "audit",
@@ -72,7 +72,7 @@ func init() {
 	rootCmd.AddCommand(auditCmd)
 }
 
-// ─── checkpoint type ──────────────────────────────────────────────────────────
+// checkpoint type
 
 // AuditCheckpoint is the on-disk representation of a signed audit checkpoint.
 type AuditCheckpoint struct {
@@ -82,7 +82,7 @@ type AuditCheckpoint struct {
 	Signature string               `json:"signature"`
 }
 
-// ─── export ───────────────────────────────────────────────────────────────────
+// export
 
 func auditExportHandler(_ *cobra.Command, args []string) error {
 	runID, err := strconv.ParseInt(args[0], 10, 64)
@@ -92,7 +92,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 
 	wsDir := viper.GetString("STAIRCASE_DIR")
 
-	// ── 1. Open DB ────────────────────────────────────────────────────────────
+	// 1. Open DB
 	db, err := persistence.InitDB(wsDir)
 	if err != nil {
 		return fmt.Errorf("db init: %w", err)
@@ -100,7 +100,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 	defer func() { _ = db.Close() }()
 	store := persistence.NewStore(db)
 
-	// ── 2. Verify run exists ──────────────────────────────────────────────────
+	// 2. Verify run exists
 	run, err := store.GetRun(runID)
 	if err != nil {
 		return fmt.Errorf("load run: %w", err)
@@ -109,13 +109,13 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("run %d not found", runID)
 	}
 
-	// ── 3. Load event logs ────────────────────────────────────────────────────
+	// 3. Load event logs
 	entries, err := store.ListVerifiedEventLogs(runID) // a checkpoint signs the chain: never one that does not verify
 	if err != nil {
 		return fmt.Errorf("the audit chain of run #%d does not verify, so no checkpoint is signed over it: %w", runID, err)
 	}
 
-	// ── 4. Sign ───────────────────────────────────────────────────────────────
+	// 4. Sign
 	privKey, err := crypto.LoadSigningKey(wsDir)
 	if err != nil {
 		return fmt.Errorf("load signing key: %w", err)
@@ -127,7 +127,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 	}
 	sig := crypto.Sign(privKey, canonical)
 
-	// ── 5. Write checkpoint ───────────────────────────────────────────────────
+	// 5. Write checkpoint
 	auditDir := filepath.Join(wsDir, "audit")
 	if err := os.MkdirAll(auditDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir audit: %w", err)
@@ -151,7 +151,7 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("write checkpoint: %w", err)
 	}
 
-	fmt.Printf("✅ Audit checkpoint written: %s\n", cpPath)
+	fmt.Printf("Audit checkpoint written: %s\n", cpPath)
 	fmt.Printf("   run_id:  %d\n", runID)
 	fmt.Printf("   entries: %d\n", len(entries))
 	fmt.Printf("   sig:     %s…\n", sig[:16])
@@ -166,14 +166,14 @@ func auditExportHandler(_ *cobra.Command, args []string) error {
 		if err := audit.AppendAnchor(cpPath+".anchor", anchor); err != nil {
 			return fmt.Errorf("write anchor sidecar: %w", err)
 		}
-		fmt.Printf("🪨 Anchored in Rekor: %s\n", anchor.RekorURL)
+		fmt.Printf("Anchored in Rekor: %s\n", anchor.RekorURL)
 		fmt.Printf("   uuid:      %s\n", anchor.UUID)
 		fmt.Printf("   log_index: %d\n", anchor.LogIndex)
 	}
 	return nil
 }
 
-// ─── verify ───────────────────────────────────────────────────────────────────
+// verify
 
 // auditVerifyHandler reads a checkpoint file that may contain one or more
 // NDJSON records (one JSON object per line) and verifies each independently.
@@ -212,10 +212,10 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 		}
 
 		if err := verifyOne(cpPath, lineNum, cp, pubKey); err != nil {
-			fmt.Printf("❌ %v\n", err)
+			fmt.Printf("error: %v\n", err)
 			anyFailed = true
 		} else {
-			fmt.Printf("✅ Checkpoint %s (record %d) OK - run_id=%d entries=%d exported=%s\n",
+			fmt.Printf("Checkpoint %s (record %d) OK - run_id=%d entries=%d exported=%s\n",
 				cpPath, lineNum, cp.RunID, len(cp.Entries), cp.Exported.Format(time.RFC3339))
 		}
 
@@ -225,7 +225,7 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 		if auditCheckAnchor {
 			anchors, aErr := audit.LoadAnchors(cpPath + ".anchor")
 			if aErr != nil {
-				fmt.Printf("❌ record %d: load anchors: %v\n", lineNum, aErr)
+				fmt.Printf("error: record %d: load anchors: %v\n", lineNum, aErr)
 				anyFailed = true
 			} else {
 				if auditRekorURL != audit.DefaultRekorURL { // --rekor-url: the log to ask, not the sidecar's say-so
@@ -235,10 +235,10 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 				}
 				recordHash := sha256.Sum256(line)
 				if anchor, vErr := audit.VerifyAnchor(line, hex.EncodeToString(recordHash[:]), anchors, []ed25519.PublicKey{pubKey}); vErr != nil {
-					fmt.Printf("❌ record %d: %v\n", lineNum, vErr)
+					fmt.Printf("error: record %d: %v\n", lineNum, vErr)
 					anyFailed = true
 				} else {
-					fmt.Printf("🪨 record %d anchored OK - uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
+					fmt.Printf("record %d anchored OK - uuid=%s log_index=%d\n", lineNum, anchor.UUID, anchor.LogIndex)
 				}
 			}
 		}
@@ -257,25 +257,25 @@ func auditVerifyHandler(_ *cobra.Command, args []string) error {
 
 // verifyOne verifies a single AuditCheckpoint record's hash chain and signature.
 func verifyOne(cpPath string, lineNum int, cp AuditCheckpoint, pubKey []byte) error {
-	// ── 1. Hash chain ─────────────────────────────────────────────────────────
+	// 1. Hash chain
 	if chainErr := chain.Verify(cp.Entries); chainErr != nil {
-		log.Printf("❌ Hash chain invalid: %v", chainErr)
+		log.Printf("error: Hash chain invalid: %v", chainErr)
 		return fmt.Errorf("checkpoint %s record %d: hash chain invalid: %w", cpPath, lineNum, chainErr)
 	}
 
-	// ── 2. Ed25519 signature ──────────────────────────────────────────────────
+	// 2. Ed25519 signature
 	canonical, err := marshalEntries(cp.Entries)
 	if err != nil {
 		return fmt.Errorf("checkpoint %s record %d: marshal entries: %w", cpPath, lineNum, err)
 	}
 	if sigErr := crypto.Verify(pubKey, canonical, cp.Signature); sigErr != nil {
-		log.Printf("❌ Signature invalid: %v", sigErr)
+		log.Printf("error: Signature invalid: %v", sigErr)
 		return fmt.Errorf("checkpoint %s record %d: signature invalid: %w", cpPath, lineNum, sigErr)
 	}
 	return nil
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 // marshalEntries serialises the entries slice as compact JSON (no trailing
 // newline) for use as the signed payload.  Compact JSON is used so that the

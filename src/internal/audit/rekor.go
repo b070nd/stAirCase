@@ -1,11 +1,3 @@
-// Rekor anchoring (B3): a signed checkpoint can still be deleted, or regenerated with its signature, by anyone holding the workspace
-// key. Anchoring it in a public Rekor transparency log adds an external append-only witness.
-//
-// The entry type is `rekord`, not `hashedrekord`: plain Ed25519 signs the whole message, and hashedrekord needs ed25519ph. The artifact
-// is sent inline so the server can check the signature; the log stores its hash, the signature and the key.
-//
-// Limit: VerifyAnchor confirms the entry exists, its hash is the local record's and its signature is valid. Merkle inclusion proofs and
-// signed tree heads are not checked yet.
 package audit
 
 import (
@@ -24,6 +16,15 @@ import (
 	"slices"
 	"time"
 )
+
+// Rekor anchoring (B3): a signed checkpoint can still be deleted, or regenerated with its signature, by anyone holding the workspace
+// key. Anchoring it in a public Rekor transparency log adds an external append-only witness.
+//
+// The entry type is `rekord`, not `hashedrekord`: plain Ed25519 signs the whole message, and hashedrekord needs ed25519ph. The artifact
+// is sent inline so the server can check the signature; the log stores its hash, the signature and the key.
+//
+// Limit: VerifyAnchor confirms the entry exists, its hash is the local record's and its signature is valid. Merkle inclusion proofs and
+// signed tree heads are not checked yet.
 
 // DefaultRekorURL is the public Sigstore Rekor instance.
 const DefaultRekorURL = "https://rekor.sigstore.dev"

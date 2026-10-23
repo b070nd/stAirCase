@@ -1,3 +1,5 @@
+// Package crypto holds the workspace keys: AES-256-GCM encryption of the stored secrets, key rotation with a crash-safe journal, and the
+// Ed25519 key that signs audit checkpoints and change certificates.
 package crypto
 
 import (

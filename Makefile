@@ -1,10 +1,10 @@
-.PHONY: check evidence site-check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
+.PHONY: check version evidence site-check test test-integration test-e2e test-ci race build lint coverage vuln demo smoke smoke-claude smoke-codex fuzz
 
 # ─── The gate: every change must pass this locally and in CI ─────────────────
 # Full tests (no -short: includes the run integration tests), race, CLI smoke
 # tests, the offline demo, formatting, tidy and the Windows build.
 check: lint
-	@test -z "$$(gofmt -l src tests demo)" || { gofmt -l src tests demo; echo "✗ gofmt needed"; exit 1; }
+	@test -z "$$(gofmt -l src tests demo)" || { gofmt -l src tests demo; echo "error: gofmt needed"; exit 1; }
 	go mod tidy -diff
 	GOOS=windows go build ./...
 	go test ./... -count=1 -timeout=600s
@@ -12,6 +12,13 @@ check: lint
 	go test -tags barriers ./src/internal/barrier ./src/internal/orchestrator -run 'TestHit|TestConsumption' -count=1 -timeout=180s
 	bats tests/integration.bats tests/verify_action.bats tests/release_gate.bats tests/kill_drill.bats tests/pty_ctrl_c.bats tests/test_report.bats tests/verify_action_acquire.bats tests/verify_action_release.bats tests/barrier_drill.bats tests/spec_vectors.bats tests/evidence.bats tests/verify_release.bats tests/ruleset_fixture.bats tests/historical.bats tests/coordinator.bats tests/resume_drill.bats tests/ci_evidence_check.bats tests/release_notes.bats tests/homebrew_formula.bats tests/action_exec.bats
 	$(MAKE) demo
+
+# ─── The version ──────────────────────────────────────────────────────────────
+# The CHANGELOG's newest release heading is the one source of the version. This moves every place that names the current release (the
+# pinned Action example, the fixture's default, the release checklist, the site's links and its setup guide) to it: run it after you
+# add the heading, review the diff, and read what it says about the site's text. `make check` fails while a mention is stale.
+version:
+	go run ./src/tools/setversion
 
 # ─── The website (site/) ──────────────────────────────────────────────────────
 # Plain HTML and CSS, built by nothing and served by nothing: open site/index.html.
@@ -74,8 +81,12 @@ vuln:
 # golangci-lint runs govet, staticcheck, errcheck, ineffassign and unused with
 # .golangci.yaml. Missing or failing linter fails the target: a silently
 # skipped linter is not a gate.
+# It runs for the other platforms too: a file with a build constraint (the Linux sandbox, the Windows lock stubs) is skipped by a lint
+# run on a machine of the other kind, and CI would be the first to see its findings.
 lint:
 	golangci-lint run ./...
+	GOOS=linux golangci-lint run ./...
+	GOOS=windows golangci-lint run ./...
 
 # ─── Offline demo (no API key) ────────────────────────────────────────────────
 # The offline end-to-end acceptance run (blueprint → bind → run → approvals →

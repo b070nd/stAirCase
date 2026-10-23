@@ -34,7 +34,7 @@ var componentAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("✅ Component created (id=%d): %s\n", c.ID, c.Name)
+		fmt.Printf("Component created (id=%d): %s\n", c.ID, c.Name)
 		return nil
 	},
 }
@@ -57,7 +57,7 @@ var componentUpdateCmd = &cobra.Command{
 		if err := store.UpdateComponent(id, args[1]); err != nil {
 			return err
 		}
-		fmt.Printf("✅ Component %d renamed to %q\n", id, args[1])
+		fmt.Printf("Component %d renamed to %q\n", id, args[1])
 		return nil
 	},
 }
@@ -117,7 +117,7 @@ var componentDeleteCmd = &cobra.Command{
 		if err := store.DeleteComponent(id); err != nil {
 			return err
 		}
-		fmt.Printf("✅ Component %d deleted\n", id)
+		fmt.Printf("Component %d deleted\n", id)
 		return nil
 	},
 }

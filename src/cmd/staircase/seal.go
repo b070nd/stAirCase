@@ -128,7 +128,7 @@ func sealHandler(_ *cobra.Command, _ []string) error {
 		}
 		_, _ = git("branch", "-D", runBranch)
 		kept, _ := git("diff-tree", "--no-commit-id", "--name-only", "-r", "-z", run)
-		fmt.Printf("\n✅ Sealed %.12s on %s: %s (CAL 2, change certificate in refs/notes/staircase)\n", run, branch, msg)
+		fmt.Printf("\nSealed %.12s on %s: %s (CAL 2, change certificate in refs/notes/staircase)\n", run, branch, msg)
 		for _, f := range strings.Split(strings.Trim(staged, "\x00"), "\x00") {
 			if !slices.Contains(strings.Split(strings.Trim(kept, "\x00"), "\x00"), f) {
 				fmt.Printf("   left out, still in your working files: %s\n", f)
@@ -193,7 +193,7 @@ func attachHandler(_ *cobra.Command, _ []string) error {
 				return err
 			}
 		}
-		fmt.Println("✅ Detached: git commit works as usual in this checkout")
+		fmt.Println("Detached: git commit works as usual in this checkout")
 		return nil
 	}
 	if err == nil && !ours {
@@ -210,6 +210,6 @@ func attachHandler(_ *cobra.Command, _ []string) error {
 	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
 		return err
 	}
-	fmt.Println("✅ Attached: git commit is refused here; seal the agent's changes with staircase seal")
+	fmt.Println("Attached: git commit is refused here; seal the agent's changes with staircase seal")
 	return nil
 }

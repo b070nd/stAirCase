@@ -332,8 +332,11 @@ func runScenario(ctx context.Context, pol []byte, s Scenario) ([]Result, error) 
 		return nil, fmt.Errorf("the run could not be made: %w", err)
 	}
 	runs, err := store.ListRunsByCase(c.ID)
-	if err != nil || len(runs) != 1 {
-		return nil, fmt.Errorf("the scenario's run was not recorded: %v", err)
+	if err != nil {
+		return nil, fmt.Errorf("the scenario's run was not recorded: %w", err)
+	}
+	if len(runs) != 1 {
+		return nil, fmt.Errorf("the scenario's run was not recorded: found %d runs", len(runs))
 	}
 	h, err := history.Read(store, runs[0].ID)
 	if err != nil {

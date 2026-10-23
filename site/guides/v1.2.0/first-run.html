@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>First run v1.2.0 - stAirCase</title>
+  <meta name="description" content="Your first run with stAirCase v1.2.0, and onboarding a project.">
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../../index.html#use-cases">Use cases</a></li>
+      <li><a href="../../assurance.html">Assurance levels</a></li>
+      <li><a href="../../guides/index.html" aria-current="true">Setup guides</a></li>
+      <li><a href="../../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Your first run, and onboarding a project</h1>
+<p class="note">This guide is for stAirCase <strong>v1.2.0</strong>. Other releases: <a href="../../guides/index.html">setup guides</a>.</p>
+<p class="lead">In about 15 minutes: let AI agents make a real change in one of your repositories, with you approving every step, then review the result, accept it, and keep signed evidence of what happened.</p>
+<p>New to the words used here (case, story, topology, proposal)? Read <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/concepts.md">Concepts</a> first; it takes five minutes. Not installed yet? See <a href="../../guides/v1.2.0/install.html">Install</a>.</p>
+
+<h2 id="fastest">The fastest way: Claude Code or Codex</h2>
+<p>If you use Claude Code and it is logged in, you need no setup at all. In any git repository with at least one commit:</p>
+<pre tabindex="0"><code>cd ~/code/shop
+staircase claude "add a /health endpoint that returns 200 and the body ok"</code></pre>
+<p>stAirCase shows you what is about to happen; type <kbd>y</kbd> and press <kbd>Enter</kbd> to start. Approve each change with <kbd>y</kbd>, reject it with <kbd>n</kbd> and a reason. With OpenAI's Codex it is the same: <code>staircase codex "..."</code>. Then continue with <a href="#review">review and accept</a>.</p>
+<p>On a client's repository, keep stAirCase's settings out of it: <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/profile.md">a project's profile</a> holds the checks, the paths that always need a person, instructions for the agent and more, in your workspace.</p>
+
+<h2 id="project">Onboard a project for stAirCase's own agents</h2>
+<p>You need a git repository with at least one commit, and an API key for a model provider. The steps below use Anthropic; any supported provider works (<a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/models.md">Models and API keys</a>).</p>
+
+<h3 id="add-project">Add your project</h3>
+<pre tabindex="0"><code>staircase vendor add acme
+staircase project add acme shop --source ~/code/shop</code></pre>
+<p>Each command prints a number (<code>#1</code> for the first project). The examples below use <code>1</code>; use the numbers your commands print.</p>
+
+<h3 id="key">Store the model key</h3>
+<p>The key is read from standard input, so it never appears in your shell history. It is stored encrypted in the workspace and only ever sent to the model provider.</p>
+<pre tabindex="0"><code>printf %s "$ANTHROPIC_API_KEY" | staircase secret set ANTHROPIC_API_KEY</code></pre>
+
+<h3 id="team">Describe the team of agents</h3>
+<p>A topology is the team: a supervisor that starts and routes the work, and the agents it can hand work to.</p>
+<pre tabindex="0"><code>staircase topology register 1 supervisor            # 1 = the project
+staircase topology agent add 1 supervisor \
+  "You plan the work and hand it to the coder. End the run when the story is done." \
+  --model claude-sonnet-4-6                          # 1 = the topology
+staircase topology agent add 1 coder \
+  "You write code. Make small, focused changes and explain each one." \
+  --model claude-sonnet-4-6
+staircase topology edge add 1 supervisor coder
+staircase topology edge add 1 coder supervisor</code></pre>
+<p>You can also keep the team, the work and the rules as files in their own repository and import them: see <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/blueprints.md">Blueprints</a>. A team can share them from a <a href="../../use-cases/teams.html">governance repository</a>.</p>
+
+<h3 id="work">Describe the work</h3>
+<p>A case is the work: a PRD (what to build) and stories (what "done" means). The scope lists the paths a story may change; a change anywhere else is shown to you as drift.</p>
+<pre tabindex="0"><code>staircase case new 1                                 # 1 = the project; prints the case number
+printf 'Add a /health endpoint that returns HTTP 200 with the body "ok".\n' &gt; prd.md
+staircase case set-prd 1 prd.md
+staircase story add 1 "GET /health returns 200 and the body ok"
+staircase story scope 1 --allow 'src/**' --allow README.md   # 1 = the story</code></pre>
+
+<h3 id="compile">Compile and check</h3>
+<pre tabindex="0"><code>staircase compile 1     # writes the plan the run will execute
+staircase gate 1        # checks keys, plan, git; BLOCK failures stop the run</code></pre>
+
+<h3 id="run">Run it</h3>
+<pre tabindex="0"><code>staircase run 1</code></pre>
+<p>The agents start in a separate worktree of your repository. Your checkout is not touched; agents see your <strong>last commit</strong>, so commit what they should see first. Each time an agent wants to change a file, a screen shows you exactly what would change: press <kbd>y</kbd> to approve (only these bytes will be committed), or <kbd>n</kbd>, type a reason and press <kbd>Enter</kbd> to reject (<kbd>Esc</kbd> goes back). When the agents finish, stAirCase checks that the worktree holds exactly what you approved and commits it on the branch <code>staircase/run-1</code>.</p>
+
+<h2 id="review">Review and accept</h2>
+<pre tabindex="0"><code>git -C ~/code/shop log --stat -1 staircase/run-1     # what was committed
+git -C ~/code/shop diff HEAD...staircase/run-1       # the full change
+staircase inspect runs                               # all runs and their status
+staircase verify staircase/run-1 --rebuild           # the certificate, and that the commit holds exactly what was approved</code></pre>
+<p>A commit does not prove that a story is done: you decide that. Check the work, then accept each story:</p>
+<pre tabindex="0"><code>staircase story accept 1
+staircase case status 1      # COMPLETED once every story is accepted</code></pre>
+<p>Merge the branch the way you normally do. Not happy with the result? <code>staircase case rollback 1</code> removes the run's branch and worktree, keeps its audit record, and lets you run the case again.</p>
+
+<h2 id="evidence">Keep the evidence</h2>
+<pre tabindex="0"><code>staircase audit export 1
+staircase audit verify ~/.staircase-workspace/audit/run-1.checkpoint.json</code></pre>
+<p>More, including anchoring the evidence in a public transparency log: <a href="../../use-cases/evidence.html">evidence inspection</a>. To require certificates on pull requests: <a href="../../use-cases/ci.html">CI verification</a>.</p>
+<p>Reference: <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/QUICKSTART.md">Getting started, at v1.2.0</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.2.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

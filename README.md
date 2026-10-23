@@ -12,7 +12,6 @@
   <a href="https://pkg.go.dev/github.com/b070nd/stAirCase"><img src="https://pkg.go.dev/badge/github.com/b070nd/stAirCase.svg" alt="Go Reference"></a>
   <a href="https://goreportcard.com/report/github.com/b070nd/stAirCase"><img src="https://goreportcard.com/badge/github.com/b070nd/stAirCase" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/status-1.0-green.svg" alt="1.0">
 </p>
 
 ---
@@ -52,7 +51,7 @@ staircase verify staircase/run-1
 ```
 
 ```
-✅ Commit 33279b77f9ba: valid change certificate, CAL 3
+Commit 33279b77f9ba: valid change certificate, CAL 3
    requested by dev@example.com (the git email of the checkout: unauthenticated)
    run #1 from 188a7dda520e, assisted by Claude Code
    1 decision(s) by operator

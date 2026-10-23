@@ -85,9 +85,9 @@ func reportRecovery(w io.Writer, runID int64, res orchestrator.RecoverResult) {
 	case res.Repaired:
 		verb = "was already committed; its evidence was finished"
 	}
-	_, _ = fmt.Fprintf(w, "✅ Run #%d %s: %d approved proposal(s) are commit %.12s on its run branch\n", runID, verb, res.Proposals, res.Commit)
+	_, _ = fmt.Fprintf(w, "Run #%d %s: %d approved proposal(s) are commit %.12s on its run branch\n", runID, verb, res.Proposals, res.Commit)
 	if len(res.EvidenceErrors) > 0 {
-		_, _ = fmt.Fprintf(w, "   ⚠️  The commit exists but its evidence is incomplete:\n")
+		_, _ = fmt.Fprintf(w, "   warning: The commit exists but its evidence is incomplete:\n")
 		for _, e := range res.EvidenceErrors {
 			_, _ = fmt.Fprintf(w, "      - %s\n", e)
 		}
@@ -95,10 +95,10 @@ func reportRecovery(w io.Writer, runID int64, res orchestrator.RecoverResult) {
 		return
 	}
 	if res.CertificateKept {
-		_, _ = fmt.Fprintf(w, "   📜 Recovery keeps the certificate the run had already issued; verify it like any other: staircase verify staircase/run-%d\n", runID)
+		_, _ = fmt.Fprintf(w, "   Recovery keeps the certificate the run had already issued; verify it like any other: staircase verify staircase/run-%d\n", runID)
 		return
 	}
-	_, _ = fmt.Fprintf(w, "   📜 The certificate says the run did not finish; verify it like any other: staircase verify staircase/run-%d\n", runID)
+	_, _ = fmt.Fprintf(w, "   The certificate says the run did not finish; verify it like any other: staircase verify staircase/run-%d\n", runID)
 }
 
 func init() {

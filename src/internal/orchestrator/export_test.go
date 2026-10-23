@@ -25,7 +25,7 @@ func ExportedSendWebhookYield(url string, secret []byte, req domain.YieldRequest
 	return sendWebhookYield(context.Background(), url, secret, req)
 }
 
-// ExportedScrubSecrets exposes scrubSecrets for whitebox tests (CHECK 4.4.3).
+// ExportedScrubSecrets exposes scrubSecrets for whitebox tests.
 func ExportedScrubSecrets(req domain.YieldRequest, activeValues []string) domain.YieldRequest {
 	return scrubSecrets(req, activeValues)
 }
@@ -34,7 +34,7 @@ func ExportedScrubSecrets(req domain.YieldRequest, activeValues []string) domain
 // pre-flight path without requiring a full Run() invocation.
 func ExportedRunGates(r *Runner, caseID int64) error { return r.runGates(caseID) }
 
-// ExportedWriteSummary exposes writeSummary for unit testing (CHECK 10.4.1).
+// ExportedWriteSummary exposes writeSummary for unit testing.
 func ExportedWriteSummary(wsDir string, s RunSummary) error { return writeSummary(wsDir, s) }
 
 // CleanApprovedPathForTest exposes cleanApprovedPath for trust-boundary tests.
@@ -77,8 +77,12 @@ func CommitApprovedForTest(repoPath, file, content string, tamper func()) (strin
 	if err := os.WriteFile(filepath.Join(repoPath, file), []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	if v, err := a.verify(); err != nil || len(v) > 0 {
-		return "", fmt.Errorf("verify: %v %v", v, err)
+	v, err := a.verify()
+	if err != nil {
+		return "", fmt.Errorf("verify: %w", err)
+	}
+	if len(v) > 0 {
+		return "", fmt.Errorf("verify: %v", v)
 	}
 	tamper()
 	return a.commit(branch, "test")

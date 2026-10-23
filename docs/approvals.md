@@ -289,7 +289,7 @@ staircase policy test new-policy.json
   17 would be approved by the policy, as a person or the validator did before
   24 stay as they were
 
-⚠️  a person REJECTED these, the policy would APPROVE them:
+warning: a person REJECTED these, the policy would APPROVE them:
   run #7: docs/setup.md by coder
 ```
 
@@ -308,7 +308,7 @@ in a section of its own:
 ```
   3 would now go to a person, whatever the policy says
 
-⚠️  these were decided without a person, and a protected or sensitive path now sends them to one:
+warning: these were decided without a person, and a protected or sensitive path now sends them to one:
   run #12: Makefile by coder (approved by policy; it changes Makefile, which holds the definition of a check: a person decides, whatever the policy says)
   run #12: .github/workflows/ci.yml by coder (approved by policy; it changes .github/workflows/ci.yml, a sensitive path: a person decides, whatever the policy says)
 ```

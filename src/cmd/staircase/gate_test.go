@@ -96,9 +96,8 @@ func TestPrintGateReport_warn_overall(t *testing.T) {
 	assert.Contains(t, out, "Warnings detected", "WARN overall must show warning message")
 }
 
-func TestStatusIcon_known_statuses(t *testing.T) {
-	// statusIcon is unexported but its output is visible in printGateReport output.
-	// Verify indirectly that icons appear in the rendered report.
+// TestGateReport_says_each_status_in_words: the report names the result of every gate and the overall result as a word, not a symbol.
+func TestGateReport_says_each_status_in_words(t *testing.T) {
 	report := gate.Report{
 		CaseID:  1,
 		RunAt:   time.Now(),
@@ -110,6 +109,6 @@ func TestStatusIcon_known_statuses(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	printGateReport(&buf, report)
-	// The ✅ icon must appear at least once (in the PASS row and/or footer).
-	assert.Contains(t, buf.String(), "✅")
+	assert.Regexp(t, `(?m)^c +g +BLOCK +PASS +ok$`, buf.String(), "the gate's row ends with its status in words")
+	assert.Contains(t, buf.String(), "Overall: PASS")
 }

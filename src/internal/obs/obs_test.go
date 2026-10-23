@@ -12,7 +12,7 @@ import (
 )
 
 // TestRedaction verifies that sensitive field values are replaced with
-// "<REDACTED>" in the structured log output (CHECK 10.1.3).
+// "<REDACTED>" in the structured log output.
 func TestRedaction(t *testing.T) {
 	var buf bytes.Buffer
 	obs.InitJSON(&buf, slog.LevelDebug)
@@ -67,7 +67,7 @@ func TestRedaction_case_insensitive(t *testing.T) {
 }
 
 // TestWithAttrs_redacts_sensitive_pre_attached_attrs verifies that WithAttrs
-// redacts sensitive fields attached via slog.With() (CHECK 10.1.2).
+// redacts sensitive fields attached via slog.With().
 func TestWithAttrs_redacts_sensitive_pre_attached_attrs(t *testing.T) {
 	var buf bytes.Buffer
 	obs.InitJSON(&buf, slog.LevelDebug)
@@ -98,7 +98,7 @@ func TestWithGroup_delegates(t *testing.T) {
 }
 
 // TestInitOTel_noop_when_no_endpoint verifies that InitOTel("") returns a
-// no-op shutdown func and sets OTelEndpoint to "" (CHECK 10.3.1).
+// no-op shutdown func and sets OTelEndpoint to "".
 func TestInitOTel_noop_when_no_endpoint(t *testing.T) {
 	shutdown := obs.InitOTel("")
 	require.NotNil(t, shutdown, "shutdown func must not be nil")
@@ -107,7 +107,7 @@ func TestInitOTel_noop_when_no_endpoint(t *testing.T) {
 }
 
 // TestInitOTel_with_endpoint_sets_global verifies that InitOTel records the
-// endpoint and returns a non-nil shutdown func (CHECK 10.3.1).
+// endpoint and returns a non-nil shutdown func.
 func TestInitOTel_with_endpoint_sets_global(t *testing.T) {
 	t.Cleanup(func() { obs.InitOTel("") }) // reset after test
 	shutdown := obs.InitOTel("localhost:4317")

@@ -195,7 +195,7 @@ func TestRotateKey_reencrypt_error_cleans_up(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
-// ─── ResumeIfCommitted ────────────────────────────────────────────────────────
+// ResumeIfCommitted
 
 // TestResumeIfCommitted_no_journal_is_noop verifies that the function returns
 // nil and leaves the workspace unchanged when no journal file exists.

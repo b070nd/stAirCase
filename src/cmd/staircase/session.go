@@ -213,7 +213,7 @@ func session(l launch, harness, name, command string, args []string) error {
 
 	wsDir := viper.GetString("STAIRCASE_DIR")
 	if _, err := os.Stat(filepath.Join(wsDir, "workspace.db")); errors.Is(err, os.ErrNotExist) {
-		fmt.Printf("🧰 Creating the workspace in %s\n", wsDir)
+		fmt.Printf("Creating the workspace in %s\n", wsDir)
 	}
 	db, err := persistence.InitDB(wsDir)
 	if err != nil {
@@ -267,7 +267,7 @@ func session(l launch, harness, name, command string, args []string) error {
 				return 0, err
 			}
 		}
-		fmt.Printf("🧭 Project %q (#%d), case #%d, story #%d\n", project.Name, project.ID, c.ID, story.ID)
+		fmt.Printf("Project %q (#%d), case #%d, story #%d\n", project.Name, project.ID, c.ID, story.ID)
 		if _, err := compileCase(store, wsDir, c.ID, harness, l.review, true); err != nil {
 			return 0, err
 		}
@@ -359,7 +359,7 @@ func sessionProject(store *persistence.Store, root string) (*domain.Project, err
 		}
 		name = fmt.Sprintf("%s-%d", filepath.Base(root), i)
 	}
-	fmt.Printf("📁 New project %q for %s\n", name, root)
+	fmt.Printf("New project %q for %s\n", name, root)
 	return store.CreateProject(v.ID, name, root)
 }
 

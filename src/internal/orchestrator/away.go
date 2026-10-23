@@ -49,7 +49,7 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 	// is broken at its base): they are offered, with the failure shown, instead of being lost to a FAILED run.
 	emptyButParked := !passed && len(appr.files) == 0 && parked > 0
 	if !passed && !emptyButParked {
-		fmt.Fprintf(os.Stdout, "   ❌ The approved change does not pass its checks now: %s\n", failed)
+		fmt.Fprintf(os.Stdout, "   error: The approved change does not pass its checks now: %s\n", failed)
 		return persistence.RunStatusFailed, "", nil
 	}
 	refused := ""
@@ -60,7 +60,7 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 				return persistence.RunStatusFailed, "", fmt.Errorf("audit delivery_authorized: %w", err)
 			}
 			barrier.Hit(barrier.DeliveryAuthorized)
-			fmt.Fprintf(os.Stdout, "   ✅ Delivering by policy: every condition holds, so %d file(s) that rules of your signed policy approved are committed to the run branch without your review. Nothing is pushed.\n", len(appr.files))
+			fmt.Fprintf(os.Stdout, "   Delivering by policy: every condition holds, so %d file(s) that rules of your signed policy approved are committed to the run branch without your review. Nothing is pushed.\n", len(appr.files))
 			return persistence.RunStatusSuccess, tree, nil
 		}
 	}
@@ -72,17 +72,17 @@ func (r *Runner) awaitReview(ctx context.Context, runID int64, appr *approvals, 
 		return persistence.RunStatusFailed, "", fmt.Errorf("audit awaiting_review: %w", err)
 	}
 	if refused != "" {
-		fmt.Fprintf(os.Stdout, "   🙋 Delivery by policy is refused, and falling back to your review is a normal outcome: %s\n", refused)
+		fmt.Fprintf(os.Stdout, "   Delivery by policy is refused, and falling back to your review is a normal outcome: %s\n", refused)
 	}
 	if emptyButParked {
-		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved and the checks fail on the unchanged tree (%s); %d proposal(s) parked for you. Decide with: staircase decide %d\n", failed, parked, runID)
+		fmt.Fprintf(os.Stdout, "   Awaiting your review: nothing was approved and the checks fail on the unchanged tree (%s); %d proposal(s) parked for you. Decide with: staircase decide %d\n", failed, parked, runID)
 		return persistence.RunStatusAwaitingReview, "", nil
 	}
 	if len(appr.files) == 0 {
-		fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: nothing was approved, %d proposal(s) parked for you (an empty change). Decide with: staircase decide %d\n", parked, runID)
+		fmt.Fprintf(os.Stdout, "   Awaiting your review: nothing was approved, %d proposal(s) parked for you (an empty change). Decide with: staircase decide %d\n", parked, runID)
 		return persistence.RunStatusAwaitingReview, "", nil
 	}
-	fmt.Fprintf(os.Stdout, "   ⏸  Awaiting your review: %d file(s) approved on evidence, %d proposal(s) parked. Decide with: staircase decide %d\n",
+	fmt.Fprintf(os.Stdout, "   Awaiting your review: %d file(s) approved on evidence, %d proposal(s) parked. Decide with: staircase decide %d\n",
 		len(appr.files), parked, runID)
 	return persistence.RunStatusAwaitingReview, "", nil
 }
@@ -112,11 +112,11 @@ func (r *Runner) checkUnchanged(ctx context.Context, runID int64, appr *approval
 	}
 	barrier.Hit(barrier.NothingChecked)
 	if !passed {
-		fmt.Fprintf(os.Stdout, "   ❌ Nothing to review, and your checks fail: no proposal was approved or parked (the agent made %d), and your checks fail on the unchanged tree (%s). Nothing was committed. Read what the agent did with `staircase inspect log %d`.\n",
+		fmt.Fprintf(os.Stdout, "   error: Nothing to review, and your checks fail: no proposal was approved or parked (the agent made %d), and your checks fail on the unchanged tree (%s). Nothing was committed. Read what the agent did with `staircase inspect log %d`.\n",
 			made, cmp.Or(failed, "the checks ran nothing"), runID)
 		return persistence.RunStatusFailed, nil
 	}
-	fmt.Fprintf(os.Stdout, "   ✅ Nothing to review: no proposal was approved or parked (the agent made %d), and your checks pass on the unchanged tree. If you expected a change, read what the agent said with `staircase inspect log %d`.\n",
+	fmt.Fprintf(os.Stdout, "   Nothing to review: no proposal was approved or parked (the agent made %d), and your checks pass on the unchanged tree. If you expected a change, read what the agent said with `staircase inspect log %d`.\n",
 		made, runID)
 	return persistence.RunStatusSuccess, nil
 }

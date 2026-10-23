@@ -35,7 +35,8 @@ GOOS=windows go build ./...  # the Windows build must keep compiling
   surrounding style. Don't reformat or refactor unrelated code in the same PR.
 - **Conventional commits.** Follow the existing history, e.g.
   `fix(orchestrator): …`, `feat(audit): …`, `docs: …`, with a body that explains
-  the *why*.
+  the *why*. Pull requests are squash-merged, so the pull request title becomes the
+  commit on `master`: write it as a commit subject, not as a branch name.
 - **No new dependencies without discussion.** `go.mod` is the supply-chain
   surface - model clients use the standard library, and it should stay that way.
 - **Dependencies are updated by hand**, in a normal pull request: `go get <module>@<version>`,
@@ -61,9 +62,12 @@ lists every page.
 ## Releasing (maintainers)
 
 1. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
-   `## [X.Y.Z] - date` heading; it becomes the release notes. In the same change set the
-   version in the pinned Action example in `docs/audit.md` and the default of
-   `demo/ruleset-fixture.sh` to `vX.Y.Z` (a test fails until they name it).
+   `## [X.Y.Z] - date` heading; it becomes the release notes. Then run `make version`: it moves every place that names
+   the current release (the pinned Action example in `docs/audit.md`, the default of `demo/ruleset-fixture.sh`, the
+   release checklist, the site's links, and a new setup guide under `site/guides/`) to the version in the heading.
+   Review the diff. The command also lists the pages the site links to that changed since the last release: read the
+   site's text about them, and check the new guide's commands against the release, because no script can judge that.
+   A test fails until every mention names the latest release.
 2. Merge to `master` with CI green. Then tag the merge commit on an up to date `master`, never the pull request branch:
 
    ```bash

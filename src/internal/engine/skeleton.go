@@ -213,12 +213,12 @@ func TokenEstimate(text string) int {
 func WarnTokenBudget(text string) string {
 	est := TokenEstimate(text)
 	if est > tokenBudgetWarn {
-		return fmt.Sprintf("⚠️  Context is ~%dk tokens (exceeds 100k) - this may be slow or costly.", est/1000)
+		return fmt.Sprintf("warning: Context is ~%dk tokens (exceeds 100k) - this may be slow or costly.", est/1000)
 	}
 	return ""
 }
 
-// ─── Ignore patterns ─────────────────────────────────────────────────────────
+// Ignore patterns
 
 var defaultIgnoreDirs = map[string]bool{
 	".git": true, "node_modules": true, "__pycache__": true,
@@ -297,7 +297,7 @@ func shouldIgnoreFile(rel string, patterns []string) bool {
 	return false
 }
 
-// ─── Signature extraction ─────────────────────────────────────────────────────
+// Signature extraction
 
 var (
 	reFuncGo      = regexp.MustCompile(`^func\s`)

@@ -19,5 +19,5 @@ echo "Recording model exchanges for case #$CASE_ID → $OUT (real API calls)"
 staircase run "$CASE_ID" --record-llm "$OUT"
 
 echo
-echo "✅ Recorded $OUT - replay it offline with:"
+echo "Recorded $OUT - replay it offline with:"
 echo "    staircase run $CASE_ID --replay-llm $OUT"

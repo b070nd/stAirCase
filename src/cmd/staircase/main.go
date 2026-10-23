@@ -1,3 +1,5 @@
+// Command staircase is the command line of stAirCase: it stands between an AI agent and your repository, asks for a decision on every
+// change, commits only what was approved, and writes the audit chain and the change certificate that prove it.
 package main
 
 import (

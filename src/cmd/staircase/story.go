@@ -40,7 +40,7 @@ var storyAddCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create story: %w", err)
 		}
-		fmt.Printf("✅ Story #%d added to Case #%d - status: %s\n", us.ID, caseID, us.Status)
+		fmt.Printf("Story #%d added to Case #%d - status: %s\n", us.ID, caseID, us.Status)
 		return nil
 	},
 }
@@ -101,7 +101,7 @@ var storyInvalidateCmd = &cobra.Command{
 		if err := store.UpdateUserStoryStatus(storyID, persistence.StoryStatusInvalidated); err != nil {
 			return fmt.Errorf("invalidate story: %w", err)
 		}
-		fmt.Printf("✅ Story #%d marked INVALIDATED - verify the work again, then run 'staircase story accept %d'.\n", storyID, storyID)
+		fmt.Printf("Story #%d marked INVALIDATED - verify the work again, then run 'staircase story accept %d'.\n", storyID, storyID)
 		return nil
 	},
 }
@@ -192,9 +192,9 @@ scope from the blueprint: change it there.`,
 			return err
 		}
 		if scope == "" {
-			fmt.Printf("✅ Story #%d has no scope.\n", id)
+			fmt.Printf("Story #%d has no scope.\n", id)
 		} else {
-			fmt.Printf("✅ Story #%d scope: %s - recompile case #%d\n", id, scope, st.CaseID)
+			fmt.Printf("Story #%d scope: %s - recompile case #%d\n", id, scope, st.CaseID)
 		}
 		return nil
 	},

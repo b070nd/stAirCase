@@ -123,7 +123,7 @@ func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 	record := []byte(`{"run_id":7,"entries":[{"event_type":"yield_decided"}],"signature":"ab"}`)
 	recordHash := hex.EncodeToString(sha256NewSum(record))
 
-	// ── anchor ────────────────────────────────────────────────────────────
+	// anchor
 	anchor, err := audit.AnchorRecord(srv.URL, record, recordHash, priv)
 	require.NoError(t, err)
 	assert.Equal(t, recordHash, anchor.RecordSHA256)
@@ -131,7 +131,7 @@ func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 	assert.Equal(t, int64(1), anchor.LogIndex)
 	assert.Equal(t, srv.URL, anchor.RekorURL)
 
-	// ── sidecar persistence round-trip ────────────────────────────────────
+	// sidecar persistence round-trip
 	sidecar := filepath.Join(t.TempDir(), "run-7.checkpoint.json.anchor")
 	require.NoError(t, audit.AppendAnchor(sidecar, anchor))
 	anchors, err := audit.LoadAnchors(sidecar)
@@ -139,25 +139,25 @@ func TestRekor_anchor_verify_roundtrip(t *testing.T) {
 	require.Len(t, anchors, 1)
 	assert.Equal(t, anchor, anchors[0])
 
-	// ── verify against the log ────────────────────────────────────────────
+	// verify against the log
 	got, err := audit.VerifyAnchor(record, recordHash, anchors, trusted)
 	require.NoError(t, err)
 	assert.Equal(t, anchor.UUID, got.UUID)
 
-	// ── tampered local record must fail ───────────────────────────────────
+	// tampered local record must fail
 	tampered := []byte(`{"run_id":7,"entries":[{"event_type":"FORGED"}],"signature":"ab"}`)
 	// same anchor list, but the hash lookup uses the tampered record's hash → no anchor
 	_, err = audit.VerifyAnchor(tampered, hex.EncodeToString(sha256NewSum(tampered)), anchors, trusted)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no anchor found")
 
-	// ── log/local content divergence must fail ───────────────────────────
+	// log/local content divergence must fail
 	// Force the lookup to match (reuse original hash) but present different bytes:
 	_, err = audit.VerifyAnchor(tampered, recordHash, anchors, trusted)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "MISMATCH")
 
-	// ── an entry anyone made with their own key proves nothing about ours ──
+	// an entry anyone made with their own key proves nothing about ours
 	_, other, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	foreign, err := audit.AnchorRecord(srv.URL, record, recordHash, other)

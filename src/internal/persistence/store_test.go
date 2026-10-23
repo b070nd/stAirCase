@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── test helper ─────────────────────────────────────────────────────────────
+// test helper
 
 func newTestStore(t *testing.T) *persistence.Store {
 	t.Helper()
@@ -34,7 +34,7 @@ func scaffold(t *testing.T, s *persistence.Store) (vendorID, projectID, caseID i
 	return v.ID, p.ID, c.ID
 }
 
-// ─── Vendor ───────────────────────────────────────────────────────────────────
+// Vendor
 
 func TestCreateVendor_and_retrieve_by_name(t *testing.T) {
 	s := newTestStore(t)
@@ -64,7 +64,7 @@ func TestGetVendorByName_not_found_returns_nil(t *testing.T) {
 	assert.Nil(t, v)
 }
 
-// ─── Project ─────────────────────────────────────────────────────────────────
+// Project
 
 func TestCreateProject_and_retrieve(t *testing.T) {
 	s := newTestStore(t)
@@ -86,7 +86,7 @@ func TestGetProject_not_found_returns_nil(t *testing.T) {
 	assert.Nil(t, got)
 }
 
-// ─── UserStory ────────────────────────────────────────────────────────────────
+// UserStory
 
 func TestCreateUserStory_default_status_is_pending(t *testing.T) {
 	s := newTestStore(t)
@@ -121,7 +121,7 @@ func TestListUserStoriesByCase_returns_all_statuses(t *testing.T) {
 	assert.Len(t, stories, 2)
 }
 
-// ─── Run ─────────────────────────────────────────────────────────────────────
+// Run
 
 func TestCreateRun_default_status_is_running(t *testing.T) {
 	s := newTestStore(t)
@@ -168,7 +168,7 @@ func TestUpdateRunStatus_sets_end_time(t *testing.T) {
 	assert.NotNil(t, got.EndTime)
 }
 
-// ─── AppendEventLog / chain hash ────────────────────────────────────────────
+// AppendEventLog / chain hash
 
 func TestAppendEventLog_first_entry_hash(t *testing.T) {
 	s := newTestStore(t)
@@ -209,7 +209,7 @@ func TestGetLastEventHash_empty_returns_empty_string(t *testing.T) {
 	assert.Equal(t, "", hash, "no entries yet → empty prevHash (genesis)")
 }
 
-// ─── Secret scoping ───────────────────────────────────────────────────────────
+// Secret scoping
 
 func TestGetSecret_project_scoped_preferred_over_global(t *testing.T) {
 	s := newTestStore(t)
@@ -246,7 +246,7 @@ func TestGetSecret_not_found_returns_nil(t *testing.T) {
 	assert.Nil(t, got)
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Component
 
 func TestUpdateComponent_renames(t *testing.T) {
 	s := newTestStore(t)
@@ -279,7 +279,7 @@ func TestDeleteComponent_removes_record(t *testing.T) {
 	assert.Empty(t, cs)
 }
 
-// ─── Secret list by project ───────────────────────────────────────────────────
+// Secret list by project
 
 func TestListSecretsByProject_only_returns_project_scoped(t *testing.T) {
 	s := newTestStore(t)
@@ -295,7 +295,7 @@ func TestListSecretsByProject_only_returns_project_scoped(t *testing.T) {
 	assert.Equal(t, "PROJ_KEY", secrets[0].KeyName)
 }
 
-// ─── Topology / SwarmTopology versioning ─────────────────────────────────────
+// Topology / SwarmTopology versioning
 
 func TestCreateSwarmTopology_auto_increments_version(t *testing.T) {
 	s := newTestStore(t)
@@ -333,7 +333,7 @@ func TestGetLatestTopology_no_topology_returns_nil(t *testing.T) {
 	assert.Nil(t, latest)
 }
 
-// ─── internal test helpers ────────────────────────────────────────────────────
+// internal test helpers
 
 func mustGetProjectID(t *testing.T, s *persistence.Store, caseID int64) int64 {
 	t.Helper()
@@ -342,7 +342,7 @@ func mustGetProjectID(t *testing.T, s *persistence.Store, caseID int64) int64 {
 	return c.ProjectID
 }
 
-// ─── Case soft-delete ─────────────────────────────────────────────────────────
+// Case soft-delete
 
 func TestFlagCaseDeleted_sets_deleted_at(t *testing.T) {
 	s := newTestStore(t)
@@ -370,7 +370,7 @@ func TestDeleteFlaggedCases_purges_with_cascade(t *testing.T) {
 	assert.Nil(t, c, "case must be hard-deleted")
 }
 
-// ─── Event log pruning ────────────────────────────────────────────────────────
+// Event log pruning
 
 func TestPruneEventLogs_under_limit_deletes_nothing(t *testing.T) {
 	s := newTestStore(t)
@@ -399,7 +399,7 @@ func TestPruneEventLogs_over_limit_keeps_newest(t *testing.T) {
 	assert.Equal(t, int64(2), n)
 }
 
-// ─── UpdateProjectWebhook ─────────────────────────────────────────────────────
+// UpdateProjectWebhook
 
 func TestUpdateProjectWebhook(t *testing.T) {
 	s := newTestStore(t)
@@ -414,7 +414,7 @@ func TestUpdateProjectWebhook(t *testing.T) {
 	assert.Equal(t, "https://example.com/hook", got.WebhookURL)
 }
 
-// ─── SwarmTopology runtime_type ───────────────────────────────────────────────
+// SwarmTopology runtime_type
 
 func TestSwarmTopology_RuntimeType(t *testing.T) {
 	s := newTestStore(t)
@@ -428,7 +428,7 @@ func TestSwarmTopology_RuntimeType(t *testing.T) {
 	}
 }
 
-// ─── KillStaleRuns ────────────────────────────────────────────────────────────
+// KillStaleRuns
 
 func TestKillStaleRuns_fresh_run_not_killed(t *testing.T) {
 	s := newTestStore(t)
@@ -456,7 +456,7 @@ func TestKillStaleRuns_zero_maxAge_kills_running(t *testing.T) {
 	assert.Equal(t, int64(1), n, "RUNNING run older than cutoff must be killed")
 }
 
-// ─── AppendEventLog stores git_commit_hash per-entry ─────────────────────────
+// AppendEventLog stores git_commit_hash per-entry
 
 func TestAppendEventLog_stores_git_commit_hash(t *testing.T) {
 	s := newTestStore(t)
@@ -482,7 +482,7 @@ func TestAppendEventLog_stores_git_commit_hash(t *testing.T) {
 	assert.Equal(t, "deadbeef", logs[1].GitCommitHash)
 }
 
-// ─── VerifyChain / CHECK 9.1.2-9.1.3 ─────────────────────────────────────────
+// VerifyChain
 
 func TestVerifyChain_intact_chain_returns_nil(t *testing.T) {
 	s := newTestStore(t)
@@ -523,7 +523,7 @@ func TestVerifyChain_empty_run_returns_nil(t *testing.T) {
 	assert.NoError(t, s.VerifyChain(run.ID), "empty run has no chain to verify")
 }
 
-// ─── DeleteComponent consistency ─────────────────────────────────────────────
+// DeleteComponent consistency
 
 func TestDeleteComponent_not_found_returns_error(t *testing.T) {
 	s := newTestStore(t)
@@ -531,7 +531,7 @@ func TestDeleteComponent_not_found_returns_error(t *testing.T) {
 	assert.Error(t, err, "deleting a non-existent component must return an error")
 }
 
-// ─── CHECK constraint enforcement ────────────────────────────────────────────
+// CHECK constraint enforcement
 
 func TestUpdateCaseStatus_invalid_status_rejected(t *testing.T) {
 	s := newTestStore(t)
@@ -572,7 +572,7 @@ func TestKillStaleRuns_skips_completed(t *testing.T) {
 	assert.Equal(t, int64(0), n, "SUCCESS run must not be killed")
 }
 
-// ─── Secret unique constraint enforcement ─────────────────────────────────────
+// Secret unique constraint enforcement
 
 func TestCreateSecret_duplicate_global_key_fails(t *testing.T) {
 	s := newTestStore(t)
@@ -608,10 +608,10 @@ func TestCreateSecret_global_and_project_scoped_same_key_allowed(t *testing.T) {
 	require.NoError(t, err, "one global + one project-scoped entry for the same key must be allowed")
 }
 
-// ─── Secret at-use audit (CHECK 4.4.2) ────────────────────────────────────────
+// Secret at-use audit
 
 // TestAtUseAuditCounts verifies that N secret accesses produce exactly N rows
-// in secret_access_log for the given run (CHECK 4.4.2).
+// in secret_access_log for the given run.
 func TestAtUseAuditCounts(t *testing.T) {
 	s := newTestStore(t)
 	_, _, caseID := scaffold(t, s)
@@ -634,7 +634,7 @@ func TestAtUseAuditCounts(t *testing.T) {
 }
 
 // TestAtUseAuditCounts_nil_run_id verifies that LogSecretAccess accepts a nil
-// run_id for calls made outside of a run context (CHECK 4.4.1).
+// run_id for calls made outside of a run context.
 func TestAtUseAuditCounts_nil_run_id(t *testing.T) {
 	s := newTestStore(t)
 	err := s.LogSecretAccess(nil, "SOME_KEY", "success")
@@ -642,7 +642,7 @@ func TestAtUseAuditCounts_nil_run_id(t *testing.T) {
 }
 
 // TestRotateSecrets_re_encrypts_all verifies that RotateSecrets re-encrypts
-// every secret and bumps its version (CHECK 4.3.1 / 4.3.2).
+// every secret and bumps its version.
 func TestRotateSecrets_re_encrypts_all(t *testing.T) {
 	s := newTestStore(t)
 
@@ -685,7 +685,7 @@ func TestRotateSecrets_re_encrypts_all(t *testing.T) {
 }
 
 // TestSecretRoundTrip exercises the full secret lifecycle: generate workspace
-// key → encrypt → store → retrieve → decrypt → verify (CHECK 3.4.4).
+// key → encrypt → store → retrieve → decrypt → verify.
 func TestSecretRoundTrip(t *testing.T) {
 	wsDir := t.TempDir()
 	require.NoError(t, crypto.GenerateKey(wsDir))
