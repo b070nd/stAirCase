@@ -6,296 +6,129 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-23
+
+This release is about using stAirCase on a client's repository without putting anything of it into that repository, and about the audit
+trail being typed, bounded and complete.
+
 ### Added
 
-- **Change sets: runs of several repositories under one id (`staircase changeset`, `--change-set`).** A change across a backend, a
-  middleware and a frontend is several runs, one per repository, and each stays what it always is: one repository, its own worktree,
-  audit chain and certificate. `staircase changeset create checkout-v2` makes the id; a run started with `--change-set checkout-v2`
-  carries it on its record (`run_bound`) and on its certificate (an optional `changeSet` field: older verifiers ignore it, and the
-  predicate version does not change). `changeset add` puts runs in the set (one per project), `changeset contract` declares the files
-  several repositories depend on, `changeset ack` records that another repository accepts a member's change to one, and
-  `staircase changeset verify checkout-v2` checks the whole set: every run delivered, every certificate signed by the workspace key,
-  about the run's commit, at the level asked (`--min-cal`) and naming the set, and no contract change without every other member's
-  acknowledgement of that exact content. The set is a file in your workspace, never in a repository. An acknowledgement is a record,
-  not a signature. What to do: nothing, unless you work across repositories ([change sets](docs/changesets.md)).
-
-- **A read boundary: files the agent must not read (`unreadable` in the profile, `--unreadable`).** A file your repository tracks, such as
-  a Composer `auth.json`, is in the agent's worktree, and what an agent reads can go to your model provider. A project can now name
-  paths that the agent must not read (`--unreadable-defaults` writes the usual list into the profile: `auth.json`, `.env` files,
-  private keys). The built-in runtime refuses to read, list or edit them; Claude Code's hook refuses its `Read`, `Write` and `Edit` of
-  them and a `Grep` from a folder that holds one. Codex, Gemini CLI and OpenCode cannot be held to it (their sandboxes restrict what
-  they write, not what they read), so a run of them on such a project is refused before anything is made, naming the agent. An
-  approved shell command and Claude Code's `Bash` are not covered, and the safety page says so, agent by agent. Nothing changes for a
-  project that names none. What to do: nothing, unless you keep secrets in the repository ([safety](docs/safety.md), [profile](docs/profile.md)).
-
-- **A project's instructions reach every agent, and nothing goes into the repository.** `staircase project profile set <id>
-  --instructions "..."` (or `--instructions-file`) keeps the conventions of a client's project (the copyright header, "patches only,
-  never edit `vendor/`") in your workspace. Every run of the project tells its agent those words, whichever agent it is (Claude Code,
-  Codex, Gemini, OpenCode or the built-in runtime), in one place: after an away run's brief and before the task. The text is saved with
-  the run's terms, its digest is bound on `run_bound`, and a continuation tells the same words. `staircase case briefing <case-id>`
-  prints the exact text an agent of a compiled case is told. They are instructions to a model, not enforcement, and the profile page
-  says so. What to do: nothing, unless you want them ([profile](docs/profile.md)).
-
-- **Checks can see a project's environment, such as composer's `vendor/` (`--visible`, `visible` in the profile).** A check runs in a
-  throwaway checkout of the commit, which holds tracked files only, so a check that needs a directory your repository ignores could not
-  pass, with the sandbox on or off. You can now declare those directories: the checks (after the commit, when the agent says it is done,
-  and as evidence for an approval) see them read-only, in the macOS sandbox as a link the sandbox forbids writing through and in a
-  `docker:` sandbox as a read-only mount. A path that does not exist in your checkout or that git tracks refuses the run before
-  anything is made, and so does an engine that cannot keep it read-only (bubblewrap and Landlock, for now). The environment is not in
-  the agent's worktree and not part of what is approved; the record of a check (`check_ran`, `phase_checked`) and the change certificate
-  name it (`environment`, an optional field of a check), and `staircase verify` says so. What to do: nothing, unless a check needs an
-  ignored directory ([profile](docs/profile.md), [safety](docs/safety.md)).
-
-- **A project profile: what is true of a client's repository for every run, kept in your workspace.** `staircase project profile set` and
-  `show` hold, per project, the paths that define a check (`--protect`), further paths that always need a person (`--sensitive`, for a
-  contract file, say, added to the built-in list and never taking from it), the scope a change may touch (`--scope`), the checks and the
-  sandbox. A run fills what its command line left out from the profile (a flag wins, then the profile, then the default), records the
-  profile's digest in its terms, and a continuation keeps the profile it started with. `staircase run` gains `--allow` like `claude`,
-  `codex` and `gemini` have, narrowing the stories' scope for that run. Nothing is written into the client's repository. A project
-  without a profile behaves as before. What to do: nothing, unless you want it ([profile](docs/profile.md)).
-
-- **A run says exactly what a dirty checkout leaves out, and records that it did.** A run works on a copy of your last commit, so
-  uncommitted work is not in it. The warning already said so in one line; it now names the files, the tracked changes apart from the
-  untracked files (ten of each, then a count), and says that ignored paths such as `vendor/` are not in the copy either. The fact (the
-  counts and a digest of the names) is a new audit entry, `source_dirty`, written right after `run_bound` and only when there is
-  something to say. Older stAirCase versions read a chain that has it and ignore it. What to do: nothing
-  ([troubleshooting](docs/troubleshooting.md), [audit](docs/audit.md)).
-
-- **`staircase verify` reads the trusted key from a protected ref itself, so any CI system can run it (`--trust-ref`, `--key-path`,
-  `--signers-path`).** The rule "never take the key from the change under test" was shell code inside the GitHub Action, so another
-  CI had to rewrite it. `verify` now reads the key, and the allowed signers, from the ref you name with git, and refuses a ref that is,
-  or holds, a commit being verified, and a path that is not on the ref, naming it. `--key` and `--allowed-signers` still work. The
-  packaged Action uses the new options when the verifier it installed has them and reads the files itself for a pinned older release;
-  its results do not change. The CI page gains a GitLab merge-request job, marked as not run by the project, and says which parts of
-  the page are GitHub's. What to do: nothing; on another CI, copy the job ([audit](docs/audit.md#other-ci-systems-gitlab)).
-
-- **The reviewer models' votes are on the audit chain.** With `--validator`, each model of the panel that is asked about a proposal
-  now has its verdict written as its own entry (`validator_voted`) before the decision: the model, the request it judged, approve,
-  reject or error, its reason and the digest of its whole reply. Until now the chain held only the outcome and a line of text, and
-  nothing at all of a disagreement a person settled or of a model that failed. Old chains read as they did, and an older stAirCase
-  reads a chain with the new entries and ignores them. `staircase status`, `decide` and `inspect` list each model's verdict and reason on the proposals it voted on (the reasons shown as
-  text, cut short), and say how many the models did not settle. The votes are not signed (a model has no key); the page on
-  approvals says so. A run that asks a panel also names the models on `run_bound` (`validator_models`), and the replay then holds it to
-  them: a decision by the reviewer models needs one vote from each, on its request, all agreeing with it, a vote from a model that is
-  not on the panel is refused, and a split or a failed model can only be followed by a person's decision. A chain written before
-  this reads as it did. What to do: nothing ([approvals](docs/approvals.md#letting-a-model-review-changes-the-validator), [audit](docs/audit.md#what-a-run-can-have-written)).
-
-- **Delivery by policy, chosen in the run's terms (`--deliver policy`, `--deliver-path`).** An away run can now be started with
-  the delivery mode `policy` and a delivery scope. The terms refuse it unless the run is away, has no `--validator`, names a delivery
-  scope, signs (`--sign-approvals`) and declares where its checks are defined (`--protect`, or checks that name a file of their own);
-  a policy that is not signed (`staircase policy sign`) refuses the run when it starts. The agreement says the mode, the scope, the
-  policy's digest and "no person reviews the whole change". Review stays the default and is not in the saved terms: a run saved before
-  the field existed reads as review.
-  The delivery itself: when the agent stops and your checks pass, the run commits to its branch with no person only if seven
-  conditions hold, read from its verified history (the terms say policy and the policy was signed; every change was approved by a rule
-  of that policy and none by the agreed task, evidence, a reviewer model or a person; nothing was parked; every path is inside your
-  delivery scope and neither sensitive nor protected; the checks passed on exactly the approved tree and the run branch is still at its
-  base; the protected paths are declared; you signed as the initiator). It then writes the new audit event `delivery_authorized`
-  and commits like a run you watch. If any condition fails or is in doubt, nothing is committed: the run ends awaiting your review
-  and `staircase decide` names the condition. Only the run branch moves; nothing is pushed. The certificate keeps the level it
-  computes, says no person reviewed the whole change, and has a new optional field `delivery: policy` (the predicate type stays
-  version 1; verifiers ignore fields they do not know). A run killed after the authorization is finished with `staircase recover`
-  and cannot be resumed. Old chains and old certificates are unchanged. What to do: nothing, unless you start a run with
-  `--deliver policy`; then read the seven conditions first. Delivery by policy suits work whose correctness a rule of your signed
-  policy already decided (documentation, changelog entries, generated or formatted files, the areas a rule's `paths` name); code
-  approved on evidence still waits for your review.
-  ADR 0012 is accepted: only what rules of your signed policy approved is delivered, never what evidence or the agreed task
-  alone approved ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
-
-- **Policy rules can look at the change itself.** A rule in `policy.json` gains five optional conditions: `paths` (every changed file
-  matches one of these globs, in any letter case), `max_lines`, `max_files`, `new_files_only` and `no_deletions`. They are checked
-  against the files and line counts the orchestrator derives from the proposal, never against what the agent says. A reject rule with
-  only these conditions is not a blanket deny. No rule shape ever matches a shell command or a tool call. The file's `version` stays
-  1: a file that uses the new fields is refused by an older stAirCase (it fails closed instead of reading the rule without them),
-  and a file without them decides exactly as before. `staircase policy test` and the scenarios use the same conditions
-  ([approvals](docs/approvals.md#approving-automatically-with-rules)). Expression conditions (CEL) are deferred, with the findings
-  recorded ([ADR 0013](docs/adr/0013-cel-conditions-in-policy-rules.md)).
-
-- **`staircase acknowledge <run>`: say you looked at a run whose agent was lost, without launching anything.** A run whose agent's
-  launch has no established end stays parked until a person acknowledges it. The new command records that acknowledgement on the audit
-  chain (`launch_acknowledged`, naming the exact attempt and generation, so it cannot cover a later loss) and writes the launch's end
-  first if it is still open; a second call changes nothing, and a run with no open or lost launch is refused. A hosted runner's
-  `--resume` still never acknowledges by itself, its refusal now names the command, and once you ran it the runner's own resume
-  proceeds in its own session. `staircase resume --ack-unknown` is this same operation followed by the resume. The limit of 3 lost
-  launches stays: an acknowledgement does not lift it, and `staircase recover` still works. Chains written before read as before. What to
-  do: nothing, unless a hosted run was parked; then look at what its agent may have done and run `staircase acknowledge <run>`
-  ([audit](docs/audit.md#lost-launches), [hosting](docs/hosting.md#when-the-runner-resumes-a-session)).
-
-- **The website's content, local only (`site/`).** Plain HTML and CSS, no framework and nothing loaded from elsewhere: the use cases
-  (governed runs, working while away, review after and seal, CI verification, team governance, evidence inspection) with the assurance
-  level each reaches, setup guides for v1.1.0 and a sample demonstration labelled as one. Open `site/index.html`; it is not deployed.
-  `make check` runs an offline page check (`make site-check`): a lang attribute, one h1, headings in order, alt text, internal links
-  that resolve, no em dash.
-
-- **Checks the agent cannot weaken (`--protect`).** The paths where a run's checks are defined are part of its terms, saved and bound
-  by their digest: what the checks name (the script a check runs, the tests given to `bats` or `pytest`, `make`'s `Makefile`) and what
-  you add with `--protect <path or pattern>`. A change to one always goes to a person, whatever the policy, the agreed task or a
-  validator would say, and is parked while away, so an agent cannot make a failing check pass by editing or deleting the test it runs.
-  The agreement shows them (`protected:`) ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken)).
-
-- **A runner can resume a session it started (`staircase host claude --resume <id>`).** The session's id leads to the run it was
-  governed as, through the audit chain. If that run was interrupted, the session continues it. If it awaits review, the session
-  continues it too: the review is withdrawn on the chain and a new one covers the whole change. If you already decided it, the session
-  goes on as a new run that names the one it follows. Claude Code resumes its own conversation in each case. A session no run names is
-  refused, and forks stay refused ([hosting](docs/hosting.md#when-the-runner-resumes-a-session)). Run with Claude Code 2.1.236 and
-  Cloudroom's argument list: the resumed session continued the run awaiting review, and the agent remembered a word it had said only in
-  the first session ([record](docs/release-evidence/hosted-resume-claude-code-2.1.236.md)).
-- **One outcome per run, and a morning status.** `staircase decide` and `staircase inspect` show each run's outcome, read from its
-  verified audit chain alone: running, awaiting review, blocked or partial, failed, delivered, or delivered with incomplete evidence,
-  with the chain's reason. With it come the run's attempts (how many times its agent was started) and what it used of its bounds: the
-  active time against the time limit of its saved policy and plan, the tokens its agents reported, and the cost estimated from them
-  against the project's budget cap. `staircase decide` also lists your other away runs that are running or blocked, and `staircase
-  decide <run>` on a run that does not await review shows its status instead of refusing. `staircase inspect runs` gains an outcome
-  column and lists runs awaiting review ([away](docs/away.md#how-each-run-stands)).
-- **Every agent launch is claimed before it starts.** A new run, a continuation and a resumed hosted session put `launch_claimed`
-  on the audit chain (an attempt number and a generation) before the agent's process starts, and `launch_ended` (how it ended) once
-  it stopped. A run killed in between is not launched again blindly: `staircase resume` records the outcome as
-  `unknown_after_restart`, parks the run and says why; `--ack-unknown` continues it after you looked, and says so on the chain. A run
-  whose launches ended without an established end 3 times is not launched again; `staircase recover` still commits what it approved
-  ([audit](docs/audit.md#lost-launches)).
-
-- **Adapter capabilities, and a launch that failed says how.** Each agent adapter declares in one place what it supports (native
-  resume, its own sandbox, an MCP gate, hooks, host mode), and `staircase doctor` lists it for all four, installed or not. A
-  capability describes an adapter and grants nothing: a run is governed by its terms whatever its agent supports. A launch that did
-  not end well now has a lifecycle class on `launch_ended` (`class`): `rejected` (the agent could not start or never ran governed),
-  `host_exit` (its process ended with an error), `storage` (a record of the launch could not be written), `cleanup` (it did not stop
-  when asked) or `uncertain_dispatch` (the launch has no known end). The class is never a check result and never acceptance: the run's
-  outcome says it in its own words, and `staircase decide` / `inspect` show a `launches` line. Chains written before read as before,
-  the class derived from the outcome ([audit](docs/audit.md#lost-launches), [compatibility](docs/compatibility.md#what-each-adapter-supports)).
+- **Project profile.** `staircase project profile set` and `show` keep, per project and in your workspace, the settings every run of it
+  should use: the paths that define a check (`--protect`), more paths that always need a person (`--sensitive`), the scope a change
+  may touch (`--scope`), the checks and the sandbox. A flag on the command line wins over the profile, and the profile wins over the
+  default. The run records the profile's digest. Nothing is written into the client's repository, and a project without a profile
+  behaves as before. `staircase run` also gets `--allow`, like the session commands ([profile](docs/profile.md)).
+- **Checks can see an ignored directory such as `vendor/` (`--visible`).** A check runs in a throwaway checkout that holds tracked files
+  only, so a check that needs an ignored directory could not pass. You can now declare those directories. Checks see them read-only: as a
+  link the macOS sandbox will not write through, or as a read-only mount in a `docker:` sandbox. A run is refused up front if a path does
+  not exist, if git tracks it, or if the sandbox engine cannot keep it read-only (bubblewrap and Landlock, for now). The check record and
+  the certificate name the directories (`environment`, an optional field), and `staircase verify` prints them
+  ([profile](docs/profile.md), [safety](docs/safety.md)).
+- **Project instructions for every agent.** `--instructions` or `--instructions-file` on the profile keeps a client's house rules in
+  your workspace. Each run tells them to its agent, whichever agent it is, before the task. Their digest is bound on `run_bound`, and a
+  continuation uses the same words. `staircase case briefing <case-id>` prints exactly what an agent is told. They are instructions to a
+  model, not enforcement ([profile](docs/profile.md)).
+- **A read boundary (`--unreadable`).** Files your repository tracks, such as a Composer `auth.json`, are in the agent's worktree, and
+  what an agent reads can reach your model provider. You can now name paths the agent must not read; `--unreadable-defaults` adds the
+  usual list. The built-in agent and Claude Code's hook enforce it. Codex, Gemini CLI and OpenCode cannot, so a run with them on such a
+  project is refused before anything starts. Shell commands and Claude Code's `Bash` are not covered; the safety page lists this agent by
+  agent ([safety](docs/safety.md)).
+- **Change sets (`staircase changeset`, `--change-set`).** A change across several repositories is several runs, one per repository.
+  A change set ties them under one id, records which files are contracts between the repositories, and records when another repository
+  accepts a change to one. `staircase changeset verify` checks that every member run was delivered, every certificate is valid and names
+  the set, and no contract change is unacknowledged. The certificate gets an optional `changeSet` field that older verifiers ignore. The set
+  is a file in your workspace. An acknowledgement is a record, not a signature ([change sets](docs/changesets.md)).
+- **Dirty checkouts are described exactly.** A run works on a copy of your last commit, so uncommitted work is not in it. The warning now
+  names the files, tracked changes apart from untracked ones, and says ignored paths such as `vendor/` are missing too. A new audit entry,
+  `source_dirty`, records the counts and a digest of the names ([troubleshooting](docs/troubleshooting.md)).
+- **`staircase verify` reads the trusted key from a protected ref (`--trust-ref`, `--key-path`, `--signers-path`).** The rule "never
+  take the key from the change under test" used to be shell code in the GitHub Action. `verify` now does it with git and refuses a ref that
+  is, or contains, a commit being verified. `--key` and `--allowed-signers` still work, and the Action behaves as before. The CI page has
+  a GitLab merge request job (not run by the project) ([audit](docs/audit.md#other-ci-systems-gitlab)).
+- **The reviewer models' votes are on the audit chain.** With `--validator`, each model's verdict is written as its own entry
+  (`validator_voted`) before the decision: the model, approve, reject or error, its reason and the digest of its reply. The replay now
+  requires one agreeing vote from each model of the panel for a decision by the reviewer models, and a split or failed model can only be
+  followed by a person. Older chains read as before. `staircase status`, `decide` and `inspect` list each model's verdict
+  ([approvals](docs/approvals.md#letting-a-model-review-changes-the-validator)).
+- **Delivery by policy (`--deliver policy`, `--deliver-path`).** An away run can commit to its branch with no person reviewing, only if
+  seven conditions hold, all read from its verified history (for example: every change was approved by a rule of your signed policy, nothing
+  was parked, every path is inside your delivery scope and neither sensitive nor protected, and the checks passed on exactly the approved tree).
+  If any condition fails, the run waits for your review and `staircase decide` names the condition. Review stays the default. The
+  certificate gets an optional `delivery: policy` field ([away](docs/away.md#while-you-are-away), [ADR 0012](docs/adr/0012-delivering-by-policy.md)).
+- **Policy rules can look at the change itself.** Rules in `policy.json` gain `paths`, `max_lines`, `max_files`, `new_files_only` and
+  `no_deletions`. They are checked against what the orchestrator derives from the proposal, never against what the agent says. An older
+  stAirCase refuses a policy file that uses them, so it fails closed ([approvals](docs/approvals.md#approving-automatically-with-rules)).
+- **`staircase acknowledge <run>`** records that you looked at a run whose agent was lost, without launching anything. A second call
+  changes nothing. The limit of 3 lost launches stays, and `staircase recover` still works ([audit](docs/audit.md#lost-launches)).
+- **Checks the agent cannot weaken (`--protect`).** The paths where a run's checks are defined are part of its terms. A change to one
+  always goes to a person, so an agent cannot make a failing check pass by editing the test it runs. The agreement shows them
+  ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken)).
+- **A runner can resume a session it started (`staircase host claude --resume <id>`).** The session's id leads back to the run it was
+  governed as. An interrupted run continues, a run awaiting review is withdrawn and reviewed again as a whole, and a decided run
+  continues as a new run that names the first. A session no run names is refused ([hosting](docs/hosting.md#when-the-runner-resumes-a-session)).
+- **One outcome per run.** `staircase decide` and `inspect` show each run's outcome from its verified chain alone (running, awaiting
+  review, blocked or partial, failed, delivered, delivered with incomplete evidence, or no change), with its attempts and how much of
+  its time, token and budget limits it used. `staircase decide` also lists your other away runs ([away](docs/away.md#how-each-run-stands)).
+- **Every agent launch is claimed before it starts** (`launch_claimed`, then `launch_ended`). A run killed in between is not launched
+  again blindly: `staircase resume` parks it, and `--ack-unknown` continues it after you looked. A run whose launches ended unknown
+  3 times is not launched again; `staircase recover` still commits what it approved ([audit](docs/audit.md#lost-launches)).
+- **Adapter capabilities, and a failed launch says how.** `staircase doctor` lists what each agent adapter supports. A launch that ended
+  badly has a class on `launch_ended` (`rejected`, `host_exit`, `storage`, `cleanup` or `uncertain_dispatch`)
+  ([compatibility](docs/compatibility.md#what-each-adapter-supports)).
+- **Website content (`site/`),** plain HTML and CSS with nothing loaded from elsewhere. It is not deployed. `make site-check` runs an
+  offline page check.
 
 ### Changed
 
-- **`staircase policy test` shows which past decisions would now go to a person.** It loads the terms each replayed run saved and
-  checks the paths of every past decision against the paths that hold the run's checks' definitions and the sensitive list, which
-  go to a person whatever a rule says. What a rule, the agreed task, a reviewer model or evidence decided there without a person is
-  listed in a section of its own (a Makefile edit approved in a run whose check was `make check`, a CI file), and a person's own
-  decision on such a path is no longer counted as a difference the policy makes. Decisions of the orchestrator, drift and guards stay
-  skipped, and history those paths do not reach reports as before. What to do: run it before you upgrade, and add `--protect` or a
-  rule's `paths` condition where the list shows an area you want a person on ([approvals](docs/approvals.md#approving-automatically-with-rules)).
-
-- **Logs keep their newest output.** The debug log (`--debug`) and a hosted session's log used to keep the first 8 MiB and drop
-  everything after, so a long session that died left its beginning and lost its end. A log that reaches 4 MiB now moves to a numbered
-  previous file (`<name>.log.1`, replacing an older one) and continues in a fresh file, so the two together never exceed 8 MiB and
-  the newest output survives. A log already at its bound when a continued run reopens it is rotated, so the continuation is not
-  blind. The markers now read "rotated N times, dropped M bytes". What to
-  do: read `<name>.log.1` too for the earlier output
+- **Check paths and sensitive paths always go to a person.** A change to a path where a run's checks are defined, or to a sensitive
+  path (CI and build files, dependency files, `.env` files, shell scripts, `CODEOWNERS`, `.gemini/`), now always goes to a person and is
+  parked while away, whatever your policy says. If a rule of yours approved such an edit before, it now reaches a person. What to do:
+  nothing, unless a rule you rely on covered such a path; then name it with `--protect`. A minor release may send more proposals to a
+  person, never fewer ([compatibility](docs/compatibility.md#how-the-six-contracts-change)).
+- **`staircase policy test` shows which past decisions would now go to a person.** Decisions on those paths that a rule, the agreed task,
+  a reviewer model or evidence made without a person are listed in their own section. Run it before you upgrade.
+- **Logs keep their newest output.** The debug log and a hosted session's log used to keep the first 8 MiB and drop the rest. They now
+  rotate into `<name>.log.1`, so the newest output survives and the two files together never exceed 8 MiB.
+- **An away run that did nothing is checked.** If no proposal was approved or parked, your checks now run once on the unchanged tree.
+  If they fail, the run ends failed and says so; before, it ended successful and silent ([away](docs/away.md#a-run-that-did-nothing)).
+- **An away run that approved nothing but parked something is offered for review** as an empty change, with the parked proposals listed
+  to try or adopt. Before, it ended as a success with nothing offered, or failed and lost them when the checks failed on the unchanged tree.
+  Accepting the empty change delivers nothing ([away](docs/away.md#a-run-that-parked-everything)).
+- **A seventh outcome, "no change".** A successful run with no commit and no parked proposals is "no change", not failed.
+- **The status counts launches and shows a parked run.** A run whose last launch has no established end shows as blocked or partial,
+  with the exact command to continue it or to recover what it approved ([away](docs/away.md#a-run-whose-agent-was-lost)).
+- **A run killed while its agent ran needs `--ack-unknown` to continue.** A run stopped cleanly (Ctrl-C, a time or budget limit) continues
+  as before.
+- **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** Both logs are scrubbed of every secret handed to an
+  agent, including `--pass-env` variables. A failed agent's stderr tail is no longer part of the error the run ends with; it is shown at
+  the terminal or in the host log, scrubbed, and never reaches the audit chain, the certificate or the ledger
   ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
-
-- **An away run that did nothing is checked, and says so.** When an away run ends with no proposal approved and none parked, your
-  checks now run once on the unchanged tree. If they fail, the run ends failed (non-zero exit, worktree kept) with a message that
-  says nothing was committed and where to read what the agent did; before, it ended successful and silent. If they pass, it stays
-  successful and says so. The message counts every proposal the agent made, refused ones included, instead of calling them none.
-  A hosted session is not checked. What to do: nothing, unless a script treated this exit code 0 as done
-  ([away](docs/away.md#a-run-that-did-nothing)).
-
-- **A seventh outcome, "no change".** A successful run without a commit and without parked proposals is called no change instead
-  of failed, so a run's status and its outcome agree. A run that approved nothing and parked nothing and whose checks fail on the
-  unchanged tree is failed, and its reason says so. Accepting an empty review still ends failed
-  ([away](docs/away.md#how-each-run-stands)).
-
-- **The capabilities table says what each agent's sandbox covers.** Codex's `workspace-write` sandbox confines its commands' writes
-  (to the worktree and temporary folders) and network, not their reads, and is still not counted as sandboxed; Gemini's sandbox is off
-  unless asked for, and stAirCase does not ask. `staircase doctor` and [compatibility](docs/compatibility.md#what-each-adapter-supports)
-  show the new words; no behaviour changes.
-
-- **Check-defining paths are protected in every run that has checks, and sensitive paths always go to a person.** A change to a path
-  where a run's checks are defined (the script a check runs, the tests given to `bats` or `pytest`, `Makefile` for `make`,
-  `package.json` for `npm`, and anything you name with `--protect`) now always goes to a person, and is parked while away, whatever
-  your policy says. So does a file edit that touches a sensitive path: CI and build files (`.github/`, `Makefile`, `Dockerfile`),
-  dependency files, `.env` files, shell scripts (`*.sh`), and now `CODEOWNERS` files at any depth and Gemini's repository settings
-  (`.gemini/`). If a rule of your `policy.json` approved such an edit before, that edit now reaches a person; the rule itself is
-  unchanged and still decides everything else. The bar sits before the policy, so it also sends a person the edits that a policy
-  `reject` rule would have rejected: the person may approve them, and while you are away they are parked, not rejected. The reason
-  shown names the path. Why: an agent that can edit the test a check runs
-  can make the check pass, and one that can edit a CI, build or review-ownership file can change what runs or who must review. What
-  to do: nothing, unless a rule you rely on covered such a path; then name the paths you accept to be protected with `--protect`
-  (check paths only; a sensitive path has no allowance yet). This follows the rule in
-  [compatibility](docs/compatibility.md#how-the-six-contracts-change): a minor release may send more proposals to a person, never fewer
-  ([approvals](docs/approvals.md#checks-the-agent-cannot-weaken), [the six contracts](docs/compatibility.md#the-six-contracts)).
-
-- **A run whose status cannot be read is listed, not left out.** `staircase decide` lists your other away runs and the morning inbox
-  shows each run's status; a run whose audit chain does not verify now appears as `could not read run #N: <reason>` instead of
-  silently missing.
-
-- **`staircase resume` no longer says "Nothing was changed" after it recorded a lost launch.** A refused continuation that wrote the
-  outcome of a lost launch (`unknown_after_restart`) says so, and that nothing else was changed, whatever check refused it; one that
-  wrote nothing, including a second attempt on a run already parked, says "Nothing was changed".
-
-- **The agreement says when nothing of the checks is protected.** When a run's checks name no file of their own (for example `go test
-  ./...`) and no `--protect` was given, the agreement now says `protected:   nothing`, that the agent may edit the tests the checks run,
-  and names `--protect`. A command declared for an away run that writes a protected path is parked like any other change to it.
-
-- **Parked proposals are offered even when the checks fail on the unchanged tree.** An away run that approved nothing and parked what
-  it proposed used to end FAILED, with the parked proposals lost, when the project's checks failed on the unchanged tree (a project
-  that is broken at its base, where only a parked proposal fixes the checks). It now awaits your review of an empty change that says
-  its checks failed (`checks   FAILED on this unchanged tree`), with the parked proposals to prototype and adopt; accepting that empty
-  change still delivers nothing. A change with files is still offered only when its checks pass.
-
-- **The status counts launches and shows a parked run.** A run's attempts are the launches claimed on its chain (a launch whose agent
-  never started counts), no longer its segments; the two agree for a run without a lost launch. A run whose agent's last launch has
-  no established end shows as blocked or partial in `staircase decide` and `staircase inspect`, with the exact command to continue it
-  (`staircase resume <run> --ack-unknown`) and the one to recover what it approved; a run with 3 lost launches shows as refused and
-  points to `staircase recover <run>`. A run whose process still holds its lock shows as running ([away](docs/away.md#a-run-whose-agent-was-lost)).
-
-- **An away run that approved nothing is offered for review, not ended as a success.** A run whose every proposal was parked used to
-  end SUCCESS with nothing committed and nothing offered. It now awaits your review of an empty change, with its parked proposals
-  listed so you can prototype or adopt them; accepting the empty change delivers nothing and says so, and its outcome reads failed
-  with that reason ([away](docs/away.md#a-run-that-parked-everything)). The audit chain keeps every event key; the review events add
-  `empty` on `review_accepted`.
-
-- **Diagnostics are bounded and scrubbed, and stderr stays out of every record.** The debug log (`--debug`) and a hosted session's
-  log (`host/<session>.log`) are bounded (they rotate and keep their newest output: see "Logs keep their newest output") and say how much
-  they dropped. Both are scrubbed of
-  every secret handed to an agent, including the environment variables named with `--pass-env`, which were not scrubbed before. The
-  stderr tail of a failed agent (Claude Code, Codex, Gemini, OpenCode) is no longer part of the error the run ends with, which a
-  runner may keep (Cloudroom keeps stderr tails in its records); it is shown at the terminal or in the host log, and in the debug log,
-  scrubbed, and a tail whose start was cut says so. It is never on the audit chain, in the certificate or in the ledger
-  ([audit](docs/audit.md#logs-are-diagnostics-not-evidence)).
-
-- `run_path` records the status its segment ended with (`status`), so the chain alone tells a failed run from a stopped one. Chains
-  written before read as before; their outcome is inferred from their other events.
-- **A run killed while its agent ran needs `--ack-unknown` to be continued.** `staircase resume` used to continue it directly. A
-  run stopped cleanly (Ctrl-C, its time or budget limit) continues as before.
+- **The agreement says when nothing of the checks is protected,** for example when the checks are `go test ./...` and no `--protect` was
+  given.
+- **The capabilities table says what each agent's sandbox covers.** Codex's sandbox limits writes and network, not reads, and is not
+  counted as sandboxed. No behaviour changes.
+- A run whose status cannot be read is listed as `could not read run #N: <reason>` instead of being left out. `staircase resume` no
+  longer says "Nothing was changed" after it recorded a lost launch. `run_path` records the status its segment ended with.
 
 ### Fixed
 
 - **`staircase attach` no longer leaves a file in your code.** With `core.hooksPath` pointing into the working tree (a `.husky` folder),
-  it wrote its hook as an untracked file there, though nothing of stAirCase is meant to be in your repository. It now refuses and names
-  the setting; `attach --off` still works. The attach page also says that `seal` takes `--allow`, which it already did, and that
-  `--check` runs in a throwaway checkout even with `--sandbox off`, so a directory your repository ignores is not in it
-  ([attach](docs/attach.md)). What to do: nothing.
-- **A dependency counts as done only when a run of it was delivered.** The gate `deps.deps_completed` asked a status column ("a run of the
-  upstream project is SUCCESS at its current topology"), so a run row with no history and no commit satisfied it. It now reads each
-  run's verified history, the way the status commands do, and counts a run only when its outcome is delivered: a run that ended without
-  delivering, or delivered with incomplete evidence, does not, and a history that cannot be read is reported as unknown, naming the run,
-  never as satisfied. It is still a warning, and it still compares the topology version. What to do: nothing; a project that depends on
-  another one may see the warning where it saw none, and the message says why ([gates](docs/gates.md)).
-- **A change of several hundred files no longer makes its run unreadable.** The audit chain cut every entry at 64 KiB without a
-  word, and an entry cut in the middle still hashes and verifies. The entries that list a change's files (a decision on a proposal
-  of 700 files or more, the review an away run offers) pass that size, so the run's history was refused as "its payload is
-  unreadable" and the run could not be decided, resumed or certified. An entry now holds up to 1 MiB (about 10,000 files), and one
-  over that is refused with an error that names the entry and its size; nothing is cut. What an agent proposes is still limited to
-  64 KiB and recorded as a short note of what was left out, as before. Chains already written read as they did (the hash covers
-  whatever bytes were written). A proposal that would make the record of the change too large (the decision on it, or the review of
-  all the files approved so far) is refused up front, as a decision by the orchestrator that says why, so a run does not do all its
-  work and then fail at its last step; what was approved before it stands. What to do: nothing. A change of many thousands of files is
-  refused with that reason instead of being recorded in a way nobody can read.
-- **`staircase doctor` no longer calls a run you rejected interrupted.** An away run whose review you rejected ends FAILED with its
-  approved changes still in the journal and no commit, which is how an interrupted run looks; doctor listed it and pointed at
-  `staircase recover`. A run whose chain records your rejection is left out; an interrupted run is listed as before.
-- **The session commands look at the case's newest run.** For a case with several runs they read the oldest, so the "waits for your
-  review" hint and the run branch named could be those of an earlier run.
-- **Cost estimates know Claude Haiku 5.5.** The price table had no entry for it, so it counted at the unpriced ceiling; it now counts
-  at 0.50 / 2.50 USD per million tokens (the rate above 100k-token prompts, so a budget cap never counts too little).
-- **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes that are added at the same
-  moment without an error (six parallel adds lost notes in 8 of 8 trials), and a commit without its certificate fails verification
-  later. Writing a note now holds a lock on the repository, stores the file's exact bytes, reads the note back, and writes it again
-  a bounded number of times, and `staircase sign` writes its signed certificate the same way. A note that cannot be confirmed is
-  reported as an evidence failure (the run's summary and `evidence_failed` name it), never as written. The lock does nothing on
-  Windows ([audit](docs/audit.md#writing-a-note)). Nothing to do; a commit that already lost its note keeps lacking it.
-- **Built with Go 1.26.10.** `govulncheck` reports GO-2026-6809 (`crypto/x509`, intermediate certificates a CA has compromised) against
-  Go 1.26.9, and the audit anchor check (`audit.AnchorRecord`) reaches it. Go 1.26.10 fixes it. Build from a checkout with Go 1.26.10
-  or later; the release archives and Homebrew carry the fix once a release is cut from this version.
+  it wrote an untracked hook there. It now refuses and names the setting; `attach --off` still works ([attach](docs/attach.md)).
+- **A dependency counts as done only when a run of it was delivered.** The gate `deps.deps_completed` used to trust a status column, so a
+  run with no history and no commit satisfied it. It now reads each run's verified history. A history that cannot be read is reported as
+  unknown, never as satisfied ([gates](docs/gates.md)).
+- **A change of several hundred files no longer makes its run unreadable.** The audit chain cut every entry at 64 KiB without saying so,
+  so a decision on 700 or more files made the run's history unreadable. An entry now holds up to 1 MiB (about 10,000 files), and a larger one
+  is refused with an error that names it. A proposal whose record would be too large is refused up front.
+- **The built-in read tools no longer reveal what exists behind the read boundary.** A path that is out of reach is refused before it is
+  looked up, in any letter case.
+- **`staircase doctor` no longer calls a run you rejected interrupted.**
+- **The session commands look at the case's newest run,** not its oldest.
+- **Cost estimates know Claude Haiku 5.5** (0.50 / 2.50 USD per million tokens).
+- **Two deliveries at the same moment no longer lose a certificate or ledger note.** Git drops notes added at the same moment without an
+  error. Writing a note now takes a repository lock, reads it back and retries; a note that cannot be confirmed is reported as an evidence
+  failure ([audit](docs/audit.md#writing-a-note)).
+- **Built with Go 1.26.10,** which fixes GO-2026-6809 (`crypto/x509`) reported by `govulncheck`.
 
 ## [1.1.0] - 2026-10-18
 
