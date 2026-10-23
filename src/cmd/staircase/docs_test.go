@@ -196,7 +196,7 @@ func TestNoHiddenUnicode(t *testing.T) {
 func TestNoEmojiInOutput(t *testing.T) {
 	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z").Output()
 	require.NoError(t, err)
-	pictograph := regexp.MustCompile("[\u231a\u231b\u23e9-\u23fa\u2600-\u27bf\u2b00-\u2bff\U0001f000-\U0001faff]\ufe0f?")
+	pictograph := regexp.MustCompile("[\u2139\u21a9\u21aa\u21ba\u21bb\u231a\u231b\u23e9-\u23fa\u2600-\u27bf\u2b00-\u2bff\U0001f000-\U0001faff]\ufe0f?")
 	checked := func(f string) bool {
 		switch {
 		case strings.HasSuffix(f, "_test.go"), f == "CHANGELOG.md", strings.HasPrefix(f, "docs/release-evidence/"):

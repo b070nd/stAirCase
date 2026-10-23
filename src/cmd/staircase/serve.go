@@ -92,7 +92,7 @@ func interruptedRunsOwned(wsDir string) {
 		case known && !held:
 			fmt.Printf("warning: Run #%d was killed before it finished (its process is gone). Continue it: staircase resume %d, or recover what it approved: staircase recover %d\n", r.ID, r.ID, r.ID)
 		case !known:
-			fmt.Printf("ℹ️  Run #%d says it is running; whether its process is alive cannot be told (it began before runs held a lock)\n", r.ID)
+			fmt.Printf("note: Run #%d says it is running; whether its process is alive cannot be told (it began before runs held a lock)\n", r.ID)
 		}
 	}
 }
