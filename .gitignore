@@ -38,6 +38,9 @@ src/staircase
 # goreleaser output
 /dist/
 /completions/
+
+# the default output of packaging/verify-release.sh
+/release-verification/
 evidence/
 
 .env*
