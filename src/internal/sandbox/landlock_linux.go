@@ -129,7 +129,7 @@ func allow(ruleset int, path string, access uint64) error {
 		access &= unix.LANDLOCK_ACCESS_FS_EXECUTE | unix.LANDLOCK_ACCESS_FS_WRITE_FILE | unix.LANDLOCK_ACCESS_FS_READ_FILE |
 			unix.LANDLOCK_ACCESS_FS_TRUNCATE | unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
 	}
-	rule := unix.LandlockPathBeneathAttr{Allowed_access: access, Parent_fd: int32(fd)}
+	rule := unix.LandlockPathBeneathAttr{Allowed_access: access, Parent_fd: int32(fd)} //nolint:gosec // a file descriptor fits in an int32
 	if _, _, errno := unix.Syscall6(unix.SYS_LANDLOCK_ADD_RULE, uintptr(ruleset), unix.LANDLOCK_RULE_PATH_BENEATH,
 		uintptr(unsafe.Pointer(&rule)), 0, 0, 0); errno != 0 {
 		return fmt.Errorf("landlock rule %s: %w", path, errno)
@@ -149,7 +149,7 @@ func noSockets() error {
 	default:
 		return fmt.Errorf("no network filter for %s", runtime.GOARCH)
 	}
-	deny := uint32(unix.SECCOMP_RET_ERRNO | uint32(unix.EACCES))
+	deny := unix.SECCOMP_RET_ERRNO | uint32(unix.EACCES)
 	prog := []unix.SockFilter{
 		{Code: unix.BPF_LD | unix.BPF_W | unix.BPF_ABS, K: 4}, // seccomp_data.arch
 		{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, Jt: 1, K: arch},
@@ -161,7 +161,7 @@ func noSockets() error {
 		{Code: unix.BPF_RET | unix.BPF_K, K: unix.SECCOMP_RET_ALLOW},
 		{Code: unix.BPF_RET | unix.BPF_K, K: deny},
 	}
-	fprog := unix.SockFprog{Len: uint16(len(prog)), Filter: &prog[0]}
+	fprog := unix.SockFprog{Len: uint16(len(prog)), Filter: &prog[0]} //nolint:gosec // the filter above has nine instructions
 	if err := unix.Prctl(unix.PR_SET_SECCOMP, unix.SECCOMP_MODE_FILTER, uintptr(unsafe.Pointer(&fprog)), 0, 0); err != nil {
 		return fmt.Errorf("seccomp: %w", err)
 	}

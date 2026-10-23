@@ -81,8 +81,12 @@ vuln:
 # golangci-lint runs govet, staticcheck, errcheck, ineffassign and unused with
 # .golangci.yaml. Missing or failing linter fails the target: a silently
 # skipped linter is not a gate.
+# It runs for the other platforms too: a file with a build constraint (the Linux sandbox, the Windows lock stubs) is skipped by a lint
+# run on a machine of the other kind, and CI would be the first to see its findings.
 lint:
 	golangci-lint run ./...
+	GOOS=linux golangci-lint run ./...
+	GOOS=windows golangci-lint run ./...
 
 # ─── Offline demo (no API key) ────────────────────────────────────────────────
 # The offline end-to-end acceptance run (blueprint → bind → run → approvals →

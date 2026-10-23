@@ -1,3 +1,5 @@
+// Package persistence is the workspace database (SQLite): vendors, projects, cases, stories, topologies, runs, secrets, and the
+// hash-chained event log of each run.
 package persistence
 
 import (

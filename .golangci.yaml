@@ -28,6 +28,7 @@ linters:
         - G703 # taint analysis: paths and URLs come from the person at the terminal or from a loopback-checked registration
         - G704 #   (approvalhttp.loopback), and the page is served from embedded files with a strict Content Security Policy
         - G705
+        - G103 # the Linux sandbox calls the kernel through unix.Syscall, where a pointer to a struct is the interface
         - G122 # a walk over the person's own repository, not over a tree an attacker controls
     revive:
       rules:
