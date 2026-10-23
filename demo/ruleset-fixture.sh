@@ -27,10 +27,10 @@
 # Environment: FIXTURE_GIT_NAME / FIXTURE_GIT_EMAIL (the identity of every commit), FIXTURE_ACTION_REF (what `uses:` names,
 # default the version: a commit SHA while a fix is not released), FIXTURE_VERIFIER_VERSION (the release the Action installs,
 # default the version).
-# Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v1.2.0)
+# Usage: ./demo/ruleset-fixture.sh /tmp/staircase-ruleset-fixture [version]   (default version: v1.3.0)
 set -euo pipefail
 OUT="${1:?usage: ruleset-fixture.sh <outdir> [version]}"
-VERSION="${2:-v1.2.0}"
+VERSION="${2:-v1.3.0}"
 ACTION_REF="${FIXTURE_ACTION_REF:-$VERSION}"
 VERIFIER="${FIXTURE_VERIFIER_VERSION:-$VERSION}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

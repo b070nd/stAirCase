@@ -439,9 +439,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: b070nd/stAirCase@v1.2.0   # use the release you have verified; the trust rules below need 0.6.0 or later
+      - uses: b070nd/stAirCase@v1.3.0   # use the release you have verified; the trust rules below need 0.6.0 or later
         with:
-          version: v1.2.0                            # the verifier that runs, pinned (it is also the action's own tag here)
+          version: v1.3.0                            # the verifier that runs, pinned (it is also the action's own tag here)
           key: .github/staircase.pub
           all: true                                  # every commit needs a certificate (the default)
           allowed-signers: .github/allowed_signers   # optional: trusted reviewers, for CAL 4
@@ -537,7 +537,7 @@ staircase-verify:
   variables: { GIT_DEPTH: "0" }      # the whole history: the range needs real commits
   rules: [ { if: '$CI_PIPELINE_SOURCE == "merge_request_event"' } ]
   script:
-    - V=v1.2.0                       # pin a release, and check checksums.txt with cosign as install.md says
+    - V=v1.3.0                       # pin a release, and check checksums.txt with cosign as install.md says
     - curl -fsSLO https://github.com/b070nd/stAirCase/releases/download/$V/staircase_${V#v}_linux_amd64.tar.gz
     - curl -fsSLO https://github.com/b070nd/stAirCase/releases/download/$V/checksums.txt
     - sha256sum -c --ignore-missing checksums.txt && tar -xzf staircase_*.tar.gz staircase

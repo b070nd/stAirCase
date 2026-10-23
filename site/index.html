@@ -36,7 +36,7 @@
 
 <figure>
   <img src="run.svg" width="420" height="290" alt="How a run works: you describe the work as a case with stories, stAirCase compiles it into a plan that gates check, agents work in a separate worktree and every proposal waits for a recorded decision, and you get a branch with only the approved bytes.">
-  <figcaption>How a run works, from <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/concepts.md#how-a-run-works">Concepts</a>.</figcaption>
+  <figcaption>How a run works, from <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/concepts.md#how-a-run-works">Concepts</a>.</figcaption>
 </figure>
 
 <h2 id="use-cases">Choose a workflow</h2>
@@ -77,8 +77,8 @@
 <h2 id="start">Start</h2>
 <ol>
   <li>See the whole flow once, offline, with no API key: the <a href="sample.html">sample demonstration</a>. It uses a stand-in model, so it is a sample, not a governed run of your code.</li>
-  <li>Install stAirCase: <a href="guides/v1.2.0/install.html">install guide for v1.2.0</a>.</li>
-  <li>Your first real run, and onboarding a project: <a href="guides/v1.2.0/first-run.html">first run guide for v1.2.0</a>, in about 15 minutes.</li>
+  <li>Install stAirCase: <a href="guides/v1.3.0/install.html">install guide for v1.3.0</a>.</li>
+  <li>Your first real run, and onboarding a project: <a href="guides/v1.3.0/first-run.html">first run guide for v1.3.0</a>, in about 15 minutes.</li>
 </ol>
 
 <h2 id="limits">Know the limits</h2>
@@ -91,18 +91,18 @@
     <tr><td>Shell commands and checks</td><td>an OS sandbox (macOS <code>sandbox-exec</code>, Linux bubblewrap or Landlock, Claude Code's own sandbox): no network, writes only in the worktree, no access to your credentials or stAirCase's keys; <code>--sandbox required</code> refuses to run without one</td></tr>
     <tr><td>The agent program itself</td><td>as your user (Claude Code, Codex, or stAirCase's runtime); for stronger isolation, run stAirCase in a container or VM</td></tr>
     <tr><td>Agents that edit your checkout (Cursor)</td><td>outside stAirCase until you <code>seal</code> their staged changes (CAL 2)</td></tr>
-    <tr><td>What the agent reads, and what the model provider receives</td><td>not confined, except for the files you name in the project profile: a run sends code to your model provider, and a sandboxed command can read files you can; pick a <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/safety.md#confidentiality-pick-a-profile">confidentiality profile</a></td></tr>
+    <tr><td>What the agent reads, and what the model provider receives</td><td>not confined, except for the files you name in the project profile: a run sends code to your model provider, and a sandboxed command can read files you can; pick a <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/safety.md#confidentiality-pick-a-profile">confidentiality profile</a></td></tr>
   </tbody>
 </table>
 </div>
-<p>stAirCase is not a code reviewer: it makes sure you reviewed and approved every change, and proves that you did. Whether the change is good is still your judgement. Read the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/safety.md">safety boundary</a> before you use it on a project you care about.</p>
+<p>stAirCase is not a code reviewer: it makes sure you reviewed and approved every change, and proves that you did. Whether the change is good is still your judgement. Read the <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/safety.md">safety boundary</a> before you use it on a project you care about.</p>
 
 <h2 id="status">Status</h2>
-<p>stAirCase is at 1.0: its six interfaces follow semantic versioning (<a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/compatibility.md">compatibility</a>). The agent adapters are not part of that promise: governing Claude Code and Codex is marked experimental, and Gemini CLI and OpenCode are still experimental. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/compatibility.md#which-agents-have-actually-been-run">compatibility table</a> says which agent versions have actually been run, and how.</p>
+<p>stAirCase is at 1.0: its six interfaces follow semantic versioning (<a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/compatibility.md">compatibility</a>). The agent adapters are not part of that promise: governing Claude Code and Codex is marked experimental, and Gemini CLI and OpenCode are still experimental. The <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/compatibility.md#which-agents-have-actually-been-run">compatibility table</a> says which agent versions have actually been run, and how.</p>
 </main>
 <footer class="site">
-  <p>These pages describe stAirCase v1.2.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
-  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.2.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+  <p>These pages describe stAirCase v1.3.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
 </footer>
 </body>
 </html>
