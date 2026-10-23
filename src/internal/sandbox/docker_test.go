@@ -131,6 +131,14 @@ func TestDocker_the_environment_is_a_read_only_mount(t *testing.T) {
 func testDockerEnvironment(t *testing.T) {
 	needDocker(t)
 	source, root := userCheckout(t)
+	t.Cleanup(func() { // Docker Desktop removes the mount point a moment after the container exits; until then it cannot be deleted
+		for range 50 {
+			if os.RemoveAll(root) == nil {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
 	overlays := []Overlay{{Source: filepath.Join(source, "vendor"), Target: "vendor"}}
 	out, sandboxed, err := run(t, root, "test -f vendor/autoload.php && ! (echo x > vendor/new.txt) 2>/dev/null && ! rm vendor/autoload.php 2>/dev/null", "docker:image="+testImage, overlays)
 	if err != nil {
