@@ -112,9 +112,8 @@ type stderrErr struct{ tail string }
 func (e stderrErr) Error() string      { return "claude code: exit status 1" }
 func (e stderrErr) StderrTail() string { return e.tail }
 
-// The tail of an agent's stderr is a local diagnostic (Cloudroom persisted its tails into records despite saying it did not,
-// PROTOCOL.md): it is not in the error a run ends with, which a caller may log or pass on, nor in the audit chain, the
-// certificate or the ledger. It is kept in the debug log, scrubbed.
+// The tail of an agent's stderr is a local diagnostic: it is not in the error a run ends with, which a caller may log or pass on,
+// nor in the audit chain, the certificate or the ledger. It is kept in the debug log, scrubbed.
 func TestAgentStderr_never_reaches_a_record(t *testing.T) {
 	const tailText, secret = "TAIL-MARKER panic: connection refused", "tok-PASSED-ENV-0815"
 	r := runtest.Run(t, runtest.Options{Run: orchestrator.RunOptions{Debug: true},

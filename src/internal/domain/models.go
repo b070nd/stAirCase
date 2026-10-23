@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// ─── Status constants ─────────────────────────────────────────────────────────
+// Status constants
 // Using typed string constants rather than bare literals prevents silent typos
 // from being stored in the database (e.g. "COMPLTEED" instead of "COMPLETED").
 
@@ -151,7 +151,7 @@ type RunEventLog struct {
 	HashVersion int `json:"hash_version,omitempty"`
 }
 
-// ─── HITL yield types ─────────────────────────────────────────────────────────
+// HITL yield types
 // Defined here so that packages that handle yield decisions (approvalhttp,
 // policy, tui) do not have to import the ipc package, which also owns the
 // low-level UDS server.  ipc re-exports these as type aliases.

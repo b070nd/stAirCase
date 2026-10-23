@@ -21,7 +21,7 @@ type Signal struct {
 }
 
 // signalThreshold: a probability at or past it counts.
-// ponytail: fixed; calibrate per project once there are local numbers (ROADMAP phase 3).
+// Fixed for now; calibrate it per project once there are local numbers (ROADMAP phase 3).
 const signalThreshold = 0.5
 
 // escalate returns why a person must decide the change, or "".

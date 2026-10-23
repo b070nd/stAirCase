@@ -1,6 +1,6 @@
 // Package wslock provides the advisory file locks (flock) shared by the runner and `secret rotate`. A run holds a shared lock on the
 // workspace key file while it is active; rotation takes an exclusive non-blocking lock, so it fails at once if a run is active
-// (CHECK 4.3.3).
+//.
 //
 //go:build !windows
 

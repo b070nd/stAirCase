@@ -275,7 +275,7 @@ var managedSettingsFiles = []string{"/Library/Application Support/ClaudeCode/man
 // managedWidensSandbox reports whether managed settings turn the sandbox
 // off, allow unsandboxed retries or exempt commands: then a command cannot
 // be counted as sandboxed.
-// ponytail: reads the files only; a configuration profile (MDM) is not seen.
+// Limit: it reads the files only; a configuration profile (MDM) is not seen.
 func managedWidensSandbox() bool {
 	for _, f := range managedSettingsFiles {
 		b, err := os.ReadFile(f)

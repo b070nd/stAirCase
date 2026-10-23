@@ -206,7 +206,7 @@ func (d *deciders) rule(ctx context.Context, req *domain.YieldRequest) ruling {
 			return d.human(req, rl)
 		}
 	}
-	// CHECK 7.2.1/7.2.2: once a session limit is hit, every proposal goes to a
+	// Once a session limit is hit, every proposal goes to a
 	// human regardless of the policy's rules.
 	if limitHit, limitReason := d.policy.CheckLimits(d.autoApproved, d.total); limitHit || rl.drift != "" || req.Guard != "" {
 		why := strings.Trim(limitReason+"; "+rl.drift+"; "+req.Guard, "; ")

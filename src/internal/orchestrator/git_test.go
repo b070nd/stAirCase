@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── OpenGitRepo ─────────────────────────────────────────────────────────────
+// OpenGitRepo
 
 func TestGitRepo_open_nonexistent_returns_error(t *testing.T) {
 	_, err := orchestrator.OpenGitRepo("/nonexistent/path/xyz")
@@ -31,7 +31,7 @@ func TestGitRepo_open_bare_repo_returns_error(t *testing.T) {
 	assert.Error(t, err, "bare repo has no worktree - must return error")
 }
 
-// ─── CurrentBranch ───────────────────────────────────────────────────────────
+// CurrentBranch
 
 func TestGitRepo_CurrentBranch_returns_main(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -42,7 +42,7 @@ func TestGitRepo_CurrentBranch_returns_main(t *testing.T) {
 	assert.Equal(t, "main", branch)
 }
 
-// ─── BranchExists ────────────────────────────────────────────────────────────
+// BranchExists
 
 func TestGitRepo_BranchExists_false_for_unknown(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -58,7 +58,7 @@ func TestGitRepo_BranchExists_true_for_main(t *testing.T) {
 	assert.True(t, gr.BranchExists("main"))
 }
 
-// ─── CreateBranch / DeleteBranch ─────────────────────────────────────────────
+// CreateBranch / DeleteBranch
 
 func TestGitRepo_CreateBranch_and_verify_exists(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -82,7 +82,7 @@ func TestGitRepo_DeleteBranch_removes_branch(t *testing.T) {
 	assert.False(t, gr.BranchExists("staircase/run-88"))
 }
 
-// ─── CurrentBranch - detached HEAD ───────────────────────────────────────────
+// CurrentBranch - detached HEAD
 
 func TestGitRepo_CurrentBranch_on_detached_HEAD(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -106,7 +106,7 @@ func TestGitRepo_CurrentBranch_on_detached_HEAD(t *testing.T) {
 	assert.Equal(t, sha, branch)
 }
 
-// ─── CheckoutBranch ──────────────────────────────────────────────────────────
+// CheckoutBranch
 
 func TestGitRepo_CheckoutBranch_restores_main(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -141,7 +141,7 @@ func TestGitRepo_CheckoutBranch_by_sha_detaches_HEAD(t *testing.T) {
 	assert.Equal(t, sha, current)
 }
 
-// ─── IsClean ─────────────────────────────────────────────────────────────────
+// IsClean
 
 func TestGitRepo_IsClean_on_clean_repo(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -165,7 +165,7 @@ func TestGitRepo_IsClean_false_with_untracked_file(t *testing.T) {
 	assert.False(t, clean)
 }
 
-// ─── ListBranches ────────────────────────────────────────────────────────────
+// ListBranches
 
 func TestGitRepo_ListBranches_prefix_filter(t *testing.T) {
 	repoPath := initGitRepo(t)
@@ -193,7 +193,7 @@ func TestGitRepo_ListBranches_empty_when_no_match(t *testing.T) {
 	assert.Empty(t, branches)
 }
 
-// ─── Commit - default author fallback ────────────────────────────────────────
+// Commit - default author fallback
 
 func TestApprovedCommit_falls_back_to_default_author_when_no_global_config(t *testing.T) {
 	// Point HOME at an empty directory and give the repo no local user, so no

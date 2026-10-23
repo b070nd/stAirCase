@@ -124,7 +124,7 @@ func Verify(pub ed25519.PublicKey, message []byte, sigHex string) error {
 	return nil
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 // writeFileAtomic writes data to path via a sibling temp file + rename so a
 // mid-write crash cannot leave a truncated file.

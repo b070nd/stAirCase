@@ -1,5 +1,5 @@
 // Package audit provides append-only checkpoint writing outside the SQLite
-// database so that tamper evidence survives DB-level attacks (CHECK 9.2.2).
+// database so that tamper evidence survives DB-level attacks.
 package audit
 
 import (
@@ -12,9 +12,9 @@ import (
 // 0600) and writes data.  Using O_APPEND guarantees that concurrent or
 // repeated calls to this function never overwrite earlier checkpoint records -
 // each call adds to the end of the file atomically at the OS level
-// (CHECK 9.2.2).
+// .
 func AppendCheckpoint(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // CHECK 9.2.2
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("open checkpoint: %w", err)
 	}

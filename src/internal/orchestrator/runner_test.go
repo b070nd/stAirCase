@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── test helpers ─────────────────────────────────────────────────────────────
+// test helpers
 
 func newTestStore(t *testing.T) *persistence.Store {
 	t.Helper()
@@ -81,10 +81,10 @@ func scaffoldForRun(t *testing.T, s *persistence.Store, sourcePath string) (case
 	return c.ID, p.ID
 }
 
-// ─── Phase enum ───────────────────────────────────────────────────────────────
+// Phase enum
 
 func TestRunPhase_constants_are_defined(t *testing.T) {
-	// Verify the full phase sequence is declared (CHECK 5.1.2).
+	// Verify the full phase sequence is declared.
 	phases := []orchestrator.RunPhase{
 		orchestrator.PhasePreFlight,
 		orchestrator.PhaseBranchCreate,
@@ -104,7 +104,7 @@ func TestNewRunner_initial_phase_is_PRE_FLIGHT(t *testing.T) {
 	assert.Equal(t, orchestrator.PhasePreFlight, r.Phase())
 }
 
-// ─── Reconcile: no-op on clean state ─────────────────────────────────────────
+// Reconcile: no-op on clean state
 
 func TestReconcile_clean_state_returns_empty_result(t *testing.T) {
 	s := newTestStore(t)
@@ -119,9 +119,9 @@ func TestReconcile_clean_state_returns_empty_result(t *testing.T) {
 	assert.Empty(t, result.OrphanBranches)
 }
 
-// ─── Reconcile: stale RUNNING run → KILLED ────────────────────────────────────
+// Reconcile: stale RUNNING run → KILLED
 //
-// Simulates the "crash injection" scenario (CHECK 5.5.1):
+// Simulates the "crash injection" scenario:
 // the orchestrator created a Run record (status=RUNNING) but crashed before
 // updating it to FAILED/SUCCESS. Reconcile must detect and kill such records.
 
@@ -159,7 +159,7 @@ func TestCrashInjection_stale_run_marked_killed(t *testing.T) {
 }
 
 // TestKillAtPhase verifies the full crash-at-phase-boundary + reconcile cycle
-// (CHECK 5.5.1): a run crashes at PhaseBranchCreate (branch created but status
+// : a run crashes at PhaseBranchCreate (branch created but status
 // never updated), leaving a stale RUNNING record and an orphan git branch.
 // On the next startup, Reconcile reports the branch without deleting evidence.
 func TestKillAtPhase(t *testing.T) {
@@ -219,7 +219,7 @@ func TestCrashInjection_recent_run_not_killed_by_reconcile(t *testing.T) {
 	assert.Equal(t, persistence.RunStatusRunning, got.Status)
 }
 
-// ─── Reconcile: orphan branch detection ──────────────────────────────────────
+// Reconcile: orphan branch detection
 
 func TestOrphanReconciliation_branch_with_no_run_record(t *testing.T) {
 	s := newTestStore(t)
@@ -347,14 +347,14 @@ func TestReconcile_no_source_path_skips_git(t *testing.T) {
 	assert.Empty(t, result.OrphanBranches)
 }
 
-// ─── OpenGitRepo helper ───────────────────────────────────────────────────────
+// OpenGitRepo helper
 
 func TestGitRepo_open_empty_path_returns_error(t *testing.T) {
 	_, err := orchestrator.OpenGitRepo("")
 	require.Error(t, err, "empty path must return an error")
 }
 
-// ─── Cleanup chain on panic (CHECK 5.2.3) ─────────────────────────────────────
+// Cleanup chain on panic
 
 // TestCleanupChainOnPanic verifies that the orchestrator's defer-based cleanup
 // chain (branch restore → stash pop) runs LIFO and completes even when a panic
@@ -400,7 +400,7 @@ func TestScrubSecrets_empty_active_values_returns_unchanged(t *testing.T) {
 }
 
 // TestScrubSecrets_skips_empty_active_value verifies that an empty string in
-// activeValues is treated as a skip-sentinel (CHECK 4.4.3).
+// activeValues is treated as a skip-sentinel.
 func TestScrubSecrets_skips_empty_active_value(t *testing.T) {
 	req := domain.YieldRequest{
 		ActionType: "file_edit",
@@ -415,7 +415,7 @@ func TestScrubSecrets_skips_empty_active_value(t *testing.T) {
 }
 
 // TestScrubSecrets_redacts_active_values verifies that scrubSecrets replaces
-// matching secret values in proposed edit paths (CHECK 4.4.3).
+// matching secret values in proposed edit paths.
 func TestScrubSecrets_redacts_active_values(t *testing.T) {
 	req := domain.YieldRequest{
 		ActionType: "file_edit",
@@ -430,7 +430,7 @@ func TestScrubSecrets_redacts_active_values(t *testing.T) {
 }
 
 // TestScrubSecrets_redacts_search_replace_and_reasoning verifies that scrubSecrets
-// covers all operator-visible fields (CHECK 4.4.3 / 7.4.2).
+// covers all operator-visible fields.
 func TestScrubSecrets_redacts_search_replace_and_reasoning(t *testing.T) {
 	secret := "sk-super-secret-key"
 	req := domain.YieldRequest{
@@ -455,7 +455,7 @@ func TestScrubSecrets_redacts_search_replace_and_reasoning(t *testing.T) {
 		"File path not containing secret should be unchanged")
 }
 
-// ─── writeSummary (CHECK 10.4.1) ──────────────────────────────────────────────
+// writeSummary
 
 func TestWriteSummary_creates_json_file(t *testing.T) {
 	wsDir := t.TempDir()
@@ -494,7 +494,7 @@ func TestWriteSummary_idempotent_on_rewrite(t *testing.T) {
 	assert.Contains(t, string(data), `"SUCCESS"`)
 }
 
-// ─── runGates ─────────────────────────────────────────────────────────────────
+// runGates
 
 func TestRunGates_blocks_on_failing_gates(t *testing.T) {
 	s := newTestStore(t)
@@ -573,7 +573,7 @@ func TestRun_quality_gate_failure_returns_error(t *testing.T) {
 	assert.Contains(t, err.Error(), "gate")
 }
 
-// ─── timePtr ─────────────────────────────────────────────────────────────────
+// timePtr
 
 func TestTimePtr_returns_pointer_to_value(t *testing.T) {
 	now := time.Now()
@@ -582,7 +582,7 @@ func TestTimePtr_returns_pointer_to_value(t *testing.T) {
 	assert.Equal(t, now, *ptr)
 }
 
-// ─── sendWebhookYield ─────────────────────────────────────────────────────────
+// sendWebhookYield
 
 func TestSendWebhookYield_successful_approval(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -634,7 +634,7 @@ func TestSendWebhookYield_bad_json_response_auto_rejects(t *testing.T) {
 	assert.Contains(t, resp.Feedback, "webhook decode error")
 }
 
-// ─── authenticated webhook (HMAC) ─────────────────────────────────────────────
+// authenticated webhook (HMAC)
 
 // signedOperator returns an httptest server that verifies the inbound request
 // signature and signs its approval response with the same secret.
@@ -777,7 +777,7 @@ func TestSendWebhookYield_only_a_2xx_answer_counts(t *testing.T) {
 	assert.Zero(t, asked, "the approval request must not be re-sent to a redirect target")
 }
 
-// ─── Run() integration - full lifecycle ──────────────────────────────────────
+// Run() integration - full lifecycle
 
 // agentWorkspace is a workspace for an in-process run: its key (and tmp/).
 func agentWorkspace(t *testing.T) string {
@@ -1028,10 +1028,10 @@ func TestRun_integration_state_emit(t *testing.T) {
 	assert.Equal(t, persistence.RunStatusSuccess, runs[0].Status)
 }
 
-// ─── Run() early-exit paths ────────────────────────────────────────────────────
+// Run() early-exit paths
 
 // TestRun_case_not_found_returns_error covers the PRE_FLIGHT path where the
-// requested caseID does not exist in the store (CHECK 5.1.2).
+// requested caseID does not exist in the store.
 func TestRun_case_not_found_returns_error(t *testing.T) {
 	s := newTestStore(t)
 	r := orchestrator.NewRunner(s, t.TempDir())
@@ -1042,7 +1042,7 @@ func TestRun_case_not_found_returns_error(t *testing.T) {
 }
 
 // TestRun_no_topology_returns_error covers the PRE_FLIGHT path where a case
-// and project exist but no swarm topology has been registered (CHECK 5.1.2).
+// and project exist but no swarm topology has been registered.
 func TestRun_no_topology_returns_error(t *testing.T) {
 	s := newTestStore(t)
 
@@ -1062,7 +1062,7 @@ func TestRun_no_topology_returns_error(t *testing.T) {
 
 // TestRun_dryrun_creates_run_and_returns_nil covers the DryRun short-circuit
 // path: a run record is created, logged, and the function returns nil without
-// starting an agent (CHECK 5.1.2 / CHECK 5.5.1).
+// starting an agent.
 func TestRun_dryrun_creates_nothing(t *testing.T) {
 	s := newTestStore(t)
 	caseID, _ := scaffoldForRun(t, s, "") // empty sourcePath → skip all git ops

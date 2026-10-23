@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── TokenEstimate / WarnTokenBudget ─────────────────────────────────────────
+// TokenEstimate / WarnTokenBudget
 
 func TestTokenEstimate_zero_for_empty(t *testing.T) {
 	assert.Equal(t, 0, engine.TokenEstimate(""))
@@ -38,7 +38,7 @@ func TestWarnTokenBudget_warns_above_threshold(t *testing.T) {
 	assert.Contains(t, w, "100k")
 }
 
-// ─── PackXML ─────────────────────────────────────────────────────────────────
+// PackXML
 
 func TestPackXML_wraps_content_in_file_tags(t *testing.T) {
 	files := map[string]string{"src/main.go": "package main"}
@@ -62,7 +62,7 @@ func TestPackXML_multiple_files(t *testing.T) {
 	assert.Equal(t, 2, strings.Count(xml, "</file>"))
 }
 
-// ─── RepoMap: directory tree ──────────────────────────────────────────────────
+// RepoMap: directory tree
 
 func TestRepoMap_includes_files(t *testing.T) {
 	dir := t.TempDir()
@@ -110,7 +110,7 @@ func TestRepoMap_skips_binary_extensions(t *testing.T) {
 	assert.NotContains(t, result, "go.sum")
 }
 
-// ─── Signature extraction ─────────────────────────────────────────────────────
+// Signature extraction
 
 func TestRepoMap_extracts_go_functions(t *testing.T) {
 	dir := t.TempDir()
@@ -184,7 +184,7 @@ func TestRepoMap_double_star_gitignore(t *testing.T) {
 	assert.Contains(t, result, "foo.go")
 }
 
-// ─── MatchGlob unit tests ─────────────────────────────────────────────────────
+// MatchGlob unit tests
 
 func TestMatchGlob_literal_match(t *testing.T) {
 	assert.True(t, engine.MatchGlob("foo.go", "foo.go"))
@@ -219,7 +219,7 @@ func TestMatchGlob_double_star_zero_segments(t *testing.T) {
 	assert.True(t, engine.MatchGlob("**/*.go", "main.go"))
 }
 
-// ─── loadIgnorePatterns error surfacing (E-1) ─────────────────────────────────
+// loadIgnorePatterns error surfacing (E-1)
 
 func TestRepoMap_unreadable_gitignore_warns_but_continues(t *testing.T) {
 	dir := t.TempDir()

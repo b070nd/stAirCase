@@ -97,7 +97,7 @@ func ResumeIfCommitted(wsDir string) error {
 }
 
 // RotateKey generates a new AES-256 key, re-encrypts all secrets through reencrypt, and installs the new key file atomically
-// (CHECK 4.3.2).
+// .
 //
 // A two-stage journal recovers from a crash at every step:
 //   - "pending": new key written to temp, journal written, DB not committed. Recovery asks tryDecryptAny whether the DB committed anyway.
@@ -108,7 +108,7 @@ func ResumeIfCommitted(wsDir string) error {
 // opens it another way must set that pragma first.
 //
 // The caller must hold an exclusive non-blocking flock on <wsDir>/.key: it fails at once if a run or `secret set` holds a shared lock
-// (CHECK 4.3.3). tryDecryptAny reports whether at least one stored secret decrypts with the given key; it is only used in "pending"
+// . tryDecryptAny reports whether at least one stored secret decrypts with the given key; it is only used in "pending"
 // recovery. Pass a function returning false when there are no secrets.
 func RotateKey(
 	wsDir string,
@@ -118,7 +118,7 @@ func RotateKey(
 	keyPath := filepath.Join(wsDir, KeyFile)
 	journalPath := filepath.Join(wsDir, rotateJournalFile)
 
-	// ── Recovery: resume or roll back an interrupted rotation ────────────────
+	// Recovery: resume or roll back an interrupted rotation
 	if j, err := readRotateJournal(journalPath); err == nil {
 		switch j.Stage {
 		case "committed":
@@ -156,7 +156,7 @@ func RotateKey(
 		}
 	}
 
-	// ── Normal rotation ───────────────────────────────────────────────────────
+	// Normal rotation
 
 	// A process killed before it used its temp key leaves that file (or the
 	// journal's temp file) behind. Whatever recovery above did not need is gone

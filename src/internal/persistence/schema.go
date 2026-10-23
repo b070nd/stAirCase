@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     FOREIGN KEY (scoped_to_project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
--- Secret access audit log (SOC2 at-use audit, CHECK 4.1.3).
+-- Secret access audit log (SOC2 at-use audit).
 -- run_id is SET NULL on run delete so audit history is never silently lost.
 CREATE TABLE IF NOT EXISTS secret_access_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

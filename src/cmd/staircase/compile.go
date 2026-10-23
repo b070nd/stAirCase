@@ -59,7 +59,7 @@ func compileCaseHandler(_ *cobra.Command, args []string) error {
 // its path. harness names the agent harness that runs the case; "" means the
 // built-in agents of the project's topology.
 func compileCase(store *persistence.Store, wsDir string, caseID int64, harness string, review *plan.Review, force bool) (string, error) {
-	// ── Load Case + Project ───────────────────────────────────────────────────
+	// Load Case + Project
 	caseRec, err := store.GetCase(caseID)
 	if err != nil || caseRec == nil {
 		return "", fmt.Errorf("case %d not found", caseID)
@@ -71,7 +71,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 
 	fmt.Printf("⚙️  Compiling case #%d  project=%q\n", caseID, project.Name)
 
-	// ── 3. DAG Resolution (spec §4.1) ─────────────────────────────────────────
+	// 3. DAG Resolution (spec §4.1)
 	allDeps, err := store.ListAllProjectDependencies()
 	if err != nil {
 		return "", fmt.Errorf("load deps: %w", err)
@@ -92,7 +92,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 	}
 	fmt.Printf("   📦 Dependency order: %s\n", strings.Join(names, " → "))
 
-	// ── 4. Repo Skeletonization + Semantic XML Packing (spec §4.1) ────────────
+	// 4. Repo Skeletonization + Semantic XML Packing (spec §4.1)
 	var repoParts []string
 	for _, p := range ordered {
 		if p.SourcePath == "" {
@@ -109,13 +109,13 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 		repoContext = "<context>\n" + strings.Join(repoParts, "\n") + "\n</context>"
 	}
 
-	// ── 5. Token Budget Warning (spec §4.1) ───────────────────────────────────
+	// 5. Token Budget Warning (spec §4.1)
 	if warn := engine.WarnTokenBudget(caseRec.PrdJSON + repoContext); warn != "" {
 		fmt.Printf("   %s\n", warn)
 		fmt.Printf("   Agents will use read_file for lazy context fetching.\n")
 	}
 
-	// ── 6. Who runs it: an agent harness, or the topology's agents ──────────
+	// 6. Who runs it: an agent harness, or the topology's agents
 	pl := plan.Plan{CaseID: caseID, Harness: harness, Review: review, PRD: caseRec.PrdJSON, RepoContext: repoContext}
 	if pl.Lessons, err = projectLessons(store, project.ID); err != nil {
 		return "", fmt.Errorf("load earlier reviews: %w", err)
@@ -154,7 +154,7 @@ func compileCase(store *persistence.Store, wsDir string, caseID int64, harness s
 		pl.Limits = b.Limits
 	}
 
-	// ── 8. Write the plan (run checks its sha256 sidecar) ─────────────────────
+	// 8. Write the plan (run checks its sha256 sidecar)
 	tmpDir := filepath.Join(wsDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return "", fmt.Errorf("mkdir tmp: %w", err)

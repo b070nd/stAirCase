@@ -31,7 +31,7 @@ func NewStore(db *sql.DB) *Store {
 // Production code should prefer the typed Store methods.
 func (s *Store) DB() *sql.DB { return s.db }
 
-// ─── Vendor ───────────────────────────────────────────────────────────────────
+// Vendor
 
 func (s *Store) CreateVendor(name string) (*domain.Vendor, error) {
 	res, err := s.db.Exec(`INSERT INTO vendors (name) VALUES (?)`, name)
@@ -81,7 +81,7 @@ func (s *Store) ListVendors() ([]domain.Vendor, error) {
 	return vs, rows.Err()
 }
 
-// ─── Project ──────────────────────────────────────────────────────────────────
+// Project
 
 func (s *Store) CreateProject(vendorID int64, name, sourcePath string) (*domain.Project, error) {
 	res, err := s.db.Exec(
@@ -183,7 +183,7 @@ func (s *Store) SetProjectBudgetCap(projectID int64, budgetUSD float64) error {
 	return err
 }
 
-// ─── ProjectDependency ────────────────────────────────────────────────────────
+// ProjectDependency
 
 func (s *Store) CreateProjectDependency(sourceID, targetID int64) (*domain.ProjectDependency, error) {
 	res, err := s.db.Exec(
@@ -236,7 +236,7 @@ func (s *Store) ListAllProjectDependencies() ([]domain.ProjectDependency, error)
 	return deps, rows.Err()
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Component
 
 func (s *Store) CreateComponent(projectID int64, name string) (*domain.Component, error) {
 	res, err := s.db.Exec(
@@ -290,7 +290,7 @@ func (s *Store) ListComponentsByProject(projectID int64) ([]domain.Component, er
 	return cs, rows.Err()
 }
 
-// ─── Secret ───────────────────────────────────────────────────────────────────
+// Secret
 
 func (s *Store) CreateSecret(keyName, encryptedValue string, projectID *int64) (*domain.Secret, error) {
 	res, err := s.db.Exec(
@@ -388,7 +388,7 @@ func (s *Store) ListSecretsByProject(projectID int64) ([]domain.Secret, error) {
 }
 
 // LogSecretAccess writes one row to secret_access_log for every decrypt
-// attempt (CHECK 4.4.1).  outcome must be "success", "error", or "not_found".
+// attempt.  outcome must be "success", "error", or "not_found".
 // runID may be nil when the call originates outside of a run context.
 func (s *Store) LogSecretAccess(runID *int64, keyName, outcome string) error {
 	_, err := s.db.Exec(
@@ -399,7 +399,7 @@ func (s *Store) LogSecretAccess(runID *int64, keyName, outcome string) error {
 }
 
 // CountSecretAccesses returns the total number of secret_access_log rows for
-// the given run.  Used by TestAtUseAuditCounts (CHECK 4.4.2).
+// the given run.  Used by TestAtUseAuditCounts.
 func (s *Store) CountSecretAccesses(runID int64) (int, error) {
 	var n int
 	err := s.db.QueryRow(
@@ -433,7 +433,7 @@ func (s *Store) ListAllSecrets() ([]domain.Secret, error) {
 // 4.3.2).  oldKey decrypts the existing ciphertexts; newKey produces the
 // replacement ciphertexts.  The function also bumps the version column.
 // The caller is responsible for holding the workspace filesystem lock before
-// calling this method (CHECK 4.3.3).
+// calling this method.
 func (s *Store) RotateSecrets(oldKey, newKey []byte, decrypt func([]byte, string) (string, error), encrypt func([]byte, string) (string, error)) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -502,7 +502,7 @@ func rotateSecretsOnTx(tx *sql.Tx, oldKey, newKey []byte, decrypt func([]byte, s
 	return tx.Commit()
 }
 
-// ─── Case ─────────────────────────────────────────────────────────────────────
+// Case
 
 func (s *Store) CreateCase(projectID int64) (*domain.Case, error) {
 	now := time.Now()
@@ -687,7 +687,7 @@ func (s *Store) PruneEventLogs(maxRows int64) (int64, error) {
 	return n, nil
 }
 
-// ─── UserStory ────────────────────────────────────────────────────────────────
+// UserStory
 
 func (s *Store) CreateUserStory(caseID int64, description string) (*domain.UserStory, error) {
 	res, err := s.db.Exec(
@@ -747,7 +747,7 @@ func (s *Store) ListUserStoriesByCase(caseID int64) ([]domain.UserStory, error) 
 	return stories, rows.Err()
 }
 
-// ─── SwarmTopology ────────────────────────────────────────────────────────────
+// SwarmTopology
 
 func (s *Store) CreateSwarmTopology(projectID int64, supervisorName, checkpointType, runtimeType string) (*domain.SwarmTopology, error) {
 	var maxVersion int
@@ -821,7 +821,7 @@ func (s *Store) ListTopologiesByProject(projectID int64) ([]domain.SwarmTopology
 	return ts, rows.Err()
 }
 
-// ─── AgentNode ────────────────────────────────────────────────────────────────
+// AgentNode
 
 func (s *Store) CreateAgentNode(topologyID int64, name, role, model string, componentID *int64) (*domain.AgentNode, error) {
 	res, err := s.db.Exec(
@@ -869,7 +869,7 @@ func (s *Store) ListAgentNodes(topologyID int64) ([]domain.AgentNode, error) {
 	return nodes, rows.Err()
 }
 
-// ─── AgentTool ────────────────────────────────────────────────────────────────
+// AgentTool
 
 func (s *Store) CreateAgentTool(agentID int64, toolName, toolConfig string) (*domain.AgentTool, error) {
 	res, err := s.db.Exec(
@@ -902,7 +902,7 @@ func (s *Store) ListAgentTools(agentID int64) ([]domain.AgentTool, error) {
 	return tools, rows.Err()
 }
 
-// ─── Edge ─────────────────────────────────────────────────────────────────────
+// Edge
 
 func (s *Store) CreateEdge(topologyID int64, from, to, condition string) (*domain.Edge, error) {
 	res, err := s.db.Exec(
@@ -935,7 +935,7 @@ func (s *Store) ListEdges(topologyID int64) ([]domain.Edge, error) {
 	return edges, rows.Err()
 }
 
-// ─── Run ──────────────────────────────────────────────────────────────────────
+// Run
 
 func (s *Store) CreateRun(caseID int64, topologyVersion int, gitBranch string) (*domain.Run, error) {
 	// Enforce referential integrity: topology_version must correspond to a real
@@ -1165,7 +1165,7 @@ func scanRuns(rows *sql.Rows) ([]domain.Run, error) {
 	return runs, rows.Err()
 }
 
-// ─── RunEventLog (SOC2 tamper-proof chain) ────────────────────────────────────
+// RunEventLog (SOC2 tamper-proof chain)
 
 // GetLastEventHash returns the hash of the most recent log entry for a run,
 // or an empty string if no entries exist yet (genesis / first entry).
@@ -1267,7 +1267,7 @@ func (s *Store) ListEventLogs(runID int64) ([]domain.RunEventLog, error) {
 // position (1-based) where the stored hash does not match the recomputed value.
 // Returns nil when the chain is intact.
 //
-// This is CHECK 9.1.2 - used by "staircase audit verify" and the tamper test.
+// It is used by "staircase audit verify" and the tamper test.
 func (s *Store) VerifyChain(runID int64) error {
 	logs, err := s.ListEventLogs(runID)
 	if err != nil {
@@ -1325,7 +1325,7 @@ func (s *Store) KillStaleRuns(caseID int64, maxAge time.Duration) (int64, error)
 	return n, nil
 }
 
-// ─── Type aliases (for callers that import persistence.Run etc.) ──────────────
+// Type aliases (for callers that import persistence.Run etc.)
 
 // Run is a convenience alias so cmd packages can use persistence.Run directly.
 type Run = domain.Run

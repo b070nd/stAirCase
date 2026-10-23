@@ -49,7 +49,7 @@ func TestHost_log_is_bounded_and_says_what_it_dropped(t *testing.T) {
 }
 
 // A hosted session that fails: its runner sees an error with the cause and no stderr text (a runner may keep what the program it
-// runs prints; Cloudroom keeps stderr tails in its records), and the credential the session was given (--pass-env) is in no log.
+// runs prints), and the credential the session was given (--pass-env) is in no log.
 func TestHost_failed_session_keeps_stderr_and_the_credential_out_of_the_runners_view(t *testing.T) {
 	_, ws, _ := hostRepo(t)
 	require.NoError(t, os.WriteFile(filepath.Join(ws, "host.json"),

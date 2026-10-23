@@ -60,15 +60,15 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// ── 1. Workspace directory ────────────────────────────────────────────────
+	// 1. Workspace directory
 	_, err := os.Stat(wsDir)
 	check("Workspace directory exists", err == nil, "run 'staircase init'")
 
-	// ── 2. Encryption key ─────────────────────────────────────────────────────
+	// 2. Encryption key
 	_, keyErr := crypto.LoadKey(wsDir)
 	check("Workspace encryption key (.key)", keyErr == nil, "run 'staircase init'")
 
-	// ── 3. SQLite database ────────────────────────────────────────────────────
+	// 3. SQLite database
 	dbPath := filepath.Join(wsDir, "workspace.db")
 	_, dbStatErr := os.Stat(dbPath)
 	check("SQLite database (workspace.db)", dbStatErr == nil, "run 'staircase init'")
@@ -83,12 +83,12 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// ── 4. Leftovers of the Python runtime ────────────────────────────────────
+	// 4. Leftovers of the Python runtime
 	if _, err := os.Stat(filepath.Join(wsDir, "venv")); err == nil {
 		fmt.Println("  ℹ️  venv/ is from an older staircase and no longer used - you can delete it")
 	}
 
-	// ── 5. Git ────────────────────────────────────────────────────────────────
+	// 5. Git
 	_, gitErr := exec.LookPath("git")
 	gitVersion := ""
 	if gitErr == nil {
@@ -101,7 +101,7 @@ func doctorHandler(_ *cobra.Command, _ []string) error {
 	}
 	check(label, gitErr == nil, "install git from https://git-scm.com")
 
-	// ── 6. tmp directory ──────────────────────────────────────────────────────
+	// 6. tmp directory
 	// tmp/ is created on first run, so its absence is informational only.
 	if _, err := os.Stat(filepath.Join(wsDir, "tmp")); err == nil {
 		fmt.Println("  ✅ tmp/ directory")

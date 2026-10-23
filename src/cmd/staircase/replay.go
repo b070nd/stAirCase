@@ -37,7 +37,7 @@ replaying a tampered run log.`,
 }
 
 // runReplay verifies the audit chain for runID then writes yield decisions to
-// out. Extracted for testability (CHECK 9.3.1, 9.3.2).
+// out. Extracted for testability.
 func runReplay(out io.Writer, store *persistence.Store, runID int64) error {
 	// A run is replayed from one read of its rows, and refused if that read does not verify.
 	rows, err := history.ReadRows(store, runID)

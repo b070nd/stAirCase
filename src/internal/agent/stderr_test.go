@@ -14,8 +14,7 @@ import (
 )
 
 // A harness that fails has its stderr tail kept as a diagnostic (the debug log, scrubbed of the credential the harness was
-// given), and out of the error the run ends with, which a caller may log or a runner may keep (PROTOCOL.md: Cloudroom persisted
-// stderr tails despite saying it did not). Every adapter does this.
+// given), and out of the error the run ends with, which a caller may log or a runner may keep. Every adapter does this.
 func TestAdapters_keep_a_stderr_tail_out_of_the_error(t *testing.T) {
 	const credential = "the-credential-0815"
 	adapters := map[string]func(bin string) orchestrator.Agent{

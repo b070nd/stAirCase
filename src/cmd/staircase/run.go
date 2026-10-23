@@ -151,7 +151,7 @@ func runCase(l launch, caseID int64) error {
 		go func() { _ = http.ListenAndServe(l.metricsAddr, mux) }() // #nosec G114 -- metrics addr is operator-controlled, not user input
 	}
 
-	// Configure OpenTelemetry when --otel-endpoint is provided (CHECK 10.3.1).
+	// Configure OpenTelemetry when --otel-endpoint is provided.
 	otelShutdown := obs.InitOTel(l.otelEndpoint)
 	defer otelShutdown()
 

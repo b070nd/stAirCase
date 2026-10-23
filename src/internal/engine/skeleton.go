@@ -218,7 +218,7 @@ func WarnTokenBudget(text string) string {
 	return ""
 }
 
-// ─── Ignore patterns ─────────────────────────────────────────────────────────
+// Ignore patterns
 
 var defaultIgnoreDirs = map[string]bool{
 	".git": true, "node_modules": true, "__pycache__": true,
@@ -297,7 +297,7 @@ func shouldIgnoreFile(rel string, patterns []string) bool {
 	return false
 }
 
-// ─── Signature extraction ─────────────────────────────────────────────────────
+// Signature extraction
 
 var (
 	reFuncGo      = regexp.MustCompile(`^func\s`)

@@ -17,7 +17,7 @@ import (
 // and its own temp folder, as the user, with no network, capabilities or writable system, within the given memory and CPU limits. It is
 // chosen explicitly, never by "auto": the image is the user's choice and is never pulled implicitly.
 //
-// ponytail: options travel as one mode string (docker:image=...,memory=...,cpus=...), the same string --sandbox, the run's saved terms
+// Design note: options travel as one mode string (docker:image=...,memory=...,cpus=...), the same string --sandbox, the run's saved terms
 // and the agent already carry, so a continued run gets the same container. Use a struct when a second engine needs options.
 
 // DockerPrefix starts a docker mode.

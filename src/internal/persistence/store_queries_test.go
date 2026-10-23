@@ -1,8 +1,7 @@
 package persistence_test
 
-// store_coverage_test.go - tests for store methods that had 0% coverage.
-// Each test is minimal: it exercises the code path and asserts the key
-// invariant. Happy-path focus; constraint violations are tested in store_test.go.
+// store_queries_test.go - tests for the store's lookups, listings and secret rotation. Each one is short and checks the main
+// behaviour; constraint violations are tested in store_test.go.
 
 import (
 	"context"
@@ -16,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// helpers
 
 // scaffoldTopology creates a vendor→project→topology and returns all IDs.
 func scaffoldTopology(t *testing.T, s *persistence.Store) (vendorID, projectID, topoID int64) {
@@ -30,7 +29,7 @@ func scaffoldTopology(t *testing.T, s *persistence.Store) (vendorID, projectID, 
 	return v.ID, p.ID, topo.ID
 }
 
-// ─── Vendor ───────────────────────────────────────────────────────────────────
+// Vendor
 
 func TestGetVendorByID_found_and_not_found(t *testing.T) {
 	s := newTestStore(t)
@@ -68,7 +67,7 @@ func TestListVendors_empty(t *testing.T) {
 	assert.Empty(t, vs)
 }
 
-// ─── Project ──────────────────────────────────────────────────────────────────
+// Project
 
 func TestGetProjectByVendorAndName_found_and_not_found(t *testing.T) {
 	s := newTestStore(t)
@@ -115,7 +114,7 @@ func TestListAllProjects_returns_all(t *testing.T) {
 // these methods cannot be tested without applying those specific ALTER TABLEs.
 // Covered via e2e tests that use a fully-migrated workspace.
 
-// ─── ProjectDependency ────────────────────────────────────────────────────────
+// ProjectDependency
 
 func TestCreateAndListProjectDependencies(t *testing.T) {
 	s := newTestStore(t)
@@ -153,7 +152,7 @@ func TestListAllProjectDependencies(t *testing.T) {
 	assert.Len(t, all, 2)
 }
 
-// ─── Case ─────────────────────────────────────────────────────────────────────
+// Case
 
 func TestSetCasePRD_and_UpdateCasePRD(t *testing.T) {
 	s := newTestStore(t)
@@ -197,7 +196,7 @@ func TestListCasesByProject_includes_soft_deleted(t *testing.T) {
 	assert.NotNil(t, cases[0].DeletedAt)
 }
 
-// ─── SwarmTopology ────────────────────────────────────────────────────────────
+// SwarmTopology
 
 func TestGetTopology_found_and_not_found(t *testing.T) {
 	s := newTestStore(t)
@@ -228,7 +227,7 @@ func TestListTopologiesByProject(t *testing.T) {
 	assert.Equal(t, 1, topos[1].Version)
 }
 
-// ─── AgentNode ────────────────────────────────────────────────────────────────
+// AgentNode
 
 func TestCreateAgentNode_GetAgentNode_ListAgentNodes(t *testing.T) {
 	s := newTestStore(t)
@@ -252,7 +251,7 @@ func TestCreateAgentNode_GetAgentNode_ListAgentNodes(t *testing.T) {
 	assert.Len(t, nodes, 1)
 }
 
-// ─── AgentTool ────────────────────────────────────────────────────────────────
+// AgentTool
 
 func TestCreateAgentTool_ListAgentTools(t *testing.T) {
 	s := newTestStore(t)
@@ -279,7 +278,7 @@ func TestListAgentTools_empty(t *testing.T) {
 	assert.Empty(t, tools)
 }
 
-// ─── Edge ─────────────────────────────────────────────────────────────────────
+// Edge
 
 func TestCreateEdge_ListEdges(t *testing.T) {
 	s := newTestStore(t)
@@ -299,7 +298,7 @@ func TestCreateEdge_ListEdges(t *testing.T) {
 	assert.Len(t, edges, 2)
 }
 
-// ─── Run ──────────────────────────────────────────────────────────────────────
+// Run
 
 func TestListRunsByCase(t *testing.T) {
 	s := newTestStore(t)
@@ -340,7 +339,7 @@ func TestListRunsByStatus(t *testing.T) {
 	assert.Equal(t, run.ID, succeeded[0].ID)
 }
 
-// ─── Project config ───────────────────────────────────────────────────────────
+// Project config
 
 func TestGetSetProjectConfig_defaults_and_update(t *testing.T) {
 	s := newTestStore(t)
@@ -365,7 +364,7 @@ func TestGetSetProjectConfig_defaults_and_update(t *testing.T) {
 	assert.InDelta(t, 9.99, budget, 0.001)
 }
 
-// ─── ListAllSecrets ───────────────────────────────────────────────────────────
+// ListAllSecrets
 
 func TestListAllSecrets_returns_all_secrets(t *testing.T) {
 	s := newTestStore(t)
@@ -381,7 +380,7 @@ func TestListAllSecrets_returns_all_secrets(t *testing.T) {
 	assert.GreaterOrEqual(t, len(secrets), 2, "ListAllSecrets must return all secrets across projects")
 }
 
-// ─── RotationLock (CHECK 4.3.3) ──────────────────────────────────────────────
+// RotationLock
 
 func TestNewRotationLock_acquires_and_unlocks(t *testing.T) {
 	wsDir := t.TempDir()
@@ -403,7 +402,7 @@ func TestNewRotationLock_double_acquire_fails(t *testing.T) {
 	assert.Contains(t, err.Error(), "rotation already in progress")
 }
 
-// ─── RotateSecrets ─────────────────────────────────────────────────────────────
+// RotateSecrets
 
 // TestRotateSecrets_with_identity_funcs verifies that RotateSecrets walks
 // every secret, calls decrypt/encrypt, and commits the transaction.
@@ -449,7 +448,7 @@ func TestRotateSecrets_decrypt_error_aborts(t *testing.T) {
 	assert.Contains(t, err.Error(), "rotate: decrypt")
 }
 
-// ─── DeleteFlaggedCases / PruneEventLogs ──────────────────────────────────────
+// DeleteFlaggedCases / PruneEventLogs
 
 func TestDeleteFlaggedCases_removes_deleted_cases(t *testing.T) {
 	s := newTestStore(t)
@@ -485,7 +484,7 @@ func TestPruneEventLogs_keeps_rows_within_limit(t *testing.T) {
 	assert.Equal(t, int64(1), n)
 }
 
-// ─── RotateSecretsOnConn ──────────────────────────────────────────────────────
+// RotateSecretsOnConn
 
 // TestRotateSecretsOnConn_happy_path verifies that RotateSecretsOnConn
 // re-encrypts all secrets on the provided pinned connection and that the

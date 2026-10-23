@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 func proj(id int64, name string) domain.Project {
 	return domain.Project{ID: id, Name: name}
@@ -29,7 +29,7 @@ func positions(sorted []domain.Project) map[int64]int {
 	return m
 }
 
-// ─── tests ────────────────────────────────────────────────────────────────────
+// tests
 
 func TestTopoSort_empty(t *testing.T) {
 	sorted, err := engine.TopoSort(nil, nil)

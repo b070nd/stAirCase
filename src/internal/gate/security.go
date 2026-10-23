@@ -15,7 +15,7 @@ func init() {
 	Register(&secretNoDuplicatesGate{})
 }
 
-// ─── secret.provider_keys ─────────────────────────────────────────────────────
+// secret.provider_keys
 
 type secretProviderKeysGate struct{}
 
@@ -81,7 +81,7 @@ func (*secretProviderKeysGate) Run(ctx Context) Result {
 	return pass(name, "security", SeverityBlock, "present: "+strings.Join(present, ", "))
 }
 
-// ─── secret.key_file ──────────────────────────────────────────────────────────
+// secret.key_file
 
 type secretKeyFileGate struct{}
 
@@ -108,7 +108,7 @@ func (*secretKeyFileGate) Run(ctx Context) Result {
 	return pass(name, "security", SeverityBlock, ".key present, 32 bytes, mode 0600")
 }
 
-// ─── secret.no_duplicate_keys ─────────────────────────────────────────────────
+// secret.no_duplicate_keys
 
 type secretNoDuplicatesGate struct{}
 

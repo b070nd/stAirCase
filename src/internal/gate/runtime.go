@@ -27,7 +27,7 @@ func planPath(ctx Context) string {
 	return filepath.Join(ctx.WsDir, "tmp", fmt.Sprintf("plan_case%d.json", ctx.CaseID))
 }
 
-// ─── runtime.plan_compiled ───────────────────────────────────────────────────
+// runtime.plan_compiled
 
 type runtimePlanCompiledGate struct{}
 
@@ -60,7 +60,7 @@ func (*runtimePlanCompiledGate) Run(ctx Context) Result {
 	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan for topology v%d, %d agents", p.TopologyVersion, len(p.Agents)))
 }
 
-// ─── runtime.plan_pinned ─────────────────────────────────────────────────────
+// runtime.plan_pinned
 
 type runtimePlanPinnedGate struct{}
 
@@ -107,7 +107,7 @@ func (*runtimePlanPinnedGate) Run(ctx Context) Result {
 	return pass(name, "runtime", SeverityBlock, fmt.Sprintf("plan is blueprint %s %.12s, case %s", b.Name, hash, slug))
 }
 
-// ─── runtime.source_path ─────────────────────────────────────────────────────
+// runtime.source_path
 
 type runtimeSourcePathGate struct{}
 
@@ -133,7 +133,7 @@ func (*runtimeSourcePathGate) Run(ctx Context) Result {
 		fmt.Sprintf("source path %q exists", p.SourcePath))
 }
 
-// ─── runtime.no_concurrent_run ────────────────────────────────────────────────
+// runtime.no_concurrent_run
 
 type runtimeNoConcurrentRunGate struct{}
 
@@ -156,7 +156,7 @@ func (*runtimeNoConcurrentRunGate) Run(ctx Context) Result {
 	return pass(name, "runtime", SeverityBlock, "no concurrent runs")
 }
 
-// ─── runtime.git_available ────────────────────────────────────────────────────
+// runtime.git_available
 
 type runtimeGitAvailableGate struct{}
 

@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// helpers
 
 // e2eWorkspace creates a temp workspace, initialises the DB, and points viper
 // at it. Returns the Store so tests can seed data directly.
@@ -81,7 +81,7 @@ func fakeRuntimeEnv(t *testing.T, wsDir string, caseID int64, topoVersion int) {
 		Agents: []plan.Agent{{Name: "sup", Role: "r", Model: "claude-sonnet-4-6"}}}))
 }
 
-// ─── Scenario 1: Workspace bootstrap ─────────────────────────────────────────
+// Scenario 1: Workspace bootstrap
 
 func TestStoryAccept_requires_explicit_existing_story(t *testing.T) {
 	_, s := e2eWorkspace(t)
@@ -155,7 +155,7 @@ func TestE2E_WorkspaceBootstrap_Idempotent(t *testing.T) {
 	assert.Equal(t, key1, key2, "key must be unchanged on second init")
 }
 
-// ─── Scenario 2: Compile pipeline ────────────────────────────────────────────
+// Scenario 2: Compile pipeline
 
 // TestE2E_Compile_GeneratesScriptAndTopoSidecar exercises the full compile
 // handler: it sets up a complete topology, calls compileCaseHandler, and
@@ -183,7 +183,7 @@ func TestE2E_Compile_GeneratesPlan(t *testing.T) {
 	assert.Equal(t, []plan.Agent{{Name: "supervisor", Role: "Routes tasks", Model: "claude-sonnet-4-5"}}, pl.Agents)
 }
 
-// ─── Scenario 3: Gate - incomplete setup blocks ───────────────────────────────
+// Scenario 3: Gate - incomplete setup blocks
 
 // TestE2E_Gate_BlocksOnMissingTopology verifies that running gate checks on a
 // case that has stories but no registered topology produces a blocking report.
@@ -233,7 +233,7 @@ func TestE2E_Gate_BlocksOnNoStories(t *testing.T) {
 	t.Fatal("case.has_stories gate not found in report")
 }
 
-// ─── Scenario 4: Gate - full structural setup passes ─────────────────────────
+// Scenario 4: Gate - full structural setup passes
 
 // TestE2E_Gate_StructuralGatesAllPass sets up every entity required by the
 // structural gate category and verifies that all structural BLOCK gates pass.
@@ -277,7 +277,7 @@ func TestE2E_Gate_JSONReport(t *testing.T) {
 	assert.Equal(t, float64(caseID), parsed["case_id"], "JSON must include case_id")
 }
 
-// ─── Scenario 5: Secret lifecycle ────────────────────────────────────────────
+// Scenario 5: Secret lifecycle
 
 // TestE2E_SecretGate_AnthropicKeyMissingBlocks verifies that the
 // secret.provider_keys gate blocks when the model's provider key is missing.
@@ -318,7 +318,7 @@ func TestE2E_SecretGate_AnthropicKeyPresentPasses(t *testing.T) {
 	t.Fatal("secret.provider_keys gate not found in report")
 }
 
-// ─── Scenario 6: Inspect - runs and event log ─────────────────────────────────
+// Scenario 6: Inspect - runs and event log
 
 // TestE2E_Inspect_RunsLifecycle verifies the full run lifecycle:
 // create → list → update → list again, checking that status transitions
@@ -380,7 +380,7 @@ func TestE2E_Inspect_EventLogChain(t *testing.T) {
 	}
 }
 
-// ─── Scenario 7: Full workflow ────────────────────────────────────────────────
+// Scenario 7: Full workflow
 
 // TestE2E_FullWorkflow_SetupCompileGate runs the usual pre-run workflow: workspace, entities, compile, gate check, run and event log.
 func TestE2E_FullWorkflow_SetupCompileGate(t *testing.T) {
@@ -440,7 +440,7 @@ func TestE2E_FullWorkflow_SetupCompileGate(t *testing.T) {
 	assert.Equal(t, topo.Version, runs[0].TopologyVersion)
 }
 
-// ─── Scenario 5: Audit export + verify ───────────────────────────────────────
+// Scenario 5: Audit export + verify
 
 // seedRunWithLogs creates a run and appends n event log entries, returning the runID.
 func seedRunWithLogs(t *testing.T, s *persistence.Store, n int) int64 {
@@ -607,7 +607,7 @@ func TestAudit_Export_empty_run_produces_valid_checkpoint(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestCheckpointSignatureTamper is the checklist-named tamper test (CHECK 9.2.4).
+// TestCheckpointSignatureTamper checks the tamper case.
 // It verifies that altering the Ed25519 signature field in a checkpoint file
 // causes auditVerifyHandler to return a non-nil error.
 func TestCheckpointSignatureTamper(t *testing.T) {

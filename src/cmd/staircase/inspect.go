@@ -16,7 +16,7 @@ var inspectCmd = &cobra.Command{
 	Short: "Inspect runs, event logs, and execution history",
 }
 
-// ── inspect runs ──────────────────────────────────────────────────────────────
+// inspect runs
 
 var inspectRunsCaseID int64
 
@@ -71,7 +71,7 @@ var inspectRunsCmd = &cobra.Command{
 	},
 }
 
-// ── inspect log ───────────────────────────────────────────────────────────────
+// inspect log
 
 const inspectPayloadSnip = 120 // default truncation length for payload preview
 

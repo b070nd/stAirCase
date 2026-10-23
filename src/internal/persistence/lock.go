@@ -1,7 +1,7 @@
 //go:build !windows
 
 // Package persistence - RotationLock provides a filesystem advisory lock that
-// prevents concurrent key-rotation operations (CHECK 4.3.3).
+// prevents concurrent key-rotation operations.
 package persistence
 
 import (
@@ -21,7 +21,7 @@ type RotationLock struct {
 // (syscall.LOCK_EX|syscall.LOCK_NB) on <wsDir>/tmp/key-rotation.lock.
 // If the lock is already held by another process it returns an error
 // immediately (refuses to block) so that a rotation in progress is never
-// silently skipped or double-run (CHECK 4.3.3).
+// silently skipped or double-run.
 func NewRotationLock(wsDir string) (*RotationLock, error) {
 	lockPath := filepath.Join(wsDir, "tmp", "key-rotation.lock")
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {

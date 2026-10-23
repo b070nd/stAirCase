@@ -25,7 +25,7 @@ type pluginGateDef struct {
 
 // PluginGate is a Gate backed by an external script: it reads a JSON line on stdin and writes one to stdout. It runs with an empty
 // environment (no host secrets, no $STAIRCASE_DIR), in a fresh temp directory removed afterwards, under a configurable timeout
-// (CHECK 11.3, 11.4, 11.6).
+// .
 type PluginGate struct{ def pluginGateDef }
 
 func (p *PluginGate) Name() string     { return p.def.Name }
@@ -46,7 +46,7 @@ func (p *PluginGate) Severity() Severity {
 
 // Run executes the plugin script and returns the gate result.
 // If the script times out, produces malformed output, or exits non-zero,
-// Run returns StatusFail - it never panics on unexpected output (CHECK 11.5).
+// Run returns StatusFail - it never panics on unexpected output.
 func (p *PluginGate) Run(ctx Context) Result {
 	timeout := time.Duration(p.def.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
@@ -65,13 +65,13 @@ func (p *PluginGate) Run(ctx Context) Result {
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, p.def.Script) //nolint:gosec
-	cmd.Env = []string{}                             // CHECK 11.3, 11.6 - no env inherited
-	cmd.Dir = tmpDir                                 // CHECK 11.3 - fresh cwd
+	cmd.Env = []string{}                             // no environment inherited
+	cmd.Dir = tmpDir                                 // fresh working directory
 	// WaitDelay ensures cmd.Output() returns promptly after context cancellation
 	// even when child processes keep I/O pipes open (e.g. a shell spawning sleep).
 	cmd.WaitDelay = timeout
 
-	// Write JSON input to stdin (CHECK 11.6).
+	// Write JSON input to stdin.
 	// ws_dir is intentionally included so gate scripts can inspect topology and
 	// config files without needing env access.  Secrets and the IPC socket are
 	// NOT included - the plugin receives no credentials beyond the workspace path.
@@ -95,7 +95,7 @@ func (p *PluginGate) Run(ctx Context) Result {
 			fmt.Sprintf("plugin error: %s", detail))
 	}
 
-	// Decode output - malformed output must not crash (CHECK 11.5).
+	// Decode output - malformed output must not crash.
 	var pluginResult struct {
 		Status  string `json:"status"`
 		Message string `json:"message"`

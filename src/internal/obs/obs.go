@@ -1,4 +1,4 @@
-// Package obs provides structured logging that redacts sensitive fields (CHECK 10.1.2).
+// Package obs provides structured logging that redacts sensitive fields.
 //
 //	obs.Log.Warn("stash pop failed", "err", err)
 //	obs.InitJSON(os.Stderr, slog.LevelInfo) // replaces the default discard handler
@@ -33,7 +33,7 @@ func InitJSON(w io.Writer, level slog.Level) {
 
 // RedactingHandler wraps a [slog.Handler] and replaces the values of any
 // [slog.Attr] whose key matches a sensitive field name with the literal string
-// "<REDACTED>" (CHECK 10.1.2).
+// "<REDACTED>".
 type RedactingHandler struct {
 	inner slog.Handler
 }

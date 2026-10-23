@@ -9,7 +9,7 @@ import (
 )
 
 // TestScrubBytes verifies that ScrubBytes replaces each secret occurrence with
-// "<REDACTED>" and leaves unrelated content untouched (CHECK 4.4.3 / 7.4.2).
+// "<REDACTED>" and leaves unrelated content untouched.
 func TestScrubBytes(t *testing.T) {
 	payload := []byte(`{"type":"secret_request","value":"my-secret","tag":"safe"}`)
 
@@ -35,7 +35,7 @@ func TestScrubBytes(t *testing.T) {
 }
 
 // TestPlaintextRedaction verifies that fmt.Sprintf("%v", pt) returns
-// "<redacted>" and never the underlying value (CHECK 4.2.2).
+// "<redacted>" and never the underlying value.
 func TestPlaintextRedaction(t *testing.T) {
 	pt := crypto.NewPlaintext("super-secret-value")
 

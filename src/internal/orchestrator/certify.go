@@ -126,7 +126,7 @@ func (r *Runner) certify(runID int64, commit, baseSHA, chainHead string, pl *pla
 		}
 		if d.Source == "operator" && d.DecideMS != nil {
 			decideMS = append(decideMS, *d.DecideMS)
-			// ponytail: a fixed bar for "approved without reading"; tune once teams report numbers.
+			// A fixed bar for "approved without reading"; tune it once teams report numbers.
 			if d.Approved && d.Lines >= quickLines && *d.DecideMS < quickMS {
 				quick++
 			}

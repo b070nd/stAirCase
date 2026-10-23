@@ -62,7 +62,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 		fmt.Println("🔍 Dry-run mode - nothing will be deleted.")
 	}
 
-	// ── 1. Tmp: Python-era scripts and their sidecars, IPC sockets ────────────
+	// 1. Tmp: Python-era scripts and their sidecars, IPC sockets
 	removed := 0
 	for _, pat := range []string{"graph_exec_*", "*.sock"} {
 		matches, _ := filepath.Glob(filepath.Join(tmpDir, pat))
@@ -81,7 +81,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 
 	fmt.Println("   🔬 Aggressive GC...")
 
-	// ── 2. Preserve set: FAILED run IDs if --keep-failed ──────────────────────
+	// 2. Preserve set: FAILED run IDs if --keep-failed
 	preservedRunIDs := map[int64]bool{}
 	if cleanKeepFailed {
 		db, err := persistence.InitDB(wsDir)
@@ -96,7 +96,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// ── 3. Remove the Python venv older versions installed ───────────────────
+	// 3. Remove the Python venv older versions installed
 	venvPath := filepath.Join(wsDir, "venv")
 	if info, err := os.Lstat(venvPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -107,7 +107,7 @@ func cleanHandler(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// ── 4. Prune stale staircase/run-* branches in project repos ──────────────
+	// 4. Prune stale staircase/run-* branches in project repos
 	if _, err := os.Stat(filepath.Join(wsDir, legalHoldFile)); err == nil {
 		fmt.Printf("   🔒 Legal hold in effect (%s): no audit rows, cases or run branches are deleted. Remove the file to allow it.\n",
 			filepath.Join(wsDir, legalHoldFile))

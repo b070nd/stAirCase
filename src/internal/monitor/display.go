@@ -101,7 +101,7 @@ func (d *Display) Render() {
 	var sb strings.Builder
 	sep := dBorder.Render(strings.Repeat("─", dashWidth))
 
-	// ── Header ────────────────────────────────────────────────────────────────
+	// Header
 	headerLine := fmt.Sprintf(
 		"stAirCase  Run #%d  │  case=#%d  %s  │  branch: %s  │  %s",
 		d.tracker.RunID, d.tracker.CaseID, d.tracker.Project,
@@ -112,7 +112,7 @@ func (d *Display) Render() {
 	sb.WriteString(sep)
 	sb.WriteString("\n")
 
-	// ── Column headings ───────────────────────────────────────────────────────
+	// Column headings
 	sb.WriteString(dMuted.Render(fmt.Sprintf(
 		"  %-2s %-16s  %-26s  %6s  %9s  %9s  %10s  %7s",
 		"", "AGENT", "MODEL", "STEPS", "IN TOK", "OUT TOK", "COST", "TIME",
@@ -121,7 +121,7 @@ func (d *Display) Render() {
 	sb.WriteString(sep)
 	sb.WriteString("\n")
 
-	// ── Per-agent rows ────────────────────────────────────────────────────────
+	// Per-agent rows
 	var totalSteps, totalIn, totalOut int
 	var totalCost float64
 
@@ -169,7 +169,7 @@ func (d *Display) Render() {
 		sb.WriteString("\n")
 	}
 
-	// ── Totals row ────────────────────────────────────────────────────────────
+	// Totals row
 	sb.WriteString(sep)
 	sb.WriteString("\n")
 
@@ -206,7 +206,7 @@ func (d *Display) Render() {
 	sb.WriteString(dMuted.Render(totalRow))
 	sb.WriteString("\n")
 
-	// ── Recent activity ───────────────────────────────────────────────────────
+	// Recent activity
 	if len(activityCopy) > 0 {
 		sb.WriteString(sep)
 		sb.WriteString("\n")
@@ -247,7 +247,7 @@ func (d *Display) Final(status string) {
 	fmt.Fprintln(os.Stdout, statusLine)
 }
 
-// ── formatting helpers ────────────────────────────────────────────────────────
+// formatting helpers
 
 func formatElapsed(d time.Duration) string {
 	d = d.Round(time.Second)

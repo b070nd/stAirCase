@@ -12,7 +12,7 @@ var topologyCmd = &cobra.Command{
 	Short: "Manage agent topologies: agents, routing edges and tools",
 }
 
-// ── register ──────────────────────────────────────────────────────────────────
+// register
 
 var (
 	topoCheckpoint string
@@ -49,7 +49,7 @@ var topoRegisterCmd = &cobra.Command{
 	},
 }
 
-// ── agent ─────────────────────────────────────────────────────────────────────
+// agent
 
 var agentCmd = &cobra.Command{
 	Use:   "agent",
@@ -100,7 +100,7 @@ var agentAddCmd = &cobra.Command{
 	},
 }
 
-// ── edge ──────────────────────────────────────────────────────────────────────
+// edge
 
 var edgeCmd = &cobra.Command{
 	Use:   "edge",
@@ -138,7 +138,7 @@ var edgeAddCmd = &cobra.Command{
 	},
 }
 
-// ── tool ──────────────────────────────────────────────────────────────────────
+// tool
 
 var toolCmd = &cobra.Command{
 	Use:   "tool",
@@ -175,7 +175,7 @@ var toolAddCmd = &cobra.Command{
 	},
 }
 
-// ── show ──────────────────────────────────────────────────────────────────────
+// show
 
 var topoShowCmd = &cobra.Command{
 	Use:   "show <project-id>",

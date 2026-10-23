@@ -15,7 +15,7 @@ import (
 	tui "github.com/b070nd/stAirCase/src/internal/tui"
 )
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 func basicReq() domain.YieldRequest {
 	return domain.YieldRequest{
@@ -30,7 +30,7 @@ func basicReq() domain.YieldRequest {
 	}
 }
 
-// ─── View tests ───────────────────────────────────────────────────────────────
+// View tests
 
 func TestView_contains_agent_name(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -94,7 +94,7 @@ func TestView_multiple_edits(t *testing.T) {
 	assert.Contains(t, v, "util.go")
 }
 
-// ─── Update tests - approve ───────────────────────────────────────────────────
+// Update tests - approve
 
 func TestUpdate_approve_lowercase_y(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -111,7 +111,7 @@ func TestUpdate_approve_uppercase_Y(t *testing.T) {
 	assert.True(t, resp.Approved)
 }
 
-// ─── Update tests - reject flow ───────────────────────────────────────────────
+// Update tests - reject flow
 
 func TestUpdate_reject_key_n_enters_feedback_state(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -185,7 +185,7 @@ func TestUpdate_feedback_esc_returns_to_reviewing(t *testing.T) {
 	assert.Equal(t, 0, tui.StateOf(back), "Esc in feedback state should return to reviewing")
 }
 
-// ─── Update tests - window resize ─────────────────────────────────────────────
+// Update tests - window resize
 
 func TestUpdate_window_size_msg(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -196,7 +196,7 @@ func TestUpdate_window_size_msg(t *testing.T) {
 	assert.NotEmpty(t, v)
 }
 
-// ─── View in feedback state ───────────────────────────────────────────────────
+// View in feedback state
 
 func TestView_feedback_state_shows_prompt(t *testing.T) {
 	m := tui.NewYieldModel(basicReq())
@@ -213,7 +213,7 @@ func TestView_shows_drift(t *testing.T) {
 	assert.NotContains(t, tui.NewYieldModel(basicReq()).View(), "DRIFT")
 }
 
-// ─── Interruption ─────────────────────────────────────────────────────────────
+// Interruption
 
 // TestUpdate_ctrl_c_rejects_and_stops: in raw mode Ctrl-C is a key, not a
 // signal, and used to do nothing, so an operator could not stop a run that was

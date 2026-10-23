@@ -34,7 +34,7 @@ import (
 	"github.com/b070nd/stAirCase/src/internal/domain"
 )
 
-// ─── types ────────────────────────────────────────────────────────────────────
+// types
 
 // PendingYield is the server-side view of an in-flight yield waiting for an
 // operator decision.
@@ -63,7 +63,7 @@ type feedbackBody struct {
 }
 
 // MozillaTLSConfig returns a *tls.Config for Mozilla's "intermediate" profile: TLS 1.2 minimum, AEAD-only cipher suites, X25519 and
-// P-256. Pass it to [Server.StartTLS] to serve HTTPS (CHECK 8.5).
+// P-256. Pass it to [Server.StartTLS] to serve HTTPS.
 // https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_(recommended)
 func MozillaTLSConfig() *tls.Config {
 	return &tls.Config{
@@ -93,7 +93,7 @@ type Server struct {
 	routes  func(*http.ServeMux)
 }
 
-// ─── constructor ──────────────────────────────────────────────────────────────
+// constructor
 
 // NewServer creates a server that will listen on addr (e.g. "127.0.0.1:0").
 // token is the shared Bearer secret required on every request.  Pass an empty
@@ -232,7 +232,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 // StartTLS starts the server with TLS using the provided certificate and key
 // files and the supplied tls.Config.  Pass [MozillaTLSConfig]() as cfg to get
-// Mozilla intermediate compatibility settings (CHECK 8.5).  If cfg is nil,
+// Mozilla intermediate compatibility settings.  If cfg is nil,
 // the Go default TLS config is used.
 func (s *Server) StartTLS(ctx context.Context, certFile, keyFile string, cfg *tls.Config) error {
 	ln, err := net.Listen("tcp", s.addr)
@@ -271,7 +271,7 @@ func (s *Server) ListenAddr() string {
 	return s.addr
 }
 
-// ─── public API ───────────────────────────────────────────────────────────────
+// public API
 
 // PendYield registers the yield request as pending and returns its ID and a
 // channel that will receive exactly one [domain.YieldResponse] when an operator
@@ -316,7 +316,7 @@ func (s *Server) Withdraw(id string) {
 	s.decided[id] = struct{}{}
 }
 
-// ─── HTTP handlers ────────────────────────────────────────────────────────────
+// HTTP handlers
 
 // GET /v1/yields - list all pending yields.
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
@@ -394,7 +394,7 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id strin
 
 	if !ok {
 		if alreadyDecided {
-			// 409 Conflict: another decision already won the race (CHECK 8.6).
+			// 409 Conflict: another decision already won the race.
 			http.Error(w, "yield already decided", http.StatusConflict)
 		} else {
 			http.Error(w, "yield not found", http.StatusNotFound)
@@ -413,7 +413,7 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request, id strin
 	writeJSON(w, http.StatusOK, map[string]string{"status": action, "id": id})
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 func (s *Server) rejectAll(reason string) {
 	s.mu.Lock()

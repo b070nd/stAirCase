@@ -18,7 +18,7 @@ func init() {
 	Register(&topologyRuntimeValidGate{})
 }
 
-// ─── case.project_exists ──────────────────────────────────────────────────────
+// case.project_exists
 
 type caseProjectExistsGate struct{}
 
@@ -47,7 +47,7 @@ func (*caseProjectExistsGate) Run(ctx Context) Result {
 		fmt.Sprintf("case %d → project %q (id=%d)", ctx.CaseID, p.Name, p.ID))
 }
 
-// ─── case.has_stories ─────────────────────────────────────────────────────────
+// case.has_stories
 
 type caseHasStoriesGate struct{}
 
@@ -74,7 +74,7 @@ func (*caseHasStoriesGate) Run(ctx Context) Result {
 	return pass(name, "structural", SeverityBlock, fmt.Sprintf("%d PENDING user stories", pending))
 }
 
-// ─── case.has_prd ─────────────────────────────────────────────────────────────
+// case.has_prd
 
 type caseHasPRDGate struct{}
 
@@ -95,7 +95,7 @@ func (*caseHasPRDGate) Run(ctx Context) Result {
 	return pass(name, "structural", SeverityWarn, "PRD context present")
 }
 
-// ─── topology.exists ──────────────────────────────────────────────────────────
+// topology.exists
 
 type topologyExistsGate struct{}
 
@@ -121,7 +121,7 @@ func (*topologyExistsGate) Run(ctx Context) Result {
 		fmt.Sprintf("topology v%d (id=%d, supervisor=%q)", topo.Version, topo.ID, topo.SupervisorName))
 }
 
-// ─── topology.has_agents ──────────────────────────────────────────────────────
+// topology.has_agents
 
 type topologyHasAgentsGate struct{}
 
@@ -150,7 +150,7 @@ func (*topologyHasAgentsGate) Run(ctx Context) Result {
 	return pass(name, "structural", SeverityBlock, fmt.Sprintf("%d agent nodes", len(agents)))
 }
 
-// ─── topology.supervisor_registered ──────────────────────────────────────────
+// topology.supervisor_registered
 
 type topologySupervisorRegisteredGate struct{}
 
@@ -179,7 +179,7 @@ func (*topologySupervisorRegisteredGate) Run(ctx Context) Result {
 		fmt.Sprintf("supervisor %q not registered as an agent node", topo.SupervisorName))
 }
 
-// ─── topology.edges_valid ─────────────────────────────────────────────────────
+// topology.edges_valid
 
 type topologyEdgesValidGate struct{}
 
@@ -223,7 +223,7 @@ func (*topologyEdgesValidGate) Run(ctx Context) Result {
 		fmt.Sprintf("%d edges all reference registered nodes", len(edges)))
 }
 
-// ─── topology.runtime_valid ───────────────────────────────────────────────────
+// topology.runtime_valid
 //
 // Three tiers: langgraph is fully executable (PASS); crewai and autogen are in the schema but their code generator raises
 // NotImplementedError (WARN, so the operator knows before wasting a run); anything else is BLOCK.
@@ -265,7 +265,7 @@ func (*topologyRuntimeValidGate) Run(ctx Context) Result {
 		fmt.Sprintf("unknown runtime_type %q - valid values: langgraph (implemented), crewai/autogen (future)", t.RuntimeType))
 }
 
-// ─── topology.no_orphan_agents ────────────────────────────────────────────────
+// topology.no_orphan_agents
 
 type topologyNoOrphanAgentsGate struct{}
 

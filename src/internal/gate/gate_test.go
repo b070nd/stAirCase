@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── test helpers ─────────────────────────────────────────────────────────────
+// test helpers
 
 func newGateEnv(t *testing.T) (ctx gate.Context, wsDir string) {
 	t.Helper()
@@ -52,7 +52,7 @@ func makeTopo(t *testing.T, s *persistence.Store, projectID int64, supervisorNam
 	return topo.ID
 }
 
-// ─── Report / RunAll core ─────────────────────────────────────────────────────
+// Report / RunAll core
 
 func TestReport_Blocking_true_when_fail(t *testing.T) {
 	r := gate.Report{Overall: gate.StatusFail}
@@ -139,7 +139,7 @@ func (g *stubGate) Run(_ gate.Context) gate.Result {
 
 // TestAllGates_metadata_methods verifies that every registered gate implementation
 // returns non-empty Name, Category, and Severity values.  This covers the
-// Name/Category/Severity method bodies on all concrete gate structs (CHECK 12.4.3).
+// Name/Category/Severity method bodies on all concrete gate structs.
 func TestAllGates_metadata_methods(t *testing.T) {
 	allGates := []gate.Gate{
 		gate.CaseProjectExistsGate,
@@ -168,10 +168,8 @@ func TestAllGates_metadata_methods(t *testing.T) {
 	}
 }
 
-// TestRunAll_with_real_registry_nonexistent_case exercises the full registered
-// gate set on a context whose CaseID doesn't exist.  Most gates will SKIP or
-// FAIL, which covers the skip() helper in gate.go and the Skip/Fail summary
-// paths in RunAll.
+// TestRunAll_with_real_registry_nonexistent_case runs the full registered gate set on a context whose CaseID does not exist. Most
+// gates skip or fail, and RunAll still returns a complete report with the right Skip and Fail counts.
 func TestRunAll_with_real_registry_nonexistent_case(t *testing.T) {
 	ctx, _ := newGateEnv(t)
 	ctx.CaseID = 999_999 // no such case → many gates will SKIP
@@ -186,7 +184,7 @@ func TestRunAll_with_real_registry_nonexistent_case(t *testing.T) {
 	assert.NotEqual(t, gate.StatusPass, report.Overall)
 }
 
-// ─── Structural gates ─────────────────────────────────────────────────────────
+// Structural gates
 
 func TestCaseProjectExistsGate_missing_case(t *testing.T) {
 	ctx, _ := newGateEnv(t)
@@ -351,7 +349,7 @@ func TestTopologyNoOrphanAgentsGate_all_connected(t *testing.T) {
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
 
-// ─── Security gates ───────────────────────────────────────────────────────────
+// Security gates
 
 func topoWithModels(t *testing.T, s *persistence.Store, projectID int64, models ...string) {
 	t.Helper()
@@ -451,7 +449,7 @@ func TestSecretNoDuplicatesGate_no_duplicates(t *testing.T) {
 // the unique index on secrets(key_name, scoped_to_project_id) now enforces
 // this at the DB level - the scenario is no longer reachable via the public API.
 
-// ─── Runtime gates ────────────────────────────────────────────────────────────
+// Runtime gates
 
 func TestRuntimePlanCompiledGate_missing(t *testing.T) {
 	ctx, wsDir := newGateEnv(t)
@@ -556,7 +554,7 @@ func TestRuntimeNoConcurrentRunGate_running_run_fails(t *testing.T) {
 	assert.Equal(t, gate.StatusFail, r.Status)
 }
 
-// ─── Dependency gates ─────────────────────────────────────────────────────────
+// Dependency gates
 
 func TestDepNoCycleGate_no_deps_passes(t *testing.T) {
 	ctx, _ := newGateEnv(t)
@@ -758,7 +756,7 @@ func TestTopologyRuntimeValidGate_autogen_warns(t *testing.T) {
 	assert.Contains(t, r.Message, "not yet executable")
 }
 
-// ─── Soft-deleted case gate ───────────────────────────────────────────────────
+// Soft-deleted case gate
 
 func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
 	ctx, _ := newGateEnv(t)
@@ -769,7 +767,7 @@ func TestCaseProjectExistsGate_deleted_case_fails(t *testing.T) {
 	assert.Contains(t, r.Message, "deleted")
 }
 
-// ─── deps.deps_completed - upstream has no topology ───────────────────────────
+// deps.deps_completed - upstream has no topology
 
 func TestDepDepsCompletedGate_upstream_no_topology_warns(t *testing.T) {
 	// Upstream project exists and is a declared dependency but has never had a
@@ -786,7 +784,7 @@ func TestDepDepsCompletedGate_upstream_no_topology_warns(t *testing.T) {
 	assert.Contains(t, r.Message, "no topology")
 }
 
-// ─── runtime.git_available gate ───────────────────────────────────────────────
+// runtime.git_available gate
 
 func TestRuntimeGitAvailableGate_no_source_path_passes(t *testing.T) {
 	ctx, _ := newGateEnv(t)
@@ -806,7 +804,7 @@ func TestRuntimeGitAvailableGate_with_source_path_and_git_present(t *testing.T) 
 	assert.Equal(t, gate.StatusPass, r.Status)
 }
 
-// ─── Plugin gate tests ────────────────────────────────────────────────────────
+// Plugin gate tests
 
 // writePluginScript writes a shell script to wsDir and registers it in gates.json.
 // The script body is the content between #!/bin/sh and EOF.
@@ -875,7 +873,7 @@ func TestPlugin_warn(t *testing.T) {
 	assert.Equal(t, gate.StatusWarn, report.Gates[0].Status)
 }
 
-// TestPluginMalformedOutput verifies CHECK 11.5: malformed plugin output
+// TestPluginMalformedOutput verifies that malformed plugin output
 // results in a FAIL gate, never a panic or crash.
 func TestPluginMalformedOutput(t *testing.T) {
 	wsDir := t.TempDir()
@@ -890,7 +888,7 @@ func TestPluginMalformedOutput(t *testing.T) {
 	assert.Contains(t, report.Gates[0].Message, "malformed output", "message must explain the parse error")
 }
 
-// TestPluginIsolation verifies CHECK 11.6: the plugin subprocess cannot read
+// TestPluginIsolation verifies that the plugin subprocess cannot read
 // $STAIRCASE_DIR from its environment - the env is cleared before exec.
 func TestPluginIsolation(t *testing.T) {
 	t.Setenv("STAIRCASE_DIR", "/secret/workspace/path")
@@ -911,7 +909,7 @@ fi`,
 		"plugin must not see STAIRCASE_DIR: %s", report.Gates[0].Message)
 }
 
-// TestPlugin_timeout verifies CHECK 11.4: a plugin that exceeds its timeout
+// TestPlugin_timeout verifies that a plugin that exceeds its timeout
 // is killed and returns StatusFail within the deadline.
 func TestPlugin_timeout(t *testing.T) {
 	wsDir := t.TempDir()

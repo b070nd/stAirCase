@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 // startServer starts a server with no auth token (suitable for most tests).
 func startServer(t *testing.T) (*approvalhttp.Server, context.CancelFunc) {
@@ -87,14 +87,14 @@ func get(t *testing.T, url string) *http.Response {
 	return resp
 }
 
-// ─── ListenAddr ───────────────────────────────────────────────────────────────
+// ListenAddr
 
 func TestServer_listen_addr_not_empty_after_start(t *testing.T) {
 	srv, _ := startServer(t)
 	assert.NotEmpty(t, srv.ListenAddr())
 }
 
-// ─── GET /v1/yields ───────────────────────────────────────────────────────────
+// GET /v1/yields
 
 func TestServer_list_empty(t *testing.T) {
 	srv, _ := startServer(t)
@@ -129,7 +129,7 @@ func TestServer_list_not_allowed_methods(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, httpResp.StatusCode)
 }
 
-// ─── GET /v1/yields/{id} ──────────────────────────────────────────────────────
+// GET /v1/yields/{id}
 
 func TestServer_get_existing_yield(t *testing.T) {
 	srv, _ := startServer(t)
@@ -149,7 +149,7 @@ func TestServer_get_unknown_yield_returns_404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
-// ─── POST /v1/yields/{id}/approve ────────────────────────────────────────────
+// POST /v1/yields/{id}/approve
 
 func TestServer_approve_unblocks_channel(t *testing.T) {
 	srv, _ := startServer(t)
@@ -186,7 +186,7 @@ func TestServer_approve_unknown_yield_returns_404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
-// ─── POST /v1/yields/{id}/reject ─────────────────────────────────────────────
+// POST /v1/yields/{id}/reject
 
 func TestServer_reject_unblocks_channel_with_false(t *testing.T) {
 	srv, _ := startServer(t)
@@ -211,7 +211,7 @@ func TestServer_reject_unknown_yield_returns_404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
-// ─── shutdown auto-rejects pending yields ─────────────────────────────────────
+// shutdown auto-rejects pending yields
 
 func TestServer_shutdown_rejects_pending_yields(t *testing.T) {
 	srv, cancel := startServer(t)
@@ -228,7 +228,7 @@ func TestServer_shutdown_rejects_pending_yields(t *testing.T) {
 	}
 }
 
-// ─── multiple concurrent yields ───────────────────────────────────────────────
+// multiple concurrent yields
 
 func TestServer_multiple_yields_independent(t *testing.T) {
 	srv, _ := startServer(t)
@@ -245,7 +245,7 @@ func TestServer_multiple_yields_independent(t *testing.T) {
 	assert.True(t, dec2.Approved)
 }
 
-// ─── approve without body still works ─────────────────────────────────────────
+// approve without body still works
 
 func TestServer_approve_without_feedback_body(t *testing.T) {
 	srv, _ := startServer(t)
@@ -262,7 +262,7 @@ func TestServer_approve_without_feedback_body(t *testing.T) {
 	}
 }
 
-// ─── bearer token authentication ──────────────────────────────────────────────
+// bearer token authentication
 
 func postWithToken(t *testing.T, url string, body any, token string) *http.Response {
 	t.Helper()
@@ -343,11 +343,7 @@ func TestServer_auth_list_requires_token(t *testing.T) {
 	assert.Equal(t, http.StatusOK, getWithToken(t, baseURL(srv)+"/v1/yields", tok).StatusCode)
 }
 
-// ─── concurrent decision race ──────────────────────────────────────────────────
-
-// TestDecisionRace is the checklist-named alias for
-// TestServer_decision_race_first_wins (CHECK 8.6).
-func TestDecisionRace(t *testing.T) { TestServer_decision_race_first_wins(t) }
+// concurrent decision race
 
 // TestServer_decision_race_first_wins verifies that when two goroutines race to
 // approve the same yield, exactly one gets HTTP 200 and the other gets 404 (the
@@ -379,10 +375,10 @@ func TestServer_decision_race_first_wins(t *testing.T) {
 	}
 }
 
-// ─── MozillaTLSConfig ─────────────────────────────────────────────────────────
+// MozillaTLSConfig
 
 // TestMozillaTLSConfig_returns_valid_config verifies the TLS config matches the
-// Mozilla "intermediate" profile: TLS 1.2 minimum, AEAD cipher suites (CHECK 8.5).
+// Mozilla "intermediate" profile: TLS 1.2 minimum, AEAD cipher suites.
 func TestMozillaTLSConfig_returns_valid_config(t *testing.T) {
 	cfg := approvalhttp.MozillaTLSConfig()
 	require.NotNil(t, cfg)
@@ -392,7 +388,7 @@ func TestMozillaTLSConfig_returns_valid_config(t *testing.T) {
 	assert.Contains(t, cfg.CurvePreferences, tls.X25519, "X25519 must be preferred")
 }
 
-// ─── handleYield default/404 path ────────────────────────────────────────────
+// handleYield default/404 path
 
 // TestHandleYield_unknown_action_returns_404 covers the default branch in
 // handleYield where neither GET (no action) nor POST approve/reject matches.
@@ -409,7 +405,7 @@ func TestHandleYield_unknown_action_returns_404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
-// ─── StartTLS ─────────────────────────────────────────────────────────────────
+// StartTLS
 
 // generateSelfSignedCert creates a temporary self-signed certificate and key.
 // Returns paths to the cert and key PEM files. Registers cleanup.
@@ -446,7 +442,7 @@ func generateSelfSignedCert(t *testing.T) (certFile, keyFile string) {
 }
 
 // TestStartTLS_serves_https verifies that StartTLS starts an HTTPS listener and
-// responds to requests (CHECK 8.5).
+// responds to requests.
 func TestStartTLS_serves_https(t *testing.T) {
 	certFile, keyFile := generateSelfSignedCert(t)
 
