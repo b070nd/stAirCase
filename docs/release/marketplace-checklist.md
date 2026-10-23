@@ -22,11 +22,11 @@ icon and colour rules. The listing form validates both; if it refuses, that is t
 
 - Accept the GitHub Marketplace Developer Agreement and have two-factor authentication on the account.
 - Choose the categories in the release form (proposed: Security first, Code quality second) and publish from a release.
-- Publish from the current release, v1.2.0 (or the then-current one), under the listing name "stAirCase verify". The bare name "stAirCase" is not used: a GitHub user `staircase` exists, and GitHub bars a name equal to a user's or an organisation's.
+- Publish from the current release, v1.3.0 (or the then-current one), under the listing name "stAirCase verify". The bare name "stAirCase" is not used: a GitHub user `staircase` exists, and GitHub bars a name equal to a user's or an organisation's.
 
 ## After publishing (to be done and kept)
 
 1. Confirm the listing URL.
-2. `packaging/verify-release.sh v1.2.0` (checksums, Sigstore signature of `checksums.txt`, build attestation, and its two controls that must fail).
+2. `packaging/verify-release.sh v1.3.0` (checksums, Sigstore signature of `checksums.txt`, build attestation, and its two controls that must fail).
 3. Run the documented pinned setup in a fresh protected test repository and certify and rebuild a real positive range. This is the
    same repository and run as the ruleset fixture ([testing](../testing.md)): one test repository can serve both.

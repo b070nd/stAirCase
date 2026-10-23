@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install v1.3.0 - stAirCase</title>
+  <meta name="description" content="Install stAirCase v1.3.0 and verify a download.">
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site">
+  <a class="brand" href="../../index.html">stAirCase</a>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="../../index.html#use-cases">Use cases</a></li>
+      <li><a href="../../assurance.html">Assurance levels</a></li>
+      <li><a href="../../guides/index.html" aria-current="true">Setup guides</a></li>
+      <li><a href="../../sample.html">Sample</a></li>
+      <li><a href="https://github.com/b070nd/stAirCase">Source</a></li>
+    </ul>
+  </nav>
+</header>
+<main id="main">
+<h1>Install stAirCase</h1>
+<p class="note">This guide is for stAirCase <strong>v1.3.0</strong>. Homebrew and <code>go install ...@latest</code> install the latest release, which can be newer: check with <code>staircase version</code>. Other releases: <a href="../../guides/index.html">setup guides</a>.</p>
+<p class="lead">stAirCase is one program, <code>staircase</code>. It needs git; nothing else (no Python, no database server).</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Platform</th><th scope="col">Status</th></tr></thead>
+  <tbody>
+    <tr><td>macOS (Apple silicon, Intel)</td><td>supported</td></tr>
+    <tr><td>Linux (amd64, arm64)</td><td>supported</td></tr>
+    <tr><td>Windows (amd64)</td><td>experimental and untested; <code>run_shell</code> and <code>--agent claude-code</code> need a POSIX shell</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="choose">Choose a way to install</h2>
+<h3 id="homebrew">Homebrew (macOS, Linux)</h3>
+<p>Also installs shell completion.</p>
+<pre tabindex="0"><code>brew install b070nd/staircase/staircase</code></pre>
+<h3 id="go">Go (Go 1.26 or newer)</h3>
+<pre tabindex="0"><code>go install github.com/b070nd/stAirCase/src/cmd/staircase@latest</code></pre>
+<h3 id="archive">A release archive</h3>
+<p>Download it from the <a href="https://github.com/b070nd/stAirCase/releases/tag/v1.3.0">v1.3.0 release page</a>, check it (see <a href="#verify">below</a>), unpack it and put <code>staircase</code> on your <code>PATH</code>.</p>
+<h3 id="source">Build from source</h3>
+<pre tabindex="0"><code>git clone https://github.com/b070nd/stAirCase.git
+cd stAirCase
+CGO_ENABLED=0 go build -o staircase ./src/cmd/staircase</code></pre>
+
+<h2 id="check">Check that it works</h2>
+<pre tabindex="0"><code>staircase version
+staircase init      # creates the workspace (~/.staircase-workspace)
+staircase doctor    # checks the workspace, keys, database and git</code></pre>
+
+<h2 id="verify">Verify a download</h2>
+<p>Every release is built from its tag by a public GitHub workflow. The build is reproducible: the same tag always gives the same bytes. Each release includes <code>checksums.txt</code> (the SHA-256 of every archive), a Sigstore cosign "keyless" signature over it, an SBOM for every archive, and a build-provenance attestation for every archive. Check the signature, then the archive:</p>
+<pre tabindex="0"><code>cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/b070nd/stAirCase/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+
+shasum -a 256 -c checksums.txt --ignore-missing</code></pre>
+
+<h2 id="upgrade">Upgrade and uninstall</h2>
+<pre tabindex="0"><code>brew upgrade b070nd/staircase/staircase
+brew uninstall staircase</code></pre>
+<p>Uninstalling does not delete your workspace. It is a normal folder; remove <code>~/.staircase-workspace</code> yourself if you no longer need its runs and evidence.</p>
+<p>Next: <a href="../../guides/v1.3.0/first-run.html">your first run</a>. Reference: <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/install.md">Install, at v1.3.0</a>.</p>
+</main>
+<footer class="site">
+  <p>These pages describe stAirCase v1.3.0. The <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/docs/README.md">documentation in the repository</a> is the reference; where a page and the documentation differ, the documentation is right.</p>
+  <p>stAirCase is released under the <a href="https://github.com/b070nd/stAirCase/blob/v1.3.0/LICENSE">MIT License</a>. &copy; 2026 Botond Biro.</p>
+</footer>
+</body>
+</html>

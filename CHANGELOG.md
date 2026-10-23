@@ -6,12 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-23
+
+This release is about what a person reads: the program's output, the documentation and the project's site, and keeping the version in one place.
+
 ### Added
 
 - **`make version` moves every mention of the current release.** The CHANGELOG's newest release heading is the one source of the version.
   `go run ./src/tools/setversion` (or `make version`) updates the pinned Action example, the fixture's default, the release checklist and the
   site's links, and adds the site's setup guide for the release; `-check` only reports. A test fails while any mention is stale. The
-  site now describes 1.2.0.
+  site and its setup guide now describe the current release.
 
 ### Changed
 
@@ -22,6 +26,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
   exit codes, which stream a line goes to, JSON output, the audit chain and certificates are the same. A script that looks for an
   emoji, or reads the first word of a line as a status, needs to change; use the exit code. The demo scripts, the README and the
   documentation show the new output, and a test keeps emoji out of it ([compatibility](docs/compatibility.md)).
+
+### Fixed
+
+- **Three error messages ended in `<nil>`.** Loading a case or a project for `staircase push`, a reviewer model's reply with no verdict, and
+  a policy scenario run that was not recorded now say what is wrong ("not found", "no approve field", "found 0 runs") instead of printing
+  the missing error.
+- **`staircase gate` closes its database before it exits with status 1,** instead of skipping the cleanup.
 
 ## [1.2.0] - 2026-10-23
 
