@@ -35,7 +35,8 @@ GOOS=windows go build ./...  # the Windows build must keep compiling
   surrounding style. Don't reformat or refactor unrelated code in the same PR.
 - **Conventional commits.** Follow the existing history, e.g.
   `fix(orchestrator): …`, `feat(audit): …`, `docs: …`, with a body that explains
-  the *why*.
+  the *why*. Pull requests are squash-merged, so the pull request title becomes the
+  commit on `master`: write it as a commit subject, not as a branch name.
 - **No new dependencies without discussion.** `go.mod` is the supply-chain
   surface - model clients use the standard library, and it should stay that way.
 - **Dependencies are updated by hand**, in a normal pull request: `go get <module>@<version>`,
